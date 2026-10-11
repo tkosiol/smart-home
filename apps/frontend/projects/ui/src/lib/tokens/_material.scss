@@ -1,0 +1,21 @@
+@use '@angular/material' as mat;
+
+// Material's system tokens; colors, corners and the font family are overridden at runtime by the
+// generated default theme and ThemeService (--mat-sys-*, --smart-font-family).
+@mixin core() {
+  html {
+    @include mat.theme(
+      (
+        color: (
+          primary: mat.$cyan-palette,
+          theme-type: color-scheme,
+        ),
+        typography: (
+          plain-family: var(--smart-font-family),
+          brand-family: var(--smart-font-family),
+        ),
+        density: 0,
+      )
+    );
+  }
+}

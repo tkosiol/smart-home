@@ -1,0 +1,17 @@
+// Font faces are only declared here; browsers download a face only when text uses it,
+// so just the active font is loaded.
+@use '@fontsource-variable/roboto-flex/index' as roboto-flex;
+@use '@fontsource-variable/figtree/index' as figtree;
+@use '@fontsource-variable/atkinson-hyperlegible-next/index' as atkinson;
+@use 'material-symbols/rounded';
+@use './lib/tokens/material';
+@use './lib/tokens/default-theme';
+@use './lib/tokens/layout';
+@include material.core;
+
+body {
+  margin: 0;
+  background: var(--mat-sys-surface);
+  color: var(--mat-sys-on-surface);
+  font: var(--mat-sys-body-large);
+}

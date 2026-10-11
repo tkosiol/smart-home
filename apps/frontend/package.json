@@ -3,28 +3,36 @@
   "version": "0.0.0",
   "license": "AGPL-3.0-only",
   "scripts": {
-    "start": "ng serve",
-    "build": "ng build",
-    "test": "ng test --watch=false",
-    "typecheck": "tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.spec.json --noEmit"
+    "start": "ng serve frontend",
+    "build": "ng build frontend",
+    "test": "ng test frontend --watch=false",
+    "typecheck": "tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.spec.json --noEmit && tsc -p projects/ui/tsconfig.lib.json --noEmit && tsc -p projects/ui/tsconfig.spec.json --noEmit"
   },
   "private": true,
   "dependencies": {
+    "@angular/cdk": "22.2.2",
     "@angular/common": "^22.2.0",
     "@angular/compiler": "^22.2.0",
     "@angular/core": "^22.2.0",
     "@angular/forms": "^22.2.0",
+    "@angular/material": "22.2.2",
     "@angular/platform-browser": "^22.2.0",
     "@angular/router": "^22.2.0",
+    "@fontsource-variable/atkinson-hyperlegible-next": "5.3.0",
+    "@fontsource-variable/figtree": "5.3.0",
+    "@fontsource-variable/roboto-flex": "5.3.0",
+    "@smart/contracts": "workspace:*",
+    "@smart/theme": "workspace:*",
+    "material-symbols": "0.48.0",
     "rxjs": "~7.8.0",
-    "tslib": "^2.3.0",
-    "@smart/contracts": "workspace:*"
+    "tslib": "^2.3.0"
   },
   "devDependencies": {
     "@angular/build": "^22.2.2",
     "@angular/cli": "^22.2.2",
     "@angular/compiler-cli": "^22.2.0",
     "jsdom": "^30.0.0",
+    "ng-packagr": "^22.2.0",
     "typescript": "6.0.3",
     "vitest": "^5.0.0"
   }
