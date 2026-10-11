@@ -2387,3 +2387,58 @@ curl -fsS -o /dev/null -w '%{http_code}\n' https://tkosiol.github.io/smart-home/
 ```
 
 Expected: Workflow grün; `200`.
+
+---
+
+## Ergebnis und Übertrag
+
+Umgesetzt subagent-gestützt (je Task Umsetzung und Review, am Ende Gesamt-Review des Branches). Dieser Abschnitt hält fest, wo die Umsetzung vom Plan abweicht und was die Pläne 3b und 3c übernehmen müssen.
+
+### Abweichungen vom Plan (Entscheidungen)
+
+- **Error-Override:** folgt wie alle Kernfarben der Farbtreue-Regel (Spec 4.4); ohne Farbtreue liefert er nur den Farbton. Der Plan-Code hatte ihn immer mit eigener Buntheit übernommen.
+- **Farbtreue an:** Primärrollen folgen der Fidelity-Logik unabhängig von der Variante, auch bei Monochrom (Spec 4.4: „Rollen-Töne nach Fidelity-Logik“).
+- **Statusfarben:** „Trocken“ ist Bernsteingelb `#c99a00` (vorher `#c77800`), die Harmonisierung zur Quelle ist auf 8° begrenzt (statt bis 15°), „offline“ ist ein reines Grau, dunkle Töne 80/82/85. Grund: „Trocken“ und „Warnung“ waren in manchen Themes kaum unterscheidbar; ein Test sichert jetzt den Mindestabstand (CIELAB ΔE ≥ 20 für Statusfarben, ≥ 12 für Container) über Grundfarben, Modi und Kontraststufen.
+- **Bundle-Budget:** `@smart/contracts` nutzt `zod/mini` (`import * as z from 'zod/mini'`), das klassische `zod` blähte das initiale Bundle auf 724 KB. Jetzt 292 KB; das Budget `initial` bricht ab 500 kB mit Fehler ab (Spec 10).
+- **Speicher:** `LocalStorageAppearanceStore` greift erst innerhalb von `try` auf `localStorage` zu, damit die App auch bei gesperrtem Browser-Speicher startet (Plan-Code las ihn im Konstruktor).
+- **`theme-boot.js`:** eigene nginx-Location mit `Cache-Control: no-cache` (die Datei hat keinen Hash und wäre sonst ein Jahr lang `immutable` gecacht). Lint: Browser-Globals für `apps/frontend/public/**/*.js` über einen eigenen, getesteten Block.
+- **Sass:** Die Schrift-Importe brauchen eigene Namensräume (`as roboto-flex` usw.).
+- **Bibliotheksgerüst:** Das von der CLI erzeugte ng-packagr-Ziel bleibt; die App nutzt `@smart/ui` weiter direkt aus dem Quellcode.
+- **Storybook:**
+  - Zweite Story mit dunklem Theme und hohem Kontrast, damit der Interaktionstest die Werkzeugleiste wirklich prüft.
+  - axe prüft WCAG 2.0–2.2 A/AA einschließlich `target-size`.
+  - `jest-runtime` ist auf 30.4.2 festgelegt (Grund und Ausstiegskriterium in `pnpm-workspace.yaml`), weil `@storybook/test-runner` 0.26 mit 30.5 nicht startet.
+  - Lizenzausnahme für `union@0.5.0` (Abhängigkeit von `http-server`; Manifest ohne Lizenzangabe, Lizenzdatei MIT), eng auf Name und Version, mit Test.
+- **Spec 4.3:** Der persönliche Kontrast kennt zusätzlich `system` (Standard, bei `prefers-contrast: more` Hoch).
+
+### Übertrag in Plan 3b
+
+- Material-Symbols-Font (5,4 MB) vor `ui-icon` verkleinern (Subset) oder ersetzen.
+- Gehashte Schriftdateien (`woff2`) in die `immutable`-Regel der nginx-Konfiguration aufnehmen.
+- Story-Listen (Varianten, Modi, Formen, Schriften) und Rollenanzahl aus Contracts und Theme-Konstanten ableiten statt hart zu kodieren; Storybook-Telemetrie abschalten; `http-server` lokal nur an `127.0.0.1` binden.
+- Ablösung des auslaufenden `@storybook/test-runner` beobachten; danach den `jest-runtime`-Override entfernen.
+- Playwright im Frontend ausdrücklich als Abhängigkeit führen (bisher nur über Peer-Abhängigkeiten vorhanden).
+
+### Übertrag in Plan 3c
+
+- **Vorrang des Instanz-Themes ausdrücklich festlegen** (Spec 4.5 Punkt 4). Vorschlag: im Browser gespeicherte Instanz nur bei eingeschaltetem `features.instanceAppearanceEditor`, sonst `config.json`, sonst Build-Default. Heute gewinnt eine gespeicherte Instanz immer.
+- Boot-Cache mit Versionskennung (Instanz-Hash, aufgelöster Kontrast) versehen, damit ein geänderter Instanz-Default oder ein umgeschalteter Systemkontrast nicht kurz alt aufblitzt.
+- Storybook-Werkzeugleiste auf `ThemeService` umstellen (Spec 9) und Sprache ergänzen.
+- Theme-Editor: Variantenwahl bei aktiver Farbtreue sperren oder erklären; graue Overrides ohne Farbtreue als unbunt behandeln.
+- `ThemeService.instance`/`personal` nur lesend nach außen geben (`asReadonly()`); ungültige persönliche Farben getrennt verwerfen, Modus und Kontrast behalten; Synchronisation zwischen Tabs (`storage`-Ereignis) prüfen.
+- `theme-boot.js` in die Service-Worker-Assetgruppe ohne Hash aufnehmen.
+- E2E „nur aktive Schrift geladen“ verschärfen, sobald die App Text rendert (Roboto Flex muss angefragt werden).
+- Optisch prüfen: „Trocken“ wirkt im Hellmodus (`#715d00`) eher senf- als bernsteinfarben.
+
+### Bewusst zurückgestellt (klein)
+
+- `CLAUDE.md` nennt beim Neubau noch nur „Contracts“, obwohl auch das Theme-Paket gebaut wird.
+- Zusätzliche Ablehntests (Form, Schrift, `#rgb`, `#rrggbbaa`).
+- Test der Blockreihenfolge im Standard-CSS.
+- Generator ohne Prüfung auf vorhandenes `dist`.
+- `applyThemeVars` entfernt veraltete Variablen nicht.
+- Node-Globals in `public/*.js` noch erlaubt.
+- Tests für `setInstance`-Persistenz und für die Drehrichtung der Harmonisierung.
+- `cancel-in-progress` im Pages-Workflow.
+- `storybook-static/` in `.dockerignore`.
+- Spec 4.4 könnte „offline: neutrales Grau“ nennen.
