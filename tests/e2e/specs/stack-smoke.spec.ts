@@ -62,3 +62,44 @@ test('the API is reachable through the web container and ready', async ({ reques
 test('unknown API routes answer 404 instead of the app shell', async ({ request }) => {
   expect((await request.get('/api/does-not-exist')).status()).toBe(404);
 });
+
+test('a stored dark theme applies even before the app bundle runs', async ({ page }) => {
+  await page.goto('/');
+  await page.evaluate(() =>
+    localStorage.setItem(
+      'smart.theme.boot',
+      JSON.stringify({
+        mode: 'dark',
+        light: { '--mat-sys-surface': '#ffffff' },
+        dark: { '--mat-sys-surface': '#101415' },
+      }),
+    ),
+  );
+  await page.route(/main-[A-Z0-9]+\.js$/, (route) => route.abort());
+  await page.reload();
+  const surface = await page.evaluate(() =>
+    getComputedStyle(document.documentElement).getPropertyValue('--mat-sys-surface').trim(),
+  );
+  expect(surface).toBe('#101415');
+});
+
+test('the generated default theme colors the page without JavaScript', async ({ browser }) => {
+  const context = await browser.newContext({ javaScriptEnabled: false });
+  const page = await context.newPage();
+  await page.goto('/');
+  const primary = await page.evaluate(() =>
+    getComputedStyle(document.documentElement).getPropertyValue('--mat-sys-primary').trim(),
+  );
+  expect(primary).toMatch(/^#[0-9a-f]{6}$/);
+  await context.close();
+});
+
+test('only the active font family is downloaded', async ({ page }) => {
+  const fonts: string[] = [];
+  page.on('request', (request) => {
+    if (request.resourceType() === 'font') fonts.push(request.url());
+  });
+  await page.goto('/');
+  await page.evaluate(() => document.fonts.ready.then(() => undefined));
+  expect(fonts.filter((url) => /figtree|atkinson/i.test(url))).toEqual([]);
+});

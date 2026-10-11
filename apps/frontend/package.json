@@ -5,7 +5,7 @@
   "scripts": {
     "start": "ng serve frontend",
     "build": "ng build frontend",
-    "test": "ng test frontend --watch=false",
+    "test": "ng test frontend --watch=false && ng test ui --watch=false",
     "typecheck": "tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.spec.json --noEmit && tsc -p projects/ui/tsconfig.lib.json --noEmit && tsc -p projects/ui/tsconfig.spec.json --noEmit"
   },
   "private": true,
@@ -31,6 +31,7 @@
     "@angular/build": "^22.2.2",
     "@angular/cli": "^22.2.2",
     "@angular/compiler-cli": "^22.2.0",
+    "@types/node": "24.19.2",
     "jsdom": "^30.0.0",
     "ng-packagr": "^22.2.0",
     "typescript": "6.0.3",

@@ -24,6 +24,11 @@ export function smartConfig({ rootDir, typeChecked = true }) {
     },
     { files: ['**/*.{js,mjs,cjs,ts}'], extends: [js.configs.recommended] },
     { files: ['**/*.{js,mjs,cjs}'], languageOptions: { globals: globals.node } },
+    {
+      // Classic scripts served as-is from the app's public folder (e.g. theme-boot.js).
+      files: ['apps/frontend/public/**/*.js'],
+      languageOptions: { sourceType: 'script', globals: globals.browser },
+    },
     { files: ['**/*.ts'], extends: [tseslint.configs.recommended] },
     ...(typeChecked
       ? [
