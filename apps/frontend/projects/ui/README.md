@@ -21,6 +21,6 @@ Hintergrund: `docs/superpowers/specs/2026-10-11-etappe-3-design-system-design.md
 | Inhalt      | `ui-card`, `ui-list`, `ui-list-item`, `ui-empty-state`, `ui-skeleton`, `ui-icon`                   |
 | Formular    | `ui-text-field`                                                                                    |
 | Rückmeldung | `ui-banner`, `UiSnackbar` (Service)                                                                |
-| Zeit        | `uiDateTime`, `uiRelativeTime`, `UiFormatContext`                                                  |
+| Zeit        | `uiDateTime`, `uiRelativeTime`, `UiFormatContext`, `UiClock`                                       |
 
 Neues Symbol: Namen in `src/lib/icon/icons.json` eintragen, dann `pnpm icons:build`.
