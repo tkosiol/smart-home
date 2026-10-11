@@ -50,7 +50,7 @@ if [ "$environment" = production ]; then
   backup_gid=$(ssh -n "$host" "id -g")
   read -r -p "B2 S3 endpoint (e.g. s3.eu-central-003.backblazeb2.com): " b2_endpoint
   read -r -p "B2 bucket for VPS backups: " b2_bucket
-  read -r -p "B2 key ID (smart-vps-restic): " b2_key_id
+  read -r -p "B2 keyID of the key smart-vps-restic (starts with 003/K003, not the key name): " b2_key_id
   read -r -s -p "B2 application key: " b2_app_key; echo
   read -r -s -p "restic repository password (from your password manager): " restic_password; echo
   read -r -p "healthchecks.io ping URL for the nightly backup: " hc_backup
