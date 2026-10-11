@@ -26,6 +26,9 @@ export const Standard: StoryObj<UiSegmentedButton<string>> = {
   }),
   play: async ({ canvas }) => {
     await expect(canvas.getByRole('radiogroup', { name: 'Modus' })).toBeVisible();
+    for (const radio of canvas.getAllByRole('radio')) {
+      await expect(radio.getBoundingClientRect().height).toBeGreaterThanOrEqual(48);
+    }
     await userEvent.tab();
     await expect(canvas.getByRole('radio', { name: 'System' })).toHaveFocus();
     // user-event sends no keyCode, and Material's group reads keyCode for the arrow keys.
@@ -38,5 +41,19 @@ export const Standard: StoryObj<UiSegmentedButton<string>> = {
     await expect(canvas.getByRole('radio', { name: 'Hell' })).toBeChecked();
     await userEvent.click(canvas.getByRole('radio', { name: 'Dunkel' }));
     await expect(canvas.getByRole('radio', { name: 'Dunkel' })).toBeChecked();
+  },
+};
+
+export const Deaktiviert: StoryObj<UiSegmentedButton<string>> = {
+  args: { disabled: true },
+  render: (args) => ({
+    props: { ...args },
+    template: `<ui-segmented-button [label]="label" [options]="options" [disabled]="disabled" [(value)]="value" />`,
+  }),
+  play: async ({ canvas }) => {
+    await expect(canvas.getByRole('radio', { name: 'Dunkel' })).toBeDisabled();
+    await userEvent.click(canvas.getByRole('radio', { name: 'Dunkel' }), { pointerEventsCheck: 0 });
+    await expect(canvas.getByRole('radio', { name: 'System' })).toBeChecked();
+    await expect(canvas.getByRole('radio', { name: 'Dunkel' })).not.toBeChecked();
   },
 };

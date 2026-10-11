@@ -1,0 +1,16 @@
+@use '@angular/material' as mat;
+
+:host {
+  display: inline-block;
+  max-width: 100%;
+
+  @include mat.button-toggle-overrides(
+    (
+      height: var(--smart-size-touch),
+    )
+  );
+}
+
+ui-icon {
+  margin-inline-end: var(--smart-space-sm);
+}

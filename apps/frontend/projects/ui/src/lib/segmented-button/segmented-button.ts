@@ -18,6 +18,7 @@ export interface UiSegmentOption<T extends string> {
   selector: 'ui-segmented-button',
   imports: [MatButtonToggleGroup, MatButtonToggle, UiIcon],
   templateUrl: './segmented-button.html',
+  styleUrl: './segmented-button.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class UiSegmentedButton<T extends string> {
