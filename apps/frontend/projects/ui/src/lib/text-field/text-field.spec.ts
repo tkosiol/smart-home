@@ -77,4 +77,23 @@ describe('UiTextField', () => {
     fixture.detectChanges();
     expect(input.getAttribute('aria-invalid')).not.toBe('true');
   });
+
+  it('keeps a required input invalid when the user empties it while the error stays', () => {
+    const fixture = TestBed.createComponent(RequiredHost);
+    fixture.detectChanges();
+    const input = fixture.nativeElement.querySelector('input') as HTMLInputElement;
+    input.value = 'a';
+    input.dispatchEvent(new Event('input'));
+    fixture.componentInstance.error.set('Pflichtfeld');
+    fixture.detectChanges();
+    expect(input.getAttribute('aria-invalid')).toBe('true');
+    input.value = '';
+    input.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    expect(fixture.componentInstance.name()).toBe('');
+    expect(input.getAttribute('aria-invalid')).toBe('true');
+    fixture.componentInstance.error.set(null);
+    fixture.detectChanges();
+    expect(input.getAttribute('aria-invalid')).not.toBe('true');
+  });
 });
