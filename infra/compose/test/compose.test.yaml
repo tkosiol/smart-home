@@ -1,0 +1,18 @@
+services:
+  web:
+    ports:
+      - '127.0.0.1:18080:8080'
+  backup:
+    environment:
+      RESTIC_REPOSITORY: /restic-repo
+      RESTIC_PASSWORD: stack-test-only
+    volumes:
+      - restic-test:/restic-repo
+      # Replaces the bind mount of the stack directory: restic cannot read macOS bind mounts
+      # (Docker Desktop file sharing returns EIO); the test copies the files into this volume.
+      - stack-config-test:/stack-config:ro
+
+volumes:
+  restic-test: {}
+  stack-config-test:
+    name: smart-stacktest-config

@@ -4,6 +4,8 @@ node_modules/
 # build output
 dist/
 coverage/
+tests/e2e/test-results/
+tests/e2e/playwright-report/
 .angular/
 *.tsbuildinfo
 
