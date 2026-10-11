@@ -11,9 +11,9 @@ Alle Oberflächen der Smart-Home-App entstehen ausschließlich aus diesen Bauste
 - **Nur über `@smart/ui`:** Features importieren keine Angular-Material- oder CDK-Bausteine und haben kein eigenes CSS. Fehlt etwas, entsteht eine neue `ui-*`-Komponente.
 - **Nur Tokens:** Farben, Abstände, Größen und Zeiten kommen aus `--mat-sys-*` und `--smart-*`.
 - **Kein Text in Komponenten:** Beschriftungen, Hinweise und Fehlermeldungen übergibt der Aufrufer (übersetzt).
-- **Zeit:** Zeitstempel sind UTC mit `Z`; angezeigt wird mit `uiDateTime` und `uiRelativeTime` in der Haushalts-Zeitzone.
+- **Zeit:** Zeitstempel sind UTC mit `Z`; angezeigt wird mit `uiDateTime` und `uiRelativeTime` in der Zeitzone aus `UiFormatContext` (bis Etappe 4 die Browser-Zeitzone).
 - **Barrierefreiheit:** Jede Story wird mit axe (WCAG 2.2 AA) im Standard-Theme und dunkel mit hohem Kontrast geprüft; jede Komponente ist per Tastatur bedienbar. Material-Bedienelemente zeigen library-weit einen sichtbaren Fokusrahmen.
 
 ## Symbole
 
-Verfügbar sind nur die Symbole aus `lib/icon/icons.json` (Material Symbols Rounded). Neues Symbol: Namen dort alphabetisch eintragen und `pnpm icons:build` ausführen – das erzeugt die Schrift-Teilmenge und den Typ `IconName` neu.
+Verfügbar sind nur die Symbole aus `src/lib/icon/icons.json` (Material Symbols Rounded). Neues Symbol: Namen dort alphabetisch eintragen und `pnpm icons:build` ausführen – das erzeugt die Schrift-Teilmenge und den Typ `IconName` neu.
