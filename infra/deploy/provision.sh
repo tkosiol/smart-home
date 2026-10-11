@@ -50,8 +50,17 @@ if [ "$environment" = production ]; then
   backup_gid=$(ssh -n "$host" "id -g")
   read -r -p "B2 S3 endpoint (e.g. s3.eu-central-003.backblazeb2.com): " b2_endpoint
   read -r -p "B2 bucket for VPS backups: " b2_bucket
-  read -r -p "B2 keyID of the key smart-vps-restic (starts with 003/K003, not the key name): " b2_key_id
-  read -r -s -p "B2 application key: " b2_app_key; echo
+  read -r -p "B2 keyID of the key smart-vps-restic (25 characters, starts with 00): " b2_key_id
+  read -r -s -p "B2 application key (secret, starts with K): " b2_app_key; echo
+  # Guard against swapping the two: never echo the rejected value, it may be the secret.
+  if ! [[ "$b2_key_id" =~ ^00[0-9a-f]{23}$ ]]; then
+    echo "that is not a B2 keyID (expected 25 hex characters starting with 00) – nothing was written" >&2
+    exit 1
+  fi
+  if ! [[ "$b2_app_key" =~ ^K[0-9A-Za-z+/]{30}$ ]]; then
+    echo "that is not a B2 application key (expected 31 characters starting with K) – nothing was written" >&2
+    exit 1
+  fi
   read -r -s -p "restic repository password (from your password manager): " restic_password; echo
   read -r -p "healthchecks.io ping URL for the nightly backup: " hc_backup
   read -r -p "healthchecks.io ping URL for the restore test: " hc_restore

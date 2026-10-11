@@ -86,15 +86,21 @@ setup; prepare_stack smart-prod; export STUB_FAIL_UP=1
 check "first deploy fails cleanly when the new version is unhealthy" '[ "$(run_deploy production)" = 1 ] && [ ! -e "$SMART_STACKS_DIR/smart-prod/deploy.env" ]'; teardown
 
 # --- provision.sh ---
-answers() { printf 'b2-endpoint\nb2-bucket\nb2-key-id\nb2-app-key\nrestic-pw\nhttps://hc/backup\nhttps://hc/restore\n'; }
+KEY_ID=0031234567890ab0000000003
+APP_KEY=K003abcdefghijklmnopqrstuvwxyz0
+answers() { printf 'b2-endpoint\nb2-bucket\n%s\n%s\nrestic-pw\nhttps://hc/backup\nhttps://hc/restore\n' "$KEY_ID" "$APP_KEY"; }
+swapped_answers() { printf 'b2-endpoint\nb2-bucket\n%s\n%s\nrestic-pw\nhttps://hc/backup\nhttps://hc/restore\n' "$APP_KEY" "$KEY_ID"; }
 setup; export SMART_VPS=deploy@vps
 check "provision refuses to overwrite an existing .env" '[ "$(STUB_ENV_EXISTS=1 bash "$DEPLOY_DIR/provision.sh" staging < /dev/null > /dev/null 2>&1; echo $?)" = 1 ]'
 check "provision writes staging without backup settings" 'bash "$DEPLOY_DIR/provision.sh" staging < /dev/null > /dev/null 2>&1 && grep -qx "STACK_NAME=smart-staging" "$STUB_REMOTE_FILE" && ! grep -q "B2_" "$STUB_REMOTE_FILE"'
 check "provision generates long random passwords" 'grep -Eq "^DB_PASSWORD=[0-9a-f]{64}$" "$STUB_REMOTE_FILE" && grep -Eq "^MQTT_API_PASSWORD=[0-9a-f]{64}$" "$STUB_REMOTE_FILE"'
 check "provision writes the file with umask 077" 'grep -q "umask 077" "$STUB_CALLS"'
-check "provision writes production with backup settings" 'answers | bash "$DEPLOY_DIR/provision.sh" production > /dev/null 2>&1 && grep -qx "COMPOSE_PROFILES=backup" "$STUB_REMOTE_FILE" && grep -qx "B2_APP_KEY=b2-app-key" "$STUB_REMOTE_FILE" && grep -qx "HC_RESTORE_URL=https://hc/restore" "$STUB_REMOTE_FILE"'
-check "provision never prints secrets" '! answers | bash "$DEPLOY_DIR/provision.sh" production 2>&1 | grep -qE "b2-app-key|restic-pw"'
+check "provision writes production with backup settings" 'answers | bash "$DEPLOY_DIR/provision.sh" production > /dev/null 2>&1 && grep -qx "COMPOSE_PROFILES=backup" "$STUB_REMOTE_FILE" && grep -qx "B2_APP_KEY=$APP_KEY" "$STUB_REMOTE_FILE" && grep -qx "HC_RESTORE_URL=https://hc/restore" "$STUB_REMOTE_FILE"'
+check "provision never prints secrets" '! answers | bash "$DEPLOY_DIR/provision.sh" production 2>&1 | grep -qE "$APP_KEY|restic-pw"'
 check "provision lets the backup container run as the stack owner" 'answers | bash "$DEPLOY_DIR/provision.sh" production > /dev/null 2>&1 && grep -qx "BACKUP_UID=4242" "$STUB_REMOTE_FILE" && grep -qx "BACKUP_GID=4343" "$STUB_REMOTE_FILE"'; teardown
+setup; export SMART_VPS=deploy@vps
+check "provision rejects an application key entered as keyID" '[ "$(swapped_answers | bash "$DEPLOY_DIR/provision.sh" production > /dev/null 2>&1; echo $?)" != 0 ] && [ ! -e "$STUB_REMOTE_FILE" ]'
+check "provision never echoes a rejected keyID" '! swapped_answers | bash "$DEPLOY_DIR/provision.sh" production 2>&1 | grep -q "$APP_KEY"'; teardown
 setup; export SMART_VPS=deploy@vps STUB_SSH_DOWN=1
 check "provision aborts when the VPS is unreachable" '[ "$(bash "$DEPLOY_DIR/provision.sh" staging < /dev/null > /dev/null 2>&1; echo $?)" != 0 ] && [ ! -e "$STUB_REMOTE_FILE" ]'; teardown
 setup; STUB_EXISTING_ENV=$(printf "STACK_NAME=smart-staging\nDB_PASSWORD=keep-db\nMQTT_API_PASSWORD=keep-mqtt")
