@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/angular';
 import { expect, fireEvent, userEvent } from 'storybook/test';
+import { expectNoHorizontalOverflow, withNarrowFrame } from '../testing/story-helpers';
 import { UiChipSet } from './chip-set';
 
 const meta: Meta<UiChipSet<string>> = {
@@ -66,5 +67,33 @@ export const Einzelauswahl: StoryObj<UiChipSet<string>> = {
       'aria-selected',
       'false',
     );
+  },
+};
+
+// A long German label on the narrowest phone must not make the page scroll sideways.
+export const Schmal: StoryObj<UiChipSet<string>> = {
+  decorators: [withNarrowFrame],
+  args: {
+    options: [
+      { value: 'kitchen', label: 'Küche' },
+      { value: 'heating', label: 'Heizungsthermostatsteuerung im Wohnzimmer', icon: 'sensors' },
+      { value: 'captain', label: 'Donaudampfschifffahrtsgesellschaftskapitän' },
+    ],
+  },
+  render: (args) => ({
+    props: { ...args },
+    template: `<ui-chip-set [label]="label" [options]="options" [(selected)]="selected" />`,
+  }),
+  play: async ({ canvas, canvasElement }) => {
+    await expectNoHorizontalOverflow(canvasElement.querySelector('.story-narrow')!);
+    for (const option of canvas.getAllByRole('option')) {
+      await expect(option.getBoundingClientRect().height).toBeGreaterThanOrEqual(48);
+    }
+    await userEvent.click(
+      canvas.getByRole('option', { name: 'Donaudampfschifffahrtsgesellschaftskapitän' }),
+    );
+    await expect(
+      canvas.getByRole('option', { name: 'Donaudampfschifffahrtsgesellschaftskapitän' }),
+    ).toHaveAttribute('aria-selected', 'true');
   },
 };

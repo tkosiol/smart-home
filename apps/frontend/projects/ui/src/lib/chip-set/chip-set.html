@@ -4,7 +4,7 @@
       @if (option.icon; as icon) {
         <ui-icon matChipAvatar [name]="icon" size="sm" />
       }
-      {{ option.label }}
+      <span class="label">{{ option.label }}</span>
     </mat-chip-option>
   }
 </mat-chip-listbox>

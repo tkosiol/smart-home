@@ -12,3 +12,15 @@
     )
   );
 }
+
+// Material keeps a chip's label on one line, so a long label pushed the chip past a 320px screen.
+// Our label wraps instead (long German words anywhere), and the chip grows with it.
+mat-chip-option {
+  height: auto;
+  min-height: var(--smart-size-touch);
+}
+
+.label {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
