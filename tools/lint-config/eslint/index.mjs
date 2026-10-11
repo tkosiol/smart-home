@@ -82,6 +82,17 @@ export function smartConfig({ rootDir, typeChecked = true }) {
       plugins: { smart: smartPlugin },
       rules: { 'smart/no-component-styles': ['error', { allowStyleUrl: true }] },
     },
+    {
+      files: [
+        'apps/backend/src/core/*.ts',
+        'apps/backend/src/modules/*.ts',
+        'apps/backend/src/platform/*.ts',
+        'apps/frontend/src/app/core/*.ts',
+        'apps/frontend/src/app/features/*.ts',
+      ],
+      plugins: { smart: smartPlugin },
+      rules: { 'smart/no-loose-files': 'error' },
+    },
     frontendRestrictedImports(),
     backendBoundaries(),
     frontendBoundaries(),

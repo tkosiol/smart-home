@@ -35,6 +35,33 @@ describe('stylelint: only design tokens in component styles', () => {
     expect(await rulesFor(css)).toContain(rule);
   });
 
+  it.each([
+    ['px inside calc()', '.a {\n  padding: calc(13px);\n}\n', 'unit-disallowed-list'],
+    ['px inside max()', '.a {\n  font-size: max(12px, 1rem);\n}\n', 'unit-disallowed-list'],
+    ['font shorthand', '.a {\n  font: 16px/1.5 serif;\n}\n', 'unit-disallowed-list'],
+    ['raw durations', '.a {\n  transition: all 200ms;\n}\n', 'unit-disallowed-list'],
+    ['raw sizes', '.a {\n  width: 13px;\n}\n', 'unit-disallowed-list'],
+    ['SCSS variables', '$x: 13%;\n', 'scss/no-dollar-variables'],
+    ['local custom properties', '.a {\n  --local: 1;\n}\n', 'property-disallowed-list'],
+    ['Material internals', '.mat-mdc-button {\n  opacity: 1;\n}\n', 'selector-disallowed-list'],
+    ['MDC internals', '.mdc-button {\n  opacity: 1;\n}\n', 'selector-disallowed-list'],
+    ['::ng-deep', ':host ::ng-deep .x {\n  opacity: 1;\n}\n', 'selector-disallowed-list'],
+  ])('rejects %s outside the token files', async (_name, css, rule) => {
+    expect(await rulesFor(css)).toContain(rule);
+  });
+
+  it('accepts relative layout values', async () => {
+    const css =
+      '.a {\n  width: 100%;\n  grid-template-columns: 1fr 2fr;\n  padding: calc(var(--smart-space-md) * 2);\n}\n';
+    expect(await rulesFor(css)).toEqual([]);
+  });
+
+  it('lints plain .css files in the UI library too', async () => {
+    expect(
+      await rulesFor('.a {\n  color: #fff;\n}\n', 'apps/frontend/projects/ui/src/lib/x/x.css'),
+    ).toContain('color-no-hex');
+  });
+
   it('allows raw values inside the token files', async () => {
     const scss = '$seed: #6750a4;\n:root {\n  --smart-space-md: 16px;\n}\n';
     expect(await rulesFor(scss, 'apps/frontend/projects/ui/src/lib/tokens/_palette.scss')).toEqual(

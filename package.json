@@ -11,7 +11,7 @@
     "contracts:build": "pnpm --filter @smart/contracts build",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "lint": "eslint . && stylelint --allow-empty-input \"apps/frontend/**/*.scss\"",
+    "lint": "eslint . && stylelint --allow-empty-input \"apps/frontend/**/*.{css,scss}\"",
     "typecheck": "pnpm -r --if-present typecheck",
     "test": "pnpm -r --if-present test",
     "test:tz": "TZ=Pacific/Chatham pnpm -r --if-present test",

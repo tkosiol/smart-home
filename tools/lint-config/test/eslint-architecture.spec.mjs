@@ -11,6 +11,7 @@ const ARCHITECTURE_RULES = [
   'boundaries/dependencies',
   'no-restricted-imports',
   'smart/no-component-styles',
+  'smart/no-loose-files',
 ];
 
 const fixtureLinter = new ESLint({
@@ -201,6 +202,25 @@ describe('frontend boundaries and UI rules', () => {
 
   it.each(cases)('%s', async (_name, file, code, expected) => {
     expect(await lintFixture(file, code)).toEqual(expected);
+  });
+});
+
+describe('no loose files next to module folders', () => {
+  it.each([
+    'apps/backend/src/core/flat.ts',
+    'apps/backend/src/modules/flat.ts',
+    'apps/frontend/src/app/core/flat.ts',
+    'apps/frontend/src/app/features/flat.ts',
+  ])('rejects %s', async (file) => {
+    expect(await lintFixture(file, 'export const x = 1;\n')).toEqual(['smart/no-loose-files']);
+  });
+
+  it.each([
+    'apps/backend/src/core/devices/devices.service.ts',
+    'apps/backend/src/app.module.ts',
+    'apps/frontend/src/app/features/devices/devices.page.ts',
+  ])('accepts %s', async (file) => {
+    expect(await lintFixture(file, 'export const x = 1;\n')).toEqual([]);
   });
 });
 

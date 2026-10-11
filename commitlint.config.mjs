@@ -1,4 +1,4 @@
-const AI_ATTRIBUTION = /co-authored-by:[^\n]*(claude|anthropic)|generated with[^\n]*claude/i;
+import { hasAiAttribution } from '@smart/lint-config/commit';
 
 export default {
   extends: ['@commitlint/config-conventional'],
@@ -6,7 +6,7 @@ export default {
     {
       rules: {
         'no-ai-attribution': ({ raw }) => [
-          !AI_ATTRIBUTION.test(raw ?? ''),
+          !hasAiAttribution(raw),
           'remove AI attribution lines (repository convention, see CLAUDE.md)',
         ],
       },
@@ -29,6 +29,7 @@ export default {
         'ci',
         'docs',
         'deps',
+        'deps-dev',
       ],
     ],
   },

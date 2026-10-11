@@ -25,6 +25,10 @@ export default {
   plugins: [strictValue],
   ignoreFiles: ['**/dist/**', '**/.angular/**', 'apps/frontend/projects/ui/src/lib/tokens/**'],
   rules: {
+    'unit-disallowed-list': ['px', 'rem', 'em', 'pt', 'ms', 's'],
+    'scss/no-dollar-variables': true,
+    'property-disallowed-list': ['/^--/'],
+    'selector-disallowed-list': ['/\\.mat-/', '/\\.mdc-/', '/::ng-deep/'],
     'color-no-hex': true,
     'color-named': 'never',
     'function-disallowed-list': [

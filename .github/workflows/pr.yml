@@ -1,0 +1,31 @@
+name: PR
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  pr-message:
+    name: pr-message
+    runs-on: ubuntu-24.04
+    env:
+      LEFTHOOK: '0'
+      PR_TITLE: ${{ github.event.pull_request.title }}
+      PR_BODY: ${{ github.event.pull_request.body }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: PR title is a conventional commit header (it becomes the squash commit subject)
+        run: printf '%s\n' "$PR_TITLE" | pnpm exec commitlint
+      - name: PR title and body carry no AI attribution
+        run: node tools/lint-config/commit/check-pr-text.mjs
