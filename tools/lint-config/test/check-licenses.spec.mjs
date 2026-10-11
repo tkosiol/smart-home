@@ -53,6 +53,19 @@ describe('findViolations', () => {
     ]);
   });
 
+  it('accepts a pinned package whose license was verified manually', () => {
+    expect(findViolations({ Unknown: [{ name: 'union', versions: ['0.5.0'] }] })).toEqual([]);
+  });
+
+  it('rechecks a verified package when its version changes', () => {
+    expect(findViolations({ Unknown: [{ name: 'union', versions: ['0.6.0'] }] })).toEqual([
+      { license: 'Unknown', packages: ['union'] },
+    ]);
+    expect(findViolations({ Unknown: [{ name: 'union', versions: ['0.5.0', '0.6.0'] }] })).toEqual([
+      { license: 'Unknown', packages: ['union'] },
+    ]);
+  });
+
   it('rejects third-party AGPL dependencies (not on the allowlist)', () => {
     expect(findViolations({ 'AGPL-3.0-only': [{ name: 'foreign-agpl-lib' }] })).toEqual([
       { license: 'AGPL-3.0-only', packages: ['foreign-agpl-lib'] },

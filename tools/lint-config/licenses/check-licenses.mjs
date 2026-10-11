@@ -22,6 +22,21 @@ const ALLOWED = new Set([
   'CC-BY-4.0',
 ]);
 /**
+ * Exact name@version pins whose license metadata is missing in the registry although the
+ * shipped LICENSE file is permissive. Each entry was verified by reading the file; a new
+ * version of the package is checked again.
+ */
+const VERIFIED_LICENSES = new Map([
+  // http-server (Storybook CI) -> union: package.json has no license field, LICENSE is MIT.
+  ['union@0.5.0', 'MIT'],
+]);
+
+const isVerified = (pkg) =>
+  Array.isArray(pkg.versions) &&
+  pkg.versions.length > 0 &&
+  pkg.versions.every((version) => isAllowed(VERIFIED_LICENSES.get(`${pkg.name}@${version}`)));
+
+/**
  * Evaluates an SPDX license expression against the allowlist.
  * Grammar: or := and ("OR" and)* ; and := atom ("AND" atom)* ; atom := "(" or ")" | id.
  * "WITH <exception>" and anything unparsable are rejected (fail closed).
@@ -77,8 +92,10 @@ export function isAllowed(expression) {
 export function findViolations(report) {
   const violations = [];
   for (const [license, packages] of Object.entries(report)) {
-    if (!isAllowed(license))
-      violations.push({ license, packages: packages.map((pkg) => pkg.name) });
+    if (isAllowed(license)) continue;
+    const offending = packages.filter((pkg) => !isVerified(pkg));
+    if (offending.length > 0)
+      violations.push({ license, packages: offending.map((pkg) => pkg.name) });
   }
   return violations;
 }

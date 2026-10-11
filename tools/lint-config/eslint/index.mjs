@@ -18,6 +18,7 @@ export function smartConfig({ rootDir, typeChecked = true }) {
         '**/dist/**',
         '**/coverage/**',
         '**/.angular/**',
+        '**/storybook-static/**',
         '**/node_modules/**',
         'tools/lint-config/test/fixture/**',
       ],
