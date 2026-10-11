@@ -9,5 +9,6 @@ allowBuilds:
   lefthook: true
   lmdb: true
   msgpackr-extract: true
+  unrs-resolver: true
 
 engineStrict: true

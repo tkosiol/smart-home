@@ -1,3 +1,7 @@
+output:
+  - summary
+  - failure
+
 pre-commit:
   parallel: true
   commands:
@@ -7,6 +11,9 @@ pre-commit:
       glob: '*.{ts,js,mjs,cjs,json,md,yml,yaml,html,scss}'
       run: pnpm exec prettier --write --ignore-unknown {staged_files}
       stage_fixed: true
+    eslint:
+      glob: '*.{ts,mjs}'
+      run: pnpm exec eslint --no-warn-ignored {staged_files}
 
 commit-msg:
   commands:
