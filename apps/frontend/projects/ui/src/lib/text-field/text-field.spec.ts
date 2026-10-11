@@ -18,6 +18,15 @@ class Host {
   readonly error = signal<string | null>(null);
 }
 
+@Component({
+  imports: [UiTextField],
+  template: `<ui-text-field label="Name" required [error]="error()" [(value)]="name" />`,
+})
+class RequiredHost {
+  readonly name = signal('');
+  readonly error = signal<string | null>(null);
+}
+
 function render() {
   const fixture = TestBed.createComponent(Host);
   fixture.detectChanges();
@@ -53,5 +62,19 @@ describe('UiTextField', () => {
     );
     expect(fixture.nativeElement.textContent).not.toContain('Wir schicken dir einen Code.');
     expect(input.getAttribute('aria-invalid')).toBe('true');
+  });
+
+  it('marks a required, empty input invalid while an error is shown', () => {
+    const fixture = TestBed.createComponent(RequiredHost);
+    fixture.detectChanges();
+    const input = fixture.nativeElement.querySelector('input') as HTMLInputElement;
+    expect(input.getAttribute('aria-invalid')).not.toBe('true');
+    fixture.componentInstance.error.set('Pflichtfeld');
+    fixture.detectChanges();
+    expect(input.value).toBe('');
+    expect(input.getAttribute('aria-invalid')).toBe('true');
+    fixture.componentInstance.error.set(null);
+    fixture.detectChanges();
+    expect(input.getAttribute('aria-invalid')).not.toBe('true');
   });
 });

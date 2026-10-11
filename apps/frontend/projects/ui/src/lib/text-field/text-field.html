@@ -8,6 +8,7 @@
     [required]="required()"
     [disabled]="disabled()"
     [errorStateMatcher]="errorMatcher"
+    [attr.aria-invalid]="error() ? 'true' : 'false'"
     [attr.autocomplete]="autocomplete() ?? null"
     [attr.name]="name() ?? null"
     (input)="onInput($event)"
