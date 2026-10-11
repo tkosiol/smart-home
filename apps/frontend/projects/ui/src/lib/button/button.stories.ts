@@ -31,6 +31,11 @@ export const Varianten: Story = {
     const filled = canvas.getByRole('button', { name: 'Gefüllt' });
     await userEvent.tab();
     await expect(filled).toHaveFocus();
+    // Keyboard focus must show Material's strong focus ring, not only the faint state layer.
+    const ring = getComputedStyle(filled.querySelector('.mat-focus-indicator')!, '::before');
+    await expect(ring.display).not.toBe('none');
+    await expect(ring.borderTopStyle).not.toBe('none');
+    await expect(parseFloat(ring.borderTopWidth)).toBeGreaterThan(0);
     await userEvent.keyboard('{Enter}');
     await userEvent.keyboard(' ');
     await expect(args.pressed).toHaveBeenCalledTimes(2);
