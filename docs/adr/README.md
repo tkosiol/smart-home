@@ -21,3 +21,5 @@ Neue Entscheidung: `0000-template.md` kopieren, nächste Nummer vergeben, hier e
 | [0015](0015-staging-and-image-promotion.md)     | Staging + Produktion mit Image-Promotion               |
 | [0016](0016-forced-command-deploy.md)           | Deploy per Forced-Command-SSH-Key                      |
 | [0017](0017-backups-restic-b2.md)               | Backups mit restic nach Backblaze B2 (EU)              |
+| [0018](0018-self-hosting-guardrails.md)         | Self-Hosting-Leitplanken                               |
+| [0019](0019-license-agpl.md)                    | Lizenz AGPL-3.0-only                                   |

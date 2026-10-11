@@ -39,6 +39,7 @@ Das erste Ziel ist **kein einzelnes Feature, sondern ein Fundament**: Benutzer, 
 - Offline-Datensynchronisation im Frontend
 - Andere Funkstandards als Zigbee (das Gateway-Modell lässt sie später zu)
 - Horizontale Skalierung des Backends
+- Installationsvarianten für andere (nur Web-App, alles zu Hause, getrennte Bridge) – werden durch die Self-Hosting-Leitplanken offengehalten (`2026-10-11-self-hosting-and-license-design.md`, ADR-0018) und in einer eigenen Etappe nach Etappe 6 gebaut
 - Weitere Sprachen außer Deutsch und Englisch
 
 ---
@@ -606,6 +607,7 @@ Jede Etappe erhält einen eigenen, detaillierten Umsetzungsplan in `docs/superpo
 | 6   | Geräte und Telemetrie     | Hardware-Erkennung, Zuordnung, Ingest, Speicherung, SSE, generische Geräteansichten mit Diagrammen, Befehle, Kopplungsmodus                                  |
 | 7   | Benachrichtigungen        | Inbox, Web-Push, Einstellungen, Core-Meldungen                                                                                                               |
 | 8   | Pflanzenmodul             | eigenes Brainstorming und eigene Spec, sobald die Sensoren in Betrieb sind                                                                                   |
+| 9   | Self-Hosting-Paket        | Compose-Profile für die Szenarien, Installationsskript, Multi-Arch-Images, Releases, englische README; eigene Spec                                           |
 
 ---
 
