@@ -32,3 +32,8 @@ export { UiList } from './lib/list/list';
 export { UiListItem } from './lib/list/list-item';
 export { UiBanner, UiBannerActions, type UiBannerTone } from './lib/banner/banner';
 export { UiSnackbar } from './lib/snackbar/snackbar';
+export { UiClock } from './lib/time/clock';
+export { UiDateTimePipe } from './lib/time/date-time.pipe';
+export { UiFormatContext } from './lib/time/format-context';
+export type { UiDateTimeStyle } from './lib/time/formatters';
+export { UiRelativeTimePipe } from './lib/time/relative-time.pipe';
