@@ -1,0 +1,25 @@
+@if (route() && !disabled()) {
+  <a class="row row--link" [routerLink]="route()">
+    <ng-container [ngTemplateOutlet]="content" />
+    <ui-icon class="chevron" name="chevron_right" />
+  </a>
+} @else {
+  <div class="row" [attr.aria-disabled]="disabled() ? 'true' : null">
+    <ng-container [ngTemplateOutlet]="content" />
+  </div>
+}
+
+<ng-template #content>
+  @if (icon(); as icon) {
+    <ui-icon class="leading" [name]="icon" />
+  }
+  <span class="texts">
+    <span class="headline">{{ headline() }}</span>
+    @if (supporting(); as supporting) {
+      <span class="supporting">{{ supporting }}</span>
+    }
+  </span>
+  @if (trailingText(); as trailingText) {
+    <span class="trailing">{{ trailingText }}</span>
+  }
+</ng-template>

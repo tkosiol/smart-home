@@ -28,3 +28,5 @@ export { UiTextField } from './lib/text-field/text-field';
 export { UiCard, UiCardActions } from './lib/card/card';
 export { UiEmptyState, UiEmptyStateActions } from './lib/empty-state/empty-state';
 export { UiSkeleton } from './lib/skeleton/skeleton';
+export { UiList } from './lib/list/list';
+export { UiListItem } from './lib/list/list-item';
