@@ -129,6 +129,18 @@ describe('computeThemeVars', () => {
     expect(hueDistance(errorHue, hue('#7b1fa2'))).toBeLessThan(10);
   });
 
+  it('applies the colorMatch rule to the error override too', () => {
+    const grey = { ...petrol, coreOverrides: { error: '#9e9e9e' } };
+    const softened = computeThemeVars(resolved({ colors: grey }))['--mat-sys-error']!;
+    const matched = computeThemeVars(resolved({ colors: { ...grey, colorMatch: true } }))[
+      '--mat-sys-error'
+    ]!;
+    // Without colorMatch only the hue is taken; chroma comes from the variant's error palette
+    // (capped by the sRGB gamut at this hue, ~35 at tone 40) instead of the grey's ~2.
+    expect(chroma(softened)).toBeGreaterThan(25);
+    expect(chroma(matched)).toBeLessThan(10);
+  });
+
   it('keeps the override chroma only with colorMatch', () => {
     const override = { ...petrol, coreOverrides: { primary: '#6f9d2f' } };
     const matched = computeThemeVars(resolved({ colors: { ...override, colorMatch: true } }))[

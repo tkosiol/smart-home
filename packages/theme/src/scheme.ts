@@ -89,8 +89,9 @@ export function buildScheme(
     neutralVariantPalette: palette('neutralVariant', base.neutralVariantPalette),
   });
   if (overrides.error) {
-    (scheme as unknown as { errorPalette: TonalPalette }).errorPalette = TonalPalette.fromInt(
-      argbFromHex(overrides.error),
+    (scheme as unknown as { errorPalette: TonalPalette }).errorPalette = palette(
+      'error',
+      base.errorPalette,
     );
   }
   return scheme;
