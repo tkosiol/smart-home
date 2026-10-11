@@ -59,7 +59,12 @@ async function checkStory(page: Page): Promise<void> {
 }
 
 const config: TestRunnerConfig = {
-  async postVisit(page) {
+  // Play, render and exception errors of the runner's own (default theme) visit.
+  errorMessageFormatter: (message) => `Story failed in the default theme:\n${message}`,
+  async postVisit(page, context) {
+    // The runner calls postVisit with `hasFailure` when the story failed in the default theme and
+    // then rethrows that error itself – anything thrown here would hide it.
+    if (context.hasFailure) return;
     await checkStory(page);
     // The second theme is checked on a fresh page: navigating the runner's own page would drop
     // the helpers it injected for the following stories.
