@@ -1,0 +1,116 @@
+name: ${STACK_NAME:?STACK_NAME is required}
+
+x-defaults: &defaults
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options:
+      max-size: 10m
+      max-file: '5'
+
+services:
+  web:
+    <<: *defaults
+    image: ${IMAGE_REGISTRY:-ghcr.io/tkosiol}/smart-home-web:${IMAGE_TAG:?IMAGE_TAG is required}
+    read_only: true
+    tmpfs: [/tmp]
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      internal: {}
+      proxy:
+        aliases: ['${STACK_NAME}-web']
+
+  api:
+    <<: *defaults
+    image: ${IMAGE_REGISTRY:-ghcr.io/tkosiol}/smart-home-api:${IMAGE_TAG:?IMAGE_TAG is required}
+    read_only: true
+    tmpfs: [/tmp]
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      TZ: UTC
+      DATABASE_URL: postgres://smart:${DB_PASSWORD:?DB_PASSWORD is required}@db:5432/smart
+      MQTT_URL: mqtt://broker:1883
+      MQTT_USERNAME: smart-api
+      MQTT_PASSWORD: ${MQTT_API_PASSWORD:?MQTT_API_PASSWORD is required}
+    depends_on:
+      db:
+        condition: service_healthy
+      broker:
+        condition: service_healthy
+    networks:
+      internal:
+        # web reaches the api only through this distinctive name; the generic service name "api"
+        # could also be answered by a foreign container on the shared proxy network.
+        aliases: [smart-api-upstream]
+
+  db:
+    <<: *defaults
+    image: timescale/timescaledb:2.30.2-pg17
+    command: ['postgres', '-c', 'timezone=UTC', '-c', 'log_timezone=UTC']
+    shm_size: 256mb
+    environment:
+      POSTGRES_USER: smart
+      POSTGRES_DB: smart
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+      TZ: UTC
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U smart -d smart']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [internal]
+
+  broker:
+    <<: *defaults
+    image: ${IMAGE_REGISTRY:-ghcr.io/tkosiol}/smart-home-broker:${IMAGE_TAG:?IMAGE_TAG is required}
+    read_only: true
+    tmpfs: [/tmp]
+    environment:
+      MQTT_USER: smart-api
+      MQTT_PASSWORD: ${MQTT_API_PASSWORD:?MQTT_API_PASSWORD is required}
+      TZ: UTC
+    volumes:
+      - broker-data:/mosquitto/data
+    networks: [internal]
+
+  backup:
+    <<: *defaults
+    profiles: [backup]
+    image: ${IMAGE_REGISTRY:-ghcr.io/tkosiol}/smart-home-backup:${IMAGE_TAG:?IMAGE_TAG is required}
+    # Runs as the owner of the stack directory (mode 700, .env 600) so the config backup can read it.
+    user: '${BACKUP_UID:-10001}:${BACKUP_GID:-10001}'
+    read_only: true
+    tmpfs: [/tmp]
+    environment:
+      PGHOST: db
+      PGUSER: smart
+      PGDATABASE: smart
+      PGPASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+      RESTIC_REPOSITORY: s3:https://${B2_ENDPOINT:-}/${B2_BUCKET:-}
+      RESTIC_PASSWORD: ${RESTIC_PASSWORD:-}
+      AWS_ACCESS_KEY_ID: ${B2_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${B2_APP_KEY:-}
+      BACKUP_HOST_TAG: ${STACK_NAME}
+      HC_BACKUP_URL: ${HC_BACKUP_URL:-}
+      HC_RESTORE_URL: ${HC_RESTORE_URL:-}
+    volumes:
+      - ./:/stack-config:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [internal]
+
+networks:
+  internal: {}
+  proxy:
+    external: true
+    name: ${PROXY_NETWORK:-proxy-network}
+
+volumes:
+  db-data: {}
+  broker-data: {}

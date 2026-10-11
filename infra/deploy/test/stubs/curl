@@ -1,0 +1,21 @@
+#!/bin/sh
+# Test double for curl: GitHub compare API and raw file downloads.
+printf 'curl %s\n' "$*" >> "$STUB_CALLS"
+out=""
+url=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -o) out="$2"; shift 2 ;;
+    -*) shift ;;
+    *) url="$1"; shift ;;
+  esac
+done
+case "$url" in
+  */compare/*)
+    printf '{\n  "url": "x",\n  "status": "%s",\n  "files": [\n    {\n      "status": "modified"\n    }\n  ]\n}\n' "${STUB_COMPARE_STATUS:-behind}" ;;
+  */infra/deploy/deploy.sh)
+    printf '#!/bin/sh\necho "fake deploy $*" >> "%s"\n' "$STUB_CALLS" > "$out" ;;
+  */infra/compose/compose.yaml)
+    echo "name: fake" > "$out" ;;
+  *) exit 22 ;;
+esac

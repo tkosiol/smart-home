@@ -13,6 +13,8 @@ Selbst gehostete Smart-Home-Plattform: Angular-PWA, NestJS-Backend, TimescaleDB,
 | `packages/contracts` | Gemeinsame Zod-Schemas und Typen                     |
 | `tools/lint-config`  | ESLint-/Stylelint-Regeln inkl. Architekturgrenzen    |
 | `infra/local`        | Lokale Entwicklungsinfrastruktur                     |
+| `tests/e2e`          | Playwright-Smoke-Tests gegen den Produktions-Stack   |
+| `docs/runbooks`      | Deploy, Provisionierung, Backup, Monitoring          |
 | `docs/`              | Architektur, ADRs, Specs und Pläne                   |
 
 ## Voraussetzungen

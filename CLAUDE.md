@@ -7,6 +7,7 @@ Smart-Home-Plattform. Verbindliche Architektur: `docs/superpowers/specs/2026-10-
 - Erst Spec, dann Plan, dann TDD. Keine Implementierung ohne freigegebenen Plan.
 - Jede Änderung über Branch → PR → grüne CI. `main` ist geschützt.
 - Privater Kontext (Hosts, Zugänge, Secret-Inventar): `CLAUDE.local.md` und `.local/` – beide gitignored.
+- Deploy, Provisionierung, Backups und Monitoring: `docs/runbooks/`. Secrets für Umgebungen entstehen nur über `infra/deploy/provision.sh`, das Till selbst ausführt – Claude fragt nie nach Secret-Werten.
 
 ## Konventionen
 
@@ -19,12 +20,15 @@ Smart-Home-Plattform. Verbindliche Architektur: `docs/superpowers/specs/2026-10-
 
 ## Befehle
 
-| Zweck                             | Befehl                                                                          |
-| --------------------------------- | ------------------------------------------------------------------------------- |
-| Alles prüfen                      | `pnpm lint && pnpm typecheck && pnpm test && pnpm test:tz && pnpm build`        |
-| Contracts nach Änderung neu bauen | `pnpm contracts:build` (oder `pnpm --filter @smart/contracts dev`)              |
-| Lokale Infrastruktur              | `pnpm infra:up`, `pnpm infra:test`, `pnpm infra:down`                           |
-| Backend / Frontend                | `pnpm --filter @smart/backend start:dev`, `pnpm --filter @smart/frontend start` |
+| Zweck                                    | Befehl                                                                          |
+| ---------------------------------------- | ------------------------------------------------------------------------------- |
+| Alles prüfen                             | `pnpm lint && pnpm typecheck && pnpm test && pnpm test:tz && pnpm build`        |
+| Contracts nach Änderung neu bauen        | `pnpm contracts:build` (oder `pnpm --filter @smart/contracts dev`)              |
+| Lokale Infrastruktur                     | `pnpm infra:up`, `pnpm infra:test`, `pnpm infra:down`                           |
+| Backend / Frontend                       | `pnpm --filter @smart/backend start:dev`, `pnpm --filter @smart/frontend start` |
+| Backend-Integrationstests (Docker nötig) | `pnpm --filter @smart/backend test`                                             |
+| Produktions-Stack lokal testen           | `sh infra/compose/test/stack-test.sh`                                           |
+| Deploy-Skripte testen                    | `bash infra/deploy/test/run-tests.sh`                                           |
 
 `pnpm install` baut `@smart/contracts` nur bei einer echten Installation (pnpm überspringt Lifecycle-Skripte, wenn `node_modules` aktuell ist). Nach Änderungen an den Contracts daher `pnpm contracts:build`.
 

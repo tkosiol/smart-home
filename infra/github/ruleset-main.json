@@ -36,16 +36,28 @@
         "strict_required_status_checks_policy": true,
         "required_status_checks": [
           {
-            "context": "secrets"
+            "context": "secrets",
+            "integration_id": 15368
           },
           {
-            "context": "verify"
+            "context": "verify",
+            "integration_id": 15368
           },
           {
-            "context": "infra-local"
+            "context": "infra-local",
+            "integration_id": 15368
           },
           {
-            "context": "pr-message"
+            "context": "pr-message",
+            "integration_id": 15368
+          },
+          {
+            "context": "stack",
+            "integration_id": 15368
+          },
+          {
+            "context": "ops",
+            "integration_id": 15368
           }
         ]
       }

@@ -1,0 +1,16 @@
+#!/bin/sh
+# Test double for ssh.
+#   "test -e …": answers from STUB_ENV_EXISTS (1 = exists); STUB_SSH_DOWN=1 simulates a connection failure (255)
+#   "id -u" / "id -g": answers 4242 / 4343
+#   "cat …/.env": prints STUB_EXISTING_ENV
+#   anything else: stores stdin in STUB_REMOTE_FILE
+printf 'ssh %s\n' "$*" >> "$STUB_CALLS"
+[ "${STUB_SSH_DOWN:-0}" = 1 ] && exit 255
+case "$*" in
+  *"test -e"*)
+    if [ "${STUB_ENV_EXISTS:-0}" = 1 ]; then echo yes; else echo no; fi ;;
+  *"id -u"*) echo 4242 ;;
+  *"id -g"*) echo 4343 ;;
+  *"cat docker/apps/"*) printf '%s\n' "${STUB_EXISTING_ENV:-}" ;;
+  *) cat > "$STUB_REMOTE_FILE" ;;
+esac

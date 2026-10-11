@@ -10,7 +10,7 @@ permissions:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   secrets:
@@ -24,7 +24,7 @@ jobs:
       - name: gitleaks
         run: >
           docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/repo"
-          ghcr.io/gitleaks/gitleaks:v8.30.1 git /repo --config /repo/.gitleaks.toml --redact --verbose --no-banner
+          ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f git /repo --config /repo/.gitleaks.toml --redact --verbose --no-banner
 
   verify:
     name: verify
@@ -59,3 +59,38 @@ jobs:
       - run: sh infra/local/smoke-test.sh
       - if: always()
         run: docker compose -f infra/local/compose.yaml down -v
+
+  stack:
+    name: stack
+    runs-on: ubuntu-24.04
+    env:
+      LEFTHOOK: '0'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @smart/e2e exec playwright install --with-deps chromium
+      - run: sh infra/compose/test/stack-test.sh
+
+  ops:
+    name: ops
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: shellcheck
+        run: >
+          docker run --rm -v "$PWD:/mnt" -w /mnt koalaman/shellcheck:v0.11.0
+          infra/deploy/smart-deploy infra/deploy/deploy.sh infra/deploy/provision.sh
+          infra/deploy/test/run-tests.sh infra/deploy/test/stubs/docker infra/deploy/test/stubs/curl infra/deploy/test/stubs/ssh
+          infra/backup/backup.sh infra/backup/restore-test.sh infra/broker/entrypoint.sh
+          infra/local/smoke-test.sh infra/compose/test/stack-test.sh
+      - name: deploy script tests
+        run: bash infra/deploy/test/run-tests.sh

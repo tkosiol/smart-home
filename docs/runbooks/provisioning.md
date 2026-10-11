@@ -1,0 +1,57 @@
+# Runbook: Umgebungen provisionieren
+
+Einmalig pro Umgebung (`staging`, `production`). Konkrete Werte für `<…>` stehen in `.local/`.
+
+## 1. Deploy-Wrapper auf dem VPS
+
+```bash
+ssh <DEPLOY_USER>@<VPS_HOST> mkdir -p bin docker/apps
+scp infra/deploy/smart-deploy <DEPLOY_USER>@<VPS_HOST>:bin/smart-deploy
+ssh <DEPLOY_USER>@<VPS_HOST> chmod 755 bin/smart-deploy
+```
+
+## 2. Deploy-Key pro Umgebung
+
+```bash
+ssh-keygen -t ed25519 -N '' -C smart-home-deploy-<environment> -f <tmp>/deploy-<environment>
+```
+
+Öffentlichen Schlüssel auf dem VPS an `~/.ssh/authorized_keys` anhängen:
+
+```
+command="/home/<DEPLOY_USER>/bin/smart-deploy <environment>",restrict ssh-ed25519 AAAA… smart-home-deploy-<environment>
+```
+
+Privaten Schlüssel als Environment-Secret hinterlegen und lokal löschen:
+
+```bash
+gh secret set DEPLOY_SSH_KEY --env <environment> < <tmp>/deploy-<environment>
+gh secret set DEPLOY_HOST --env <environment> --body '<VPS_HOST>'
+gh secret set DEPLOY_USER --env <environment> --body '<DEPLOY_USER>'
+ssh-keyscan -t ed25519 <VPS_HOST> | gh secret set DEPLOY_KNOWN_HOSTS --env <environment>
+rm <tmp>/deploy-<environment> <tmp>/deploy-<environment>.pub
+```
+
+## 3. GitHub Environments
+
+`staging`: nur `main` darf deployen. `production`: zusätzlich Freigabe durch Till.
+
+## 4. `.env` der Umgebung (Till, im eigenen Terminal)
+
+```bash
+SMART_VPS=<DEPLOY_USER>@<VPS_HOST> infra/deploy/provision.sh staging
+SMART_VPS=<DEPLOY_USER>@<VPS_HOST> infra/deploy/provision.sh production
+```
+
+Produktion fragt B2-Zugang, restic-Passwort und healthchecks.io-URLs ab (vorher im Passwortmanager bereitlegen). DB- und MQTT-Passwörter werden generiert; sie liegen verschlüsselt im Backup. `--force` schreibt die Datei neu, behält aber die vorhandenen DB- und MQTT-Passwörter (die Datenvolumes hängen daran). Für Produktion schreibt das Skript außerdem `BACKUP_UID`/`BACKUP_GID` des Deploy-Users, damit der Backup-Container das Stack-Verzeichnis (Rechte 700) lesen kann.
+
+## 5. Reverse Proxy (Nginx Proxy Manager)
+
+Proxy Host pro Umgebung: Domain → `http://smart-prod-web:8080` bzw. `http://smart-staging-web:8080`, „Block Common Exploits“ an; SSL: neues Let's-Encrypt-Zertifikat, „Force SSL“, „HTTP/2“, „HSTS“.
+
+## 6. Prüfen
+
+```bash
+ssh -i <tmp-key> <DEPLOY_USER>@<VPS_HOST> "deploy 0000000000000000000000000000000000000000"   # → not on main
+ssh -i <tmp-key> <DEPLOY_USER>@<VPS_HOST> "ls"                                                # → usage
+```

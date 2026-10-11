@@ -28,8 +28,8 @@ services:
     ports:
       - '127.0.0.1:1884:1883'
     volumes:
-      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
-      - ./mosquitto/entrypoint.sh:/smart/entrypoint.sh:ro
+      - ../broker/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ../broker/entrypoint.sh:/smart/entrypoint.sh:ro
       - broker-data:/mosquitto/data
     healthcheck:
       test:

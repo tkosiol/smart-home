@@ -1,0 +1,63 @@
+import { expect, test } from '@playwright/test';
+
+test('the app shell loads without console errors or CSP violations', async ({ page }) => {
+  const problems: string[] = [];
+  page.on('console', (message) => {
+    if (message.type() === 'error') problems.push(message.text());
+  });
+  page.on('pageerror', (error) => problems.push(error.message));
+
+  const response = await page.goto('/');
+  expect(response?.status()).toBe(200);
+  await expect(page.locator('app-root')).toBeAttached();
+  await page.waitForLoadState('networkidle');
+  expect(problems).toEqual([]);
+});
+
+test('every HTML response carries its own CSP nonce matching the page', async ({ request }) => {
+  const nonces: string[] = [];
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const response = await request.get('/');
+    const csp = response.headers()['content-security-policy'] ?? '';
+    const headerNonce = /'nonce-([0-9a-f]{32})'/.exec(csp)?.[1];
+    const bodyNonce = /ngCspNonce="([0-9a-f]{32})"/i.exec(await response.text())?.[1];
+    expect(headerNonce).toBeDefined();
+    expect(bodyNonce).toBe(headerNonce);
+    nonces.push(headerNonce ?? '');
+  }
+  expect(nonces[0]).not.toBe(nonces[1]);
+});
+
+for (const path of ['/', '/devices/123', '/api/health/live']) {
+  test(`security headers are present on ${path}`, async ({ request }) => {
+    const headers = (await request.get(path)).headers();
+    expect(headers['content-security-policy']).toContain("frame-ancestors 'none'");
+    expect(headers['x-content-type-options']).toBe('nosniff');
+    expect(headers['referrer-policy']).toBe('strict-origin-when-cross-origin');
+  });
+}
+
+test('hashed assets are cacheable and keep the security headers', async ({ page, request }) => {
+  await page.goto('/');
+  const script = await page.locator('script[src]').first().getAttribute('src');
+  expect(script).toBeTruthy();
+  const headers = (await request.get(script ?? '')).headers();
+  expect(headers['cache-control']).toContain('immutable');
+  expect(headers['x-content-type-options']).toBe('nosniff');
+});
+
+test('deep links fall back to the app shell', async ({ request }) => {
+  const response = await request.get('/devices/123');
+  expect(response.status()).toBe(200);
+  expect(response.headers()['content-type']).toContain('text/html');
+});
+
+test('the API is reachable through the web container and ready', async ({ request }) => {
+  const response = await request.get('/api/health/ready');
+  expect(response.status()).toBe(200);
+  expect(await response.json()).toEqual({ status: 'ok', checks: { database: 'up', broker: 'up' } });
+});
+
+test('unknown API routes answer 404 instead of the app shell', async ({ request }) => {
+  expect((await request.get('/api/does-not-exist')).status()).toBe(404);
+});

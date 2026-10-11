@@ -13,6 +13,6 @@ Passkeys als Hauptweg, E-Mail-Code (Resend) als Alternative, CLI-Recovery-Link a
 
 ## Konsequenzen
 
-Das E-Mail-Konto wird zum Generalschlüssel und braucht 2FA; Mailversand ist Pflichtinfrastruktur.
+Das E-Mail-Konto wird zum Generalschlüssel und braucht 2FA; Mailversand ist Pflichtinfrastruktur. Absenderdomain ist die bereits bei Resend verifizierte Domain `tillkosiol.de` (eu-west-1).
 
 Details: Spec, Abschnitt 7.2.
