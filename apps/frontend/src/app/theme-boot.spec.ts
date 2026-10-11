@@ -30,14 +30,22 @@ describe('theme-boot.js', () => {
     expect(root().getPropertyValue('--mat-sys-surface')).toBe('');
   });
 
-  it.each(['not json', '{"mode":"dark"}', '{"mode":"dark","light":{},"dark":{"color":"red"}}'])(
-    'ignores unusable cache %j',
-    (raw) => {
-      localStorage.setItem('smart.theme.boot', raw);
-      expect(run).not.toThrow();
-      expect(root().getPropertyValue('color')).toBe('');
-    },
-  );
+  it.each([
+    'not json',
+    'null',
+    '{"mode":"dark"}',
+    '{"mode":"dark","light":null,"dark":null}',
+    '{"mode":"dark","light":{},"dark":{}}',
+    '{"mode":"dark","light":{},"dark":{"color":"red"}}',
+    '{"mode":"dark","light":{},"dark":{"--mat-sys-surface":42}}',
+  ])('ignores unusable cache %j', (raw) => {
+    localStorage.setItem('smart.theme.boot', raw);
+    expect(run).not.toThrow();
+    // Nothing may be applied, not even the color scheme: dark form controls on the light default theme are unreadable.
+    expect(root().getPropertyValue('color')).toBe('');
+    expect(root().getPropertyValue('--mat-sys-surface')).toBe('');
+    expect(root().colorScheme).toBe('');
+  });
 
   describe('with mode system', () => {
     const cache = JSON.stringify({
