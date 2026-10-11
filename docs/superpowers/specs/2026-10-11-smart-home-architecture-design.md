@@ -99,7 +99,7 @@ Staging hat keinerlei Verbindung zu echten Geräten und kann daher nie reale Akt
 
 ### 3.3 DNS
 
-Der vorhandene Wildcard-Eintrag `*.tillkosiol.de` deckt nur eine Ebene ab. Benötigt wird zusätzlich ein Eintrag `*.smart` (A + AAAA auf den VPS) für `staging.smart.…` und `mqtt.smart.…`. Für Resend kommen SPF/DKIM-Einträge für die Absender-Subdomain `mail.tillkosiol.de` hinzu.
+Der vorhandene Wildcard-Eintrag `*.tillkosiol.de` deckt nur eine Ebene ab. Benötigt wird zusätzlich ein Eintrag `*.smart` (A + AAAA auf den VPS) für `staging.smart.…` und `mqtt.smart.…`. Resend nutzt die bereits verifizierte Domain `tillkosiol.de` (Region eu-west-1); Absender z. B. `Smart Home <smart@tillkosiol.de>`. Eine eigene Absender-Subdomain ist nicht nötig.
 
 ---
 
@@ -193,7 +193,7 @@ smart-home/
 │   ├── compose/                 Stacks staging/prod + .env.example
 │   ├── broker/                  VPS-Mosquitto-Konfiguration, ACL
 │   ├── pki/                     CA-/Zertifikats-Skripte (keine Schlüssel)
-│   ├── backup/                  restic-Skripte, systemd-Timer
+│   ├── backup/                  Backup-Image (restic, supercronic)
 │   └── local/                   docker-compose für Entwicklung
 ├── tools/                       eigene ESLint-Regeln, Skripte
 ├── docs/
@@ -562,9 +562,9 @@ Signal-basierte Services pro Feature (kein NgRx). Typen aus `@smart/contracts`; 
 ### 11.3 Backups
 
 - **Werkzeug:** restic, verschlüsselt, Ziel **Backblaze B2 (Region EU)**, eigener Bucket und eigener, auf den Bucket beschränkter Application Key pro Host.
-- **VPS (nächtlich, systemd-Timer):** `pg_dump` (Custom-Format) der Produktions-DB, Broker-Konfiguration inkl. CRL, `.env`-Dateien. Aufbewahrung: 7 täglich, 4 wöchentlich, 6 monatlich.
+- **VPS (nächtlich, Container `backup` im Produktions-Stack, supercronic):** `pg_dump` (Custom-Format) per `restic --stdin-from-command`, Stack-Verzeichnis (Compose-Datei, `.env`, später Broker-Konfiguration inkl. CRL). Aufbewahrung: 7 täglich, 4 wöchentlich, 6 monatlich. Kein Host-Dienst, da auf dem VPS keine Root-Rechte verfügbar sind.
 - **Pi (nächtlich):** Z2M-Daten (`coordinator_backup.json`, `database.db`, `configuration.yaml`), Mosquitto-Konfiguration.
-- **Restore-Test (monatlich, automatisiert):** Wiederherstellung in einen Wegwerf-Container und Plausibilitätsprüfung; Ergebnis an healthchecks.io.
+- **Restore-Test (monatlich, automatisiert):** Wiederherstellung des letzten Dumps in eine Wegwerf-Datenbank `restore_check` derselben Instanz, Prüfung der Migrationstabelle, danach Löschen; Ergebnis an healthchecks.io.
 - **Runbooks** für Restore (inkl. TimescaleDB-Restore-Schritte) und Pi-Neuaufbau (OS flashen → `gateway:deploy` → Z2M-Backup einspielen).
 
 ### 11.4 Sicherheit im Betrieb
@@ -594,18 +594,18 @@ Umsetzung testgetrieben (TDD).
 
 Jede Etappe erhält einen eigenen, detaillierten Umsetzungsplan in `docs/superpowers/plans/`.
 
-| #   | Etappe                    | Ergebnis                                                                                                                                       |
-| --- | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| 0   | Vorbereitung (gemeinsam)  | GitHub-Repo, Accounts (Resend, Backblaze B2, UptimeRobot, healthchecks.io), DNS (`*.smart`, Resend-Einträge)                                   |
-| 1   | Repo-Fundament            | Monorepo-Gerüst, Lint-/Boundary-Regeln, gitleaks, lefthook, commitlint, CI, Doku-Gerüst + ADRs, `CLAUDE.md`, `.local/`, lokales docker-compose |
-| 2   | Durchstich bis Produktion | „Hello World“ über die komplette Pipeline (PR → CI → Staging → Freigabe → Prod) inkl. Health, Deploy-Skript, Backups, Monitoring               |
-| 2b  | Spike: Bridge-Puffer      | Verifikation von Puffer, Nachlieferung, Schleifenfreiheit und `last_seen` bei Internetausfall (Wegwerf-Code); Ergebnis als ADR                 |
-| 3   | Design-System             | Tokens, Theme-Service, erste UI-Komponenten, App-Shell, Storybook, i18n, PWA; visuelle Festlegungen gemeinsam                                  |
-| 4   | Identity und Haushalte    | Passkeys, E-Mail-Code, Sessions, Einladungen, Rollen, Sicherheitsseite                                                                         |
-| 5   | Gateway-Anbindung         | PKI, Produktions-Broker, Pi-Härtung + Bridge, Gateway-Registrierung, Simulator                                                                 |
-| 6   | Geräte und Telemetrie     | Hardware-Erkennung, Zuordnung, Ingest, Speicherung, SSE, generische Geräteansichten mit Diagrammen, Befehle, Kopplungsmodus                    |
-| 7   | Benachrichtigungen        | Inbox, Web-Push, Einstellungen, Core-Meldungen                                                                                                 |
-| 8   | Pflanzenmodul             | eigenes Brainstorming und eigene Spec, sobald die Sensoren in Betrieb sind                                                                     |
+| #   | Etappe                    | Ergebnis                                                                                                                                                     |
+| --- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 0   | Vorbereitung (gemeinsam)  | GitHub-Repo, Accounts (Resend, Backblaze B2, UptimeRobot, healthchecks.io), DNS (`*.smart`)                                                                  |
+| 1   | Repo-Fundament            | Monorepo-Gerüst, Lint-/Boundary-Regeln, gitleaks, lefthook, commitlint, CI, Doku-Gerüst + ADRs, `CLAUDE.md`, `.local/`, lokales docker-compose               |
+| 2   | Durchstich bis Produktion | „Hello World“ über die komplette Pipeline (PR → CI → Staging → Freigabe → Prod) inkl. Health, Deploy-Skript, Backups (VPS; Pi folgt in Etappe 5), Monitoring |
+| 2b  | Spike: Bridge-Puffer      | Verifikation von Puffer, Nachlieferung, Schleifenfreiheit und `last_seen` bei Internetausfall (Wegwerf-Code); Ergebnis als ADR                               |
+| 3   | Design-System             | Tokens, Theme-Service, erste UI-Komponenten, App-Shell, Storybook, i18n, PWA; visuelle Festlegungen gemeinsam                                                |
+| 4   | Identity und Haushalte    | Passkeys, E-Mail-Code, Sessions, Einladungen, Rollen, Sicherheitsseite                                                                                       |
+| 5   | Gateway-Anbindung         | PKI, Produktions-Broker, Pi-Härtung + Bridge, Gateway-Registrierung, Simulator, Pi-Backups                                                                   |
+| 6   | Geräte und Telemetrie     | Hardware-Erkennung, Zuordnung, Ingest, Speicherung, SSE, generische Geräteansichten mit Diagrammen, Befehle, Kopplungsmodus                                  |
+| 7   | Benachrichtigungen        | Inbox, Web-Push, Einstellungen, Core-Meldungen                                                                                                               |
+| 8   | Pflanzenmodul             | eigenes Brainstorming und eigene Spec, sobald die Sensoren in Betrieb sind                                                                                   |
 
 ---
 

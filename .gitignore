@@ -20,6 +20,7 @@ coverage/
 # private, never committed (see CLAUDE.md)
 .local/
 CLAUDE.local.md
+.superpowers/
 
 # OS / editor
 .DS_Store

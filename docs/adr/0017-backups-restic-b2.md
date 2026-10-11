@@ -9,7 +9,7 @@ Datenbank und Gateway-Daten brauchen eine Kopie außerhalb des VPS.
 
 ## Entscheidung
 
-restic, verschlüsselt, nach Backblaze B2 (EU), mit monatlichem automatisiertem Restore-Test.
+restic (verschlüsselt) nach Backblaze B2 (EU), ausgeführt von einem `backup`-Container im Produktions-Stack (supercronic): nächtlich DB-Dump und Stack-Konfiguration, Aufbewahrung 7/4/6, monatlicher Restore-Test in eine Wegwerf-Datenbank.
 
 ## Konsequenzen
 
