@@ -210,14 +210,46 @@ describe('computeThemeVars', () => {
     });
   });
 
+  describe('uses the error roles for warnings', () => {
+    // Red, orange and amber collapse into similar dark browns at the tones white text needs, so a
+    // separate orange cannot stay apart from both error and dry. Warnings share the error roles and
+    // are told apart from errors by icon and label.
+    const cases = [
+      { seed: '#00687a', coreOverrides: {} },
+      { seed: '#ff0000', coreOverrides: {} },
+      { seed: '#00687a', coreOverrides: { error: '#7b1fa2' } },
+    ].flatMap((colors) =>
+      (['light', 'dark'] as const).flatMap((mode) =>
+        (['standard', 'high'] as const).map((contrast) => ({ ...colors, mode, contrast })),
+      ),
+    );
+    it.each(cases)(
+      '$seed $coreOverrides $mode $contrast',
+      ({ seed, coreOverrides, mode, contrast }) => {
+        const vars = computeThemeVars(
+          resolved({
+            colors: { seed, variant: 'tonalSpot', colorMatch: false, coreOverrides },
+            mode,
+            contrast,
+          }),
+        );
+        expect(vars['--smart-status-warning']).toBe(vars['--mat-sys-error']);
+        expect(vars['--smart-status-on-warning']).toBe(vars['--mat-sys-on-error']);
+        expect(vars['--smart-status-warning-container']).toBe(vars['--mat-sys-error-container']);
+        expect(vars['--smart-status-on-warning-container']).toBe(
+          vars['--mat-sys-on-error-container'],
+        );
+      },
+    );
+  });
+
   it('harmonizes status colors towards the source by at most 8 degrees', () => {
     const seedHue = hue(petrol.seed);
     const vars = computeThemeVars(resolved());
     for (const [name, source] of [
       ['ok', '#2e7d32'],
       ['wet', '#1565c0'],
-      ['dry', '#c99a00'],
-      ['warning', '#d84315'],
+      ['dry', '#c18500'],
     ] as const) {
       const shifted = hue(vars[`--smart-status-${name}`]!);
       // The cap is 8 degrees; tone mapping adds up to ~2 degrees of HCT rounding.

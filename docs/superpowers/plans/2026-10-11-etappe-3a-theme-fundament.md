@@ -2428,7 +2428,7 @@ Umgesetzt subagent-gestützt (je Task Umsetzung und Review, am Ende Gesamt-Revie
 - `ThemeService.instance`/`personal` nur lesend nach außen geben (`asReadonly()`); ungültige persönliche Farben getrennt verwerfen, Modus und Kontrast behalten; Synchronisation zwischen Tabs (`storage`-Ereignis) prüfen.
 - `theme-boot.js` in die Service-Worker-Assetgruppe ohne Hash aufnehmen.
 - E2E „nur aktive Schrift geladen“ verschärfen, sobald die App Text rendert (Roboto Flex muss angefragt werden).
-- Optisch prüfen: „Trocken“ wirkt im Hellmodus (`#715d00`) eher senf- als bernsteinfarben.
+- Erledigt nach 3a: „Warnung“ nutzt die Fehlerrollen, „Trocken“ ist wärmer (Quelle `#c18500`), „Offline“ im Dunkelmodus fest auf Ton 70; Spec 4.4 angepasst.
 
 ### Bewusst zurückgestellt (klein)
 

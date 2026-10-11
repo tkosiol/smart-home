@@ -19,7 +19,12 @@ export function computeThemeVars(resolved: ResolvedAppearance): Record<string, s
   vars['--mat-sys-neutral-variant20'] = hexFromArgb(scheme.neutralVariantPalette.tone(20));
   return {
     ...vars,
-    ...statusVars(sourceArgb(resolved.colors), resolved.mode, resolved.contrast),
+    ...statusVars(sourceArgb(resolved.colors), resolved.mode, resolved.contrast, {
+      color: vars['--mat-sys-error']!,
+      onColor: vars['--mat-sys-on-error']!,
+      container: vars['--mat-sys-error-container']!,
+      onContainer: vars['--mat-sys-on-error-container']!,
+    }),
     ...shapeVars(resolved.shape),
     ...fontVars(resolved.font),
   };
