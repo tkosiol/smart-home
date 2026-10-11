@@ -1,0 +1,9 @@
+@if (heading(); as heading) {
+  <div class="header">
+    <h1 class="heading">{{ heading }}</h1>
+    @if (description(); as description) {
+      <p class="description">{{ description }}</p>
+    }
+  </div>
+}
+<ng-content />

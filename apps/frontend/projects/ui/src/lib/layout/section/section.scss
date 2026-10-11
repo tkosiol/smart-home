@@ -1,0 +1,32 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  gap: var(--smart-space-md);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--smart-space-xs);
+}
+
+.heading {
+  margin: 0;
+  color: var(--mat-sys-on-surface);
+  font: var(--mat-sys-title-large);
+  overflow-wrap: anywhere;
+  hyphens: auto;
+}
+
+.heading--small {
+  font: var(--mat-sys-title-medium);
+}
+
+.description {
+  margin: 0;
+  color: var(--mat-sys-on-surface-variant);
+  font: var(--mat-sys-body-medium);
+  overflow-wrap: anywhere;
+}

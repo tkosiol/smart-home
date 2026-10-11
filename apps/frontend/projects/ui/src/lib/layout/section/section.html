@@ -1,0 +1,11 @@
+<div class="header">
+  @if (level() === 2) {
+    <h2 class="heading">{{ heading() }}</h2>
+  } @else {
+    <h3 class="heading heading--small">{{ heading() }}</h3>
+  }
+  @if (description(); as description) {
+    <p class="description">{{ description }}</p>
+  }
+</div>
+<ng-content />

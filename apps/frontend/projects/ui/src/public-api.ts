@@ -12,3 +12,8 @@ export { provideTheme } from './lib/theme/provide-theme';
 export { ThemeService } from './lib/theme/theme.service';
 export { UiIcon, type UiIconSize } from './lib/icon/icon';
 export { ICON_CODEPOINTS, type IconName } from './lib/icon/icon-codepoints';
+export type { UiSpace } from './lib/layout/space';
+export { UiGrid } from './lib/layout/grid/grid';
+export { UiPage } from './lib/layout/page/page';
+export { UiSection } from './lib/layout/section/section';
+export { UiStack } from './lib/layout/stack/stack';

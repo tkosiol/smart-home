@@ -1,0 +1,33 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  gap: var(--smart-space-xl);
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  max-width: var(--smart-size-content-max);
+  margin-inline: auto;
+  padding: var(--smart-space-lg) clamp(var(--smart-space-lg), 4vw, var(--smart-space-2xl));
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--smart-space-xs);
+}
+
+.heading {
+  margin: 0;
+  color: var(--mat-sys-on-surface);
+  font: var(--mat-sys-headline-small);
+  overflow-wrap: anywhere;
+  hyphens: auto;
+}
+
+.description {
+  margin: 0;
+  color: var(--mat-sys-on-surface-variant);
+  font: var(--mat-sys-body-large);
+  overflow-wrap: anywhere;
+}

@@ -1,0 +1,20 @@
+@use '../gap';
+
+:host {
+  display: grid;
+  min-width: 0;
+}
+
+:host([data-min='sm']) {
+  grid-template-columns: repeat(auto-fill, minmax(min(var(--smart-size-grid-sm), 100%), 1fr));
+}
+
+:host([data-min='md']) {
+  grid-template-columns: repeat(auto-fill, minmax(min(var(--smart-size-grid-md), 100%), 1fr));
+}
+
+:host([data-min='lg']) {
+  grid-template-columns: repeat(auto-fill, minmax(min(var(--smart-size-grid-lg), 100%), 1fr));
+}
+
+@include gap.rules;
