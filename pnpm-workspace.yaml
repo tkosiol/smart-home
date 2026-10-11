@@ -18,5 +18,9 @@ allowBuilds:
 
 engineStrict: true
 
+# Stop-gap for @storybook/test-runner 0.26.0 (jest ^30): Storybook 10 loads .storybook/test-runner.ts
+# through module.register(), which jest-runtime 30.5.x rejects ("module.register() is not supported
+# in Jest"), so test-storybook cannot start. 30.4.2 predates that guard.
+# Remove once @storybook/test-runner is replaced (the test-runner is end-of-life in Storybook 10).
 overrides:
   jest-runtime: 30.4.2
