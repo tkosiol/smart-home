@@ -6,7 +6,10 @@
     "start": "ng serve frontend",
     "build": "ng build frontend",
     "test": "ng test frontend --watch=false && ng test ui --watch=false",
-    "typecheck": "tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.spec.json --noEmit && tsc -p projects/ui/tsconfig.lib.json --noEmit && tsc -p projects/ui/tsconfig.spec.json --noEmit"
+    "storybook": "ng run frontend:storybook",
+    "build-storybook": "ng run frontend:build-storybook",
+    "test-storybook:ci": "concurrently -k -s first -n SB,TEST \"http-server storybook-static -p 6006 -s\" \"wait-on tcp:127.0.0.1:6006 && test-storybook --url http://127.0.0.1:6006\"",
+    "typecheck": "tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.spec.json --noEmit && tsc -p projects/ui/tsconfig.lib.json --noEmit && tsc -p projects/ui/tsconfig.spec.json --noEmit && tsc -p .storybook/tsconfig.json --noEmit"
   },
   "private": true,
   "dependencies": {
@@ -28,13 +31,23 @@
     "tslib": "^2.3.0"
   },
   "devDependencies": {
+    "@angular-devkit/build-angular": "22.2.2",
     "@angular/build": "^22.2.2",
     "@angular/cli": "^22.2.2",
     "@angular/compiler-cli": "^22.2.0",
+    "@storybook/addon-a11y": "10.6.1",
+    "@storybook/addon-docs": "10.6.1",
+    "@storybook/angular": "10.6.1",
+    "@storybook/test-runner": "0.26.0",
     "@types/node": "24.19.2",
+    "axe-playwright": "2.2.2",
+    "concurrently": "10.0.5",
+    "http-server": "14.1.1",
     "jsdom": "^30.0.0",
     "ng-packagr": "^22.2.0",
+    "storybook": "10.6.1",
     "typescript": "6.0.3",
-    "vitest": "^5.0.0"
+    "vitest": "^5.0.0",
+    "wait-on": "9.1.0"
   }
 }

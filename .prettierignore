@@ -6,3 +6,4 @@ tools/lint-config/test/fixture/
 .superpowers/
 LICENSE
 apps/frontend/projects/ui/src/lib/tokens/default-theme.css
+storybook-static/

@@ -6,6 +6,7 @@ packages:
 
 allowBuilds:
   '@parcel/watcher': true
+  '@swc/core': false
   cpu-features: false
   esbuild: true
   lefthook: true
@@ -16,3 +17,6 @@ allowBuilds:
   unrs-resolver: true
 
 engineStrict: true
+
+overrides:
+  jest-runtime: 30.4.2
