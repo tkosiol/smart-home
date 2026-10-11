@@ -1,0 +1,6 @@
+pnpm-lock.yaml
+**/dist/
+**/coverage/
+**/.angular/
+tools/lint-config/test/fixture/
+.superpowers/

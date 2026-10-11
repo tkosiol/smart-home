@@ -1,0 +1,51 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: chore
+      include: scope
+    ignore:
+      - dependency-name: typescript
+        update-types: ['version-update:semver-major', 'version-update:semver-minor']
+    groups:
+      angular:
+        patterns: ['@angular/*', '@angular-devkit/*', '@schematics/*', 'angular-eslint']
+      nestjs:
+        patterns: ['@nestjs/*']
+      lint:
+        patterns:
+          [
+            'eslint',
+            'eslint-*',
+            '@eslint/*',
+            'typescript-eslint',
+            'stylelint',
+            'stylelint-*',
+            'prettier',
+            '@commitlint/*',
+            'lefthook',
+          ]
+      test:
+        patterns: ['vitest', '@vitest/*', 'supertest', '@types/supertest', 'jsdom']
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: chore
+      include: scope
+
+  - package-ecosystem: docker-compose
+    directory: /infra/local
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: chore
+      include: scope

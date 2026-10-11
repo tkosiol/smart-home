@@ -1,0 +1,8 @@
+title = "smart-home"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Lockfile contains integrity hashes, not secrets"
+paths = ['''pnpm-lock\.yaml''']

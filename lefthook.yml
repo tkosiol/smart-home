@@ -1,0 +1,21 @@
+output:
+  - summary
+  - failure
+
+pre-commit:
+  parallel: true
+  commands:
+    gitleaks:
+      run: gitleaks git --pre-commit --staged --redact --no-banner
+    prettier:
+      glob: '*.{ts,js,mjs,cjs,json,md,yml,yaml,html,scss}'
+      run: pnpm exec prettier --write --ignore-unknown {staged_files}
+      stage_fixed: true
+    eslint:
+      glob: '*.{ts,mjs}'
+      run: pnpm exec eslint --no-warn-ignored {staged_files}
+
+commit-msg:
+  commands:
+    commitlint:
+      run: pnpm exec commitlint --edit {1}

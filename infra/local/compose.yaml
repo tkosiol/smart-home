@@ -1,0 +1,55 @@
+name: smart-local
+
+services:
+  db:
+    image: timescale/timescaledb:2.30.2-pg17
+    command: ['postgres', '-c', 'timezone=UTC', '-c', 'log_timezone=UTC']
+    environment:
+      POSTGRES_USER: smart
+      POSTGRES_DB: smart
+      POSTGRES_PASSWORD: ${LOCAL_DB_PASSWORD:-smart-local-only}
+      TZ: UTC
+    ports:
+      - '127.0.0.1:5433:5432'
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U smart -d smart']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  broker:
+    image: eclipse-mosquitto:2.1.2-alpine
+    entrypoint: ['/bin/sh', '/smart/entrypoint.sh']
+    environment:
+      MQTT_USER: ${LOCAL_MQTT_USER:-smart-dev}
+      MQTT_PASSWORD: ${LOCAL_MQTT_PASSWORD:-smart-dev-only}
+    ports:
+      - '127.0.0.1:1884:1883'
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./mosquitto/entrypoint.sh:/smart/entrypoint.sh:ro
+      - broker-data:/mosquitto/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - mosquitto_sub -h localhost -u "$$MQTT_USER" -P "$$MQTT_PASSWORD" -t '$$SYS/broker/uptime' -C 1 -W 3
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  mail:
+    image: axllent/mailpit:v1.31.5
+    ports:
+      - '127.0.0.1:1026:1025'
+      - '127.0.0.1:8026:8025'
+    healthcheck:
+      test: ['CMD', '/mailpit', 'readyz']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  db-data:
+  broker-data:
