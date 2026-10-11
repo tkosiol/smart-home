@@ -19,3 +19,5 @@ export { UiGrid } from './lib/layout/grid/grid';
 export { UiPage } from './lib/layout/page/page';
 export { UiSection } from './lib/layout/section/section';
 export { UiStack } from './lib/layout/stack/stack';
+export { UiSegmentedButton, type UiSegmentOption } from './lib/segmented-button/segmented-button';
+export { UiSwitch } from './lib/switch/switch';

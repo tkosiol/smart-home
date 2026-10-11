@@ -1,0 +1,16 @@
+<mat-button-toggle-group
+  [value]="value()"
+  [disabled]="disabled()"
+  [hideSingleSelectionIndicator]="false"
+  [attr.aria-label]="label()"
+  (change)="select($event)"
+>
+  @for (option of options(); track option.value) {
+    <mat-button-toggle [value]="option.value">
+      @if (option.icon; as icon) {
+        <ui-icon [name]="icon" size="sm" />
+      }
+      {{ option.label }}
+    </mat-button-toggle>
+  }
+</mat-button-toggle-group>
