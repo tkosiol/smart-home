@@ -14,6 +14,8 @@ import {
   deriveKeyColors,
   resolveAppearance,
   type ResolvedAppearance,
+  type ResolvedContrast,
+  type ResolvedMode,
 } from './index.js';
 
 const petrol: ThemeColors = DEFAULT_INSTANCE_APPEARANCE.colors;
@@ -89,34 +91,31 @@ describe('computeThemeVars', () => {
   });
 
   describe('keeps text readable in every combination', () => {
-    const seeds = ['#00687a', '#ffff00', '#101010', '#ff0000', '#8a5a00'];
-    const cases = THEME_VARIANTS.flatMap((variant) =>
-      seeds.flatMap((seed) =>
-        (['light', 'dark'] as const).flatMap((mode) =>
-          (['standard', 'medium', 'high'] as const).map((contrast) => ({
-            variant,
-            seed,
-            mode,
-            contrast,
-          })),
-        ),
-      ),
-    );
-    it.each(cases)('$variant $seed $mode $contrast', ({ variant, seed, mode, contrast }) => {
-      const vars = computeThemeVars(
-        resolved({
-          colors: { seed, variant, colorMatch: false, coreOverrides: {} },
-          mode,
-          contrast,
-        }),
-      );
+    const modes = ['light', 'dark'] as const;
+    const contrasts = ['standard', 'medium', 'high'] as const;
+    const textPairs = [
+      ['on-surface', 'surface'],
+      ['on-surface-variant', 'surface'],
+      ['inverse-on-surface', 'inverse-surface'],
+      ...(['primary', 'secondary', 'tertiary', 'error'] as const).flatMap((color) => [
+        [`on-${color}`, color],
+        [`on-${color}-container`, `${color}-container`],
+      ]),
+    ];
+
+    const expectReadable = (
+      colors: ThemeColors,
+      mode: ResolvedMode,
+      contrast: ResolvedContrast,
+    ) => {
+      const vars = computeThemeVars(resolved({ colors, mode, contrast }));
       const minText = contrast === 'high' ? 7 : 4.5;
-      expect(
-        contrastRatio(vars['--mat-sys-on-surface']!, vars['--mat-sys-surface']!),
-      ).toBeGreaterThanOrEqual(minText);
-      expect(
-        contrastRatio(vars['--mat-sys-on-primary']!, vars['--mat-sys-primary']!),
-      ).toBeGreaterThanOrEqual(4.5);
+      for (const [text, background] of textPairs) {
+        expect(
+          contrastRatio(vars[`--mat-sys-${text}`]!, vars[`--mat-sys-${background}`]!),
+          `${text} on ${background}`,
+        ).toBeGreaterThanOrEqual(minText);
+      }
       for (const name of STATUS_NAMES) {
         expect(
           contrastRatio(
@@ -130,7 +129,38 @@ describe('computeThemeVars', () => {
           name,
         ).toBeGreaterThanOrEqual(3);
       }
+    };
+
+    const seeds = ['#00687a', '#ffff00', '#101010', '#ff0000', '#8a5a00'];
+    const seedCases = THEME_VARIANTS.flatMap((variant) =>
+      seeds.flatMap((seed) =>
+        modes.flatMap((mode) => contrasts.map((contrast) => ({ variant, seed, mode, contrast }))),
+      ),
+    );
+    it.each(seedCases)('$variant $seed $mode $contrast', ({ variant, seed, mode, contrast }) => {
+      expectReadable({ seed, variant, colorMatch: false, coreOverrides: {} }, mode, contrast);
     });
+
+    const overrides = [
+      { primary: '#6f9d2f', error: '#e8604c' },
+      { primary: '#ffff00', error: '#9e9e9e' },
+      { primary: '#101010', error: '#7b1fa2' },
+    ];
+    const overrideCases = [true, false].flatMap((colorMatch) =>
+      THEME_VARIANTS.flatMap((variant) =>
+        overrides.flatMap((coreOverrides) =>
+          modes.flatMap((mode) =>
+            contrasts.map((contrast) => ({ colorMatch, variant, coreOverrides, mode, contrast })),
+          ),
+        ),
+      ),
+    );
+    it.each(overrideCases)(
+      'colorMatch $colorMatch $variant $coreOverrides.primary/$coreOverrides.error $mode $contrast',
+      ({ colorMatch, variant, coreOverrides, mode, contrast }) => {
+        expectReadable({ seed: petrol.seed, variant, colorMatch, coreOverrides }, mode, contrast);
+      },
+    );
   });
 
   describe('keeps status colors distinguishable', () => {
