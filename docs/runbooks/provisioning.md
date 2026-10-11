@@ -43,7 +43,7 @@ SMART_VPS=<DEPLOY_USER>@<VPS_HOST> infra/deploy/provision.sh staging
 SMART_VPS=<DEPLOY_USER>@<VPS_HOST> infra/deploy/provision.sh production
 ```
 
-Produktion fragt B2-Zugang, restic-Passwort und healthchecks.io-URLs ab (vorher im Passwortmanager bereitlegen). DB- und MQTT-Passwörter werden generiert; sie liegen verschlüsselt im Backup.
+Produktion fragt B2-Zugang, restic-Passwort und healthchecks.io-URLs ab (vorher im Passwortmanager bereitlegen). DB- und MQTT-Passwörter werden generiert; sie liegen verschlüsselt im Backup. `--force` schreibt die Datei neu, behält aber die vorhandenen DB- und MQTT-Passwörter (die Datenvolumes hängen daran). Für Produktion schreibt das Skript außerdem `BACKUP_UID`/`BACKUP_GID` des Deploy-Users, damit der Backup-Container das Stack-Verzeichnis (Rechte 700) lesen kann.
 
 ## 5. Reverse Proxy (Nginx Proxy Manager)
 

@@ -2,11 +2,21 @@
 # Test double: records every call; fails or answers depending on STUB_* variables.
 printf '%s\n' "$*" >> "$STUB_CALLS"
 case "$*" in
+  *"up -d --wait db broker"*)
+    [ "${STUB_FAIL_INFRA:-0}" = 1 ] && exit 1 ;;
   *"run --rm --no-deps api node dist/migrate.js"*)
     [ "${STUB_FAIL_MIGRATE:-0}" = 1 ] && exit 1 ;;
   *"deploy.env.next up -d --wait --remove-orphans"*)
     [ "${STUB_FAIL_UP:-0}" = 1 ] && exit 1 ;;
   *"exec -T web wget"*)
-    if [ "${STUB_FAIL_READY:-0}" = 1 ]; then echo '{"status":"unavailable"}'; else echo '{"status":"ok"}'; fi ;;
+    # STUB_READY_FAILURES: how many readiness probes answer "unavailable" before "ok" (default 0; "all" = never ok)
+    count_file="${STUB_CALLS}.ready"
+    count=$(cat "$count_file" 2> /dev/null || echo 0)
+    echo $((count + 1)) > "$count_file"
+    if [ "${STUB_READY_FAILURES:-0}" = all ] || [ "$count" -lt "${STUB_READY_FAILURES:-0}" ]; then
+      echo '{"status":"unavailable"}'
+    else
+      echo '{"status":"ok"}'
+    fi ;;
 esac
 exit 0

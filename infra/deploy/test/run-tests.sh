@@ -13,10 +13,10 @@ passed=0
 setup() {
   WORK=$(mktemp -d)
   export STUB_CALLS="$WORK/calls" STUB_REMOTE_FILE="$WORK/remote-env"
-  export SMART_STACKS_DIR="$WORK/apps"
+  export SMART_STACKS_DIR="$WORK/apps" SMART_READY_DELAY=0
   export PATH="$STUBS:$PATH"
   : > "$STUB_CALLS"
-  unset STUB_FAIL_MIGRATE STUB_FAIL_UP STUB_FAIL_READY STUB_COMPARE_STATUS STUB_ENV_EXISTS SSH_ORIGINAL_COMMAND
+  unset STUB_FAIL_INFRA STUB_FAIL_MIGRATE STUB_FAIL_UP STUB_READY_FAILURES STUB_COMPARE_STATUS STUB_ENV_EXISTS STUB_SSH_DOWN STUB_EXISTING_ENV SSH_ORIGINAL_COMMAND
 }
 teardown() { rm -rf "$WORK"; }
 check() {
@@ -26,8 +26,11 @@ run_wrapper() { (sh "$DEPLOY_DIR/smart-deploy" "$@" > "$WORK/out" 2>&1); echo $?
 prepare_stack() {
   mkdir -p "$SMART_STACKS_DIR/$1"
   echo "STACK_NAME=$1" > "$SMART_STACKS_DIR/$1/.env"
-  if [ -n "${2:-}" ]; then echo "IMAGE_TAG=$2" > "$SMART_STACKS_DIR/$1/deploy.env"; fi
-  mkdir -p "$WORK/src" && echo "name: x" > "$WORK/src/compose.yaml"
+  if [ -n "${2:-}" ]; then
+    echo "IMAGE_TAG=$2" > "$SMART_STACKS_DIR/$1/deploy.env"
+    echo "name: previous" > "$SMART_STACKS_DIR/$1/compose.yaml"
+  fi
+  mkdir -p "$WORK/src" && echo "name: next" > "$WORK/src/compose.yaml"
 }
 run_deploy() { (sh "$DEPLOY_DIR/deploy.sh" "$1" "$SHA" "$WORK/src" > "$WORK/out" 2>&1); echo $?; }
 
@@ -58,18 +61,29 @@ setup; prepare_stack smart-prod "$OLD_SHA"
 check "deploy succeeds on the happy path" '[ "$(run_deploy production)" = 0 ]'
 check "deploy runs pull, migrate, up and readiness in order" '[ "$(grep -oE "pull|up -d --wait db broker|dist/migrate.js|up -d --wait --remove-orphans|exec -T web" "$STUB_CALLS" | tr "\n" " ")" = "pull up -d --wait db broker dist/migrate.js up -d --wait --remove-orphans exec -T web " ]'
 check "deploy records the new sha" 'grep -qx "IMAGE_TAG=$SHA" "$SMART_STACKS_DIR/smart-prod/deploy.env"'
-check "deploy copies the commit compose file" '[ -f "$SMART_STACKS_DIR/smart-prod/compose.yaml" ]'; teardown
+check "deploy promotes the commit compose file after success" 'grep -qx "name: next" "$SMART_STACKS_DIR/smart-prod/compose.yaml" && [ ! -e "$SMART_STACKS_DIR/smart-prod/compose.next.yaml" ]'
+check "deploy runs the new version with the new compose file" 'grep -q "compose -f compose.next.yaml --env-file .env --env-file deploy.env.next up -d --wait --remove-orphans" "$STUB_CALLS"'; teardown
+setup; prepare_stack smart-prod "$OLD_SHA"; export STUB_READY_FAILURES=2
+check "deploy retries readiness while the new version warms up" '[ "$(run_deploy production)" = 0 ]'
+check "deploy does not roll back a version that becomes ready" '! grep -q "env-file deploy.env up" "$STUB_CALLS"'; teardown
+setup; prepare_stack smart-prod "$OLD_SHA"; export STUB_FAIL_INFRA=1
+check "deploy fails when database or broker do not start" '[ "$(run_deploy production)" = 1 ]'
+check "deploy rolls back when database or broker do not start" 'grep -q "compose -f compose.yaml --env-file .env --env-file deploy.env up -d --wait --remove-orphans" "$STUB_CALLS"'
+check "deploy skips migrations when database or broker do not start" '! grep -q "dist/migrate.js" "$STUB_CALLS"'; teardown
 setup; prepare_stack smart-prod "$OLD_SHA"; export STUB_FAIL_MIGRATE=1
 check "deploy stops when migrations fail" '[ "$(run_deploy production)" = 1 ]'
 check "deploy never replaces containers after a failed migration" '! grep -q "remove-orphans" "$STUB_CALLS"'
 check "deploy keeps the previous sha after a failed migration" 'grep -qx "IMAGE_TAG=$OLD_SHA" "$SMART_STACKS_DIR/smart-prod/deploy.env"'; teardown
 setup; prepare_stack smart-prod "$OLD_SHA"; export STUB_FAIL_UP=1
 check "deploy fails when the new version is unhealthy" '[ "$(run_deploy production)" = 1 ]'
-check "deploy rolls back to the previous version" 'grep -q "env-file deploy.env up -d --wait --remove-orphans" "$STUB_CALLS"'
-check "deploy keeps the previous sha after rollback" 'grep -qx "IMAGE_TAG=$OLD_SHA" "$SMART_STACKS_DIR/smart-prod/deploy.env"'; teardown
-setup; prepare_stack smart-staging "$OLD_SHA"; export STUB_FAIL_READY=1
+check "deploy rolls back with the previous compose file" 'grep -q "compose -f compose.yaml --env-file .env --env-file deploy.env up -d --wait --remove-orphans" "$STUB_CALLS"'
+check "deploy keeps the previous sha after rollback" 'grep -qx "IMAGE_TAG=$OLD_SHA" "$SMART_STACKS_DIR/smart-prod/deploy.env"'
+check "deploy keeps the previous compose file after rollback" 'grep -qx "name: previous" "$SMART_STACKS_DIR/smart-prod/compose.yaml"'; teardown
+setup; prepare_stack smart-staging "$OLD_SHA"; export STUB_READY_FAILURES=all
 check "deploy fails when readiness fails" '[ "$(run_deploy staging)" = 1 ]'
 check "deploy rolls back when readiness fails" 'grep -q "env-file deploy.env up -d --wait --remove-orphans" "$STUB_CALLS"'; teardown
+setup; prepare_stack smart-prod; export STUB_FAIL_UP=1
+check "first deploy fails cleanly when the new version is unhealthy" '[ "$(run_deploy production)" = 1 ] && [ ! -e "$SMART_STACKS_DIR/smart-prod/deploy.env" ]'; teardown
 
 # --- provision.sh ---
 answers() { printf 'b2-endpoint\nb2-bucket\nb2-key-id\nb2-app-key\nrestic-pw\nhttps://hc/backup\nhttps://hc/restore\n'; }
@@ -79,7 +93,13 @@ check "provision writes staging without backup settings" 'bash "$DEPLOY_DIR/prov
 check "provision generates long random passwords" 'grep -Eq "^DB_PASSWORD=[0-9a-f]{64}$" "$STUB_REMOTE_FILE" && grep -Eq "^MQTT_API_PASSWORD=[0-9a-f]{64}$" "$STUB_REMOTE_FILE"'
 check "provision writes the file with umask 077" 'grep -q "umask 077" "$STUB_CALLS"'
 check "provision writes production with backup settings" 'answers | bash "$DEPLOY_DIR/provision.sh" production > /dev/null 2>&1 && grep -qx "COMPOSE_PROFILES=backup" "$STUB_REMOTE_FILE" && grep -qx "B2_APP_KEY=b2-app-key" "$STUB_REMOTE_FILE" && grep -qx "HC_RESTORE_URL=https://hc/restore" "$STUB_REMOTE_FILE"'
-check "provision never prints secrets" '! answers | bash "$DEPLOY_DIR/provision.sh" production 2>&1 | grep -qE "b2-app-key|restic-pw"'; teardown
+check "provision never prints secrets" '! answers | bash "$DEPLOY_DIR/provision.sh" production 2>&1 | grep -qE "b2-app-key|restic-pw"'
+check "provision lets the backup container run as the stack owner" 'answers | bash "$DEPLOY_DIR/provision.sh" production > /dev/null 2>&1 && grep -qx "BACKUP_UID=4242" "$STUB_REMOTE_FILE" && grep -qx "BACKUP_GID=4343" "$STUB_REMOTE_FILE"'; teardown
+setup; export SMART_VPS=deploy@vps STUB_SSH_DOWN=1
+check "provision aborts when the VPS is unreachable" '[ "$(bash "$DEPLOY_DIR/provision.sh" staging < /dev/null > /dev/null 2>&1; echo $?)" != 0 ] && [ ! -e "$STUB_REMOTE_FILE" ]'; teardown
+setup; STUB_EXISTING_ENV=$(printf "STACK_NAME=smart-staging\nDB_PASSWORD=keep-db\nMQTT_API_PASSWORD=keep-mqtt")
+export SMART_VPS=deploy@vps STUB_ENV_EXISTS=1 STUB_EXISTING_ENV
+check "provision --force keeps the existing database and broker passwords" 'bash "$DEPLOY_DIR/provision.sh" staging --force < /dev/null > /dev/null 2>&1 && grep -qx "DB_PASSWORD=keep-db" "$STUB_REMOTE_FILE" && grep -qx "MQTT_API_PASSWORD=keep-mqtt" "$STUB_REMOTE_FILE"'; teardown
 
 echo "deploy tests: $passed passed, $failures failed"
 [ "$failures" -eq 0 ]

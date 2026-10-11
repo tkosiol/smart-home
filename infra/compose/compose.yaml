@@ -40,7 +40,11 @@ services:
         condition: service_healthy
       broker:
         condition: service_healthy
-    networks: [internal]
+    networks:
+      internal:
+        # web reaches the api only through this distinctive name; the generic service name "api"
+        # could also be answered by a foreign container on the shared proxy network.
+        aliases: [smart-api-upstream]
 
   db:
     <<: *defaults
@@ -78,6 +82,8 @@ services:
     <<: *defaults
     profiles: [backup]
     image: ${IMAGE_REGISTRY:-ghcr.io/tkosiol}/smart-home-backup:${IMAGE_TAG:?IMAGE_TAG is required}
+    # Runs as the owner of the stack directory (mode 700, .env 600) so the config backup can read it.
+    user: '${BACKUP_UID:-10001}:${BACKUP_GID:-10001}'
     read_only: true
     tmpfs: [/tmp]
     environment:

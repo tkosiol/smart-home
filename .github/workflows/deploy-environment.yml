@@ -20,6 +20,10 @@ jobs:
   deploy:
     name: deploy (${{ inputs.environment }})
     runs-on: ubuntu-24.04
+    # One deploy per stack at a time; staging and production do not block each other.
+    concurrency:
+      group: deploy-${{ inputs.environment }}
+      cancel-in-progress: false
     environment:
       name: ${{ inputs.environment }}
       url: ${{ inputs.url }}
