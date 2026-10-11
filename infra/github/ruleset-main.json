@@ -50,6 +50,14 @@
           {
             "context": "pr-message",
             "integration_id": 15368
+          },
+          {
+            "context": "stack",
+            "integration_id": 15368
+          },
+          {
+            "context": "ops",
+            "integration_id": 15368
           }
         ]
       }
