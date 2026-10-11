@@ -1,0 +1,43 @@
+#!/bin/sh
+# Forced command for the GitHub Actions deploy keys (docs/runbooks/provisioning.md):
+#   command="$HOME/bin/smart-deploy <environment>",restrict ssh-ed25519 AAAA… smart-home-deploy-<environment>
+# Accepts only "deploy <commit-sha>" for commits on main and runs that commit's deploy.sh.
+set -eu
+set -f
+
+REPO="tkosiol/smart-home"
+GITHUB_API="${SMART_DEPLOY_GITHUB_API:-https://api.github.com}"
+GITHUB_RAW="${SMART_DEPLOY_GITHUB_RAW:-https://raw.githubusercontent.com}"
+
+fail() {
+  echo "smart-deploy: $1" >&2
+  exit "$2"
+}
+
+environment="${1:-}"
+case "$environment" in
+  staging | production) ;;
+  *) fail "invalid environment '$environment'" 2 ;;
+esac
+
+# shellcheck disable=SC2086 # splitting the client command into words is intended; globbing is off (set -f)
+set -- ${SSH_ORIGINAL_COMMAND:-}
+if [ "$#" -ne 2 ] || [ "$1" != deploy ]; then
+  fail "usage: deploy <commit-sha>" 2
+fi
+sha="$2"
+printf '%s' "$sha" | grep -Eq '^[0-9a-f]{40}$' || fail "invalid commit sha" 2
+
+status=$(curl -fsS "$GITHUB_API/repos/$REPO/compare/main...$sha" | sed -n 's/^  "status": "\([a-z]*\)",$/\1/p')
+case "$status" in
+  behind | identical) ;;
+  *) fail "commit $sha is not on main (status: ${status:-unknown})" 3 ;;
+esac
+
+workdir=$(mktemp -d)
+trap 'rm -rf "$workdir"' EXIT INT TERM
+for file in infra/deploy/deploy.sh infra/compose/compose.yaml; do
+  curl -fsSL -o "$workdir/$(basename "$file")" "$GITHUB_RAW/$REPO/$sha/$file" || fail "could not fetch $file" 1
+done
+
+sh "$workdir/deploy.sh" "$environment" "$sha" "$workdir"

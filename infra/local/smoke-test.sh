@@ -15,6 +15,7 @@ if $COMPOSE exec -T broker mosquitto_pub -h localhost -t smoke/anonymous -m x >/
   fail "anonymous MQTT publish was accepted"
 fi
 
+# shellcheck disable=SC2016 # the variables must expand inside the broker container
 $COMPOSE exec -T broker sh -c '
   mosquitto_sub -h localhost -u "$MQTT_USER" -P "$MQTT_PASSWORD" -t smoke/auth -C 1 -W 5 > /tmp/smoke.out &
   sleep 1
@@ -24,6 +25,7 @@ $COMPOSE exec -T broker sh -c '
 ' || fail "authenticated MQTT publish/subscribe failed"
 
 for pair in "db 5432" "broker 1883" "mail 1025" "mail 8025"; do
+  # shellcheck disable=SC2086 # splitting "service port" into two words is intended
   set -- $pair
   address=$($COMPOSE port "$1" "$2")
   case "$address" in

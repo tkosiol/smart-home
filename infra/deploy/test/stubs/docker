@@ -1,0 +1,12 @@
+#!/bin/sh
+# Test double: records every call; fails or answers depending on STUB_* variables.
+printf '%s\n' "$*" >> "$STUB_CALLS"
+case "$*" in
+  *"run --rm --no-deps api node dist/migrate.js"*)
+    [ "${STUB_FAIL_MIGRATE:-0}" = 1 ] && exit 1 ;;
+  *"deploy.env.next up -d --wait --remove-orphans"*)
+    [ "${STUB_FAIL_UP:-0}" = 1 ] && exit 1 ;;
+  *"exec -T web wget"*)
+    if [ "${STUB_FAIL_READY:-0}" = 1 ]; then echo '{"status":"unavailable"}'; else echo '{"status":"ok"}'; fi ;;
+esac
+exit 0
