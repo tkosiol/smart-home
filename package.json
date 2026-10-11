@@ -1,0 +1,23 @@
+{
+  "name": "smart-home",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.11.2",
+  "engines": {
+    "node": ">=24.21.0 <25"
+  },
+  "scripts": {
+    "prepare": "lefthook install && pnpm contracts:build",
+    "contracts:build": "pnpm --filter @smart/contracts build",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint . && stylelint --allow-empty-input \"apps/frontend/**/*.scss\"",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "test": "pnpm -r --if-present test",
+    "test:tz": "TZ=Pacific/Chatham pnpm -r --if-present test",
+    "build": "pnpm -r --if-present build",
+    "infra:up": "docker compose -f infra/local/compose.yaml up -d --wait",
+    "infra:down": "docker compose -f infra/local/compose.yaml down",
+    "infra:test": "sh infra/local/smoke-test.sh"
+  }
+}

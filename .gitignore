@@ -1,0 +1,28 @@
+# dependencies
+node_modules/
+
+# build output
+dist/
+coverage/
+.angular/
+*.tsbuildinfo
+
+# environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+*.csr
+*.srl
+
+# private, never committed (see CLAUDE.md)
+.local/
+CLAUDE.local.md
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
