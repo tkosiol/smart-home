@@ -3,4 +3,7 @@ packages:
   - packages/*
   - tools/*
 
+allowBuilds:
+  lefthook: true
+
 engineStrict: true
