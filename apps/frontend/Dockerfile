@@ -8,6 +8,10 @@ RUN pnpm install --frozen-lockfile --ignore-scripts --filter "@smart/frontend...
  && pnpm --filter @smart/frontend build
 
 FROM nginxinc/nginx-unprivileged:1.31.6-alpine3.24
+# Pull in security fixes of Alpine packages released after the base image was built.
+USER root
+RUN apk upgrade --no-cache
+USER 101
 COPY apps/frontend/nginx/default.conf /etc/nginx/conf.d/default.conf
 COPY apps/frontend/nginx/security-headers.conf /etc/nginx/snippets/security-headers.conf
 COPY --from=build /repo/apps/frontend/dist/frontend/browser /usr/share/nginx/html
