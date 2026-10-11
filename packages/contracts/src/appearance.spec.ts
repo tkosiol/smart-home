@@ -2,6 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_INSTANCE_APPEARANCE,
   DEFAULT_PERSONAL_APPEARANCE,
+  THEME_CONTRASTS,
+  THEME_FONTS,
+  THEME_MODES,
+  THEME_SHAPES,
   instanceAppearanceSchema,
   personalAppearanceSchema,
   themeColorsSchema,
@@ -72,5 +76,29 @@ describe('appearance schemas', () => {
     expect(
       personalAppearanceSchema.parse({ mode: 'dark', contrast: 'high' }).colors,
     ).toBeUndefined();
+  });
+});
+
+describe('appearance option lists', () => {
+  it('lists every option the schemas accept', () => {
+    expect(THEME_SHAPES).toEqual(['kantig', 'standard', 'weich']);
+    expect(THEME_FONTS).toEqual(['roboto-flex', 'figtree', 'atkinson']);
+    expect(THEME_MODES).toEqual(['system', 'light', 'dark']);
+    expect(THEME_CONTRASTS).toEqual(['system', 'standard', 'medium', 'high']);
+    for (const shape of THEME_SHAPES) {
+      expect(
+        instanceAppearanceSchema.safeParse({ ...DEFAULT_INSTANCE_APPEARANCE, shape }).success,
+      ).toBe(true);
+    }
+    for (const font of THEME_FONTS) {
+      expect(
+        instanceAppearanceSchema.safeParse({ ...DEFAULT_INSTANCE_APPEARANCE, font }).success,
+      ).toBe(true);
+    }
+    for (const mode of THEME_MODES) {
+      for (const contrast of THEME_CONTRASTS) {
+        expect(personalAppearanceSchema.safeParse({ mode, contrast }).success).toBe(true);
+      }
+    }
   });
 });

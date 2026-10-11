@@ -1,4 +1,11 @@
-import { DEFAULT_INSTANCE_APPEARANCE, THEME_VARIANTS } from '@smart/contracts';
+import {
+  DEFAULT_INSTANCE_APPEARANCE,
+  THEME_CONTRASTS,
+  THEME_FONTS,
+  THEME_MODES,
+  THEME_SHAPES,
+  THEME_VARIANTS,
+} from '@smart/contracts';
 import { computeThemeVars, type ResolvedAppearance } from '@smart/theme';
 import { applyThemeVars } from '@smart/ui';
 import type { Decorator, Preview } from '@storybook/angular';
@@ -38,10 +45,16 @@ const preview: Preview = {
       { value: '#5d5f63', title: 'Graphit' },
     ]),
     variant: toolbar('Variante', THEME_VARIANTS),
-    mode: toolbar('Modus', ['light', 'dark']),
-    contrast: toolbar('Kontrast', ['standard', 'medium', 'high']),
-    shape: toolbar('Formen', ['kantig', 'standard', 'weich']),
-    font: toolbar('Schrift', ['roboto-flex', 'figtree', 'atkinson']),
+    mode: toolbar(
+      'Modus',
+      THEME_MODES.filter((mode) => mode !== 'system'),
+    ),
+    contrast: toolbar(
+      'Kontrast',
+      THEME_CONTRASTS.filter((contrast) => contrast !== 'system'),
+    ),
+    shape: toolbar('Formen', THEME_SHAPES),
+    font: toolbar('Schrift', THEME_FONTS),
   },
   initialGlobals: {
     seed: DEFAULT_INSTANCE_APPEARANCE.colors.seed,

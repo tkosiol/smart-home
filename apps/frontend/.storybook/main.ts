@@ -5,5 +5,6 @@ const config: StorybookConfig = {
   addons: ['@storybook/addon-a11y', '@storybook/addon-docs'],
   framework: { name: '@storybook/angular', options: {} },
   staticDirs: ['../public'],
+  core: { disableTelemetry: true },
 };
 export default config;
