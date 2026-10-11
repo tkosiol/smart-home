@@ -1,0 +1,14 @@
+**/node_modules
+**/dist
+**/coverage
+**/.angular
+.git
+.github
+.local
+.superpowers
+CLAUDE.local.md
+**/.env
+**/.env.*
+!**/.env.example
+tests/e2e/test-results
+tests/e2e/playwright-report
