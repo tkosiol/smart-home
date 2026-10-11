@@ -1,20 +1,17 @@
-<h2>Farbrollen</h2>
-<ul class="grid">
-  @for (role of roles; track role) {
-    <li class="swatch" [style.background]="'var(--mat-sys-' + role + ')'">
-      <span class="label">{{ role }}</span>
-    </li>
-  }
-</ul>
-<h2>Statusfarben</h2>
-<ul class="grid">
-  @for (name of statuses; track name) {
-    <li
-      class="swatch"
-      [style.background]="'var(--smart-status-' + name + '-container)'"
-      [style.color]="'var(--smart-status-on-' + name + '-container)'"
-    >
-      {{ name }}
-    </li>
-  }
-</ul>
+@for (group of groups; track group.title) {
+  <section>
+    <h2>{{ group.title }}</h2>
+    <ul class="grid">
+      @for (swatch of group.swatches; track $index) {
+        <li class="swatch">
+          <div class="fill" [style.background]="swatch.fill" [style.color]="swatch.on?.color">
+            @if (swatch.on; as on) {
+              <span class="on">{{ on.name }}</span>
+            }
+          </div>
+          <span class="name">{{ swatch.name }}</span>
+        </li>
+      }
+    </ul>
+  </section>
+}

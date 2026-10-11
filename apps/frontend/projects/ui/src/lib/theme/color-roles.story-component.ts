@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
-import { COLOR_ROLES, STATUS_NAMES } from '@smart/theme';
+import { COLOR_GROUPS } from './color-roles.groups';
 
 /** Storybook-only overview of every color role; not part of the public API. */
 @Component({
@@ -9,6 +9,5 @@ import { COLOR_ROLES, STATUS_NAMES } from '@smart/theme';
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ColorRolesStoryComponent {
-  readonly roles = COLOR_ROLES;
-  readonly statuses = STATUS_NAMES;
+  readonly groups = COLOR_GROUPS;
 }
