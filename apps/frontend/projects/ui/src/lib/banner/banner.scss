@@ -1,0 +1,63 @@
+@use '@angular/material' as mat;
+
+:host {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--smart-space-md);
+  min-width: 0;
+  padding: var(--smart-space-md) var(--smart-space-lg);
+  border-radius: var(--mat-sys-corner-medium);
+
+  // Text buttons take the banner's text color: Material's primary label is not designed for the
+  // status containers and fails contrast in the high-contrast dark theme.
+  @include mat.button-overrides(
+    (
+      text-label-text-color: currentColor,
+    )
+  );
+}
+
+:host([data-tone='info']) {
+  background: var(--mat-sys-secondary-container);
+  color: var(--mat-sys-on-secondary-container);
+}
+
+:host([data-tone='warning']) {
+  background: var(--smart-status-warning-container);
+  color: var(--smart-status-on-warning-container);
+}
+
+:host([data-tone='offline']) {
+  background: var(--smart-status-offline-container);
+  color: var(--smart-status-on-offline-container);
+}
+
+.icon {
+  margin-top: var(--smart-space-xs);
+}
+
+.body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--smart-space-xs);
+  min-width: 0;
+}
+
+.heading {
+  margin: 0;
+  font: var(--mat-sys-title-small);
+  overflow-wrap: anywhere;
+  hyphens: auto;
+}
+
+.text {
+  font: var(--mat-sys-body-medium);
+  overflow-wrap: anywhere;
+  hyphens: auto;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+}
