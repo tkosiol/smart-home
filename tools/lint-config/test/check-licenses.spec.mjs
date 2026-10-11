@@ -16,6 +16,8 @@ describe('isAllowed', () => {
     '(MIT OR GPL-3.0)',
     '(Apache-2.0 AND BSD-3-Clause)',
     'MIT OR Apache-2.0',
+    'MIT AND (Apache-2.0 OR BSD-3-Clause)',
+    '((MIT OR Apache-2.0) AND BSD-3-Clause)',
   ])('allows %s', (expression) => {
     expect(isAllowed(expression)).toBe(true);
   });
@@ -28,6 +30,10 @@ describe('isAllowed', () => {
     '',
     '(MIT AND SSPL-1.0)',
     'Commons-Clause',
+    '(MIT OR GPL-3.0) AND (SSPL-1.0 OR BUSL-1.1)',
+    'MIT OR',
+    '(MIT',
+    'Apache-2.0 WITH LLVM-exception',
   ])('rejects %j', (expression) => {
     expect(isAllowed(expression)).toBe(false);
   });
@@ -46,8 +52,7 @@ describe('findViolations', () => {
     ]);
   });
 
-  it('accepts AGPL-3.0-only only for our own packages', () => {
-    expect(findViolations({ 'AGPL-3.0-only': [{ name: '@smart/backend' }] })).toEqual([]);
+  it('rejects third-party AGPL dependencies (not on the allowlist)', () => {
     expect(findViolations({ 'AGPL-3.0-only': [{ name: 'foreign-agpl-lib' }] })).toEqual([
       { license: 'AGPL-3.0-only', packages: ['foreign-agpl-lib'] },
     ]);

@@ -2,7 +2,7 @@
 
 |        |                                                        |
 | ------ | ------------------------------------------------------ |
-| Status | Entwurf zur Freigabe                                   |
+| Status | angenommen (2026-10-11)                                |
 | Datum  | 2026-10-11                                             |
 | Bezug  | Ergänzt `2026-10-11-smart-home-architecture-design.md` |
 
@@ -45,11 +45,11 @@ Eigenes Brainstorming und eigene Spec zu Beginn dieser Etappe.
 
 - **AGPL-3.0-only.** Nutzung, Änderung und Selbsthosting sind frei; wer eine veränderte Version als Netzwerkdienst für andere betreibt, muss den geänderten Quellcode offenlegen.
 - Umsetzung: `LICENSE` mit dem offiziellen Lizenztext, `"license": "AGPL-3.0-only"` in allen `package.json`, Lizenzhinweis in der README.
-- Abhängigkeiten unter MIT, Apache-2.0, BSD und ISC sind mit AGPL-3.0 kompatibel; neue Abhängigkeiten mit restriktiveren oder unklaren Lizenzen werden vor der Aufnahme geprüft.
+- Abhängigkeiten werden automatisch geprüft (`pnpm licenses:check` im CI-Job `verify`, inklusive Dev-Abhängigkeiten). Freigegeben: MIT, MIT-0, Apache-2.0, ISC, BSD-2-Clause, BSD-3-Clause, 0BSD, BlueOak-1.0.0, Unlicense, CC0-1.0, Python-2.0 (laut FSF GPL-kompatibel), MPL-2.0 (über die Secondary-License-Klausel kompatibel) und CC-BY-4.0 (nur Daten wie Browser-Kompatibilitätstabellen). Zusammengesetzte Ausdrücke werden ausgewertet (OR: eine Alternative genügt, AND: alle müssen erlaubt sein); `WITH`-Ausnahmen, unbekannte und fremde Copyleft-Lizenzen schlagen fehl und werden erst nach Prüfung in die Liste aufgenommen.
 - Solange ausschließlich der Maintainer beiträgt, bleibt ein späterer Lizenzwechsel möglich; ab externen Beiträgen nur mit deren Zustimmung.
 
 ## 6. Auswirkungen auf bestehende Dokumente
 
 - Spec, Abschnitt 1.3: „Andere Installationsvarianten als VPS + Gateway“ ist Nicht-Ziel _vorerst_, wird aber durch die Leitplanken offengehalten.
-- Spec, Abschnitt 13: neue Etappe „Self-Hosting-Paket“ nach Etappe 6, vor dem Pflanzenmodul oder parallel dazu.
+- Spec, Abschnitt 13: neue Etappe 9 „Self-Hosting-Paket“; sie beginnt frühestens nach Etappe 6, die Reihenfolge relativ zum Pflanzenmodul (Etappe 8) wird dann entschieden.
 - ADR-0018 (Self-Hosting-Leitplanken), ADR-0019 (Lizenz AGPL-3.0-only).

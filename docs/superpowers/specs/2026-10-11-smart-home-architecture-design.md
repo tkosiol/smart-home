@@ -152,6 +152,8 @@ Ein neues Gateway erfordert damit nur: Zertifikat ausstellen, im Backend registr
 
 Schleifenvermeidung zwischen ein- und ausgehenden Topics wird im Spike (Etappe 2b) verifiziert.
 
+> **Self-Hosting-Leitplanke 1 (ADR-0018):** `gw/<gatewayId>/z2m` ist das Präfix des zentralen Betriebs. Ein Gateway wird allgemein als Broker-Verbindung + Topic-Präfix modelliert; Ingest, Befehle und Live-Updates dürfen kein bestimmtes Präfix voraussetzen (z. B. `zigbee2mqtt` beim Broker eines Nutzers).
+
 ### 4.5 Pi-Konfiguration (Ordner `gateway/`)
 
 - Compose-Datei und Konfigurations-Vorlagen für Mosquitto und Zigbee2MQTT; Image-Versionen gepinnt.
@@ -285,6 +287,9 @@ Ein Haushalt hat immer mindestens einen `owner`. Registrierte User dürfen eigen
 - **Passkeys (WebAuthn)** als Hauptweg, `@simplewebauthn/server`. Discoverable Credentials (Login ohne E-Mail-Eingabe), `userVerification: required`. RP-ID pro Umgebung (`smart.tillkosiol.de`, `staging.smart.tillkosiol.de`, `localhost`). Fremdgeräte nutzen den Cross-Device-Flow (QR-Code + Handy).
 - **E-Mail-Code** als Alternative (Versand über Resend): 6 Ziffern, 10 Minuten gültig, einmalig, gehasht gespeichert, max. 5 Versuche; Rate-Limits pro E-Mail und pro IP; Code nur gültig im anfordernden Browser (Bindung über ein Nonce-Cookie); neutrale Antwort („Falls ein Konto existiert …“); Info-Mail „Neue Anmeldung“ nach jedem Login per Code; anschließend Angebot, einen Passkey anzulegen.
 - **Notfall:** CLI-Befehl auf dem Server erzeugt einen einmaligen Recovery-Link für einen User.
+
+> **Self-Hosting-Leitplanken 3 und 5 (ADR-0018):** Mailversand ist optional (generisches SMTP oder Resend); ohne Mail-Konfiguration ist der E-Mail-Code abgeschaltet. Passkeys setzen HTTPS mit festem Hostnamen voraus; die App erkennt einen unsicheren Kontext und erklärt ihn.
+
 - **Erster Admin:** CLI-Befehl auf dem Server. Keine offene Registrierung.
 - **Voraussetzung:** Das E-Mail-Konto ist der Generalschlüssel und muss selbst mit 2FA gesichert sein.
 

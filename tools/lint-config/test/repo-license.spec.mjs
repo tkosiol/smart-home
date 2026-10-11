@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -6,14 +6,18 @@ import { describe, expect, it } from 'vitest';
 const repoRoot = fileURLToPath(new URL('../../../', import.meta.url));
 const read = (relative) => readFileSync(path.join(repoRoot, relative), 'utf8');
 
-const workspacePackages = [
-  'package.json',
-  'apps/backend/package.json',
-  'apps/frontend/package.json',
-  'packages/contracts/package.json',
-  'tools/lint-config/package.json',
-  'tests/e2e/package.json',
-];
+/** Every package.json matched by the globs in pnpm-workspace.yaml, plus the root. */
+function workspacePackageFiles() {
+  const globs = [...read('pnpm-workspace.yaml').matchAll(/^\s+-\s+(\S+)\/\*$/gm)].map((m) => m[1]);
+  const files = ['package.json'];
+  for (const dir of globs) {
+    for (const entry of readdirSync(path.join(repoRoot, dir), { withFileTypes: true })) {
+      const file = path.join(dir, entry.name, 'package.json');
+      if (entry.isDirectory() && existsSync(path.join(repoRoot, file))) files.push(file);
+    }
+  }
+  return files;
+}
 
 describe('repository license', () => {
   it('ships the unmodified AGPL-3.0 text', () => {
@@ -22,15 +26,12 @@ describe('repository license', () => {
     expect(text).toContain('END OF TERMS AND CONDITIONS');
   });
 
-  it.each(workspacePackages)('%s declares AGPL-3.0-only', (file) => {
-    expect(JSON.parse(read(file)).license).toBe('AGPL-3.0-only');
+  it('finds all workspace packages', () => {
+    expect(workspacePackageFiles().length).toBeGreaterThanOrEqual(6);
   });
 
-  it('lists every workspace package in this test', () => {
-    const workspace = read('pnpm-workspace.yaml');
-    const globs = [...workspace.matchAll(/^\s+-\s+(\S+)\/\*$/gm)].map((m) => m[1]);
-    const covered = new Set(workspacePackages.map((file) => file.split('/')[0]));
-    for (const glob of globs) expect(covered).toContain(glob);
+  it.each(workspacePackageFiles())('%s declares AGPL-3.0-only', (file) => {
+    expect(JSON.parse(read(file)).license).toBe('AGPL-3.0-only');
   });
 
   it('mentions the license in the README', () => {

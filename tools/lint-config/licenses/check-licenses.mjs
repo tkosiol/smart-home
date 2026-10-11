@@ -19,25 +19,64 @@ const ALLOWED = new Set([
   'MPL-2.0',
   'CC-BY-4.0',
 ]);
-const OWN_LICENSE = 'AGPL-3.0-only';
-const isOwnPackage = (name) => name === 'smart-home' || name.startsWith('@smart/');
-
-/** SPDX subset: identifiers combined with OR / AND, optionally in one pair of parentheses. */
+/**
+ * Evaluates an SPDX license expression against the allowlist.
+ * Grammar: or := and ("OR" and)* ; and := atom ("AND" atom)* ; atom := "(" or ")" | id.
+ * "WITH <exception>" and anything unparsable are rejected (fail closed).
+ */
 export function isAllowed(expression) {
-  const trimmed = (expression ?? '').trim().replace(/^\((.*)\)$/, '$1');
-  if (trimmed === '') return false;
-  if (/\sOR\s/.test(trimmed)) return trimmed.split(/\s+OR\s+/).some((part) => isAllowed(part));
-  if (/\sAND\s/.test(trimmed)) return trimmed.split(/\s+AND\s+/).every((part) => isAllowed(part));
-  return ALLOWED.has(trimmed);
+  const tokens = (expression ?? '').match(/\(|\)|[^\s()]+/g) ?? [];
+  let position = 0;
+  const peek = () => tokens[position];
+  const fail = () => {
+    throw new Error('unparsable license expression');
+  };
+
+  function parseOr() {
+    let allowed = parseAnd();
+    while (peek() === 'OR') {
+      position += 1;
+      allowed = parseAnd() || allowed;
+    }
+    return allowed;
+  }
+
+  function parseAnd() {
+    let allowed = parseAtom();
+    while (peek() === 'AND') {
+      position += 1;
+      allowed = parseAtom() && allowed;
+    }
+    return allowed;
+  }
+
+  function parseAtom() {
+    const token = tokens[position];
+    position += 1;
+    if (token === '(') {
+      const allowed = parseOr();
+      if (tokens[position] !== ')') fail();
+      position += 1;
+      return allowed;
+    }
+    if (token === undefined || token === ')' || ['OR', 'AND', 'WITH'].includes(token)) fail();
+    if (peek() === 'WITH') fail();
+    return ALLOWED.has(token);
+  }
+
+  try {
+    const allowed = parseOr();
+    return position === tokens.length && allowed;
+  } catch {
+    return false;
+  }
 }
 
 export function findViolations(report) {
   const violations = [];
   for (const [license, packages] of Object.entries(report)) {
-    const offending = packages
-      .map((pkg) => pkg.name)
-      .filter((name) => !(isAllowed(license) || (license === OWN_LICENSE && isOwnPackage(name))));
-    if (offending.length > 0) violations.push({ license, packages: offending });
+    if (!isAllowed(license))
+      violations.push({ license, packages: packages.map((pkg) => pkg.name) });
   }
   return violations;
 }
