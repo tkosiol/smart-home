@@ -72,7 +72,7 @@ Zusammenführung: Formen und Schrift kommen immer von der Instanz. Für die Farb
 - Ohne Overrides: Schema der gewählten Variante aus der Grundfarbe.
 - **Kernfarben:** Nicht überschriebene Kernfarben werden aus der Quelle abgeleitet und im Editor als „abgeleitet“ mit ihrem Wert angezeigt; sie ändern sich mit der Grundfarbe. Ein Override von Primär wird zur Quelle, alle nicht überschriebenen Farben leiten sich daraus neu ab. Ein Override startet im Editor beim aktuell abgeleiteten Wert.
 - **Farbtreue an:** Overrides behalten ihre eigene Buntheit (Palette direkt aus der Farbe), Rollen-Töne nach Fidelity-Logik. **Farbtreue aus:** Overrides liefern nur den Farbton, die Buntheit kommt aus der Variante.
-- **Statusfarben** `dry` (Bernstein), `ok` (Grün), `wet` (Blau), `warning`, `offline`: an die Quelle harmonisiert, je Rolle `color`, `on-color`, `container`, `on-container`, für Hell/Dunkel und alle Kontraststufen.
+- **Statusfarben** `dry` (Bernstein), `ok` (Grün), `wet` (Blau): an die Quelle harmonisiert (höchstens 8°); `warning` nutzt die Fehlerrollen des Schemas (Rot, Orange und Bernstein wären in den nötigen dunklen Tönen nicht unterscheidbar – Warnung und Fehler unterscheiden Symbol und Text); `offline`: neutrales Grau. Je Rolle `color`, `on-color`, `container`, `on-container`, für Hell/Dunkel und alle Kontraststufen.
 - Ausgabe: CSS-Variablen `--mat-sys-*` (Material-Rollen) und `--smart-*` (Status, Formen, Schrift) auf `:root`, gesetzt per CSSOM (kompatibel mit der strikten CSP).
 
 ### 4.5 Ablauf im Browser
