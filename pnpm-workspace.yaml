@@ -5,10 +5,13 @@ packages:
 
 allowBuilds:
   '@parcel/watcher': true
+  cpu-features: false
   esbuild: true
   lefthook: true
   lmdb: true
   msgpackr-extract: true
+  protobufjs: false
+  ssh2: false
   unrs-resolver: true
 
 engineStrict: true
