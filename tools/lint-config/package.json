@@ -1,12 +1,14 @@
 {
   "name": "@smart/lint-config",
   "version": "0.0.0",
+  "license": "AGPL-3.0-only",
   "private": true,
   "type": "module",
   "exports": {
     "./eslint": "./eslint/index.mjs",
     "./stylelint": "./stylelint/index.mjs",
-    "./commit": "./commit/no-ai-attribution.mjs"
+    "./commit": "./commit/no-ai-attribution.mjs",
+    "./licenses": "./licenses/check-licenses.mjs"
   },
   "scripts": {
     "test": "vitest run"

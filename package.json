@@ -1,6 +1,7 @@
 {
   "name": "smart-home",
   "private": true,
+  "license": "AGPL-3.0-only",
   "type": "module",
   "packageManager": "pnpm@12.11.2",
   "engines": {
@@ -18,7 +19,8 @@
     "build": "pnpm -r --if-present build",
     "infra:up": "docker compose -f infra/local/compose.yaml up -d --wait",
     "infra:down": "docker compose -f infra/local/compose.yaml down",
-    "infra:test": "sh infra/local/smoke-test.sh"
+    "infra:test": "sh infra/local/smoke-test.sh",
+    "licenses:check": "pnpm licenses list --json -r | node tools/lint-config/licenses/check-licenses.mjs"
   },
   "devDependencies": {
     "@commitlint/cli": "21.2.3",
