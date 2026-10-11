@@ -1,0 +1,20 @@
+<h2>Farbrollen</h2>
+<ul class="grid">
+  @for (role of roles; track role) {
+    <li class="swatch" [style.background]="'var(--mat-sys-' + role + ')'">
+      <span class="label">{{ role }}</span>
+    </li>
+  }
+</ul>
+<h2>Statusfarben</h2>
+<ul class="grid">
+  @for (name of statuses; track name) {
+    <li
+      class="swatch"
+      [style.background]="'var(--smart-status-' + name + '-container)'"
+      [style.color]="'var(--smart-status-on-' + name + '-container)'"
+    >
+      {{ name }}
+    </li>
+  }
+</ul>

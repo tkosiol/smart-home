@@ -23,7 +23,12 @@ const TOKEN_ONLY_PROPERTIES = [
 export default {
   extends: [fileURLToPath(import.meta.resolve('stylelint-config-standard-scss'))],
   plugins: [strictValue],
-  ignoreFiles: ['**/dist/**', '**/.angular/**', 'apps/frontend/projects/ui/src/lib/tokens/**'],
+  ignoreFiles: [
+    '**/dist/**',
+    '**/.angular/**',
+    '**/storybook-static/**',
+    'apps/frontend/projects/ui/src/lib/tokens/**',
+  ],
   rules: {
     'unit-disallowed-list': ['px', 'rem', 'em', 'pt', 'ms', 's'],
     'scss/no-dollar-variables': true,

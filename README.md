@@ -6,16 +6,17 @@ Selbst gehostete Smart-Home-Plattform: Angular-PWA, NestJS-Backend, TimescaleDB,
 
 ## Struktur
 
-| Pfad                 | Inhalt                                               |
-| -------------------- | ---------------------------------------------------- |
-| `apps/frontend`      | Angular-PWA (später inkl. Design-System `@smart/ui`) |
-| `apps/backend`       | NestJS-API                                           |
-| `packages/contracts` | Gemeinsame Zod-Schemas und Typen                     |
-| `tools/lint-config`  | ESLint-/Stylelint-Regeln inkl. Architekturgrenzen    |
-| `infra/local`        | Lokale Entwicklungsinfrastruktur                     |
-| `tests/e2e`          | Playwright-Smoke-Tests gegen den Produktions-Stack   |
-| `docs/runbooks`      | Deploy, Provisionierung, Backup, Monitoring          |
-| `docs/`              | Architektur, ADRs, Specs und Pläne                   |
+| Pfad                 | Inhalt                                                                    |
+| -------------------- | ------------------------------------------------------------------------- |
+| `apps/frontend`      | Angular-PWA (später inkl. Design-System `@smart/ui`)                      |
+| `apps/backend`       | NestJS-API                                                                |
+| `packages/contracts` | Gemeinsame Zod-Schemas und Typen                                          |
+| `tools/lint-config`  | ESLint-/Stylelint-Regeln inkl. Architekturgrenzen                         |
+| `infra/local`        | Lokale Entwicklungsinfrastruktur                                          |
+| `tests/e2e`          | Playwright-Smoke-Tests gegen den Produktions-Stack                        |
+| `docs/runbooks`      | Deploy, Provisionierung, Backup, Monitoring                               |
+| `docs/`              | Architektur, ADRs, Specs und Pläne                                        |
+| Storybook            | https://tkosiol.github.io/smart-home/ – alle UI-Bausteine in allen Themes |
 
 ## Voraussetzungen
 

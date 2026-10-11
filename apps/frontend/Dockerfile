@@ -4,7 +4,7 @@ WORKDIR /repo
 RUN corepack enable
 COPY . .
 RUN pnpm install --frozen-lockfile --ignore-scripts --filter "@smart/frontend..." \
- && pnpm --filter @smart/contracts build \
+ && pnpm --filter "@smart/frontend^..." build \
  && pnpm --filter @smart/frontend build
 
 FROM nginxinc/nginx-unprivileged:1.31.6-alpine3.24

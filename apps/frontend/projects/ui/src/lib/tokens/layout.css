@@ -1,0 +1,11 @@
+/* Spacing and line tokens on a 4px grid. Fixed lengths are only allowed in tokens/. */
+:root {
+  --smart-space-xs: 4px;
+  --smart-space-sm: 8px;
+  --smart-space-md: 12px;
+  --smart-space-lg: 16px;
+  --smart-space-xl: 24px;
+  --smart-space-2xl: 32px;
+  --smart-space-3xl: 48px;
+  --smart-border-width: 1px;
+}
