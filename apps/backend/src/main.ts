@@ -1,7 +1,10 @@
 import { NestFactory } from '@nestjs/core';
+import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module.js';
 import { configureApp } from './app.setup.js';
+import { ENV, type Env } from './platform/config/index.js';
 
-const app = await NestFactory.create(AppModule);
+const app = await NestFactory.create(AppModule, { bufferLogs: true });
+app.useLogger(app.get(Logger));
 configureApp(app);
-await app.listen(Number(process.env.PORT ?? 3000));
+await app.listen(app.get<Env>(ENV).PORT);
