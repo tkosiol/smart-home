@@ -38,4 +38,38 @@ describe('theme-boot.js', () => {
       expect(root().getPropertyValue('color')).toBe('');
     },
   );
+
+  describe('with mode system', () => {
+    const cache = JSON.stringify({
+      mode: 'system',
+      light: { '--mat-sys-surface': '#ffffff' },
+      dark: { '--mat-sys-surface': '#101415' },
+    });
+    const stubMatchMedia = (prefersDark: boolean) => {
+      Object.defineProperty(window, 'matchMedia', {
+        configurable: true,
+        writable: true,
+        value: (query: string) => ({ matches: prefersDark && query.includes('dark') }),
+      });
+    };
+    afterEach(() => {
+      Reflect.deleteProperty(window, 'matchMedia');
+    });
+
+    it('applies the dark variables when the system prefers dark', () => {
+      stubMatchMedia(true);
+      localStorage.setItem('smart.theme.boot', cache);
+      run();
+      expect(root().getPropertyValue('--mat-sys-surface')).toBe('#101415');
+      expect(root().colorScheme).toBe('dark');
+    });
+
+    it('applies the light variables when the system prefers light', () => {
+      stubMatchMedia(false);
+      localStorage.setItem('smart.theme.boot', cache);
+      run();
+      expect(root().getPropertyValue('--mat-sys-surface')).toBe('#ffffff');
+      expect(root().colorScheme).toBe('light');
+    });
+  });
 });

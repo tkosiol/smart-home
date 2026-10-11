@@ -32,4 +32,19 @@ describe('LocalStorageAppearanceStore', () => {
     expect(store.loadPersonal()).toBeNull();
     expect(() => store.savePersonal({ mode: 'light', contrast: 'system' })).not.toThrow();
   });
+
+  it('survives browsers that block access to localStorage itself', () => {
+    const blocked = vi.spyOn(globalThis, 'localStorage', 'get').mockImplementation(() => {
+      throw new DOMException('blocked', 'SecurityError');
+    });
+    try {
+      const store = new LocalStorageAppearanceStore();
+      expect(store.loadPersonal()).toBeNull();
+      expect(store.loadInstance()).toBeNull();
+      expect(() => store.savePersonal({ mode: 'light', contrast: 'system' })).not.toThrow();
+      expect(() => store.saveBootCache({ mode: 'light', light: {}, dark: {} })).not.toThrow();
+    } finally {
+      blocked.mockRestore();
+    }
+  });
 });
