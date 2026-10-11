@@ -23,14 +23,14 @@ Smart-Home-Plattform. Verbindliche Architektur: `docs/superpowers/specs/2026-10-
 | Zweck                                    | Befehl                                                                          |
 | ---------------------------------------- | ------------------------------------------------------------------------------- |
 | Alles prüfen                             | `pnpm lint && pnpm typecheck && pnpm test && pnpm test:tz && pnpm build`        |
-| Contracts nach Änderung neu bauen        | `pnpm contracts:build` (oder `pnpm --filter @smart/contracts dev`)              |
+| Contracts nach Änderung neu bauen        | `pnpm packages:build` (oder `pnpm --filter @smart/contracts dev`)               |
 | Lokale Infrastruktur                     | `pnpm infra:up`, `pnpm infra:test`, `pnpm infra:down`                           |
 | Backend / Frontend                       | `pnpm --filter @smart/backend start:dev`, `pnpm --filter @smart/frontend start` |
 | Backend-Integrationstests (Docker nötig) | `pnpm --filter @smart/backend test`                                             |
 | Produktions-Stack lokal testen           | `sh infra/compose/test/stack-test.sh`                                           |
 | Deploy-Skripte testen                    | `bash infra/deploy/test/run-tests.sh`                                           |
 
-`pnpm install` baut `@smart/contracts` nur bei einer echten Installation (pnpm überspringt Lifecycle-Skripte, wenn `node_modules` aktuell ist). Nach Änderungen an den Contracts daher `pnpm contracts:build`.
+`pnpm install` baut `@smart/contracts` nur bei einer echten Installation (pnpm überspringt Lifecycle-Skripte, wenn `node_modules` aktuell ist). Nach Änderungen an den Contracts oder Theme-Paketen daher `pnpm packages:build` (baut `@smart/contracts` und `@smart/theme` in Abhängigkeitsreihenfolge).
 
 Lokale Ports (nur 127.0.0.1): DB 5433, MQTT 1884, Mailpit SMTP 1026 / UI 8026.
 

@@ -17,6 +17,8 @@ const ALLOWED = new Set([
   'CC0-1.0',
   'Python-2.0',
   'MPL-2.0',
+  // OFL-1.1: self-hosted web fonts, distributed alongside (not linked into) the AGPL code.
+  'OFL-1.1',
   'CC-BY-4.0',
 ]);
 /**

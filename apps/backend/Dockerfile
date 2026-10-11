@@ -4,7 +4,7 @@ WORKDIR /repo
 RUN corepack enable
 COPY . .
 RUN pnpm install --frozen-lockfile --ignore-scripts --filter "@smart/backend..." \
- && pnpm --filter @smart/contracts build \
+ && pnpm --filter "@smart/backend^..." build \
  && pnpm --filter @smart/backend build \
  && pnpm --filter @smart/backend deploy --prod /out
 
