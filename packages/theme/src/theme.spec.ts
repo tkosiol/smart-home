@@ -29,6 +29,24 @@ const hue = (hex: string) => Hct.fromInt(argbFromHex(hex)).hue;
 const chroma = (hex: string) => Hct.fromInt(argbFromHex(hex)).chroma;
 const hueDistance = (a: number, b: number) => Math.min(Math.abs(a - b), 360 - Math.abs(a - b));
 
+/** CIELAB (D65) of a #rrggbb color. */
+function lab(hex: string): [number, number, number] {
+  const [r, g, b] = [1, 3, 5].map((offset) => {
+    const value = parseInt(hex.slice(offset, offset + 2), 16) / 255;
+    return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  }) as [number, number, number];
+  const f = (t: number) => (t > 216 / 24389 ? Math.cbrt(t) : ((24389 / 27) * t + 16) / 116);
+  const x = f((0.4124 * r + 0.3576 * g + 0.1805 * b) / 0.95047);
+  const y = f(0.2126 * r + 0.7152 * g + 0.0722 * b);
+  const z = f((0.0193 * r + 0.1192 * g + 0.9505 * b) / 1.08883);
+  return [116 * y - 16, 500 * (x - y), 200 * (y - z)];
+}
+const deltaE = (hexA: string, hexB: string) => {
+  const [a, b] = [lab(hexA), lab(hexB)];
+  return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+};
+const labChroma = (hex: string) => Math.hypot(lab(hex)[1], lab(hex)[2]);
+
 describe('computeThemeVars', () => {
   it('emits every Angular Material color role as a hex color', () => {
     const vars = computeThemeVars(resolved());
@@ -115,12 +133,68 @@ describe('computeThemeVars', () => {
     });
   });
 
-  it('harmonizes status colors towards the source by at most 15 degrees', () => {
+  describe('keeps status colors distinguishable', () => {
+    // CIE76 distance: ~2.3 is a just noticeable difference, above ~10 colors read as clearly different.
+    // Status colors (indicators on the surface) must read as different hues at a glance: >= 20.
+    // Containers sit at very light/dark tones where sRGB allows little chroma; they always carry an
+    // icon and a label as well (WCAG 1.4.1), so >= 12 (still clearly different side by side) suffices.
+    const MIN_COLOR_DELTA_E = 20;
+    const MIN_CONTAINER_DELTA_E = 12;
+    const seeds = ['#00687a', '#3e5f90', '#c77800', '#8a5a00', '#ffff00', '#101010', '#ff0000'];
+    const cases = seeds.flatMap((seed) =>
+      (['light', 'dark'] as const).flatMap((mode) =>
+        (['standard', 'medium', 'high'] as const).map((contrast) => ({ seed, mode, contrast })),
+      ),
+    );
+    const pairs = STATUS_NAMES.flatMap((a, i) => STATUS_NAMES.slice(i + 1).map((b) => [a, b]));
+
+    it.each(cases)('$seed $mode $contrast', ({ seed, mode, contrast }) => {
+      const vars = computeThemeVars(
+        resolved({
+          colors: { seed, variant: 'tonalSpot', colorMatch: false, coreOverrides: {} },
+          mode,
+          contrast,
+        }),
+      );
+      for (const [a, b] of pairs) {
+        expect(
+          deltaE(vars[`--smart-status-${a}`]!, vars[`--smart-status-${b}`]!),
+          `${a}/${b}`,
+        ).toBeGreaterThanOrEqual(MIN_COLOR_DELTA_E);
+        expect(
+          deltaE(vars[`--smart-status-${a}-container`]!, vars[`--smart-status-${b}-container`]!),
+          `${a}/${b} container`,
+        ).toBeGreaterThanOrEqual(MIN_CONTAINER_DELTA_E);
+      }
+    });
+
+    it('keeps offline a neutral grey that differs from the others by chroma', () => {
+      for (const seed of seeds) {
+        const vars = computeThemeVars(
+          resolved({
+            colors: { seed, variant: 'tonalSpot', colorMatch: false, coreOverrides: {} },
+          }),
+        );
+        expect(labChroma(vars['--smart-status-offline']!), seed).toBeLessThan(2);
+      }
+    });
+  });
+
+  it('harmonizes status colors towards the source by at most 8 degrees', () => {
+    const seedHue = hue(petrol.seed);
     const vars = computeThemeVars(resolved());
-    // Blend.harmonize rotates by at most 15 degrees; tone mapping adds up to ~2 degrees of HCT rounding.
-    expect(hueDistance(hue(vars['--smart-status-ok']!), hue('#2e7d32'))).toBeLessThanOrEqual(17);
-    expect(hueDistance(hue(vars['--smart-status-wet']!), hue('#1565c0'))).toBeLessThanOrEqual(17);
-    expect(hueDistance(hue(vars['--smart-status-ok']!), hue('#2e7d32'))).toBeGreaterThan(0);
+    for (const [name, source] of [
+      ['ok', '#2e7d32'],
+      ['wet', '#1565c0'],
+      ['dry', '#c99a00'],
+      ['warning', '#d84315'],
+    ] as const) {
+      const shifted = hue(vars[`--smart-status-${name}`]!);
+      // The cap is 8 degrees; tone mapping adds up to ~2 degrees of HCT rounding.
+      expect(hueDistance(shifted, hue(source)), name).toBeLessThanOrEqual(10);
+      // Rotation direction: the result is closer to the source hue than the unharmonized color.
+      expect(hueDistance(shifted, seedHue), name).toBeLessThan(hueDistance(hue(source), seedHue));
+    }
   });
 
   it('applies an error override', () => {
