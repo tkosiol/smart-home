@@ -13,7 +13,17 @@ import {
   MatCardHeader,
   MatCardSubtitle,
   MatCardTitle,
+  type MatCardAppearance,
 } from '@angular/material/card';
+
+export type UiCardVariant = 'filled' | 'outlined' | 'elevated';
+
+/** Maps each card variant to the Material appearance; `elevated` is Material's `raised`. */
+const APPEARANCE: Record<UiCardVariant, MatCardAppearance> = {
+  filled: 'filled',
+  outlined: 'outlined',
+  elevated: 'raised',
+};
 
 /** Marks the element holding a card's actions (buttons). */
 @Directive({ selector: '[uiCardActions]' })
@@ -28,12 +38,10 @@ export class UiCardActions {}
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class UiCard {
-  readonly variant = input<'filled' | 'outlined' | 'elevated'>('outlined');
+  readonly variant = input<UiCardVariant>('outlined');
   readonly heading = input<string>();
   readonly subheading = input<string>();
 
   protected readonly actions = contentChild(UiCardActions);
-  protected readonly appearance = computed(() =>
-    this.variant() === 'elevated' ? 'raised' : this.variant(),
-  );
+  protected readonly appearance = computed(() => APPEARANCE[this.variant()]);
 }
