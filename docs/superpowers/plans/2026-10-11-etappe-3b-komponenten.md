@@ -4079,3 +4079,73 @@ pnpm format
 git add apps/frontend CLAUDE.md
 git commit -m "docs(ui): document the component library in Storybook and the README"
 ```
+
+## Ergebnis und Übertrag
+
+Umgesetzt subagent-gestützt (je Task Umsetzung und Review, am Ende Gesamt-Review des Branches mit einer Nachbesserungsrunde). Dieser Abschnitt hält fest, wo die Umsetzung vom Plan abweicht und was Plan 3c und Etappe 4 übernehmen müssen.
+
+### Abweichungen vom Plan (Entscheidungen)
+
+- **Storybook-Prüfung (Task 1):**
+  - Der zweite axe-Durchlauf (dunkel, hoher Kontrast, Bernstein-Quelle) läuft auf einer frischen Seite mit `viewMode=story`; er wartet auf Rendern und Ende der Play-Funktion und schlägt bei Storybooks Fehleranzeige fehl (die Wartebedingung des Plans war zu schwach).
+  - Nachgebessert nach Task 3: Fehler der Play-Funktion im ersten Durchlauf (Standard-Theme) wurden nicht gemeldet; jetzt schon.
+  - Der E2E-Ausdruck für Schriftdateien akzeptiert ein optionales `./` (Angular erzeugt `./media/…`).
+- **Lizenzen (Task 2):** `Zlib` ist freigegeben (pako über `subset-font`, nur Dev-Abhängigkeit, permissiv); die Lizenz-Spec nennt jetzt auch `OFL-1.1` (Schriften, seit 3a).
+- **Stylelint (Task 2):** `selector-class-pattern` erlaubt kebab-case plus genau einen `--modifier` (der Plan nutzt `ui-icon--filled`, `ui-stack--wrap`), mit Test; keine Regel abgeschaltet.
+- **Symbol-Schrift:** Das Skript im Paket heißt `generate` statt `build`, sonst baute das rekursive `pnpm build` (CI `verify`) die eingecheckte Schrift parallel zu `ng build` neu. Einstieg bleibt `pnpm icons:build`.
+- **Layout (Task 3):** Kopfbereiche von `ui-page`/`ui-section` sind `<div class="header">` statt `<header>` (axe: ein `header` außerhalb von Sectioning-Elementen ist eine weitere `banner`-Landmark).
+- **Buttons (Task 4):** `ui-icon` in Buttons bekommt `margin-inline-end: var(--smart-space-sm)`, weil Materials Icon-Abstand nur `.mat-icon` trifft (gilt ebenso für Segmente). Stories mit `fn()`-Spies auf Outputs brauchen `argTypes.<output>.action` und `parameters.actions.disable`, sonst verwirft Storybook Angular das Argument.
+- **Segmented Button (Task 5 und Gesamt-Review):**
+  - Segmenthöhe 48 px über `mat.button-toggle-overrides` (globale Mindestgröße; Materials Segment hat kein eigenes Touch-Ziel). Deaktiviert-Zustand mit Unit-Test und Story ergänzt.
+  - Stories binden `[(value)]` im `render`-Template und senden Pfeiltasten per `fireEvent.keyDown` mit `keyCode` (Material liest `keyCode`, user-event sendet keinen).
+  - Schmale Bildschirme: Die Optionen des Theme-Editors (Kontrast, Schrift) waren im 320-px-Rahmen bis 363 px breit. Die Gruppe ist jetzt auf die verfügbare Breite begrenzt; jedes Segment startet bei seinem Innenabstand (inkl. Haken des gewählten Segments), der Rest wird gleichmäßig verteilt, kein Segment wächst über seine einzeilige Breite. Ein eigenes Label-Element bricht um (lange Wörter überall), das Segment wächst mit. Story `Schmal`.
+- **Chips (Task 6 und Gesamt-Review):** `MatChipAvatar` wird importiert (sonst fiel das Symbol zusammen); Chiphöhe 48 px über `mat.chips-overrides`. Lange Labels brechen jetzt um, der Chip wächst mit (vorher bis 351 px im 320-px-Rahmen). Story `Schmal`.
+- **Textfelder (Task 7):**
+  - `MatPrefix` statt des nicht vorhandenen `MatIconPrefix` (gleiches Attribut `matIconPrefix`).
+  - Interne Direktive `uiErrorStateSync`: ruft `MatInput.updateErrorState()` in `ngDoCheck` auf (ohne `NgControl` wertet `MatInput` den `errorStateMatcher` nicht neu aus) und setzt `aria-invalid` in `ngAfterViewChecked` (Materials Host-Binding überschrieb es).
+  - `ui-color-field` behält den getippten Text, solange er auf den aktuellen Wert normalisiert (das `linkedSignal` des Plans überschrieb „8a5“ mitten im Tippen mit „#88aa55“), mit zwei Unit-Tests.
+- **Karte (Task 8):** `appearance` wird über `Record<UiCardVariant, MatCardAppearance>` typisiert; der strenge Template-Check des App-Builds schlug sonst fehl. Der Storybook-Build ist weniger streng, daher gehört `pnpm --filter @smart/frontend build` in jede Prüfung.
+- **Liste (Task 9):** Router-Stories nutzen `provideRouter([], withDisabledInitialNavigation())`; die initiale Navigation schrieb die iframe-URL um und brach den zweiten Theme-Durchlauf.
+- **Rückmeldung (Task 10):**
+  - Textbuttons im Banner nehmen `currentColor` an, samt Zustandsebene und Ripple (Primärfarbe auf Statuscontainern fiel im zweiten Theme auf 1,55:1).
+  - Sichtbarer Tastaturfokus bibliotheksweit für Material-Bedienelemente über `mat.strong-focus-indicators` in `tokens/_material.scss` (globale Vorgabe „sichtbarer Fokus“, vorher nicht eingerichtet).
+  - Snackbar-Story schaltet Material-Animationen ab (`MATERIAL_ANIMATIONS`) und sucht die Aktion mit `findByRole`.
+  - Aktionen im Banner umbrechen mit Abstand (`flex-wrap`, `gap`).
+- **Zeit (Task 11):** zusätzliche Tests, die Zeitzone und Sommerzeit bei „gestern/vorgestern“ unterscheiden (der Plan-Test bestand auch mit zonenblindem Code). Der Frühjahrs-Fall sichert den 23-Stunden-Tag gegen Rechnen mit verstrichener Zeit ab.
+- **Snackbar ohne Schließen-Möglichkeit:** bewusst nach 3c verschoben (noch kein Aufrufer), siehe unten.
+
+### Übertrag in Plan 3c
+
+- **Snackbar:** Vor dem ersten Rückgängig-Fluss eine Schließen-Möglichkeit (Schließen-Button) ergänzen; eine Meldung mit Aktion lässt sich heute nur über die Aktion beenden. `durationMs` zusammen mit `action` schaltet das automatische Schließen wieder ein (WCAG 2.2.1) – verhindern oder deutlich dokumentieren. Die Snackbar wird nicht axe-geprüft (Overlay liegt außerhalb von `#storybook-root`); die Overlay-Aktion ist nicht per Tastatur getestet.
+- **Banner:** `role="status"` wird beim Einfügen nicht zuverlässig angesagt; Offline- und Update-Banner zusätzlich über `LiveAnnouncer` ansagen.
+- **Überschriftenebenen:** `ui-card` (h3) und `ui-empty-state` (h2) haben feste Ebenen; Eingabe `level` ergänzen, sobald Seiten sie in anderer Tiefe nutzen.
+- **Umbruch:** `ui-page`/`ui-section` vererben `overflow-wrap: anywhere` und senken damit die Mindestbreite allen projizierten Inhalts; Komponenten, die nicht umbrechen dürfen, setzen `overflow-wrap: normal`.
+- **Sprache:** `<html lang>` setzen (App und Storybook-iframe); erst dann wirkt `hyphens: auto` (bisher ungetestet).
+- **Navigation:** `ui-button` braucht einen Link-/Routen-Modus (Element `a` mit `routerLink`) für Navigation statt Aktion.
+- **Theme-Editor:** Bei 320 px Bildschirmbreite bleiben nach dem Seitenrand 288 px; dort bricht die Kontrastauswahl (vier Segmente mit Haken) Wörter mitten im Wort um. Kürzere Labels oder für vier und mehr Optionen eine Radioliste erwägen. `withNarrowFrame` misst 320 px Inhaltsbreite, nicht 320 px Bildschirm.
+- **Storybook-Werkzeugleiste** auf `ThemeService` umstellen und Sprache ergänzen (aus 3a).
+- **Liste:** deaktivierte Einträge sind optisch kaum zu unterscheiden; `aria-disabled` auf einem generischen `div` ist nach ARIA 1.2 nicht erlaubt (Rolle ergänzen oder weglassen).
+- **Benennung vereinheitlichen**, bevor weitere Aufrufer entstehen: `subheading`/`description`/`text` für Nebentexte, `UiChipOption` und `UiSegmentOption` sind identisch, `ui-chip-set` und `ui-color-field` kennen kein `disabled`, `UiErrorStateSync` setzt inzwischen auch ARIA-Attribute.
+- **Test-Runner:** `@storybook/test-runner` läuft aus; Ablösung beobachten und danach den `jest-runtime`-Override in `pnpm-workspace.yaml` entfernen (aus 3a).
+
+### Übertrag in Etappe 4
+
+- Eine ungültige Zeitzone oder Locale in `UiFormatContext` wirft im Template einen `RangeError`. Etappe 4 prüft die Haushaltseinstellungen beim Speichern und Laden; alternativ fangen die Formatierer den Fehler ab und fallen auf UTC/`de` zurück.
+- `UiClock` synchronisiert nicht bei `visibilitychange` (gedrosselte Timer in verborgenen Tabs); die echte Uhr ist ungetestet.
+- Relative Zeit: Vergangenheit und Zukunft runden asymmetrisch (vor 90 s „vor 1 Minute“, in 90 s „in 2 Minuten“); `numeric: 'auto'` liefert Kalenderwörter auch für gleitende Spannen.
+
+### Bewusst zurückgestellt (klein)
+
+- Test-Runner: der zweite Durchlauf prüft nur den Dunkelmodus (nicht Kontrast und Quelle) und kennt `storyMissing`/`UNHANDLED_ERRORS_WHILE_PLAYING` nicht (allgemeiner Timeout statt klarer Meldung); `page.close()` im `finally` kann den ursprünglichen Fehler verdecken; die URL des zweiten Durchlaufs stammt aus `page.url()` nach der Play-Funktion (Stories, die navigieren, ändern sie).
+- Symbol-Schrift: Byte-Gleichheit nur unter macOS geprüft (der erste Linux-CI-Lauf entscheidet); `label=""` setzt ein leeres `aria-label`; das CLI erzwingt keine Sortierung von `icons.json` (der Test schon); `fonts.check` in der Icon-Story ist fast wirkungslos.
+- Storybook-Build meldet eine Warnung zur Einstiegsgröße.
+- Doppeltes `overflow-wrap` auf `.heading`/`.description` in Seite und Abschnitt.
+- Buttons: Icon-Button-Story ohne deaktivierte Variante, `pressed` nur am ersten Button; Materials −4-px-Versatz des führenden Icons nicht übernommen, `sm`-Icon 20 px statt 18 px; gemeinsamer Helfer für `fn()`-Output-Spies.
+- Segmented Button und Switch: Pfeiltasten hängen am veralteten `keyCode`; Tastaturpfad des deaktivierten Switches ungetestet.
+- Chips: kein Test bricht, wenn `MatChipAvatar` fehlt; keine Tests für extern geänderte Auswahl.
+- Textfelder: Rückwegtests (Fehler verschwindet, ungültig → gültig, Farbwähler ersetzt Entwurf); extern gesetzter Wert wird nicht normalisiert; Kontur des Farbfelds für Nicht-Text-Kontrast; Importreihenfolge.
+- Skeleton: `lines` mit `NaN` rendert nichts; Opazität als Literal. Karten-/Empty-State-Stories ohne alle Varianten; Aktions-Direktiven müssen importiert werden (Dokuhinweis).
+- Liste: Klick auf einen Link in der Story wirft `NG04002` (initiale Navigation abgeschaltet); kein Unit-Test, dass deaktivierte Zeilen nicht fokussierbar sind.
+- Banner: tonaler Button auf dem Info-Banner kaum sichtbar; der Fokusring-Test prüft die Farbe nicht; Hover-Tönung nicht gemessen.
+- Pipe-Spec nutzt Default-Change-Detection statt OnPush mit `whenStable`.
+- Doku: Die MDX-Aussage „jede Komponente ist per Tastatur bedienbar“ ist stark formuliert, „library-weit“ weit gefasst.
