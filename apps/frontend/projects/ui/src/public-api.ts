@@ -22,3 +22,6 @@ export { UiStack } from './lib/layout/stack/stack';
 export { UiSegmentedButton, type UiSegmentOption } from './lib/segmented-button/segmented-button';
 export { UiChipSet, type UiChipOption } from './lib/chip-set/chip-set';
 export { UiSwitch } from './lib/switch/switch';
+export { UiColorField } from './lib/color-field/color-field';
+export { normalizeHexColor } from './lib/color-field/hex-color';
+export { UiTextField } from './lib/text-field/text-field';

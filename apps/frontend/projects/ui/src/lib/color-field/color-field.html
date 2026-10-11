@@ -1,0 +1,27 @@
+<mat-form-field appearance="outline">
+  <mat-label>{{ label() }}</mat-label>
+  <input
+    matIconPrefix
+    class="picker"
+    type="color"
+    [value]="value()"
+    [attr.aria-label]="pickerLabel()"
+    (input)="onPick($event)"
+  />
+  <input
+    matInput
+    uiErrorStateSync
+    type="text"
+    spellcheck="false"
+    autocomplete="off"
+    [value]="draft()"
+    [errorStateMatcher]="errorMatcher"
+    (input)="onText($event)"
+    (blur)="touched.set(true)"
+  />
+  @if (showError()) {
+    <mat-error>{{ invalidMessage() }}</mat-error>
+  } @else if (hint(); as hint) {
+    <mat-hint>{{ hint }}</mat-hint>
+  }
+</mat-form-field>
