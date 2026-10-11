@@ -4,6 +4,8 @@
   display: inline-block;
   max-width: 100%;
 
+  // Material's height token is the line height of a segment's content, so it acts as a minimum:
+  // a segment whose label wraps grows with the label (see `.segment`).
   @include mat.button-toggle-overrides(
     (
       height: var(--smart-size-touch),
@@ -11,6 +13,35 @@
   );
 }
 
+// Material keeps the group and its segments on one unbreakable line, so long labels pushed the
+// group wider than a 320px screen. The group is capped at the available width; each segment
+// starts from its padding (incl. the selected checkmark, so the chosen option is not squeezed),
+// the rest is shared out evenly, and no segment grows past its one-line width, so short labels
+// stay whole and long ones wrap. Wide enough, every segment is one line. `flex: 1 1 0` is the
+// fallback where `flex-basis: min-content` is unsupported.
+mat-button-toggle-group {
+  max-width: 100%;
+}
+
+mat-button-toggle {
+  flex: 1 1 0;
+  flex-basis: min-content;
+  min-width: var(--smart-size-touch);
+  max-width: max-content;
+}
+
+// Our own label wrapper: wraps at word boundaries first (long German words anywhere), with the
+// label line height for its own lines, and never wider than its segment.
+.segment {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--smart-space-sm);
+  max-width: 100%;
+  line-height: var(--mat-sys-label-large-line-height);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 ui-icon {
-  margin-inline-end: var(--smart-space-sm);
+  flex: none;
 }
