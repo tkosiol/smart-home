@@ -36,3 +36,7 @@ pnpm --filter @smart/frontend start
 pnpm lint && pnpm typecheck && pnpm test && pnpm test:tz && pnpm build
 pnpm infra:test
 ```
+
+## Lizenz
+
+[AGPL-3.0-only](LICENSE). Nutzung, Änderung und Selbsthosting sind frei; wer eine veränderte Version als Netzwerkdienst für andere betreibt, muss den geänderten Quellcode offenlegen.
