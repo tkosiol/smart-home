@@ -1,0 +1,7 @@
+@if (variant() === 'text') {
+  @for (index of lineIndexes(); track index) {
+    <span class="line shimmer"></span>
+  }
+} @else {
+  <span class="shape shimmer"></span>
+}

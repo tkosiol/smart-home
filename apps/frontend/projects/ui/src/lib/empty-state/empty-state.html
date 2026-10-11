@@ -1,0 +1,8 @@
+<ui-icon class="icon" [name]="icon()" size="lg" />
+<h2 class="heading">{{ heading() }}</h2>
+@if (text(); as text) {
+  <p class="text">{{ text }}</p>
+}
+@if (actions()) {
+  <div class="actions"><ng-content select="[uiEmptyStateActions]" /></div>
+}
