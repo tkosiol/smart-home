@@ -11,6 +11,7 @@
     "prepare": "lefthook install && pnpm packages:build",
     "packages:build": "pnpm --filter @smart/contracts --filter @smart/theme build",
     "format": "prettier --write .",
+    "icons:build": "pnpm --filter @smart/icon-font build",
     "format:check": "prettier --check .",
     "lint": "eslint . && stylelint --allow-empty-input \"apps/frontend/**/*.{css,scss}\"",
     "typecheck": "pnpm -r --if-present typecheck",

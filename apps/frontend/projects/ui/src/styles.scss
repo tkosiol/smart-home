@@ -3,7 +3,7 @@
 @use '@fontsource-variable/roboto-flex/index' as roboto-flex;
 @use '@fontsource-variable/figtree/index' as figtree;
 @use '@fontsource-variable/atkinson-hyperlegible-next/index' as atkinson;
-@use 'material-symbols/rounded';
+@use './lib/tokens/icon-font';
 @use './lib/tokens/material';
 @use './lib/tokens/default-theme';
 @use './lib/tokens/layout';

@@ -14,6 +14,7 @@ describe('isAllowed', () => {
     'BlueOak-1.0.0',
     'MPL-2.0',
     'OFL-1.1',
+    '(MIT AND Zlib)',
     '(MIT OR GPL-3.0)',
     '(Apache-2.0 AND BSD-3-Clause)',
     'MIT OR Apache-2.0',

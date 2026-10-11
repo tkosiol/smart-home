@@ -17,6 +17,8 @@ const ALLOWED = new Set([
   'CC0-1.0',
   'Python-2.0',
   'MPL-2.0',
+  // Zlib: permissive (pako 1.x is "MIT AND Zlib", pulled in by the icon font tooling).
+  'Zlib',
   // OFL-1.1: self-hosted web fonts, distributed alongside (not linked into) the AGPL code.
   'OFL-1.1',
   'CC-BY-4.0',
