@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import * as z from 'zod/mini';
 
 /**
  * A point in time, transported as ISO 8601 in UTC with a trailing `Z`
@@ -11,9 +11,9 @@ export type UtcInstant = z.infer<typeof utcInstantSchema>;
  * A calendar date without time or zone (`YYYY-MM-DD`).
  * Never convert it to a `Date`: that would shift it by the runtime's offset.
  */
-export const localDateSchema = z.iso.date().refine(isExistingCalendarDate, {
-  message: 'Invalid calendar date',
-});
+export const localDateSchema = z.iso
+  .date()
+  .check(z.refine(isExistingCalendarDate, { message: 'Invalid calendar date' }));
 export type LocalDate = z.infer<typeof localDateSchema>;
 
 function isExistingCalendarDate(value: string): boolean {

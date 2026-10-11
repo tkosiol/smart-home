@@ -1,6 +1,6 @@
-import { z } from 'zod';
+import * as z from 'zod/mini';
 
-const hexColor = z.string().regex(/^#[0-9a-fA-F]{6}$/, 'expected #rrggbb');
+const hexColor = z.string().check(z.regex(/^#[0-9a-fA-F]{6}$/, 'expected #rrggbb'));
 
 export const THEME_VARIANTS = [
   'tonalSpot',
@@ -24,7 +24,7 @@ export const themeColorsSchema = z.object({
   seed: hexColor,
   variant: z.enum(THEME_VARIANTS),
   colorMatch: z.boolean(),
-  coreOverrides: z.partialRecord(z.enum(CORE_COLOR_IDS), hexColor).default({}),
+  coreOverrides: z._default(z.partialRecord(z.enum(CORE_COLOR_IDS), hexColor), {}),
 });
 
 export const instanceAppearanceSchema = z.object({
@@ -34,7 +34,7 @@ export const instanceAppearanceSchema = z.object({
 });
 
 export const personalAppearanceSchema = z.object({
-  colors: themeColorsSchema.optional(),
+  colors: z.optional(themeColorsSchema),
   mode: z.enum(['system', 'light', 'dark']),
   contrast: z.enum(['system', 'standard', 'medium', 'high']),
 });
