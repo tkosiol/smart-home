@@ -60,6 +60,25 @@ describe('formatRelativeTime', () => {
     expect(formatRelativeTime(ago(4 * 86400), now, 'de', BERLIN)).toBe('vor 4 Tagen');
   });
 
+  it('depends on the time zone for calendar days', () => {
+    const at = Date.parse('2026-10-11T21:00:00Z');
+    const value = '2026-10-09T22:30:00Z'; // Oct 10 00:30 Berlin, Oct 9 UTC, Oct 10 11:15 Chatham
+    expect(formatRelativeTime(value, at, 'de', BERLIN)).toBe('gestern');
+    expect(formatRelativeTime(value, at, 'de', 'UTC')).toBe('vorgestern');
+    expect(formatRelativeTime(value, at, 'de', 'Pacific/Chatham')).toBe('vorgestern');
+  });
+
+  it('counts calendar days across the daylight-saving changes in Berlin', () => {
+    // Autumn: Oct 25 has 25 hours; 00:30 local on the 25th to 23:59 local on the 25th is "heute".
+    expect(
+      formatRelativeTime('2026-10-24T22:30:00Z', Date.parse('2026-10-25T22:59:00Z'), 'de', BERLIN),
+    ).toBe('heute');
+    // Spring: Mar 29 has 23 hours; 23:59 local on the 28th to 23:59 local on the 29th is "gestern".
+    expect(
+      formatRelativeTime('2026-03-28T22:59:00Z', Date.parse('2026-03-29T21:59:00Z'), 'de', BERLIN),
+    ).toBe('gestern');
+  });
+
   it('switches to weeks, months and years', () => {
     expect(formatRelativeTime(ago(14 * 86400), now, 'de', BERLIN)).toBe('vor 2 Wochen');
     expect(formatRelativeTime(ago(90 * 86400), now, 'de', BERLIN)).toBe('vor 3 Monaten');
