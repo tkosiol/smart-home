@@ -1,4 +1,5 @@
 export { contrastRatio } from './contrast.js';
+export { renderDefaultThemeCss } from './default-css.js';
 export { resolveAppearance, type ResolvedAppearance, type SystemPreferences } from './resolve.js';
 export { COLOR_ROLES } from './roles.js';
 export { type ResolvedContrast, type ResolvedMode } from './scheme.js';
