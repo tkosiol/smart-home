@@ -62,7 +62,7 @@ describe('formatRelativeTime', () => {
 
   it('depends on the time zone for calendar days', () => {
     const at = Date.parse('2026-10-11T21:00:00Z');
-    const value = '2026-10-09T22:30:00Z'; // Oct 10 00:30 Berlin, Oct 9 UTC, Oct 10 11:15 Chatham
+    const value = '2026-10-09T22:30:00Z'; // Oct 10 00:30 Berlin, Oct 9 UTC, Oct 10 12:15 Chatham
     expect(formatRelativeTime(value, at, 'de', BERLIN)).toBe('gestern');
     expect(formatRelativeTime(value, at, 'de', 'UTC')).toBe('vorgestern');
     expect(formatRelativeTime(value, at, 'de', 'Pacific/Chatham')).toBe('vorgestern');
