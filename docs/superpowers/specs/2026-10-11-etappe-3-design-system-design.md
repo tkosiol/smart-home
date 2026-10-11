@@ -64,7 +64,7 @@ Zusammenführung: Formen und Schrift kommen immer von der Instanz. Für die Farb
 
 - `themeColorsSchema`: `seed` (Hex), `variant` (`tonalSpot` | `neutral` | `vibrant` | `expressive` | `fidelity` | `content` | `monochrome`), `colorMatch` (boolean), `coreOverrides` (optionale Hex-Werte für `primary`, `secondary`, `tertiary`, `error`, `neutral`, `neutralVariant`)
 - `instanceAppearanceSchema`: `colors` + `shape` (`kantig` | `standard` | `weich`) + `font` (`roboto-flex` | `figtree` | `atkinson`)
-- `personalAppearanceSchema`: optionale `colors` + `mode` (`system` | `light` | `dark`) + `contrast` (`standard` | `medium` | `high`)
+- `personalAppearanceSchema`: optionale `colors` + `mode` (`system` | `light` | `dark`) + `contrast` (`system` | `standard` | `medium` | `high`; `system` = Standard, bei `prefers-contrast: more` Hoch)
 
 ### 4.4 Berechnung (Verhalten wie Material Theme Builder)
 
