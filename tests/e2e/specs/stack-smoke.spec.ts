@@ -34,6 +34,7 @@ for (const path of ['/', '/devices/123', '/api/health/live']) {
     expect(headers['content-security-policy']).toContain("frame-ancestors 'none'");
     expect(headers['x-content-type-options']).toBe('nosniff');
     expect(headers['referrer-policy']).toBe('strict-origin-when-cross-origin');
+    expect(headers['strict-transport-security']).toBe('max-age=31536000');
   });
 }
 
