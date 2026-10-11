@@ -13,6 +13,8 @@ export { ThemeService } from './lib/theme/theme.service';
 export { UiIcon, type UiIconSize } from './lib/icon/icon';
 export { ICON_CODEPOINTS, type IconName } from './lib/icon/icon-codepoints';
 export type { UiSpace } from './lib/layout/space';
+export { UiButton, type UiButtonVariant } from './lib/button/button';
+export { UiIconButton } from './lib/button/icon-button';
 export { UiGrid } from './lib/layout/grid/grid';
 export { UiPage } from './lib/layout/page/page';
 export { UiSection } from './lib/layout/section/section';
