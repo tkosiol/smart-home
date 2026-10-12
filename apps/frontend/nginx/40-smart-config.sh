@@ -3,7 +3,8 @@
 # Runs as the unprivileged nginx user from /docker-entrypoint.d/ before nginx starts.
 set -eu
 
-target="${SMART_CONFIG_TARGET:-/tmp/smart-config.json}"
+# Must match the alias of `location = /config.json` in the nginx config.
+target=/tmp/smart-config.json
 
 case "${SMART_INSTANCE_APPEARANCE_EDITOR:-false}" in
   true) editor=true ;;
