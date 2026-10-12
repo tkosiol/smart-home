@@ -2,6 +2,7 @@ import { DOCUMENT, importProvidersFrom } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { TranslocoService, TranslocoTestingModule } from '@jsverse/transloco';
 import type { Language } from '@smart/contracts';
+import { UiFormatContext } from '@smart/ui';
 import { BROWSER_LANGUAGES, LANGUAGE_STORE, type LanguageStore } from './language-store';
 import { LanguageService } from './language.service';
 
@@ -33,6 +34,7 @@ function setup({ stored = null as Language | null, browser = [] as string[] } = 
     store,
     transloco: TestBed.inject(TranslocoService),
     html: TestBed.inject(DOCUMENT).documentElement,
+    formatContext: TestBed.inject(UiFormatContext),
   };
 }
 
@@ -49,6 +51,13 @@ describe('LanguageService', () => {
     expect(service.language()).toBe('en');
     expect(transloco.getActiveLang()).toBe('en');
     expect(html.lang).toBe('en');
+  });
+
+  it('formats dates and numbers in the UI language, from the start and after a switch', () => {
+    const { service, formatContext } = setup({ browser: ['en-GB'] });
+    expect(formatContext.locale()).toBe('en');
+    service.setLanguage('de');
+    expect(formatContext.locale()).toBe('de');
   });
 
   it('falls back to German', () => {
