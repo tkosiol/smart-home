@@ -11,7 +11,10 @@ async function setup() {
     providers: [
       provideRouter(routes),
       provideI18n(),
-      { provide: LANGUAGE_STORE, useValue: { load: () => null, save: () => undefined } },
+      {
+        provide: LANGUAGE_STORE,
+        useValue: { load: () => null, save: () => undefined, watch: () => () => undefined },
+      },
       { provide: BROWSER_LANGUAGES, useValue: ['de-DE'] },
     ],
   });

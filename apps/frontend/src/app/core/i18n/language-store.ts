@@ -4,6 +4,8 @@ import { languageSchema, type Language } from '@smart/contracts';
 export interface LanguageStore {
   load(): Language | null;
   save(language: Language): void;
+  /** Calls back when another tab touched the stored language; returns the unsubscribe function. */
+  watch(callback: () => void): () => void;
 }
 
 const KEY = 'smart.language';
@@ -31,6 +33,17 @@ export class LocalStorageLanguageStore implements LanguageStore {
     } catch {
       // Storage blocked or full: the language still applies for this session.
     }
+  }
+
+  watch(callback: () => void): () => void {
+    const target = globalThis.window;
+    if (!target?.addEventListener) return () => undefined;
+    // key null: the other tab cleared the whole storage.
+    const listener = (event: StorageEvent) => {
+      if (event.key === KEY || event.key === null) callback();
+    };
+    target.addEventListener('storage', listener);
+    return () => target.removeEventListener('storage', listener);
   }
 }
 

@@ -33,12 +33,17 @@ export function provideI18n(): EnvironmentProviders {
       inject(LanguageService);
     }),
     // The first render already shows the active language instead of keys or a flash of German.
+    // A failed load must not block the start: the app then shows keys, which beats a blank page.
     provideAppInitializer(() => {
       const language = inject(LanguageService).language();
       // No value when the injector is destroyed meanwhile (tests): that is not an error.
       return firstValueFrom(inject(TranslocoService).load(language), {
         defaultValue: undefined,
-      }).then(() => undefined);
+      })
+        .then(() => undefined)
+        .catch((error: unknown) => {
+          if (isDevMode()) console.warn(`Translation ${language} could not be loaded`, error);
+        });
     }),
   ]);
 }
