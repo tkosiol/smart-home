@@ -14,6 +14,20 @@ test('the app shell loads without console errors or CSP violations', async ({ pa
   expect(problems).toEqual([]);
 });
 
+for (const [locale, lang] of [
+  ['en-US', 'en'],
+  ['de-DE', 'de'],
+  ['fr-FR', 'de'],
+] as const) {
+  test(`a browser preferring ${locale} gets the page language ${lang}`, async ({ browser }) => {
+    const context = await browser.newContext({ locale });
+    const page = await context.newPage();
+    await page.goto('/');
+    await expect(page.locator('html')).toHaveAttribute('lang', lang);
+    await context.close();
+  });
+}
+
 test('every HTML response carries its own CSP nonce matching the page', async ({ request }) => {
   const nonces: string[] = [];
   for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -94,7 +108,9 @@ test('a stored dark theme applies even before the app bundle runs', async ({ pag
     localStorage.setItem(
       'smart.theme.boot',
       JSON.stringify({
+        v: 2,
         mode: 'dark',
+        followsSystemContrast: false,
         light: { '--mat-sys-surface': '#ffffff' },
         dark: { '--mat-sys-surface': '#101415' },
       }),
@@ -138,7 +154,9 @@ test('a system-mode cache follows the browser color scheme before the app bundle
     localStorage.setItem(
       'smart.theme.boot',
       JSON.stringify({
+        v: 2,
         mode: 'system',
+        followsSystemContrast: false,
         light: { '--mat-sys-surface': '#ffffff' },
         dark: { '--mat-sys-surface': '#101415' },
       }),
@@ -150,4 +168,56 @@ test('a system-mode cache follows the browser color scheme before the app bundle
     getComputedStyle(document.documentElement).getPropertyValue('--mat-sys-surface').trim(),
   );
   expect(surface).toBe('#101415');
+});
+
+/** Set via SMART_INSTANCE_APPEARANCE in infra/compose/test/compose.test.yaml. */
+const STACK_TEST_INSTANCE = {
+  colors: { seed: '#6e4c7e', variant: 'tonalSpot', colorMatch: false, coreOverrides: {} },
+  shape: 'weich',
+  font: 'roboto-flex',
+};
+
+test('config.json comes from the container environment and is never cached', async ({
+  request,
+}) => {
+  const response = await request.get('/config.json');
+  expect(response.status()).toBe(200);
+  expect(response.headers()['content-type']).toContain('application/json');
+  expect(response.headers()['cache-control']).toBe('no-store');
+  expect(response.headers()['content-security-policy']).toContain("default-src 'self'");
+  expect(await response.json()).toEqual({
+    features: { instanceAppearanceEditor: true },
+    instanceAppearance: STACK_TEST_INSTANCE,
+  });
+});
+
+test('the instance default from config.json replaces the build default', async ({
+  browser,
+  page,
+}) => {
+  const noScript = await browser.newContext({ javaScriptEnabled: false });
+  const staticPage = await noScript.newPage();
+  await staticPage.goto('/');
+  const buildDefault = await staticPage.evaluate(() =>
+    getComputedStyle(document.documentElement).getPropertyValue('--mat-sys-primary').trim(),
+  );
+  await noScript.close();
+
+  await page.goto('/');
+  // The ThemeService writes its variables inline on <html> once the app runs.
+  await expect
+    .poll(() =>
+      page.evaluate(() => document.documentElement.style.getPropertyValue('--mat-sys-primary')),
+    )
+    .not.toBe('');
+  const applied = await page.evaluate(() => ({
+    primary: getComputedStyle(document.documentElement)
+      .getPropertyValue('--mat-sys-primary')
+      .trim(),
+    corner: getComputedStyle(document.documentElement)
+      .getPropertyValue('--mat-sys-corner-medium')
+      .trim(),
+  }));
+  expect(applied.primary).not.toBe(buildDefault);
+  expect(applied.corner).toBe('18px');
 });

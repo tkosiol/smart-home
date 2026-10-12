@@ -1,12 +1,16 @@
-// Applies the user's last theme before Angular starts (no flash). External file: the CSP forbids inline scripts.
+// Applies the user's last theme before Angular starts (no flash). External file: the CSP forbids
+// inline scripts. Format: BootCache in projects/ui/src/lib/theme/appearance-store.ts (version 2).
 (function () {
   try {
     var cache = JSON.parse(localStorage.getItem('smart.theme.boot') || 'null');
-    if (!cache || !cache.light || !cache.dark) return;
+    if (!cache || cache.v !== 2) return;
     var dark =
       cache.mode === 'dark' ||
       (cache.mode === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
-    var vars = dark ? cache.dark : cache.light;
+    var high =
+      cache.followsSystemContrast === true && window.matchMedia('(prefers-contrast: more)').matches;
+    var vars = high ? (dark ? cache.darkHigh : cache.lightHigh) : dark ? cache.dark : cache.light;
+    if (!vars || typeof vars !== 'object') return;
     var style = document.documentElement.style;
     var applied = 0;
     for (var name in vars) {

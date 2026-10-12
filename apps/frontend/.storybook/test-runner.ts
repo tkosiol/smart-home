@@ -15,8 +15,8 @@ const AXE_OPTIONS = {
   },
 };
 
-/** A second, demanding theme: every story is also checked dark, high contrast, amber seed. */
-const SECOND_THEME = 'mode:dark;contrast:high;seed:!hex(8a5a00)';
+/** A second, demanding theme: every story is also checked dark, high contrast, amber seed, English. */
+const SECOND_THEME = 'mode:dark;contrast:high;seed:!hex(8a5a00);locale:en';
 
 /** Storybook preview events that end a story: success, or one of the error paths. */
 const DONE_EVENT = 'storyRendered';

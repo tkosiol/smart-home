@@ -1,0 +1,67 @@
+{
+  "ui": {
+    "themeEditor": {
+      "seed": "Grundfarbe",
+      "seedPicker": "Grundfarbe auswählen",
+      "invalidColor": "Bitte eine Farbe im Format #rrggbb eingeben.",
+      "suggestionsLabel": "Vorschläge für die Grundfarbe",
+      "suggestions": {
+        "petrol": "Petrol",
+        "moss": "Moos",
+        "slate": "Schieferblau",
+        "amber": "Bernstein",
+        "plum": "Pflaume",
+        "graphite": "Graphit"
+      },
+      "variant": "Variante",
+      "variants": {
+        "tonalSpot": "Tonal Spot (Standard)",
+        "neutral": "Neutral",
+        "vibrant": "Vibrant",
+        "expressive": "Expressive",
+        "fidelity": "Fidelity",
+        "content": "Content",
+        "monochrome": "Monochrome"
+      },
+      "variantWithColorMatch": "Mit Farbtreue legt die Variante nur die abgeleiteten Farben fest.",
+      "colorMatch": "Farbtreue",
+      "coreColors": "Kernfarben",
+      "coreColorsDescription": "Nicht angepasste Kernfarben leiten sich aus der Grundfarbe ab.",
+      "coreColor": {
+        "primary": "Primär",
+        "secondary": "Sekundär",
+        "tertiary": "Tertiär",
+        "error": "Fehler",
+        "neutral": "Neutral",
+        "neutralVariant": "Neutral (Variante)"
+      },
+      "customize": "{{color}} anpassen",
+      "pickColor": "{{color}} auswählen",
+      "derived": "Abgeleitet: {{hex}}",
+      "display": "Darstellung",
+      "mode": "Modus",
+      "modes": { "system": "System", "light": "Hell", "dark": "Dunkel" },
+      "contrast": "Kontrast",
+      "contrasts": {
+        "system": "System",
+        "standard": "Standard",
+        "medium": "Mittel",
+        "high": "Hoch"
+      },
+      "contrastSystemHint": "Standard, oder Hoch, wenn das Gerät mehr Kontrast verlangt.",
+      "colors": "Farben",
+      "ownColors": "Eigene Farben",
+      "installationColors": "Es gelten die Farben der Installation.",
+      "shapeAndFont": "Formen und Schrift",
+      "shape": "Formen",
+      "shapes": { "kantig": "Kantig", "standard": "Standard", "weich": "Weich" },
+      "font": "Schrift",
+      "fonts": {
+        "roboto-flex": "Roboto Flex",
+        "figtree": "Figtree",
+        "atkinson": "Atkinson Hyperlegible Next"
+      },
+      "reset": "Auf Standard zurücksetzen"
+    }
+  }
+}

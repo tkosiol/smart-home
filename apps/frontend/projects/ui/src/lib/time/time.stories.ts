@@ -1,6 +1,7 @@
 import { Component, inject } from '@angular/core';
 import type { Meta, StoryObj } from '@storybook/angular';
 import { expect } from 'storybook/test';
+import { waitForTranslations } from '../testing/storybook-environment';
 import { UiDateTimePipe } from './date-time.pipe';
 import { UiFormatContext } from './format-context';
 import { UiRelativeTimePipe } from './relative-time.pipe';
@@ -26,7 +27,6 @@ class TimeDemo {
   protected readonly recent = new Date(Date.now() - 5 * 60 * 1000).toISOString();
   constructor() {
     const context = inject(UiFormatContext);
-    context.locale.set('de');
     context.timeZone.set('Europe/Berlin');
   }
 }
@@ -34,9 +34,17 @@ class TimeDemo {
 const meta: Meta<TimeDemo> = { title: 'Inhalt/Zeitangaben', component: TimeDemo };
 export default meta;
 
+/** The toolbar's language drives the formatting; the second test-runner pass runs in English. */
+const EXPECTED = {
+  de: { medium: '25.10.2026, 02:30', relative: 'vor 5 Minuten' },
+  en: { medium: 'Oct 25, 2026, 2:30 AM', relative: '5 minutes ago' },
+} as const;
+
 export const Berlin: StoryObj<TimeDemo> = {
   play: async ({ canvas }) => {
-    await expect(canvas.getByTestId('medium')).toHaveTextContent('25.10.2026, 02:30');
-    await expect(canvas.getByText('vor 5 Minuten')).toBeVisible();
+    await waitForTranslations();
+    const expected = EXPECTED[document.documentElement.lang === 'en' ? 'en' : 'de'];
+    await expect(canvas.getByTestId('medium')).toHaveTextContent(expected.medium);
+    await expect(canvas.getByText(expected.relative)).toBeVisible();
   },
 };

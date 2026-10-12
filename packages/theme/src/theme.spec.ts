@@ -266,13 +266,13 @@ describe('computeThemeVars', () => {
   });
 
   it('applies the colorMatch rule to the error override too', () => {
-    const grey = { ...petrol, coreOverrides: { error: '#9e9e9e' } };
-    const softened = computeThemeVars(resolved({ colors: grey }))['--mat-sys-error']!;
-    const matched = computeThemeVars(resolved({ colors: { ...grey, colorMatch: true } }))[
+    const muted = { ...petrol, coreOverrides: { error: '#9a8686' } };
+    const softened = computeThemeVars(resolved({ colors: muted }))['--mat-sys-error']!;
+    const matched = computeThemeVars(resolved({ colors: { ...muted, colorMatch: true } }))[
       '--mat-sys-error'
     ]!;
     // Without colorMatch only the hue is taken; chroma comes from the variant's error palette
-    // (capped by the sRGB gamut at this hue, ~35 at tone 40) instead of the grey's ~2.
+    // (capped by the sRGB gamut at this hue, ~35 at tone 40) instead of the muted color's ~8.
     expect(chroma(softened)).toBeGreaterThan(25);
     expect(chroma(matched)).toBeLessThan(10);
   });
@@ -389,5 +389,31 @@ describe('contrastRatio', () => {
     expect(contrastRatio('#000000', '#ffffff')).toBeCloseTo(21, 1);
     expect(contrastRatio('#777777', '#ffffff')).toBeCloseTo(4.48, 1);
     expect(contrastRatio('#ffffff', '#ffffff')).toBeCloseTo(1, 5);
+  });
+});
+
+describe('core color overrides without colorMatch', () => {
+  const chromaOf = (hex: string) => Hct.fromInt(argbFromHex(hex)).chroma;
+  const secondaryWith = (override: string) =>
+    computeThemeVars({
+      colors: {
+        seed: '#00687a',
+        variant: 'vibrant',
+        colorMatch: false,
+        coreOverrides: { secondary: override },
+      },
+      shape: 'standard',
+      font: 'roboto-flex',
+      mode: 'light',
+      contrast: 'standard',
+    })['--mat-sys-secondary']!;
+
+  it('keeps a gray override gray instead of giving it the variant chroma', () => {
+    expect(chromaOf(secondaryWith('#808080'))).toBeLessThan(6);
+    expect(chromaOf(secondaryWith('#7a7d80'))).toBeLessThan(6);
+  });
+
+  it('still takes only the hue of a colorful override', () => {
+    expect(chromaOf(secondaryWith('#3e5f90'))).toBeGreaterThan(12);
   });
 });

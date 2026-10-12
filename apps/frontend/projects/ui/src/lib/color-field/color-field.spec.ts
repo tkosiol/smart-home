@@ -9,10 +9,12 @@ import { UiColorField } from './color-field';
     pickerLabel="Grundfarbe wählen"
     invalidMessage="Bitte als #rrggbb eingeben."
     [(value)]="color"
+    [disabled]="disabled()"
   />`,
 })
 class Host {
   readonly color = signal('#00687a');
+  readonly disabled = signal(false);
 }
 
 function render() {
@@ -80,5 +82,14 @@ describe('UiColorField', () => {
     type(picker, '#8a5a00');
     fixture.detectChanges();
     expect(host.color()).toBe('#8a5a00');
+  });
+
+  it('disables the text input and the picker', () => {
+    const fixture = TestBed.createComponent(Host);
+    fixture.componentInstance.disabled.set(true);
+    fixture.detectChanges();
+    const inputs = [...fixture.nativeElement.querySelectorAll('input')] as HTMLInputElement[];
+    expect(inputs).toHaveLength(2);
+    expect(inputs.every((input) => input.disabled)).toBe(true);
   });
 });

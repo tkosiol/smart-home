@@ -40,7 +40,7 @@ export class UiCardActions {}
 export class UiCard {
   readonly variant = input<UiCardVariant>('outlined');
   readonly heading = input<string>();
-  readonly subheading = input<string>();
+  readonly description = input<string>();
 
   protected readonly actions = contentChild(UiCardActions);
   protected readonly appearance = computed(() => APPEARANCE[this.variant()]);

@@ -14,7 +14,7 @@ export default meta;
 export const Raeume: StoryObj<UiEmptyState> = {
   render: () => ({
     template: `
-      <ui-empty-state icon="meeting_room" heading="Noch keine Räume" text="Hier erscheinen deine Räume mit ihren Geräten, sobald du sie anlegst.">
+      <ui-empty-state icon="meeting_room" heading="Noch keine Räume" description="Hier erscheinen deine Räume mit ihren Geräten, sobald du sie anlegst.">
         <div uiEmptyStateActions><ui-button icon="add">Raum anlegen</ui-button></div>
       </ui-empty-state>`,
   }),

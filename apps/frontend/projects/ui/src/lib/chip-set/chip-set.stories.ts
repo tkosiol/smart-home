@@ -70,6 +70,28 @@ export const Einzelauswahl: StoryObj<UiChipSet<string>> = {
   },
 };
 
+export const Deaktiviert: StoryObj<UiChipSet<string>> = {
+  args: { disabled: true, selected: ['bath'] },
+  render: (args) => ({
+    props: { ...args },
+    template: `<ui-chip-set [label]="label" [options]="options" [disabled]="disabled" [(selected)]="selected" />`,
+  }),
+  play: async ({ canvas }) => {
+    for (const option of canvas.getAllByRole('option')) {
+      await expect(option).toHaveAttribute('aria-disabled', 'true');
+    }
+    await userEvent.click(canvas.getByRole('option', { name: 'Küche' }), { pointerEventsCheck: 0 });
+    await expect(canvas.getByRole('option', { name: 'Küche' })).toHaveAttribute(
+      'aria-selected',
+      'false',
+    );
+    await expect(canvas.getByRole('option', { name: 'Bad' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+  },
+};
+
 // A long German label on the narrowest phone must not make the page scroll sideways.
 export const Schmal: StoryObj<UiChipSet<string>> = {
   decorators: [withNarrowFrame],

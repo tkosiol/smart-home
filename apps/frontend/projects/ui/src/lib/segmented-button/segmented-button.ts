@@ -5,13 +5,7 @@ import {
   type MatButtonToggleChange,
 } from '@angular/material/button-toggle';
 import { UiIcon } from '../icon/icon';
-import type { IconName } from '../icon/icon-codepoints';
-
-export interface UiSegmentOption<T extends string> {
-  readonly value: T;
-  readonly label: string;
-  readonly icon?: IconName;
-}
+import type { UiOption } from '../option';
 
 /** Single choice among few options (M3 segmented button); bind with `[(value)]`. */
 @Component({
@@ -22,7 +16,7 @@ export interface UiSegmentOption<T extends string> {
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class UiSegmentedButton<T extends string> {
-  readonly options = input.required<readonly UiSegmentOption<T>[]>();
+  readonly options = input.required<readonly UiOption<T>[]>();
   readonly value = model<T>();
   readonly label = input.required<string>();
   readonly disabled = input(false, { transform: booleanAttribute });

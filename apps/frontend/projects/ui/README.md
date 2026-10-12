@@ -14,13 +14,22 @@ Hintergrund: `docs/superpowers/specs/2026-10-11-etappe-3-design-system-design.md
 
 ## Bausteine
 
-| Gruppe      | Komponenten                                                                                        |
-| ----------- | -------------------------------------------------------------------------------------------------- |
-| Layout      | `ui-page`, `ui-section`, `ui-stack`, `ui-grid`                                                     |
-| Bedienung   | `ui-button`, `ui-icon-button`, `ui-switch`, `ui-segmented-button`, `ui-chip-set`, `ui-color-field` |
-| Inhalt      | `ui-card`, `ui-list`, `ui-list-item`, `ui-empty-state`, `ui-skeleton`, `ui-icon`                   |
-| Formular    | `ui-text-field`                                                                                    |
-| Rückmeldung | `ui-banner`, `UiSnackbar` (Service)                                                                |
-| Zeit        | `uiDateTime`, `uiRelativeTime`, `UiFormatContext`, `UiClock`                                       |
+| Gruppe      | Komponenten                                                                                                     |
+| ----------- | --------------------------------------------------------------------------------------------------------------- |
+| Layout      | `ui-page`, `ui-section`, `ui-stack`, `ui-grid`                                                                  |
+| Bedienung   | `ui-button`, `ui-icon-button`, `ui-switch`, `ui-segmented-button`, `ui-select`, `ui-chip-set`, `ui-color-field` |
+| Inhalt      | `ui-card`, `ui-list`, `ui-list-item`, `ui-empty-state`, `ui-skeleton`, `ui-icon`                                |
+| Formular    | `ui-text-field`                                                                                                 |
+| Theme       | `ui-theme-editor` (Modi personal/instance), ThemeService, provideTheme                                          |
+| Rückmeldung | `ui-banner`, `UiSnackbar` (Service)                                                                             |
+| Zeit        | `uiDateTime`, `uiRelativeTime`, `UiFormatContext`, `UiClock`                                                    |
 
 Neues Symbol: Namen in `src/lib/icon/icons.json` eintragen, dann `pnpm icons:build`.
+
+## Texte und Sprache
+
+Einfache Komponenten bekommen ihre Texte übersetzt vom Aufrufer (Inputs wie `label`, `heading`, `description`). Zusammengesetzte Komponenten wie `ui-theme-editor` bringen eigene Texte mit: Schlüssel unter `ui.*` in `src/i18n/de.json` und `en.json`. Die App und Storybook mischen sie über `loadUiTranslation(language)` in ihre Wurzelübersetzung.
+
+- Schlüssel, die erst zur Laufzeit gewählt werden (z. B. Optionen aus einer Liste), mit `marker('ui.…')` aus `@jsverse/transloco-keys-manager/marker` markieren.
+- `pnpm i18n:check` (Teil von `pnpm lint`) meldet fehlende und ungenutzte Schlüssel; ESLint (`smart/no-literal-template-text`) verbietet Text im Template ohne Schlüssel.
+- Unit-Tests übersetzen mit `provideUiTranslocoTesting(language)` aus `src/lib/testing/i18n-testing.ts`.

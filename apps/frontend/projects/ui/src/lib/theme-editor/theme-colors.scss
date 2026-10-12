@@ -1,0 +1,47 @@
+:host {
+  display: block;
+  min-width: 0;
+}
+
+.suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--smart-space-sm);
+}
+
+.swatch {
+  inline-size: var(--smart-size-touch);
+  block-size: var(--smart-size-touch);
+  padding: 0;
+  border: var(--smart-border-width) solid var(--mat-sys-outline);
+  border-radius: var(--mat-sys-corner-full);
+  cursor: pointer;
+
+  // The chosen swatch gets a thick ring in on-surface (shape, not only color; WCAG 1.4.1).
+  // A ring made of box-shadow layers would need raw values, which the style rules forbid.
+  &[aria-pressed='true'] {
+    border: var(--smart-focus-width) solid var(--mat-sys-on-surface);
+  }
+
+  &:focus-visible {
+    outline: var(--smart-focus-width) solid var(--mat-sys-secondary);
+    outline-offset: calc(var(--smart-space-xs) + var(--smart-focus-width));
+  }
+}
+
+.derived {
+  display: flex;
+  align-items: center;
+  gap: var(--smart-space-sm);
+  margin: 0;
+  color: var(--mat-sys-on-surface-variant);
+  font: var(--mat-sys-body-medium);
+}
+
+.dot {
+  flex: none;
+  inline-size: var(--smart-size-icon-sm);
+  block-size: var(--smart-size-icon-sm);
+  border: var(--smart-border-width) solid var(--mat-sys-outline);
+  border-radius: var(--mat-sys-corner-full);
+}

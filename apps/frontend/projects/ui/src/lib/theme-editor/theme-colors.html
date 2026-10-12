@@ -1,0 +1,72 @@
+<ui-stack gap="lg">
+  <ui-stack gap="sm">
+    <ui-color-field
+      [label]="'ui.themeEditor.seed' | transloco"
+      [pickerLabel]="'ui.themeEditor.seedPicker' | transloco"
+      [invalidMessage]="'ui.themeEditor.invalidColor' | transloco"
+      [value]="colors().seed"
+      (valueChange)="setSeed($event)"
+    />
+    <div
+      class="suggestions"
+      role="group"
+      [attr.aria-label]="'ui.themeEditor.suggestionsLabel' | transloco"
+    >
+      @for (suggestion of suggestions; track suggestion.hex; let index = $index) {
+        <button
+          type="button"
+          class="swatch"
+          [style.background-color]="suggestion.hex"
+          [attr.aria-label]="suggestionLabels()[index]"
+          [attr.aria-pressed]="colors().seed === suggestion.hex"
+          (click)="setSeed(suggestion.hex)"
+        ></button>
+      }
+    </div>
+  </ui-stack>
+  <ui-select
+    [label]="'ui.themeEditor.variant' | transloco"
+    [options]="variantOptions()"
+    [value]="colors().variant"
+    [hint]="variantHint()"
+    (valueChange)="setVariant($event)"
+  />
+  <ui-switch
+    [label]="'ui.themeEditor.colorMatch' | transloco"
+    [checked]="colors().colorMatch"
+    (checkedChange)="setColorMatch($event)"
+  />
+  <ui-section
+    [heading]="'ui.themeEditor.coreColors' | transloco"
+    [description]="'ui.themeEditor.coreColorsDescription' | transloco"
+    [level]="3"
+  >
+    <ui-stack gap="md">
+      @for (id of coreColorIds; track id; let index = $index) {
+        @let color = keyColors()[id];
+        @let name = coreColorNames()[index] ?? id;
+        <ui-stack gap="xs">
+          <ui-switch
+            [label]="'ui.themeEditor.customize' | transloco: { color: name }"
+            [checked]="color.source === 'override'"
+            (checkedChange)="setOverridden(id, $event)"
+          />
+          @if (color.source === 'override') {
+            <ui-color-field
+              [label]="name"
+              [pickerLabel]="'ui.themeEditor.pickColor' | transloco: { color: name }"
+              [invalidMessage]="'ui.themeEditor.invalidColor' | transloco"
+              [value]="color.hex"
+              (valueChange)="setOverride(id, $event)"
+            />
+          } @else {
+            <p class="derived">
+              <span class="dot" aria-hidden="true" [style.background-color]="color.hex"></span>
+              {{ 'ui.themeEditor.derived' | transloco: { hex: color.hex } }}
+            </p>
+          }
+        </ui-stack>
+      }
+    </ui-stack>
+  </ui-section>
+</ui-stack>

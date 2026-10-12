@@ -1,6 +1,7 @@
 import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { UiSegmentedButton, type UiSegmentOption } from './segmented-button';
+import type { UiOption } from '../option';
+import { UiSegmentedButton } from './segmented-button';
 
 type Mode = 'system' | 'light' | 'dark';
 
@@ -9,7 +10,7 @@ type Mode = 'system' | 'light' | 'dark';
   template: `<ui-segmented-button label="Modus" [options]="options" [(value)]="mode" />`,
 })
 class Host {
-  readonly options: readonly UiSegmentOption<Mode>[] = [
+  readonly options: readonly UiOption<Mode>[] = [
     { value: 'system', label: 'System' },
     { value: 'light', label: 'Hell', icon: 'light_mode' },
     { value: 'dark', label: 'Dunkel', icon: 'dark_mode' },
@@ -49,7 +50,7 @@ describe('UiSegmentedButton', () => {
   />`,
 })
 class DisabledHost {
-  readonly options: readonly UiSegmentOption<Mode>[] = [
+  readonly options: readonly UiOption<Mode>[] = [
     { value: 'system', label: 'System' },
     { value: 'light', label: 'Hell', icon: 'light_mode' },
     { value: 'dark', label: 'Dunkel', icon: 'dark_mode' },

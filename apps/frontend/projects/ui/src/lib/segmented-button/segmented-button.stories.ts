@@ -1,7 +1,8 @@
 import type { Meta, StoryObj } from '@storybook/angular';
 import { expect, fireEvent, userEvent } from 'storybook/test';
+import type { UiOption } from '../option';
 import { expectNoHorizontalOverflow, withNarrowFrame } from '../testing/story-helpers';
-import { UiSegmentedButton, type UiSegmentOption } from './segmented-button';
+import { UiSegmentedButton } from './segmented-button';
 
 const meta: Meta<UiSegmentedButton<string>> = {
   title: 'Bedienung/Segmented Button',
@@ -59,14 +60,14 @@ export const Deaktiviert: StoryObj<UiSegmentedButton<string>> = {
   },
 };
 
-const CONTRAST_OPTIONS: readonly UiSegmentOption<string>[] = [
+const CONTRAST_OPTIONS: readonly UiOption<string>[] = [
   { value: 'system', label: 'System' },
   { value: 'standard', label: 'Standard' },
   { value: 'medium', label: 'Mittel' },
   { value: 'high', label: 'Hoch' },
 ];
 
-const FONT_OPTIONS: readonly UiSegmentOption<string>[] = [
+const FONT_OPTIONS: readonly UiOption<string>[] = [
   { value: 'roboto-flex', label: 'Roboto Flex' },
   { value: 'figtree', label: 'Figtree' },
   { value: 'atkinson', label: 'Atkinson Hyperlegible' },

@@ -1,0 +1,67 @@
+{
+  "ui": {
+    "themeEditor": {
+      "seed": "Seed color",
+      "seedPicker": "Choose seed color",
+      "invalidColor": "Enter a color as #rrggbb.",
+      "suggestionsLabel": "Seed color suggestions",
+      "suggestions": {
+        "petrol": "Petrol",
+        "moss": "Moss",
+        "slate": "Slate blue",
+        "amber": "Amber",
+        "plum": "Plum",
+        "graphite": "Graphite"
+      },
+      "variant": "Variant",
+      "variants": {
+        "tonalSpot": "Tonal spot (default)",
+        "neutral": "Neutral",
+        "vibrant": "Vibrant",
+        "expressive": "Expressive",
+        "fidelity": "Fidelity",
+        "content": "Content",
+        "monochrome": "Monochrome"
+      },
+      "variantWithColorMatch": "With color match, the variant only sets the derived colors.",
+      "colorMatch": "Color match",
+      "coreColors": "Key colors",
+      "coreColorsDescription": "Key colors you do not customize are derived from the seed color.",
+      "coreColor": {
+        "primary": "Primary",
+        "secondary": "Secondary",
+        "tertiary": "Tertiary",
+        "error": "Error",
+        "neutral": "Neutral",
+        "neutralVariant": "Neutral variant"
+      },
+      "customize": "Customize {{color}}",
+      "pickColor": "Choose {{color}}",
+      "derived": "Derived: {{hex}}",
+      "display": "Display",
+      "mode": "Mode",
+      "modes": { "system": "System", "light": "Light", "dark": "Dark" },
+      "contrast": "Contrast",
+      "contrasts": {
+        "system": "System",
+        "standard": "Standard",
+        "medium": "Medium",
+        "high": "High"
+      },
+      "contrastSystemHint": "Standard, or high when the device asks for more contrast.",
+      "colors": "Colors",
+      "ownColors": "My own colors",
+      "installationColors": "The installation's colors apply.",
+      "shapeAndFont": "Shapes and font",
+      "shape": "Shapes",
+      "shapes": { "kantig": "Sharp", "standard": "Standard", "weich": "Soft" },
+      "font": "Font",
+      "fonts": {
+        "roboto-flex": "Roboto Flex",
+        "figtree": "Figtree",
+        "atkinson": "Atkinson Hyperlegible Next"
+      },
+      "reset": "Reset to default"
+    }
+  }
+}

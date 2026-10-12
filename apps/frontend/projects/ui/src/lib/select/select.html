@@ -1,0 +1,11 @@
+<mat-form-field appearance="outline">
+  <mat-label>{{ label() }}</mat-label>
+  <mat-select [value]="value()" [disabled]="disabled()" (selectionChange)="select($event)">
+    @for (option of options(); track option.value) {
+      <mat-option [value]="option.value">{{ option.label }}</mat-option>
+    }
+  </mat-select>
+  @if (hint(); as hint) {
+    <mat-hint>{{ hint }}</mat-hint>
+  }
+</mat-form-field>

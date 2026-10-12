@@ -15,7 +15,7 @@ export const Varianten: StoryObj<UiCard> = {
   render: () => ({
     template: `
       <div style="display: grid; gap: 16px; max-width: 480px">
-        <ui-card heading="Umrandet" subheading="Standard"><p>Inhalt</p></ui-card>
+        <ui-card heading="Umrandet" description="Standard"><p>Inhalt</p></ui-card>
         <ui-card variant="filled" heading="Gefüllt"><p>Inhalt</p></ui-card>
         <ui-card variant="elevated" heading="Erhöht">
           <p>Inhalt</p>

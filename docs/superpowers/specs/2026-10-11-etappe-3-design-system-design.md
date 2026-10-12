@@ -80,20 +80,22 @@ Zusammenführung: Formen und Schrift kommen immer von der Instanz. Für die Farb
 1. **Build:** Ein Skript erzeugt aus dem Instanz-Default eine CSS-Datei mit allen Rollen für Hell und Dunkel (über `prefers-color-scheme`) – korrekte Farben vor dem ersten Skript.
 2. **Start:** Das externe Skript `theme-boot.js` (kein Inline-Skript wegen CSP) setzt die zuletzt berechneten Variablen des Nutzers aus dem Zwischenspeicher, für Hell und Dunkel getrennt gespeichert, damit „System“ ohne Aufblitzen funktioniert.
 3. **Laufzeit:** `ThemeService` berechnet bei jeder Änderung neu, reagiert auf Wechsel von `prefers-color-scheme` und `prefers-contrast` und aktualisiert den Zwischenspeicher.
-4. **Laufzeitkonfiguration (Self-Hosting):** Der Instanz-Default kann ohne Neubau über `config.json` (vom `web`-Container ausgeliefert, aus Umgebungsvariablen erzeugt) überschrieben werden; ist er gesetzt, hat er Vorrang vor dem Build-Default.
+4. **Laufzeitkonfiguration (Self-Hosting):** Der Instanz-Default kann ohne Neubau über `config.json` (vom `web`-Container ausgeliefert, aus den Umgebungsvariablen `SMART_INSTANCE_APPEARANCE_EDITOR` und `SMART_INSTANCE_APPEARANCE` erzeugt) überschrieben werden. Vorrang: im Browser gespeicherte Instanz (nur solange `features.instanceAppearanceEditor` aktiv ist) vor `config.json` vor Build-Default.
 
 ## 5. Komponenten (`@smart/ui`)
 
-| Gruppe      | Komponenten                                                                                    |
-| ----------- | ---------------------------------------------------------------------------------------------- |
-| Layout      | `ui-page`, `ui-stack`, `ui-grid`, `ui-section`                                                 |
-| Rahmen      | `ui-adaptive-shell`, `ui-top-app-bar`, `ui-badge`                                              |
-| Bedienung   | `ui-button`, `ui-icon-button`, `ui-switch`, `ui-segmented-button`, `ui-chip`, `ui-color-field` |
-| Inhalt      | `ui-card`, `ui-list`, `ui-list-item`, `ui-empty-state`, `ui-skeleton`, `ui-icon`               |
-| Formular    | `ui-text-field`                                                                                |
-| Theme       | `ui-theme-editor` (Modi: `personal` / `instance`)                                              |
-| Rückmeldung | `ui-snackbar` (Service), `ui-banner`                                                           |
-| Pipes       | `uiDateTime`, `uiRelativeTime` (Haushalts-Zeitzone, `Intl.DateTimeFormat`)                     |
+| Gruppe      | Komponenten                                                                                                 |
+| ----------- | ----------------------------------------------------------------------------------------------------------- |
+| Layout      | `ui-page`, `ui-stack`, `ui-grid`, `ui-section`                                                              |
+| Rahmen      | `ui-adaptive-shell`, `ui-top-app-bar`, `ui-badge`                                                           |
+| Bedienung   | `ui-button`, `ui-icon-button`, `ui-switch`, `ui-segmented-button`, `ui-select`, `ui-chip`, `ui-color-field` |
+| Inhalt      | `ui-card`, `ui-list`, `ui-list-item`, `ui-empty-state`, `ui-skeleton`, `ui-icon`                            |
+| Formular    | `ui-text-field`                                                                                             |
+| Theme       | `ui-theme-editor` (Modi: `personal` / `instance`)                                                           |
+| Rückmeldung | `ui-snackbar` (Service), `ui-banner`                                                                        |
+| Pipes       | `uiDateTime`, `uiRelativeTime` (Haushalts-Zeitzone, `Intl.DateTimeFormat`)                                  |
+
+`ui-select` kam mit Plan 3c dazu: Auswahlen mit vier und mehr oder langen Optionen passen auf dem schmalsten Handy nicht in einen Segmented Button.
 
 Regeln aus Spec 10.3 gelten unverändert und werden erstmals an echtem Code durchgesetzt. Nicht in Etappe 3: `ui-chart`, Dialoge, Gerätekacheln.
 

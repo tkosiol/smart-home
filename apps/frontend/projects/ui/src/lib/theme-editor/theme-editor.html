@@ -1,0 +1,60 @@
+<ui-stack gap="xl">
+  @if (mode() === 'personal') {
+    <ui-section [heading]="'ui.themeEditor.display' | transloco">
+      <ui-stack gap="md">
+        <ui-segmented-button
+          [label]="'ui.themeEditor.mode' | transloco"
+          [options]="modeOptions()"
+          [value]="personal().mode"
+          (valueChange)="setMode($event)"
+        />
+        <ui-select
+          [label]="'ui.themeEditor.contrast' | transloco"
+          [options]="contrastOptions()"
+          [value]="personal().contrast"
+          [hint]="contrastHint()"
+          (valueChange)="setContrast($event)"
+        />
+      </ui-stack>
+    </ui-section>
+    <ui-section [heading]="'ui.themeEditor.colors' | transloco">
+      <ui-stack gap="md">
+        <ui-switch
+          [label]="'ui.themeEditor.ownColors' | transloco"
+          [checked]="!!personal().colors"
+          (checkedChange)="setOwnColors($event)"
+        />
+        @if (personal().colors; as colors) {
+          <ui-theme-colors [colors]="colors" (colorsChange)="setPersonalColors($event)" />
+        } @else {
+          <p class="note">{{ 'ui.themeEditor.installationColors' | transloco }}</p>
+        }
+      </ui-stack>
+    </ui-section>
+  } @else {
+    <ui-section [heading]="'ui.themeEditor.colors' | transloco">
+      <ui-theme-colors [colors]="instance().colors" (colorsChange)="setInstanceColors($event)" />
+    </ui-section>
+    <ui-section [heading]="'ui.themeEditor.shapeAndFont' | transloco">
+      <ui-stack gap="md">
+        <ui-select
+          [label]="'ui.themeEditor.shape' | transloco"
+          [options]="shapeOptions()"
+          [value]="instance().shape"
+          (valueChange)="setShape($event)"
+        />
+        <ui-select
+          [label]="'ui.themeEditor.font' | transloco"
+          [options]="fontOptions()"
+          [value]="instance().font"
+          (valueChange)="setFont($event)"
+        />
+      </ui-stack>
+    </ui-section>
+  }
+  <ui-stack align="start">
+    <ui-button variant="outlined" icon="refresh" (pressed)="resetRequested.emit()">
+      {{ 'ui.themeEditor.reset' | transloco }}
+    </ui-button>
+  </ui-stack>
+</ui-stack>
