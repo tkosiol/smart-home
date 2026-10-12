@@ -79,6 +79,21 @@ export function smartConfig({ rootDir, typeChecked = true }) {
       extends: [angular.configs.templateRecommended, angular.configs.templateAccessibility],
     },
     {
+      // Spec 7: no visible text without a translation key. Inline templates are linted as
+      // virtual files below their .ts file; stories and specs may use German sample texts.
+      // index.html is the static shell document (brand name in <title>), not a component template.
+      files: ['apps/frontend/**/*.html'],
+      ignores: [
+        '**/*.stories.ts/**',
+        '**/*.spec.ts/**',
+        '**/testing/**',
+        '**/*.story-component.html',
+        'apps/frontend/src/index.html',
+      ],
+      plugins: { smart: smartPlugin },
+      rules: { 'smart/no-literal-template-text': 'error' },
+    },
+    {
       files: ['apps/frontend/src/app/**/*.ts'],
       plugins: { smart: smartPlugin },
       rules: { 'smart/no-component-styles': 'error' },
