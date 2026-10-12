@@ -5,6 +5,7 @@ import { TranslocoService } from '@jsverse/transloco';
 import type { Subscription } from 'rxjs';
 
 const PRODUCT_NAME = 'Smart Home';
+const HEADING_WAIT_MS = 3000;
 
 /**
  * The document title names the page ("Räume – Smart Home") in the active language, and after a
@@ -23,11 +24,15 @@ export class PageTitleStrategy extends TitleStrategy {
   private readonly document = inject(DOCUMENT);
   private readonly injector = inject(Injector);
   private following?: Subscription;
+  private stopWatching?: () => void;
   private firstPage = true;
 
   constructor() {
     super();
-    inject(DestroyRef).onDestroy(() => this.following?.unsubscribe());
+    inject(DestroyRef).onDestroy(() => {
+      this.following?.unsubscribe();
+      this.stopWatching?.();
+    });
   }
 
   override updateTitle(snapshot: RouterStateSnapshot): void {
@@ -47,11 +52,39 @@ export class PageTitleStrategy extends TitleStrategy {
       if (this.injector.get(Router).getCurrentNavigation()?.trigger !== 'popstate') {
         this.document.defaultView?.scrollTo(0, 0);
       }
-      afterNextRender(
-        () => this.document.querySelector<HTMLElement>('main h1')?.focus({ preventScroll: true }),
-        { injector: this.injector },
-      );
+      this.focusHeading();
     }
     this.firstPage = false;
+  }
+
+  /**
+   * Once the new page is rendered. A page waits for its texts before it shows a heading, so this
+   * watches for it for a moment, unless the user has moved the focus on by then.
+   */
+  private focusHeading(): void {
+    this.stopWatching?.();
+    afterNextRender(
+      () => {
+        const before = this.document.activeElement;
+        const done = (): boolean => {
+          if (this.document.activeElement !== before) return true;
+          const heading = this.document.querySelector<HTMLElement>('main h1');
+          heading?.focus({ preventScroll: true });
+          return heading !== null;
+        };
+        const main = this.document.querySelector('main');
+        if (done() || !main) return;
+        const observer = new MutationObserver(() => done() && stop());
+        const timer = setTimeout(() => stop(), HEADING_WAIT_MS);
+        const stop = (): void => {
+          observer.disconnect();
+          clearTimeout(timer);
+          this.stopWatching = undefined;
+        };
+        observer.observe(main, { childList: true, subtree: true });
+        this.stopWatching = stop;
+      },
+      { injector: this.injector },
+    );
   }
 }

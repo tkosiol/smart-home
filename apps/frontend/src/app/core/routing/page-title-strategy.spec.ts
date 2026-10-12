@@ -1,5 +1,5 @@
 import { Location } from '@angular/common';
-import { ChangeDetectionStrategy, Component, importProvidersFrom } from '@angular/core';
+import { ChangeDetectionStrategy, Component, importProvidersFrom, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Title } from '@angular/platform-browser';
 import { Router, TitleStrategy, provideRouter, type Routes } from '@angular/router';
@@ -21,7 +21,25 @@ class Page {}
 })
 class HeadlessPage {}
 
+/** Its heading appears a moment after the route is active, like a page waiting for its texts. */
+@Component({
+  template: `<main>
+    <button>Weiter</button>
+    @if (ready()) {
+      <h1 tabindex="-1">Spät</h1>
+    }
+  </main>`,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+})
+class LatePage {
+  protected readonly ready = signal(false);
+  constructor() {
+    setTimeout(() => this.ready.set(true), 30);
+  }
+}
+
 const routes: Routes = [
+  { path: 'spaet', component: LatePage, title: 'app.title.devices' },
   { path: '', component: Page, title: 'app.title.overview' },
   { path: 'raeume', component: Page, title: 'app.title.rooms' },
   { path: 'ohne-titel', component: Page },
@@ -121,6 +139,26 @@ describe('PageTitleStrategy', () => {
       await harness.navigateByUrl('/');
       await harness.fixture.whenStable();
       expect(document.activeElement?.tagName).toBe('H1');
+    });
+
+    it('waits for a heading that appears after the page is shown', async () => {
+      setup();
+      const harness = await RouterTestingHarness.create('/raeume');
+      await harness.navigateByUrl('/spaet');
+      expect(document.activeElement).toBe(document.body);
+      await vi.waitFor(() => expect(document.activeElement?.tagName).toBe('H1'));
+    });
+
+    it('does not take the focus from where the user moved it meanwhile', async () => {
+      setup();
+      const harness = await RouterTestingHarness.create('/raeume');
+      await harness.navigateByUrl('/spaet');
+      const button = harness.routeNativeElement?.querySelector('button');
+      button?.focus();
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      harness.detectChanges();
+      expect(harness.routeNativeElement?.querySelector('h1')).not.toBeNull();
+      expect(document.activeElement).toBe(button);
     });
 
     it('leaves the focus alone when the page has no heading', async () => {
