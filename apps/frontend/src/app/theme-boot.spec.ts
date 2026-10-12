@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { BOOT_CACHE_VERSION } from '@smart/ui';
 
 const script = readFileSync(join(process.cwd(), 'public/theme-boot.js'), 'utf8');
 const run = () => new Function(script)() as void;
@@ -23,6 +24,11 @@ describe('theme-boot.js', () => {
   });
   afterEach(() => {
     Reflect.deleteProperty(window, 'matchMedia');
+  });
+
+  it('accepts exactly the cache version the ThemeService writes', () => {
+    // The script is plain JavaScript and cannot import the constant; this ties both together.
+    expect(script).toContain(`cache.v !== ${BOOT_CACHE_VERSION}`);
   });
 
   it('applies the cached dark theme before Angular starts', () => {
