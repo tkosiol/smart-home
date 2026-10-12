@@ -4143,3 +4143,39 @@ Expected: alles grün; der App-Build meldet die initiale Größe unter 500 kB; d
 git add apps/frontend/projects/ui/README.md apps/frontend/projects/ui/src/lib/einfuehrung.mdx CLAUDE.md docs/superpowers/specs
 git commit -m "docs: describe translations, runtime configuration and the theme editor"
 ```
+
+---
+
+## Ergebnis und Übertrag
+
+Umgesetzt subagent-gestützt (Umsetzung und Review je Task mit Sonnet, Task 6 und 10 mit Haiku, Gesamt-Review mit Opus und einer Nachbesserungsrunde). Dieser Abschnitt hält fest, wo die Umsetzung vom Plan abweicht und was Plan 3d übernehmen muss.
+
+### Abweichungen vom Plan (Entscheidungen)
+
+- **Text-Regel (Task 1):** Die Regel prüft nicht nur wörtliche Texte und Text-Attribute, sondern läuft durch die Ausdrücke von Interpolationen und gebundenen Text-Attributen (Bedingungen, Verkettungen, Template-Strings). Erlaubt sind Zeichenketten nur als direkte Eingabe der `transloco`-Pipe. `apps/frontend/src/index.html` ist ausgenommen (statische Hülle mit dem Markennamen im `<title>`). Nach dem Gesamt-Review gilt auch `headline` als Text-Attribut; ein Test vergleicht alle `string`-Eingaben der Bibliothek mit der Liste, damit neue Text-Eingaben nicht durchrutschen.
+- **Graue Overrides (Task 3):** Schwelle bleibt bei Buntheit 6; die Testfarbe ist `#7a7d80` statt `#7a7f85` (Buntheit 7,3, sichtbar bläulich). Ein älterer Test nutzt statt eines Graus `#9a8686`.
+- **Chips (Task 6):** `[disabled]` sitzt zusätzlich an jeder Chip-Option, weil Material den Zustand der Liste nur an bereits gerenderte Chips weitergibt.
+- **Auswahlfeld (Task 7):** Die 48-px-Prüfung misst den umrandeten Feldcontainer (56 px), nicht die 24 px hohe Textzeile; ein Klick irgendwo im Container öffnet die Liste.
+- **Farbvorschläge (Task 8):** Die gewählte Farbe zeigt einen dicken Rand in `--mat-sys-on-surface` statt des doppelten Schattenrings (Stylelint lässt zusammengesetzte Schatten nicht zu).
+- **Theme-Editor (Task 9):** Die Ausgabe heißt `resetRequested` statt `reset` (`@angular-eslint/no-output-native`). Der Modus bleibt ein Segmented Button; bei 288 px bricht kein Wort.
+- **Storybook (Gesamt-Review):** Die Werkzeugleiste wartet nicht von selbst auf geladene Übersetzungen. Stories mit Text rufen zu Beginn `waitForTranslations()` aus `lib/testing/storybook-environment.ts` auf; ohne das prüften die Editor-Stories ein leeres DOM. Die Sprache der Werkzeugleiste und der App setzt jetzt auch `UiFormatContext.locale` (Datums- und Zeitangaben auf Englisch).
+- **Container-Skript:** Kein `SMART_CONFIG_TARGET`; die Datei liegt fest unter `/tmp/smart-config.json` (passend zum nginx-Alias). Kaputtes JSON in `SMART_INSTANCE_APPEARANCE` macht die ganze `config.json` unbrauchbar – auch der Editor-Schalter fällt dann auf aus (im Runbook beschrieben).
+
+### Übertrag in Plan 3d
+
+- **Seiten binden den Editor** so: `<ui-theme-editor mode="personal" [instance]="theme.instance()" [personal]="theme.personal()" (personalChange)="theme.setPersonal($event)" (resetRequested)="theme.resetPersonal()" />` (Muster: Live-Story).
+- **Sprache:** aktive Sprache vor dem ersten Rendern laden (App-Initializer), sonst kurz leere Texte; Sprachwahl zwischen Tabs abgleichen wie das Theme; Schlüsselprüfung um Feature-Scopes erweitern (`scopePathMap`), sobald Features eigene Übersetzungen bekommen. Regel festhalten: Texte in TypeScript (Optionen, Snackbar-Meldungen) nur über `marker()`/`translatedOptions`, die Template-Regel sieht sie nicht.
+- **PWA:** `config.json` gehört in eine `dataGroup` mit Frische-Strategie und kurzem Timeout, nicht in eine Asset-Gruppe (die Datei im Image ist die Entwicklungsdatei, der Container liefert seine eigene).
+- **Staging:** `infra/deploy/provision.sh` schreibt `SMART_INSTANCE_APPEARANCE_EDITOR=true` nicht, und `--force` würde von Hand ergänzte `SMART_*`-Zeilen verwerfen – vor den Installations-Einstellungen auf Staging lösen.
+- **Tests nachziehen:** Abgleich der Instanz zwischen Tabs (auch bei ausgeschaltetem Editor), Bearbeiten eines bestehenden Overrides im Farbteil, Reset im Installationsmodus.
+- **Leistung:** `ThemeService.apply()` berechnet bei Kontrast „System“ fünf Variablensätze je Änderung; beim Ziehen im Farbwähler ggf. entprellen.
+- Aus 3b weiterhin offen: Snackbar-Schließen, Banner-Ansage, Überschriftenebenen, Umbruch, Button-Link-Modus, Liste (siehe Plan 3b).
+
+### Bewusst zurückgestellt (klein)
+
+- Schlüsselprüfung: `spawnSync`-Fehler (`ENOENT`) ohne Meldung, kein Timeout, kaputte Konfiguration wirft statt Problem-Eintrag, Sprachen fest statt aus `LANGUAGES`, Ausgabe-Wächter ungetestet.
+- Theme: `storage`-Ereignis prüft `storageArea` nicht; Boot-Cache-Version ist jetzt per Test verknüpft.
+- Laufzeitkonfiguration: 404 ohne Warnung; unquotiertes JSON-Beispiel in `.env.example` ungetestet.
+- Komponenten: Kommentar zur Chip-Bindung; Story-Prüfung über private Material-Klasse; `withPhoneFrame` dupliziert `withNarrowFrame`; offene Auswahlliste bei schmaler Breite ungeprüft; gewählte Farbfläche wird durch den dicken Rand 4 px kleiner; `setOwnColors` übernimmt künftige Felder nicht; Zielflächen-Prüfung im Editor nur für Segmente und Farbflächen.
+- Storybook: `translationsReady` ist modulweit; Live-Story verlässt sich darauf, dass `whenStable()` den Theme-Effekt abgeschlossen hat; deutsche Beschriftungen in der Zeit-Demo.
+- Spec 5 nennt `ui-chip`, die Bibliothek hat `ui-chip-set`.
