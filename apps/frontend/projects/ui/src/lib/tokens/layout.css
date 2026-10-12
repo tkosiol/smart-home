@@ -15,6 +15,8 @@
   --smart-size-nav-bar: 80px;
   --smart-size-nav-rail: 80px;
   --smart-size-nav-drawer: 360px;
+  /* Stacking order: the fixed bottom bar above positioned content scrolling under it */
+  --smart-z-nav: 1;
   --smart-size-nav-item: 56px;
   --smart-size-nav-indicator-width: 64px;
   --smart-size-nav-indicator-height: 32px;

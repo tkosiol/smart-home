@@ -31,6 +31,7 @@ main {
 nav {
   position: fixed;
   inset: auto 0 0;
+  z-index: var(--smart-z-nav);
   display: flex;
   box-sizing: border-box;
   height: var(--smart-size-nav-bar);

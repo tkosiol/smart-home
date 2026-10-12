@@ -9,6 +9,7 @@ import { UiBanner } from '../banner/banner';
 import { UiIconButton } from '../button/icon-button';
 import { UiIcon } from '../icon/icon';
 import { UiPage } from '../layout/page/page';
+import { UiTextField } from '../text-field/text-field';
 import { UiTopAppBar, UiTopAppBarActions } from '../top-app-bar/top-app-bar';
 import { EXPANDED, MEDIUM, UiAdaptiveShell, UiShellBanner, UiShellTopBar } from './adaptive-shell';
 import type { UiNavDestination, UiWindowClass } from './navigation';
@@ -51,6 +52,7 @@ const meta: Meta<UiAdaptiveShell> = {
         UiIcon,
         UiBanner,
         UiPage,
+        UiTextField,
       ],
     }),
   ],
@@ -149,6 +151,60 @@ export const Desktop: Story = {
     const iconRect = link.querySelector('ui-icon')!.getBoundingClientRect();
     const labelRect = link.querySelector('.label')!.getBoundingClientRect();
     await expect(labelRect.left).toBeGreaterThanOrEqual(iconRect.right);
+  },
+};
+
+/** Compact shell with content taller than the viewport and positioned form fields in it. */
+const tallContent = {
+  render: () => ({
+    props: { destinations, fields: Array.from({ length: 16 }, (_, index) => `Feld ${index + 1}`) },
+    template: `
+      <ui-adaptive-shell [destinations]="destinations" navigationLabel="Hauptnavigation">
+        <ui-page heading="Lange Seite">
+          @for (field of fields; track field) {
+            <ui-text-field [label]="field" />
+          }
+        </ui-page>
+      </ui-adaptive-shell>`,
+  }),
+};
+
+/** Content scrolled under the fixed bar must not paint over it. */
+export const UnterDerLeiste: Story = {
+  ...tallContent,
+  decorators: [forceWindowClass('compact')],
+  play: async ({ canvasElement, canvas }) => {
+    const nav = canvas.getByRole('navigation', { name: 'Hauptnavigation' });
+    const bar = nav.getBoundingClientRect();
+    const field = canvasElement.querySelectorAll('ui-text-field')[8]!;
+    const fieldRect = field.getBoundingClientRect();
+    // Put the middle of a (positioned) form field right behind the middle of the bar.
+    window.scrollBy(0, fieldRect.top + fieldRect.height / 2 - (bar.top + bar.height / 2));
+    const x = field.getBoundingClientRect().left + field.getBoundingClientRect().width / 2;
+    const y = bar.top + bar.height / 2;
+    await expect(field.getBoundingClientRect().top).toBeLessThan(y);
+    await expect(field.getBoundingClientRect().bottom).toBeGreaterThan(y);
+    await expect(nav.contains(document.elementFromPoint(x, y))).toBe(true);
+  },
+};
+
+/** A focused control scrolled into view must stay clear of the fixed bar (WCAG 2.4.11). */
+export const FokusUeberDerLeiste: Story = {
+  ...tallContent,
+  decorators: [forceWindowClass('compact')],
+  play: async ({ canvasElement, canvas }) => {
+    const nav = canvas.getByRole('navigation', { name: 'Hauptnavigation' });
+    window.scrollTo(0, 0);
+    const target = canvasElement.querySelectorAll('input')[10]!;
+    await expect(target.getBoundingClientRect().top).toBeGreaterThan(window.innerHeight);
+    target.focus({ preventScroll: true });
+    await expect(target).toHaveFocus();
+    // Scrolling the focused control just into view (as a keyboard user's Tab does) must leave
+    // it above the bar, not right at the viewport edge behind it.
+    target.scrollIntoView({ block: 'nearest' });
+    await expect(target.getBoundingClientRect().bottom).toBeLessThanOrEqual(
+      nav.getBoundingClientRect().top,
+    );
   },
 };
 
