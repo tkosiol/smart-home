@@ -339,6 +339,9 @@ importers:
       '@angular/compiler-cli':
         specifier: ^22.2.0
         version: 22.2.2(@angular/compiler@22.2.2)(typescript@6.0.3)
+      '@jsverse/transloco-keys-manager':
+        specifier: 8.1.1
+        version: 8.1.1(supports-color@7.2.0)(typescript@6.0.3)
       '@storybook/addon-a11y':
         specifier: 10.6.1
         version: 10.6.1(storybook@10.6.1(@types/react@19.3.0)(prettier@3.9.10)(react@19.3.0))

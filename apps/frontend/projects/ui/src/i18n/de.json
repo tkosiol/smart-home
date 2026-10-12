@@ -1,1 +1,43 @@
-{}
+{
+  "ui": {
+    "themeEditor": {
+      "seed": "Grundfarbe",
+      "seedPicker": "Grundfarbe auswählen",
+      "invalidColor": "Bitte eine Farbe im Format #rrggbb eingeben.",
+      "suggestionsLabel": "Vorschläge für die Grundfarbe",
+      "suggestions": {
+        "petrol": "Petrol",
+        "moss": "Moos",
+        "slate": "Schieferblau",
+        "amber": "Bernstein",
+        "plum": "Pflaume",
+        "graphite": "Graphit"
+      },
+      "variant": "Variante",
+      "variants": {
+        "tonalSpot": "Tonal Spot (Standard)",
+        "neutral": "Neutral",
+        "vibrant": "Vibrant",
+        "expressive": "Expressive",
+        "fidelity": "Fidelity",
+        "content": "Content",
+        "monochrome": "Monochrome"
+      },
+      "variantWithColorMatch": "Mit Farbtreue legt die Variante nur die abgeleiteten Farben fest.",
+      "colorMatch": "Farbtreue",
+      "coreColors": "Kernfarben",
+      "coreColorsDescription": "Nicht angepasste Kernfarben leiten sich aus der Grundfarbe ab.",
+      "coreColor": {
+        "primary": "Primär",
+        "secondary": "Sekundär",
+        "tertiary": "Tertiär",
+        "error": "Fehler",
+        "neutral": "Neutral",
+        "neutralVariant": "Neutral (Variante)"
+      },
+      "customize": "{{color}} anpassen",
+      "pickColor": "{{color}} auswählen",
+      "derived": "Abgeleitet: {{hex}}"
+    }
+  }
+}
