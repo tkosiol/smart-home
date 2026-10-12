@@ -420,3 +420,36 @@ Verhalten: Für `staging` schreibt `provision.sh` zusätzlich `SMART_INSTANCE_AP
 - `docs/runbooks/provisioning.md`: Hinweis zu Manifest-Farbe (Build-Default) und Service Worker (Update erscheint als Banner).
 - Spec Etappe 3: Abschnitt 3 um `/mehr/einstellungen` ergänzen; Abschnitt 5 `ui-chip` → `ui-chip-set` und `ui-select` (3c) – mit einem Satz Begründung.
 - Gesamtprüfung wie Plan 3c Task 10 Step 5 (inkl. Storybook, Stack-Test, Private-Scan); Commit `docs: describe the app shell, PWA and feature registration`.
+
+---
+
+## Ergebnis und Übertrag
+
+Umgesetzt subagent-gestützt (Sonnet für Umsetzung und Reviews, Haiku für Task 8 und 10, Opus für das Gesamt-Review mit einer Nachbesserungsrunde). Dieser Abschnitt hält fest, wo die Umsetzung vom Plan abweicht und was Etappe 4 übernehmen muss.
+
+### Abweichungen vom Plan (Entscheidungen)
+
+- **CSP (Entscheidung Till):** `style-src 'self' 'unsafe-inline'` statt einer Nonce pro Anfrage. nginx schrieb die Nonce in `index.html`, der Service Worker prüft die Datei aber Byte für Byte gegen `ngsw.json` und hätte nie installiert. Skripte bleiben streng (`'self'`, keine Inline-Skripte); ein E2E-Test vergleicht den Hash der ausgelieferten `index.html` mit `ngsw.json`.
+- **`@smart/ui/forms` (neuer Einstieg):** Formular-Bausteine und `UiThemeEditor` kommen aus `@smart/ui/forms`, alles andere aus `@smart/ui`. Sonst zog der Barrel-Import der Shell rund 300 kB Material-Code ins initiale Bundle. Lint verbietet `@smart/ui/forms` in `core/`, `shell/` und den App-Wurzeldateien.
+- **Bundle:** initial 498,35 kB (Grenze 500 kB). Deshalb ohne `withInMemoryScrolling` (+4 kB): Vorwärts-Navigation scrollt nach oben, Zurück/Vor überlässt die Scrollposition dem Browser.
+- **Liste:** „Kommt bald“-Zeilen sind normale, nicht klickbare Zeilen mit lesbarem Nebentext; deaktivierte Zeilen sind in axe nur von der Kontrastregel ausgenommen.
+- **Snackbar-Schließfarbe** als Material-Override in `tokens/_material.scss`; **Rahmen:** `z-index`-Token für die untere Leiste, `isolation: isolate` am Inhalt, globales `scroll-padding-bottom` auf dem Handy (WCAG 2.4.11).
+- **Seitentitel und Fokus (Gesamt-Review):** jede Route hat einen übersetzten Titel („Räume – Smart Home“), nach einer Navigation springt der Fokus auf die Seitenüberschrift.
+- **Theme-Editor** setzt `TRANSLOCO_SCOPE` zurück, sonst fand `translateSignal` in Seiten mit eigenem Scope die `ui.*`-Schlüssel nicht.
+- **Provisioning:** Staging bekommt `SMART_INSTANCE_APPEARANCE_EDITOR=true`, `--force` behält vorhandene `SMART_*`-Zeilen.
+- **Tests:** App-Icon-Test ohne Browser (die CI installiert im `verify`-Job keinen); E2E-Test „kein Aufblitzen“ lädt ohne App-Bundle und mit blockiertem Service Worker neu; Playwright läuft mit `locale: 'de-DE'`.
+
+### Übertrag in Etappe 4
+
+- **Zuerst Platz im Bundle schaffen** (1,6 kB Luft): Farb-Engine nach dem ersten Bild nachladen (`theme-boot.js` deckt den ersten Paint), Zod im initialen Bundle prüfen; danach `withInMemoryScrolling` nachziehen.
+- **`Shell` als Layout-Route** (`{ path: '', component: Shell, children: […] }`), damit eine Login-Seite außerhalb des Rahmens liegt.
+- Updates: periodisches `checkForUpdate()` bzw. bei `visibilitychange`, `SwUpdate.unrecoverable` behandeln; Navigationsfehler (fehlender Chunk offline) mit Hinweis statt stillem Nichts; Symbolschrift im Service Worker vorab laden.
+- Snackbar über der unteren Leiste versetzen; doppelte Ansage (Banner `role="status"` plus Announcer) prüfen; Scope-Übersetzungen per Resolver vorladen (Überschriften erscheinen sonst kurz verzögert); Zurück-Weg auf Unterseiten (installierte iOS-App); aktiver Zustand im Forced-Colors-Modus.
+- Installations-Schalter (Einstellungsseite und `canMatch`) durch die Admin-Rolle ersetzen; `MoreEntry` um Sichtbarkeit/Rolle erweitern; Haushaltsname aus dem Haushalt.
+- Zwei Unit-Specs (Übersetzungs-Loader, Installationsseite) sind beim Kaltstart je einmal gekippt („environment torn down“) – beobachten.
+
+### Bewusst zurückgestellt (klein)
+
+- Badge ohne Schutz gegen `NaN`/Bruchzahlen (Zähler bis Etappe 7 immer 0); gekürzter Haushaltsname ohne `title`.
+- Titel-Strategie: verwaister `afterNextRender`-Hook bei zwei schnellen Navigationen; jsdom-Rauschen zu `scrollTo` in der Spec; Query-/Fragment-Navigationen würden ebenfalls scrollen und fokussieren.
+- Statische `theme-color` und Manifest-Sprache; Sprachnamen als Literale; Provisioning-Randfälle ohne eigenen Test; kleinere Story-/Test-Lücken laut Reviews (u. a. Fokus-Tests der Shell, Schriftprüfung nur für Roboto Flex).
