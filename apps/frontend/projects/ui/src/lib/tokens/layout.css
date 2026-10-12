@@ -11,6 +11,13 @@
   /* Sizes */
   --smart-size-touch: 48px;
   --smart-size-top-app-bar: 64px;
+  /* Adaptive navigation: bottom bar (compact), rail (medium), drawer (expanded) */
+  --smart-size-nav-bar: 80px;
+  --smart-size-nav-rail: 80px;
+  --smart-size-nav-drawer: 360px;
+  --smart-size-nav-item: 56px;
+  --smart-size-nav-indicator-width: 64px;
+  --smart-size-nav-indicator-height: 32px;
   --smart-size-badge: 16px;
   --smart-size-icon-sm: 20px;
   --smart-size-icon-md: 24px;

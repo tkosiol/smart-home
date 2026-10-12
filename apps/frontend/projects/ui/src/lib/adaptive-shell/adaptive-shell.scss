@@ -1,0 +1,176 @@
+// Compact: top bar, banner and main stack; the navigation is a fixed bar at the bottom.
+:host {
+  display: grid;
+  grid-template:
+    'top-bar' auto
+    'banner' auto
+    'main' 1fr / minmax(0, 1fr);
+  min-height: 100dvh;
+  background: var(--mat-sys-surface);
+  color: var(--mat-sys-on-surface);
+}
+
+.top-bar {
+  grid-area: top-bar;
+  min-width: 0;
+}
+
+.banner {
+  grid-area: banner;
+  min-width: 0;
+}
+
+main {
+  grid-area: main;
+  min-width: 0;
+
+  // Keeps the end of the content clear of the fixed bar.
+  padding-bottom: var(--smart-size-nav-bar);
+}
+
+nav {
+  position: fixed;
+  inset: auto 0 0;
+  display: flex;
+  box-sizing: border-box;
+  height: var(--smart-size-nav-bar);
+  background: var(--mat-sys-surface-container);
+}
+
+.destination {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--smart-space-xs);
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: var(--smart-size-touch);
+  padding-inline: var(--smart-space-xs);
+  color: var(--mat-sys-on-surface-variant);
+  text-align: center;
+  text-decoration: none;
+}
+
+.destination:focus-visible {
+  outline: var(--smart-focus-width) solid var(--mat-sys-secondary);
+  outline-offset: calc(var(--smart-focus-width) * -1);
+}
+
+.indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--smart-size-nav-indicator-width);
+  height: var(--smart-size-nav-indicator-height);
+  border-radius: var(--mat-sys-corner-full);
+  transition: background-color var(--smart-motion-duration-short)
+    var(--smart-motion-easing-standard);
+}
+
+.destination:hover .indicator {
+  background: var(--mat-sys-surface-container-highest);
+}
+
+.label {
+  max-width: 100%;
+  font: var(--mat-sys-label-medium);
+  overflow-wrap: anywhere;
+  hyphens: auto;
+}
+
+.destination--active {
+  color: var(--mat-sys-on-surface);
+}
+
+.destination--active .indicator,
+.destination--active:hover .indicator {
+  background: var(--mat-sys-secondary-container);
+  color: var(--mat-sys-on-secondary-container);
+}
+
+// Medium: a rail on the left, labels below the icons.
+
+:host([data-window-class='medium']) {
+  grid-template:
+    'nav top-bar' auto
+    'nav banner' auto
+    'nav main' 1fr / var(--smart-size-nav-rail) minmax(0, 1fr);
+}
+
+:host([data-window-class='expanded']) {
+  grid-template:
+    'nav top-bar' auto
+    'nav banner' auto
+    'nav main' 1fr / var(--smart-size-nav-drawer) minmax(0, 1fr);
+}
+
+:host([data-window-class='medium']) main,
+:host([data-window-class='expanded']) main {
+  padding-bottom: 0;
+}
+
+:host([data-window-class='medium']) nav,
+:host([data-window-class='expanded']) nav {
+  position: sticky;
+  inset: 0 auto auto;
+  grid-area: nav;
+  flex-direction: column;
+  align-self: start;
+  gap: var(--smart-space-sm);
+  height: 100dvh;
+  padding: var(--smart-space-xl) var(--smart-space-sm);
+  overflow-y: auto;
+}
+
+:host([data-window-class='medium']) .destination {
+  flex: none;
+  justify-content: flex-start;
+}
+
+// Expanded: a drawer, icon and label side by side.
+:host([data-window-class='expanded']) nav {
+  padding-inline: var(--smart-space-lg);
+}
+
+:host([data-window-class='expanded']) .destination {
+  flex: none;
+  flex-direction: row;
+  justify-content: flex-start;
+  gap: var(--smart-space-md);
+  min-height: var(--smart-size-nav-item);
+  padding-inline: var(--smart-space-lg);
+  border-radius: var(--mat-sys-corner-full);
+  text-align: start;
+}
+
+:host([data-window-class='expanded']) .indicator {
+  width: auto;
+  height: auto;
+  background: none;
+}
+
+:host([data-window-class='expanded']) .label {
+  font: var(--mat-sys-label-large);
+}
+
+:host([data-window-class='expanded']) .destination:hover {
+  background: var(--mat-sys-surface-container-highest);
+}
+
+:host([data-window-class='expanded']) .destination--active,
+:host([data-window-class='expanded']) .destination--active:hover {
+  background: var(--mat-sys-secondary-container);
+  color: var(--mat-sys-on-secondary-container);
+}
+
+:host([data-window-class='expanded']) .destination--active .indicator,
+:host([data-window-class='expanded']) .destination--active:hover .indicator,
+:host([data-window-class='expanded']) .destination:hover .indicator {
+  background: none;
+}
+
+:host([data-window-class='expanded']) .destination:focus-visible {
+  outline-offset: 0;
+}

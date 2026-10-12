@@ -42,6 +42,8 @@ export { UiListItem } from './lib/list/list-item';
 export { UiBanner, UiBannerActions, type UiBannerTone } from './lib/banner/banner';
 export { UiBadge } from './lib/badge/badge';
 export { UiTopAppBar, UiTopAppBarActions } from './lib/top-app-bar/top-app-bar';
+export { UiAdaptiveShell, UiShellBanner, UiShellTopBar } from './lib/adaptive-shell/adaptive-shell';
+export type { UiNavDestination, UiWindowClass } from './lib/adaptive-shell/navigation';
 export { UiAnnouncer } from './lib/announcer/announcer';
 export { UiSnackbar } from './lib/snackbar/snackbar';
 export { UiClock } from './lib/time/clock';
