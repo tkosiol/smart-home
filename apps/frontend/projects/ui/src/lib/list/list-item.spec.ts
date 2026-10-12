@@ -51,9 +51,11 @@ describe('UiListItem', () => {
   it('renders disabled entries without a link', () => {
     const fixture = render();
     expect(fixture.nativeElement.querySelectorAll('a')).toHaveLength(1);
-    const disabled = fixture.nativeElement.querySelector('[aria-disabled="true"]') as HTMLElement;
+    expect(fixture.nativeElement.querySelector('[aria-disabled]')).toBeNull();
+    const disabled = fixture.nativeElement.querySelector('.row:not(.row--link)') as HTMLElement;
     expect(disabled.textContent).toContain('Gateways');
     expect(disabled.textContent).toContain('kommt bald');
+    expect(disabled.classList).toContain('row--disabled');
   });
 
   it('becomes a link once enabled', () => {

@@ -20,6 +20,8 @@
   --smart-size-skeleton-block: 96px;
   --smart-focus-width: 3px;
   --smart-line-height-icon: 1;
+  /* Opacity of disabled content (M3 uses 38%) */
+  --smart-opacity-disabled: 0.38;
   /* Motion */
   --smart-motion-duration-short: 150ms;
   --smart-motion-duration-medium: 300ms;

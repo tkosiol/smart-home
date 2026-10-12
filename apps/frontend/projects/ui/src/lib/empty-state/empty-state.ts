@@ -18,6 +18,7 @@ export class UiEmptyState {
   readonly icon = input.required<IconName>();
   readonly heading = input.required<string>();
   readonly description = input<string>();
+  readonly level = input<2 | 3>(2);
 
   protected readonly actions = contentChild(UiEmptyStateActions);
 }

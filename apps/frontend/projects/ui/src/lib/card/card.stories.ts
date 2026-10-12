@@ -30,6 +30,15 @@ export const Varianten: StoryObj<UiCard> = {
   },
 };
 
+export const Ueberschriftenebene: StoryObj<UiCard> = {
+  render: () => ({
+    template: `<ui-card heading="Auf Ebene 2" [level]="2"><p>Inhalt</p></ui-card>`,
+  }),
+  play: async ({ canvas }) => {
+    await expect(canvas.getByRole('heading', { level: 2, name: 'Auf Ebene 2' })).toBeVisible();
+  },
+};
+
 export const Schmal: StoryObj<UiCard> = {
   decorators: [withNarrowFrame],
   render: () => ({

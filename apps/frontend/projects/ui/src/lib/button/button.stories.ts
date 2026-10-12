@@ -1,4 +1,5 @@
-import type { Meta, StoryObj } from '@storybook/angular';
+import { provideRouter, withDisabledInitialNavigation } from '@angular/router';
+import { applicationConfig, type Meta, type StoryObj } from '@storybook/angular';
 import { expect, fn, userEvent } from 'storybook/test';
 import { UiButton } from './button';
 
@@ -56,5 +57,31 @@ export const DeaktiviertLoestNichtsAus: Story = {
     await userEvent.tab();
     await userEvent.keyboard('{Enter}');
     await expect(args.pressed).not.toHaveBeenCalled();
+  },
+};
+
+export const Link: Story = {
+  decorators: [
+    // Storybook's iframe path matches no route; see the list stories.
+    applicationConfig({ providers: [provideRouter([], withDisabledInitialNavigation())] }),
+  ],
+  render: (args) => ({
+    props: args,
+    template: `
+      <div style="display: flex; flex-wrap: wrap; gap: 12px">
+        <ui-button route="/raeume" icon="add" (pressed)="pressed()">Räume</ui-button>
+        <ui-button route="/raeume" variant="outlined">Umrandet</ui-button>
+      </div>`,
+  }),
+  play: async ({ canvas, args }) => {
+    const link = canvas.getByRole('link', { name: 'Räume' });
+    // Storybook's base URL makes the router render an absolute href.
+    await expect(new URL((link as HTMLAnchorElement).href).pathname).toBe('/raeume');
+    await expect(link.querySelector('ui-icon')).not.toBeNull();
+    await expect(canvas.queryByRole('button')).toBeNull();
+    await userEvent.tab();
+    await expect(link).toHaveFocus();
+    await expect(args.pressed).not.toHaveBeenCalled();
+    await expect(link.getBoundingClientRect().height).toBeGreaterThanOrEqual(40);
   },
 };

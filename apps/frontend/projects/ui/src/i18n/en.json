@@ -1,5 +1,6 @@
 {
   "ui": {
+    "snackbar": { "close": "Close" },
     "themeEditor": {
       "seed": "Seed color",
       "seedPicker": "Choose seed color",

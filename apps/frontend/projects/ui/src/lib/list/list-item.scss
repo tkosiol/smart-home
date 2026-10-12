@@ -14,6 +14,10 @@
   text-decoration: none;
 }
 
+.row--disabled {
+  opacity: var(--smart-opacity-disabled);
+}
+
 .row--link {
   border-radius: var(--mat-sys-corner-medium);
   cursor: pointer;

@@ -124,6 +124,16 @@ describe('UiThemeEditor in personal mode', () => {
 });
 
 describe('UiThemeEditor in instance mode', () => {
+  it('asks the host to reset the installation appearance', async () => {
+    const { host, element, refresh } = await setup('instance');
+    const reset = [...element.querySelectorAll('button')].find((button) =>
+      button.textContent?.includes('Auf Standard zurücksetzen'),
+    )!;
+    reset.click();
+    await refresh();
+    expect(host.resets()).toBe(1);
+  });
+
   it('edits colors, shape and font of the installation, but no personal settings', async () => {
     const { host, element, choose, refresh } = await setup('instance');
     expect(element.querySelector('mat-button-toggle-group')).toBeNull();

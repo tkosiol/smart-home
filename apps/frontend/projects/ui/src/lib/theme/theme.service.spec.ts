@@ -132,6 +132,23 @@ describe('ThemeService', () => {
     expect(service.instance()).toEqual(sharpInstance);
   });
 
+  it('adopts an instance stored in another tab only while the instance editor is on', () => {
+    const off = setup(new MemoryAppearanceStore(), new FakeMedia(), { instance: plumInstance });
+    off.store.instance = sharpInstance;
+    off.store.emit('instance');
+    TestBed.tick();
+    expect(off.service.instance()).toEqual(plumInstance);
+    TestBed.resetTestingModule();
+    const on = setup(new MemoryAppearanceStore(), new FakeMedia(), {
+      instance: plumInstance,
+      allowStoredInstance: true,
+    });
+    on.store.instance = sharpInstance;
+    on.store.emit('instance');
+    TestBed.tick();
+    expect(on.service.instance()).toEqual(sharpInstance);
+  });
+
   it('stores instance changes only while the instance editor is on', () => {
     const off = setup(new MemoryAppearanceStore(), new FakeMedia());
     off.service.setInstance(sharpInstance);
