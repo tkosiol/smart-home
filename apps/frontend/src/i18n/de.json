@@ -18,6 +18,13 @@
       "heading": "Diese Seite gibt es nicht",
       "description": "Der Link ist vielleicht veraltet oder falsch geschrieben.",
       "home": "Zur Übersicht"
+    },
+    "more": {
+      "modules": "Module",
+      "notifications": "Benachrichtigungen",
+      "household": "Haushalt",
+      "gateways": "Gateways",
+      "settings": "Einstellungen"
     }
   }
 }

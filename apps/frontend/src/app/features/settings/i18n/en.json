@@ -1,3 +1,16 @@
 {
-  "title": "Settings"
+  "title": "Settings",
+  "list": {
+    "appearance": "Appearance",
+    "appearanceHint": "Language, mode, contrast and colors",
+    "installation": "Appearance of the installation",
+    "installationHint": "Colors, shapes and font for all users"
+  },
+  "appearance": {
+    "title": "Appearance",
+    "language": "Language"
+  },
+  "installation": {
+    "title": "Appearance of the installation"
+  }
 }

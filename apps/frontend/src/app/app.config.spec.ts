@@ -3,6 +3,7 @@ import { DEFAULT_INSTANCE_APPEARANCE, type InstanceAppearance } from '@smart/con
 import { APPEARANCE_STORE, MemoryAppearanceStore, ThemeService } from '@smart/ui';
 import { createAppConfig } from './app.config';
 import { RUNTIME_CONFIG } from './core/config';
+import { injectMoreEntries } from './core/features';
 
 const plum: InstanceAppearance = {
   ...DEFAULT_INSTANCE_APPEARANCE,
@@ -37,5 +38,17 @@ describe('createAppConfig', () => {
       stored,
     );
     expect(theme.instance().shape).toBe('kantig');
+  });
+
+  it('registers the settings entry for the More page', () => {
+    setup({ features: { instanceAppearanceEditor: false }, instanceAppearance: plum });
+    const entries = TestBed.runInInjectionContext(() => injectMoreEntries());
+    expect(entries).toEqual([
+      expect.objectContaining({
+        id: 'settings',
+        labelKey: 'app.more.settings',
+        route: '/mehr/einstellungen',
+      }),
+    ]);
   });
 });

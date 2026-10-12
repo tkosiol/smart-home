@@ -18,6 +18,13 @@
       "heading": "This page does not exist",
       "description": "The link may be outdated or misspelled.",
       "home": "Go to overview"
+    },
+    "more": {
+      "modules": "Modules",
+      "notifications": "Notifications",
+      "household": "Household",
+      "gateways": "Gateways",
+      "settings": "Settings"
     }
   }
 }
