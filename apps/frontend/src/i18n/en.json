@@ -25,6 +25,11 @@
       "household": "Household",
       "gateways": "Gateways",
       "settings": "Settings"
+    },
+    "offline": "Offline – displayed data may be out of date",
+    "update": {
+      "text": "New version available",
+      "reload": "Reload"
     }
   }
 }

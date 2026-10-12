@@ -25,6 +25,11 @@
       "household": "Haushalt",
       "gateways": "Gateways",
       "settings": "Einstellungen"
+    },
+    "offline": "Offline – Anzeigen können veraltet sein",
+    "update": {
+      "text": "Neue Version verfügbar",
+      "reload": "Neu laden"
     }
   }
 }

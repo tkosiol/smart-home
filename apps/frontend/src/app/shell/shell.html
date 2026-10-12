@@ -11,5 +11,18 @@
       </ui-icon-button>
     </ui-top-app-bar>
   </header>
+  @if (offline()) {
+    <ui-banner uiShellBanner tone="offline">{{ 'app.offline' | transloco }}</ui-banner>
+  }
+  @if (updateReady()) {
+    <ui-banner uiShellBanner tone="info">
+      {{ 'app.update.text' | transloco }}
+      <div uiBannerActions>
+        <ui-button variant="text" (pressed)="reload()">{{
+          'app.update.reload' | transloco
+        }}</ui-button>
+      </div>
+    </ui-banner>
+  }
   <router-outlet />
 </ui-adaptive-shell>
