@@ -15,6 +15,7 @@ export const TEXT_ATTRIBUTES = new Set([
   'hint',
   'invalidMessage',
   'label',
+  'navigationLabel',
   'pickerLabel',
   'placeholder',
   'supporting',

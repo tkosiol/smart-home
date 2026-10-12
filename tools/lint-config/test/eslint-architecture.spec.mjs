@@ -117,6 +117,18 @@ describe('frontend boundaries and UI rules', () => {
       [],
     ],
     [
+      'feature → @smart/ui/forms entry',
+      'apps/frontend/src/app/features/devices/devices.page.ts',
+      page("import { x } from '@smart/ui/forms';\nexport const u = x;"),
+      [],
+    ],
+    [
+      'feature → other @smart/ui entry',
+      'apps/frontend/src/app/features/devices/devices.page.ts',
+      page("import { x } from '@smart/ui/other';\nexport const u = x;"),
+      ['no-restricted-imports'],
+    ],
+    [
       'feature → @smart/ui internals',
       'apps/frontend/src/app/features/devices/devices.page.ts',
       page("import { x } from '@smart/ui/src/lib/button';\nexport const u = x;"),
