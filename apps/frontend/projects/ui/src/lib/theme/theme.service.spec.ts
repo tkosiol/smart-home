@@ -1,11 +1,12 @@
 import { TestBed } from '@angular/core/testing';
 import {
   DEFAULT_INSTANCE_APPEARANCE,
+  DEFAULT_PERSONAL_APPEARANCE,
   type InstanceAppearance,
-  type PersonalAppearance,
 } from '@smart/contracts';
 import { computeThemeVars } from '@smart/theme';
-import { APPEARANCE_STORE, type AppearanceStore, type BootCache } from './appearance-store';
+import { APPEARANCE_STORE } from './appearance-store';
+import { MemoryAppearanceStore } from './memory-appearance-store';
 import { MEDIA_QUERIES, type MediaQueries } from './media-queries';
 import { provideTheme } from './provide-theme';
 import { ThemeService } from './theme.service';
@@ -24,27 +25,14 @@ class FakeMedia implements MediaQueries {
   }
 }
 
-class MemoryStore implements AppearanceStore {
-  personal: PersonalAppearance | null = null;
-  instance: InstanceAppearance | null = null;
-  boot: BootCache | null = null;
-  loadPersonal = () => this.personal;
-  loadInstance = () => this.instance;
-  savePersonal = (value: PersonalAppearance) => {
-    this.personal = value;
-  };
-  saveInstance = (value: InstanceAppearance) => {
-    this.instance = value;
-  };
-  saveBootCache = (value: BootCache) => {
-    this.boot = value;
-  };
-}
-
-function setup(store = new MemoryStore(), media = new FakeMedia()) {
+function setup(
+  store = new MemoryAppearanceStore(),
+  media = new FakeMedia(),
+  options: { instance?: InstanceAppearance; allowStoredInstance?: boolean } = {},
+) {
   TestBed.configureTestingModule({
     providers: [
-      provideTheme(),
+      provideTheme(options),
       { provide: APPEARANCE_STORE, useValue: store },
       { provide: MEDIA_QUERIES, useValue: media },
     ],
@@ -118,9 +106,110 @@ describe('ThemeService', () => {
   });
 
   it('starts from stored settings', () => {
-    const store = new MemoryStore();
+    const store = new MemoryAppearanceStore();
     store.personal = { mode: 'dark', contrast: 'medium' };
     const { service } = setup(store);
     expect([service.resolved().mode, service.resolved().contrast]).toEqual(['dark', 'medium']);
+  });
+
+  const plumInstance: InstanceAppearance = { ...DEFAULT_INSTANCE_APPEARANCE, colors: plum };
+  const sharpInstance: InstanceAppearance = { ...DEFAULT_INSTANCE_APPEARANCE, shape: 'kantig' };
+
+  it('ignores a browser-stored instance theme while the instance editor is off', () => {
+    const store = new MemoryAppearanceStore();
+    store.instance = sharpInstance;
+    const { service } = setup(store, new FakeMedia(), { instance: plumInstance });
+    expect(service.instance()).toEqual(plumInstance);
+  });
+
+  it('prefers a browser-stored instance theme while the instance editor is on', () => {
+    const store = new MemoryAppearanceStore();
+    store.instance = sharpInstance;
+    const { service } = setup(store, new FakeMedia(), {
+      instance: plumInstance,
+      allowStoredInstance: true,
+    });
+    expect(service.instance()).toEqual(sharpInstance);
+  });
+
+  it('stores instance changes only while the instance editor is on', () => {
+    const off = setup(new MemoryAppearanceStore(), new FakeMedia());
+    off.service.setInstance(sharpInstance);
+    expect(off.service.instance()).toEqual(sharpInstance);
+    expect(off.store.instance).toBeNull();
+    TestBed.resetTestingModule();
+    const on = setup(new MemoryAppearanceStore(), new FakeMedia(), { allowStoredInstance: true });
+    on.service.setInstance(sharpInstance);
+    expect(on.store.instance).toEqual(sharpInstance);
+  });
+
+  it('resets the instance to the installation default and forgets the stored one', () => {
+    const { service, store } = setup(new MemoryAppearanceStore(), new FakeMedia(), {
+      instance: plumInstance,
+      allowStoredInstance: true,
+    });
+    service.setInstance(sharpInstance);
+    service.resetInstance();
+    expect(service.instance()).toEqual(plumInstance);
+    expect(store.instance).toBeNull();
+  });
+
+  it('resets everything personal to the defaults', () => {
+    const { service, store } = setup();
+    service.setPersonal({ mode: 'dark', contrast: 'high', colors: plum });
+    service.resetPersonal();
+    expect(service.personal()).toEqual(DEFAULT_PERSONAL_APPEARANCE);
+    expect(store.personal).toBeNull();
+  });
+
+  it('exposes instance and personal read-only', () => {
+    const { service } = setup();
+    expect('set' in service.instance).toBe(false);
+    expect('set' in service.personal).toBe(false);
+  });
+
+  it('follows changes another tab stored', () => {
+    const { service, store } = setup();
+    store.personal = { mode: 'dark', contrast: 'standard' };
+    store.emit('personal');
+    TestBed.tick();
+    expect(service.personal()).toEqual({ mode: 'dark', contrast: 'standard' });
+    expect(document.documentElement.style.colorScheme).toBe('dark');
+  });
+
+  it('caches both contrast levels while the contrast follows the system', () => {
+    const { store } = setup();
+    const expected = (mode: 'light' | 'dark', contrast: 'standard' | 'high') =>
+      computeThemeVars({ ...base, mode, contrast })['--mat-sys-primary'];
+    expect(store.boot).toMatchObject({ v: 2, mode: 'system', followsSystemContrast: true });
+    expect(store.boot?.light['--mat-sys-primary']).toBe(expected('light', 'standard'));
+    expect(store.boot?.darkHigh?.['--mat-sys-primary']).toBe(expected('dark', 'high'));
+  });
+
+  it('keeps standard contrast in the cache while the system currently asks for more', () => {
+    const media = new FakeMedia();
+    media.state['(prefers-contrast: more)'] = true;
+    const { store } = setup(new MemoryAppearanceStore(), media);
+    expect(rootVar('--mat-sys-on-surface-variant')).toBe(
+      computeThemeVars({ ...base, mode: 'light', contrast: 'high' })[
+        '--mat-sys-on-surface-variant'
+      ],
+    );
+    expect(store.boot?.light['--mat-sys-on-surface-variant']).toBe(
+      computeThemeVars({ ...base, mode: 'light', contrast: 'standard' })[
+        '--mat-sys-on-surface-variant'
+      ],
+    );
+  });
+
+  it('caches only the chosen contrast when the user picked one', () => {
+    const { service, store } = setup();
+    service.setPersonal({ mode: 'dark', contrast: 'medium' });
+    TestBed.tick();
+    expect(store.boot).toMatchObject({ v: 2, mode: 'dark', followsSystemContrast: false });
+    expect(store.boot?.lightHigh).toBeUndefined();
+    expect(store.boot?.dark['--mat-sys-primary']).toBe(
+      computeThemeVars({ ...base, mode: 'dark', contrast: 'medium' })['--mat-sys-primary'],
+    );
   });
 });

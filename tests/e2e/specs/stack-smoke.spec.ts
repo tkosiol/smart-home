@@ -108,7 +108,9 @@ test('a stored dark theme applies even before the app bundle runs', async ({ pag
     localStorage.setItem(
       'smart.theme.boot',
       JSON.stringify({
+        v: 2,
         mode: 'dark',
+        followsSystemContrast: false,
         light: { '--mat-sys-surface': '#ffffff' },
         dark: { '--mat-sys-surface': '#101415' },
       }),
@@ -152,7 +154,9 @@ test('a system-mode cache follows the browser color scheme before the app bundle
     localStorage.setItem(
       'smart.theme.boot',
       JSON.stringify({
+        v: 2,
         mode: 'system',
+        followsSystemContrast: false,
         light: { '--mat-sys-surface': '#ffffff' },
         dark: { '--mat-sys-surface': '#101415' },
       }),

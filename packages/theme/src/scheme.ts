@@ -49,6 +49,9 @@ export function sourceArgb(colors: ThemeColors): number {
   return argbFromHex(colors.coreOverrides.primary ?? colors.seed);
 }
 
+/** Below this chroma an override reads as gray; it then keeps its own chroma (spec 4.4, carry-over 3a). */
+const ACHROMATIC_CHROMA = 6;
+
 export function buildScheme(
   colors: ThemeColors,
   mode: ResolvedMode,
@@ -62,14 +65,18 @@ export function buildScheme(
   const overrides = colors.coreOverrides;
   if (!colors.colorMatch && Object.keys(overrides).length === 0) return base;
 
-  // With colorMatch an override keeps its own chroma; otherwise only its hue is used.
+  // With colorMatch an override keeps its own chroma; otherwise only its hue is used –
+  // except for grays, which would otherwise turn into a random hue at the variant's chroma.
   const palette = (id: CoreColorId, fallback: TonalPalette): TonalPalette => {
     const hex = overrides[id];
     if (!hex) return fallback;
     const argb = argbFromHex(hex);
-    return colors.colorMatch
-      ? TonalPalette.fromInt(argb)
-      : TonalPalette.fromHueAndChroma(Hct.fromInt(argb).hue, fallback.chroma);
+    if (colors.colorMatch) return TonalPalette.fromInt(argb);
+    const hct = Hct.fromInt(argb);
+    return TonalPalette.fromHueAndChroma(
+      hct.hue,
+      hct.chroma < ACHROMATIC_CHROMA ? hct.chroma : fallback.chroma,
+    );
   };
 
   const scheme = new DynamicScheme({

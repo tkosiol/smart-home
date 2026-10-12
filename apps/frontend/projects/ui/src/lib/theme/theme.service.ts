@@ -6,10 +6,15 @@ import {
   type InstanceAppearance,
   type PersonalAppearance,
 } from '@smart/contracts';
-import { computeThemeVars, resolveAppearance } from '@smart/theme';
-import { APPEARANCE_STORE } from './appearance-store';
+import {
+  computeThemeVars,
+  resolveAppearance,
+  type ResolvedContrast,
+  type ResolvedMode,
+} from '@smart/theme';
+import { APPEARANCE_STORE, BOOT_CACHE_VERSION } from './appearance-store';
 import { applyThemeVars } from './apply-theme';
-import { INSTANCE_APPEARANCE } from './instance-appearance.token';
+import { INSTANCE_APPEARANCE, STORED_INSTANCE_ALLOWED } from './instance-appearance.token';
 import { MEDIA_QUERIES } from './media-queries';
 
 const DARK = '(prefers-color-scheme: dark)';
@@ -20,13 +25,13 @@ export class ThemeService {
   private readonly document = inject(DOCUMENT);
   private readonly store = inject(APPEARANCE_STORE);
   private readonly media = inject(MEDIA_QUERIES);
+  private readonly defaultInstance = inject(INSTANCE_APPEARANCE);
+  private readonly storedInstanceAllowed = inject(STORED_INSTANCE_ALLOWED);
 
-  readonly instance = signal<InstanceAppearance>(
-    this.store.loadInstance() ?? inject(INSTANCE_APPEARANCE),
-  );
-  readonly personal = signal<PersonalAppearance>(
-    this.store.loadPersonal() ?? DEFAULT_PERSONAL_APPEARANCE,
-  );
+  private readonly instanceState = signal<InstanceAppearance>(this.loadInstance());
+  private readonly personalState = signal<PersonalAppearance>(this.loadPersonal());
+  readonly instance = this.instanceState.asReadonly();
+  readonly personal = this.personalState.asReadonly();
   private readonly prefersDark = signal(this.media.matches(DARK));
   private readonly prefersMoreContrast = signal(this.media.matches(MORE_CONTRAST));
 
@@ -42,17 +47,30 @@ export class ThemeService {
     const stopContrast = this.media.listen(MORE_CONTRAST, (matches) =>
       this.prefersMoreContrast.set(matches),
     );
+    // Another tab stored a change: follow it so all open tabs look the same.
+    const stopWatching = this.store.watch((key) =>
+      key === 'instance'
+        ? this.instanceState.set(this.loadInstance())
+        : this.personalState.set(this.loadPersonal()),
+    );
     inject(DestroyRef).onDestroy(() => {
       stopDark();
       stopContrast();
+      stopWatching();
     });
     effect(() => this.apply());
   }
 
   setPersonal(value: PersonalAppearance): void {
     const parsed = personalAppearanceSchema.parse(value);
-    this.personal.set(parsed);
+    this.personalState.set(parsed);
     this.store.savePersonal(parsed);
+  }
+
+  /** Back to the defaults: instance colors, system mode and contrast. */
+  resetPersonal(): void {
+    this.personalState.set(DEFAULT_PERSONAL_APPEARANCE);
+    this.store.clearPersonal();
   }
 
   resetPersonalColors(): void {
@@ -62,20 +80,46 @@ export class ThemeService {
 
   setInstance(value: InstanceAppearance): void {
     const parsed = instanceAppearanceSchema.parse(value);
-    this.instance.set(parsed);
-    this.store.saveInstance(parsed);
+    this.instanceState.set(parsed);
+    if (this.storedInstanceAllowed) this.store.saveInstance(parsed);
+  }
+
+  /** Back to the installation default (config.json, else the build default). */
+  resetInstance(): void {
+    this.instanceState.set(this.defaultInstance);
+    this.store.clearInstance();
+  }
+
+  /** Precedence (spec 4.5): stored instance (only while the editor is on), config.json, build default. */
+  private loadInstance(): InstanceAppearance {
+    return (this.storedInstanceAllowed ? this.store.loadInstance() : null) ?? this.defaultInstance;
+  }
+
+  private loadPersonal(): PersonalAppearance {
+    return this.store.loadPersonal() ?? DEFAULT_PERSONAL_APPEARANCE;
   }
 
   private apply(): void {
     const resolved = this.resolved();
-    const light = computeThemeVars({ ...resolved, mode: 'light' });
-    const dark = computeThemeVars({ ...resolved, mode: 'dark' });
+    const vars = (mode: ResolvedMode, contrast: ResolvedContrast) =>
+      computeThemeVars({ ...resolved, mode, contrast });
     applyThemeVars(
       this.document.documentElement,
-      resolved.mode === 'dark' ? dark : light,
+      vars(resolved.mode, resolved.contrast),
       resolved.mode,
     );
-    // Both modes are cached so theme-boot.js can follow the system setting without a flash.
-    this.store.saveBootCache({ mode: this.personal().mode, light, dark });
+    const { mode, contrast } = this.personal();
+    const followsSystemContrast = contrast === 'system';
+    const cached = followsSystemContrast ? 'standard' : resolved.contrast;
+    this.store.saveBootCache({
+      v: BOOT_CACHE_VERSION,
+      mode,
+      followsSystemContrast,
+      light: vars('light', cached),
+      dark: vars('dark', cached),
+      ...(followsSystemContrast
+        ? { lightHigh: vars('light', 'high'), darkHigh: vars('dark', 'high') }
+        : {}),
+    });
   }
 }
