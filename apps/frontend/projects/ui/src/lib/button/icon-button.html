@@ -1,9 +1,19 @@
-<button
-  matIconButton
-  [type]="type()"
-  [disabled]="disabled()"
-  [attr.aria-label]="label()"
-  (click)="pressed.emit()"
->
-  <ui-icon [name]="icon()" />
-</button>
+@if (route(); as route) {
+  <a matIconButton [routerLink]="route" [attr.aria-label]="label()">
+    <ng-container [ngTemplateOutlet]="content" />
+  </a>
+} @else {
+  <button
+    matIconButton
+    [type]="type()"
+    [disabled]="disabled()"
+    [attr.aria-label]="label()"
+    (click)="pressed.emit()"
+  >
+    <ng-container [ngTemplateOutlet]="content" />
+  </button>
+}
+
+<ng-template #content>
+  <ng-content><ui-icon [name]="icon()" /></ng-content>
+</ng-template>

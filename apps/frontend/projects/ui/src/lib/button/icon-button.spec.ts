@@ -1,5 +1,6 @@
 import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { provideRouter } from '@angular/router';
 import { UiIconButton } from './icon-button';
 
 @Component({
@@ -32,5 +33,73 @@ describe('UiIconButton', () => {
     fixture.detectChanges();
     (fixture.nativeElement.querySelector('button') as HTMLButtonElement).click();
     expect(fixture.componentInstance.count()).toBe(0);
+  });
+});
+
+@Component({
+  imports: [UiIconButton],
+  template: `<ui-icon-button
+    icon="notifications"
+    label="Benachrichtigungen"
+    [route]="route()"
+    (pressed)="count.set(count() + 1)"
+  />`,
+})
+class LinkHost {
+  readonly route = signal<string | undefined>('/mehr');
+  readonly count = signal(0);
+}
+
+describe('UiIconButton as a link', () => {
+  function renderLink() {
+    TestBed.configureTestingModule({
+      providers: [provideRouter([{ path: 'mehr', children: [] }])],
+    });
+    const fixture = TestBed.createComponent(LinkHost);
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  it('renders a named anchor with the icon when it has a route', () => {
+    const fixture = renderLink();
+    const element = fixture.nativeElement as HTMLElement;
+    const link = element.querySelector('a[href="/mehr"]') as HTMLAnchorElement;
+    expect(link.getAttribute('aria-label')).toBe('Benachrichtigungen');
+    expect(link.querySelector('ui-icon')).not.toBeNull();
+    expect(element.querySelector('button')).toBeNull();
+  });
+
+  it('does not emit pressed', async () => {
+    const fixture = renderLink();
+    (fixture.nativeElement.querySelector('a') as HTMLAnchorElement).click();
+    await fixture.whenStable();
+    expect(fixture.componentInstance.count()).toBe(0);
+  });
+
+  it('is a button without a route', () => {
+    const fixture = renderLink();
+    fixture.componentInstance.route.set(undefined);
+    fixture.detectChanges();
+    const element = fixture.nativeElement as HTMLElement;
+    expect(element.querySelector('a')).toBeNull();
+    expect(element.querySelector('button')).not.toBeNull();
+  });
+});
+
+@Component({
+  imports: [UiIconButton],
+  template: `<ui-icon-button icon="close" label="Schließen"
+    ><b class="custom">x</b></ui-icon-button
+  >`,
+})
+class ContentHost {}
+
+describe('UiIconButton content', () => {
+  it('shows projected content instead of the plain icon', () => {
+    const fixture = TestBed.createComponent(ContentHost);
+    fixture.detectChanges();
+    const button = fixture.nativeElement.querySelector('button') as HTMLButtonElement;
+    expect(button.querySelector('.custom')).not.toBeNull();
+    expect(button.querySelector('ui-icon')).toBeNull();
   });
 });
