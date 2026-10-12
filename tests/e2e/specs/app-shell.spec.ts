@@ -122,27 +122,40 @@ test.describe('deep links', () => {
   });
 });
 
-test('a chosen dark mode survives a reload and is there from the first frame', async ({ page }) => {
+test('a chosen dark mode survives a reload of the running app', async ({ page }) => {
   await page.goto('/mehr/einstellungen/darstellung');
   await page.getByRole('radio', { name: 'Dunkel' }).click();
   await expect(page.locator('html')).toHaveCSS('color-scheme', 'dark');
 
-  // Recorded at the first animation frame, which comes before the app bundle has rendered.
-  await page.addInitScript(() => {
-    requestAnimationFrame(() => {
-      (window as unknown as { __firstScheme: string }).__firstScheme = getComputedStyle(
-        document.documentElement,
-      ).colorScheme;
-    });
-  });
   await page.reload();
   await expect(page.getByRole('radio', { name: 'Dunkel' })).toBeChecked();
-
-  const firstScheme = await page.evaluate(
-    () => (window as unknown as { __firstScheme?: string }).__firstScheme,
-  );
-  expect(firstScheme).toBe('dark');
   await expect(page.locator('html')).toHaveCSS('color-scheme', 'dark');
+});
+
+test.describe('without the app bundle', () => {
+  // A controlling service worker would serve main-*.js from its cache and bypass page.route.
+  test.use({ serviceWorkers: 'block' });
+
+  test('the boot script applies a chosen dark mode before the app runs', async ({ page }) => {
+    const surface = () =>
+      page.evaluate(() =>
+        getComputedStyle(document.documentElement).getPropertyValue('--mat-sys-surface').trim(),
+      );
+
+    await page.goto('/mehr/einstellungen/darstellung');
+    await expect(page.locator('html')).toHaveCSS('color-scheme', 'light');
+    const lightSurface = await surface();
+    await page.getByRole('radio', { name: 'Dunkel' }).click();
+    await expect(page.locator('html')).toHaveCSS('color-scheme', 'dark');
+    const darkSurface = await surface();
+    expect(darkSurface).not.toBe(lightSurface);
+
+    await page.route(/main-[A-Z0-9]+\.js$/, (route) => route.abort());
+    await page.reload();
+    await expect(page.locator('app-root')).toBeEmpty();
+    await expect(page.locator('html')).toHaveCSS('color-scheme', 'dark');
+    expect(await surface()).toBe(darkSurface);
+  });
 });
 
 test('switching the language applies at once and is remembered', async ({ page }) => {
