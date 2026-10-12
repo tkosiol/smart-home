@@ -1,28 +1,51 @@
 import { ApplicationInitStatus } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { TRANSLOCO_LOADER, TranslocoService } from '@jsverse/transloco';
-import { throwError } from 'rxjs';
+import { TRANSLOCO_LOADER, TranslocoService, type Translation } from '@jsverse/transloco';
 import { BROWSER_LANGUAGES, LANGUAGE_STORE } from './language-store';
 import { provideI18n } from './provide-i18n';
+
+const FIXTURES: Record<string, Translation> = {
+  en: { greeting: 'Hello' },
+  de: { greeting: 'Hallo' },
+};
+
+/** A loader that answers only after `release()`, so the test controls when loading ends. */
+function gatedLoader() {
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => (release = resolve));
+  return { release, getTranslation: (lang: string) => gate.then(() => FIXTURES[lang]) };
+}
+
+const store = {
+  provide: LANGUAGE_STORE,
+  useValue: { load: () => null, save: () => undefined, watch: () => () => undefined },
+};
 
 describe('language preload', () => {
   afterEach(() => document.documentElement.setAttribute('lang', 'de'));
 
   it('has the active language loaded before the app starts rendering', async () => {
+    const loader = gatedLoader();
     TestBed.configureTestingModule({
       providers: [
         provideI18n(),
-        {
-          provide: LANGUAGE_STORE,
-          useValue: { load: () => null, save: () => undefined, watch: () => () => undefined },
-        },
+        { provide: TRANSLOCO_LOADER, useValue: loader },
+        store,
         { provide: BROWSER_LANGUAGES, useValue: ['en-US'] },
       ],
     });
-    await TestBed.inject(ApplicationInitStatus).donePromise;
+    let started = false;
+    const done = TestBed.inject(ApplicationInitStatus).donePromise.then(() => (started = true));
 
-    const translations = TestBed.inject(TranslocoService).getTranslation('en');
-    expect(Object.keys(translations).length).toBeGreaterThan(0);
+    await new Promise((resolve) => setTimeout(resolve));
+    expect(started).toBe(false);
+
+    loader.release();
+    await done;
+
+    const transloco = TestBed.inject(TranslocoService);
+    expect(transloco.getTranslation('en')).toEqual(FIXTURES['en']);
+    expect(transloco.getActiveLang()).toBe('en');
   });
 
   it('still starts when the translation fails to load', async () => {
@@ -32,12 +55,9 @@ describe('language preload', () => {
         provideI18n(),
         {
           provide: TRANSLOCO_LOADER,
-          useValue: { getTranslation: () => throwError(() => new Error('chunk')) },
+          useValue: { getTranslation: () => Promise.reject(new Error('chunk')) },
         },
-        {
-          provide: LANGUAGE_STORE,
-          useValue: { load: () => null, save: () => undefined, watch: () => () => undefined },
-        },
+        store,
         { provide: BROWSER_LANGUAGES, useValue: ['en-US'] },
       ],
     });
