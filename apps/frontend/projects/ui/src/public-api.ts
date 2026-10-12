@@ -28,6 +28,7 @@ export { UiStack } from './lib/layout/stack/stack';
 export { UiSegmentedButton } from './lib/segmented-button/segmented-button';
 export { UiChipSet } from './lib/chip-set/chip-set';
 export type { UiOption } from './lib/option';
+export { UiSelect } from './lib/select/select';
 export { UiSwitch } from './lib/switch/switch';
 export { UiColorField } from './lib/color-field/color-field';
 export { normalizeHexColor } from './lib/color-field/hex-color';
