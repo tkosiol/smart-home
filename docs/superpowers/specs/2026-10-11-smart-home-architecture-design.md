@@ -545,7 +545,7 @@ Signal-basierte Services pro Feature (kein NgRx). Typen aus `@smart/contracts`; 
 - **i18n:** Transloco, Deutsch und Englisch, Sprachumschalter, Übersetzungsdateien pro Feature (lazy geladen), CI prüft fehlende/ungenutzte Schlüssel. Die API liefert Fehlercodes, keine Texte.
 - **Storybook** für `@smart/ui`: alle Komponenten und Varianten, Umschalter für Grundfarbe, Variante, Modus, Kontrast und Sprache, Interaktionstests, axe-Prüfung. Veröffentlichung über GitHub Pages wird in Etappe 3 entschieden.
 - **Barrierefreiheit:** Ziel WCAG 2.2 AA.
-- **Security-Header** (`web`-nginx): strikte CSP, HSTS, `frame-ancestors 'none'`, `Referrer-Policy`, `Permissions-Policy`.
+- **Security-Header** (`web`-nginx): strikte CSP (Skripte nur `'self'`; Inline-Styles erlaubt, weil der Service Worker `index.html` byte-genau zwischenspeichert und kein Nonce pro Antwort eingefügt werden kann), HSTS, `frame-ancestors 'none'`, `Referrer-Policy`, `Permissions-Policy`.
 
 ---
 

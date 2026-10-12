@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { expect, test } from '@playwright/test';
 
 test('the app shell loads without console errors or CSP violations', async ({ page }) => {
@@ -28,18 +29,34 @@ for (const [locale, lang] of [
   });
 }
 
-test('every HTML response carries its own CSP nonce matching the page', async ({ request }) => {
-  const nonces: string[] = [];
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    const response = await request.get('/');
-    const csp = response.headers()['content-security-policy'] ?? '';
-    const headerNonce = /'nonce-([0-9a-f]{32})'/.exec(csp)?.[1];
-    const bodyNonce = /ngCspNonce="([0-9a-f]{32})"/i.exec(await response.text())?.[1];
-    expect(headerNonce).toBeDefined();
-    expect(bodyNonce).toBe(headerNonce);
-    nonces.push(headerNonce ?? '');
-  }
-  expect(nonces[0]).not.toBe(nonces[1]);
+test('the CSP keeps scripts strict and allows inline styles', async ({ request }) => {
+  const csp = (await request.get('/')).headers()['content-security-policy'] ?? '';
+  expect(csp).toContain("script-src 'self';");
+  expect(csp).toContain("style-src 'self' 'unsafe-inline';");
+  expect(csp).not.toMatch(/script-src[^;]*unsafe-inline/);
+});
+
+test('index.html is served byte-for-byte as the service worker manifest expects', async ({
+  request,
+}) => {
+  const manifest = (await (await request.get('/ngsw.json')).json()) as {
+    hashTable: Record<string, string>;
+  };
+  const body = await (await request.get('/index.html')).body();
+  expect(createHash('sha1').update(body).digest('hex')).toBe(manifest.hashTable['/index.html']);
+});
+
+test('the service worker installs and controls the page after a reload', async ({ page }) => {
+  await page.goto('/');
+  await page.evaluate(() => navigator.serviceWorker.ready.then(() => undefined));
+  // The worker prefetches the app shell on install; give it a moment to settle.
+  await page.waitForTimeout(1500);
+  await page.reload();
+  await page.waitForLoadState('networkidle');
+  expect(await page.evaluate(() => navigator.serviceWorker.controller !== null)).toBe(true);
+
+  const state = await page.evaluate(async () => (await fetch('/ngsw/state')).text());
+  expect(state).toContain('Driver state: NORMAL');
 });
 
 for (const path of ['/', '/devices/123', '/api/health/live']) {
