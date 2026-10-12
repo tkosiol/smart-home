@@ -114,7 +114,7 @@ export function smartConfig({ rootDir, typeChecked = true }) {
       plugins: { smart: smartPlugin },
       rules: { 'smart/no-loose-files': 'error' },
     },
-    frontendRestrictedImports(),
+    ...frontendRestrictedImports(),
     backendBoundaries(),
     frontendBoundaries(),
   ];
