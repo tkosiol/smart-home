@@ -4,15 +4,15 @@ import { Meta } from '@storybook/addon-docs/blocks';
 
 # @smart/ui
 
-Alle Oberflächen der Smart-Home-App entstehen ausschließlich aus diesen Bausteinen. Die Werkzeugleiste oben stellt Grundfarbe, Variante, Modus, Kontrast, Formen und Schrift um – genau wie das Theme in der App.
+Alle Oberflächen der Smart-Home-App entstehen ausschließlich aus diesen Bausteinen. Die Werkzeugleiste oben stellt Grundfarbe, Variante, Modus, Kontrast, Formen, Schrift und Sprache um – über denselben `ThemeService` wie die App.
 
 ## Regeln
 
 - **Nur über `@smart/ui`:** Features importieren keine Angular-Material- oder CDK-Bausteine und haben kein eigenes CSS. Fehlt etwas, entsteht eine neue `ui-*`-Komponente.
 - **Nur Tokens:** Farben, Abstände, Größen und Zeiten kommen aus `--mat-sys-*` und `--smart-*`.
-- **Kein Text in Komponenten:** Beschriftungen, Hinweise und Fehlermeldungen übergibt der Aufrufer (übersetzt).
+- **Texte nur übersetzt:** Beschriftungen kommen übersetzt vom Aufrufer; Komponenten mit eigenen Texten (Theme-Editor) nutzen Schlüssel unter `ui.*`.
 - **Zeit:** Zeitstempel sind UTC mit `Z`; angezeigt wird mit `uiDateTime` und `uiRelativeTime` in der Zeitzone aus `UiFormatContext` (bis Etappe 4 die Browser-Zeitzone).
-- **Barrierefreiheit:** Jede Story wird mit axe (WCAG 2.2 AA) im Standard-Theme und dunkel mit hohem Kontrast geprüft; jede Komponente ist per Tastatur bedienbar. Material-Bedienelemente zeigen library-weit einen sichtbaren Fokusrahmen.
+- **Barrierefreiheit:** Jede Story wird mit axe (WCAG 2.2 AA) im Standard-Theme und dunkel mit hohem Kontrast auf Englisch geprüft; jede Komponente ist per Tastatur bedienbar. Material-Bedienelemente zeigen library-weit einen sichtbaren Fokusrahmen.
 
 ## Symbole
 

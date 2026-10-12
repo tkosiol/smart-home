@@ -84,16 +84,18 @@ Zusammenführung: Formen und Schrift kommen immer von der Instanz. Für die Farb
 
 ## 5. Komponenten (`@smart/ui`)
 
-| Gruppe      | Komponenten                                                                                    |
-| ----------- | ---------------------------------------------------------------------------------------------- |
-| Layout      | `ui-page`, `ui-stack`, `ui-grid`, `ui-section`                                                 |
-| Rahmen      | `ui-adaptive-shell`, `ui-top-app-bar`, `ui-badge`                                              |
-| Bedienung   | `ui-button`, `ui-icon-button`, `ui-switch`, `ui-segmented-button`, `ui-chip`, `ui-color-field` |
-| Inhalt      | `ui-card`, `ui-list`, `ui-list-item`, `ui-empty-state`, `ui-skeleton`, `ui-icon`               |
-| Formular    | `ui-text-field`                                                                                |
-| Theme       | `ui-theme-editor` (Modi: `personal` / `instance`)                                              |
-| Rückmeldung | `ui-snackbar` (Service), `ui-banner`                                                           |
-| Pipes       | `uiDateTime`, `uiRelativeTime` (Haushalts-Zeitzone, `Intl.DateTimeFormat`)                     |
+| Gruppe      | Komponenten                                                                                                 |
+| ----------- | ----------------------------------------------------------------------------------------------------------- |
+| Layout      | `ui-page`, `ui-stack`, `ui-grid`, `ui-section`                                                              |
+| Rahmen      | `ui-adaptive-shell`, `ui-top-app-bar`, `ui-badge`                                                           |
+| Bedienung   | `ui-button`, `ui-icon-button`, `ui-switch`, `ui-segmented-button`, `ui-select`, `ui-chip`, `ui-color-field` |
+| Inhalt      | `ui-card`, `ui-list`, `ui-list-item`, `ui-empty-state`, `ui-skeleton`, `ui-icon`                            |
+| Formular    | `ui-text-field`                                                                                             |
+| Theme       | `ui-theme-editor` (Modi: `personal` / `instance`)                                                           |
+| Rückmeldung | `ui-snackbar` (Service), `ui-banner`                                                                        |
+| Pipes       | `uiDateTime`, `uiRelativeTime` (Haushalts-Zeitzone, `Intl.DateTimeFormat`)                                  |
+
+`ui-select` kam mit Plan 3c dazu: Auswahlen mit vier und mehr oder langen Optionen passen auf dem schmalsten Handy nicht in einen Segmented Button.
 
 Regeln aus Spec 10.3 gelten unverändert und werden erstmals an echtem Code durchgesetzt. Nicht in Etappe 3: `ui-chart`, Dialoge, Gerätekacheln.
 
