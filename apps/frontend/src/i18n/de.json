@@ -1,1 +1,23 @@
-{}
+{
+  "app": {
+    "nav": {
+      "label": "Hauptnavigation",
+      "overview": "Übersicht",
+      "rooms": "Räume",
+      "devices": "Geräte",
+      "more": "Mehr"
+    },
+    "household": {
+      "placeholder": "Mein Zuhause"
+    },
+    "notifications": {
+      "none": "Benachrichtigungen, keine neuen"
+    },
+    "notFound": {
+      "title": "Nicht gefunden",
+      "heading": "Diese Seite gibt es nicht",
+      "description": "Der Link ist vielleicht veraltet oder falsch geschrieben.",
+      "home": "Zur Übersicht"
+    }
+  }
+}

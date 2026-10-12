@@ -1,21 +1,19 @@
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { App } from './app';
+import { provideI18n } from './core/i18n';
 
 describe('App', () => {
-  beforeEach(async () => {
-    await TestBed.configureTestingModule({
+  it('renders the app shell', async () => {
+    TestBed.configureTestingModule({
       imports: [App],
-      providers: [provideRouter([])],
-    }).compileComponents();
-  });
-
-  it('renders nothing but the router outlet', () => {
+      providers: [provideRouter([]), provideI18n()],
+    });
     const fixture = TestBed.createComponent(App);
     fixture.detectChanges();
     const host = fixture.nativeElement as HTMLElement;
 
-    expect(host.querySelector('router-outlet')).not.toBeNull();
+    expect(host.querySelector('app-shell')).not.toBeNull();
     expect(host.children.length).toBe(1);
   });
 });

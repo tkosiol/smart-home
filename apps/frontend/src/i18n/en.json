@@ -1,1 +1,23 @@
-{}
+{
+  "app": {
+    "nav": {
+      "label": "Main navigation",
+      "overview": "Overview",
+      "rooms": "Rooms",
+      "devices": "Devices",
+      "more": "More"
+    },
+    "household": {
+      "placeholder": "My home"
+    },
+    "notifications": {
+      "none": "Notifications, none new"
+    },
+    "notFound": {
+      "title": "Not found",
+      "heading": "This page does not exist",
+      "description": "The link may be outdated or misspelled.",
+      "home": "Go to overview"
+    }
+  }
+}

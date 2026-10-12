@@ -1,0 +1,15 @@
+<ui-adaptive-shell [destinations]="destinations()" [navigationLabel]="'app.nav.label' | transloco">
+  <header uiShellTopBar>
+    <ui-top-app-bar [heading]="'app.household.placeholder' | transloco">
+      <ui-icon-button
+        uiTopAppBarActions
+        route="/mehr"
+        icon="notifications"
+        [label]="'app.notifications.none' | transloco"
+      >
+        <ui-badge [count]="0"><ui-icon name="notifications" /></ui-badge>
+      </ui-icon-button>
+    </ui-top-app-bar>
+  </header>
+  <router-outlet />
+</ui-adaptive-shell>
