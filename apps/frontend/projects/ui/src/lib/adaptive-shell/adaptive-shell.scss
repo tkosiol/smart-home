@@ -24,6 +24,10 @@ main {
   grid-area: main;
   min-width: 0;
 
+  // A stacking context of its own: Material lifts button labels and icons with `z-index: 1`, which
+  // would otherwise paint above the bar and take the taps meant for it.
+  isolation: isolate;
+
   // Keeps the end of the content clear of the fixed bar.
   padding-bottom: var(--smart-size-nav-bar);
 }

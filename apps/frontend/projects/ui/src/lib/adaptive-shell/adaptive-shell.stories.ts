@@ -6,6 +6,7 @@ import { of } from 'rxjs';
 import { expect, userEvent } from 'storybook/test';
 import { UiBadge } from '../badge/badge';
 import { UiBanner } from '../banner/banner';
+import { UiButton } from '../button/button';
 import { UiIconButton } from '../button/icon-button';
 import { UiIcon } from '../icon/icon';
 import { UiPage } from '../layout/page/page';
@@ -47,6 +48,7 @@ const meta: Meta<UiAdaptiveShell> = {
         UiShellBanner,
         UiTopAppBar,
         UiTopAppBarActions,
+        UiButton,
         UiIconButton,
         UiBadge,
         UiIcon,
@@ -185,6 +187,45 @@ export const UnterDerLeiste: Story = {
     await expect(field.getBoundingClientRect().top).toBeLessThan(y);
     await expect(field.getBoundingClientRect().bottom).toBeGreaterThan(y);
     await expect(nav.contains(document.elementFromPoint(x, y))).toBe(true);
+  },
+};
+
+/**
+ * Material lifts the label of a button above its surface (`z-index: 1`); without a stacking
+ * context around the content that label paints over the bar and takes the taps meant for it.
+ */
+export const KnopfUnterDerLeiste: Story = {
+  decorators: [forceWindowClass('compact')],
+  render: () => ({
+    props: {
+      destinations,
+      buttons: Array.from({ length: 30 }, (_, index) => `Knopf ${index + 1}`),
+    },
+    template: `
+      <ui-adaptive-shell [destinations]="destinations" navigationLabel="Hauptnavigation">
+        <ui-page heading="Lange Seite">
+          @for (button of buttons; track button) {
+            <div><ui-button variant="tonal">{{ button }}</ui-button></div>
+          }
+        </ui-page>
+      </ui-adaptive-shell>`,
+  }),
+  play: async ({ canvasElement, canvas }) => {
+    const nav = canvas.getByRole('navigation', { name: 'Hauptnavigation' });
+    const bar = nav.getBoundingClientRect();
+    const button = canvasElement.querySelectorAll('ui-button')[14]!;
+    const buttonRect = button.getBoundingClientRect();
+    // Put the middle of a tonal button right behind the middle of the bar.
+    window.scrollBy(0, buttonRect.top + buttonRect.height / 2 - (bar.top + bar.height / 2));
+    const y = bar.top + bar.height / 2;
+    const rect = button.getBoundingClientRect();
+    await expect(rect.top).toBeLessThan(y);
+    await expect(rect.bottom).toBeGreaterThan(y);
+    // Probe the whole width of the bar, including the buttons' labels.
+    for (const share of [0.05, 0.15, 0.3, 0.5, 0.7, 0.85, 0.95]) {
+      const x = bar.left + bar.width * share;
+      await expect(nav.contains(document.elementFromPoint(x, y))).toBe(true);
+    }
   },
 };
 
