@@ -1,40 +1,29 @@
 import {
   DEFAULT_INSTANCE_APPEARANCE,
+  DEFAULT_LANGUAGE,
   THEME_CONTRASTS,
   THEME_FONTS,
   THEME_MODES,
   THEME_SHAPES,
   THEME_VARIANTS,
 } from '@smart/contracts';
-import { computeThemeVars, type ResolvedAppearance } from '@smart/theme';
-import { applyThemeVars } from '@smart/ui';
-import type { Decorator, Preview } from '@storybook/angular';
-
-/** Applies the toolbar selection with the same engine the app uses; no ThemeService needed. */
-const withTheme: Decorator = (story, { globals }) => {
-  const resolved = {
-    colors: {
-      seed: globals['seed'],
-      variant: globals['variant'],
-      colorMatch: false,
-      coreOverrides: {},
-    },
-    shape: globals['shape'],
-    font: globals['font'],
-    mode: globals['mode'],
-    contrast: globals['contrast'],
-  } as ResolvedAppearance;
-  applyThemeVars(document.documentElement, computeThemeVars(resolved), resolved.mode);
-  return story();
-};
+import { applicationConfig, type Preview } from '@storybook/angular';
+import {
+  provideStorybookEnvironment,
+  withToolbarGlobals,
+} from '../projects/ui/src/lib/testing/storybook-environment';
 
 const toolbar = (title: string, items: readonly (string | { value: string; title: string })[]) => ({
   description: title,
   toolbar: { title, items: [...items], dynamicTitle: true },
 });
 
+/** Theme and language come from the same ThemeService and Transloco setup the app uses (spec 9). */
 const preview: Preview = {
-  decorators: [withTheme],
+  decorators: [
+    withToolbarGlobals,
+    applicationConfig({ providers: [provideStorybookEnvironment()] }),
+  ],
   globalTypes: {
     seed: toolbar('Grundfarbe', [
       { value: '#00687a', title: 'Petrol' },
@@ -55,6 +44,10 @@ const preview: Preview = {
     ),
     shape: toolbar('Formen', THEME_SHAPES),
     font: toolbar('Schrift', THEME_FONTS),
+    locale: toolbar('Sprache', [
+      { value: 'de', title: 'Deutsch' },
+      { value: 'en', title: 'English' },
+    ]),
   },
   initialGlobals: {
     seed: DEFAULT_INSTANCE_APPEARANCE.colors.seed,
@@ -63,6 +56,7 @@ const preview: Preview = {
     contrast: 'standard',
     shape: DEFAULT_INSTANCE_APPEARANCE.shape,
     font: DEFAULT_INSTANCE_APPEARANCE.font,
+    locale: DEFAULT_LANGUAGE,
   },
 };
 export default preview;

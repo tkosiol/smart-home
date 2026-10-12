@@ -1,6 +1,6 @@
 import type { Meta, StoryContext, StoryObj } from '@storybook/angular';
 import { computeThemeVars, type ResolvedAppearance } from '@smart/theme';
-import { expect } from 'storybook/test';
+import { expect, waitFor } from 'storybook/test';
 import { COLOR_GROUPS } from './color-roles.groups';
 import { ColorRolesStoryComponent } from './color-roles.story-component';
 
@@ -29,10 +29,13 @@ const expectThemeApplied = async ({ globals, canvas }: StoryContext): Promise<vo
     contrast: globals['contrast'],
   } as ResolvedAppearance;
   const expected = computeThemeVars(resolved);
-  const actual = getComputedStyle(document.documentElement)
-    .getPropertyValue('--mat-sys-primary')
-    .trim();
-  await expect(actual).toBe(expected['--mat-sys-primary']);
+  // The ThemeService applies the theme in an effect, so the variables arrive shortly after render.
+  await waitFor(() =>
+    expect(
+      getComputedStyle(document.documentElement).getPropertyValue('--mat-sys-primary').trim(),
+    ).toBe(expected['--mat-sys-primary']),
+  );
+  await expect(document.documentElement.lang).toBe(globals['locale']);
   const swatchCount = COLOR_GROUPS.reduce((count, group) => count + group.swatches.length, 0);
   await expect(canvas.getAllByRole('listitem')).toHaveLength(swatchCount);
   // Text on a fill is written in its on-role, so the tile itself shows whether the pair reads well.
@@ -49,6 +52,6 @@ export const Alle: StoryObj<ColorRolesStoryComponent> = {
 
 /** Non-default globals: the default theme CSS alone cannot satisfy this story's assertions. */
 export const DunkelHoherKontrast: StoryObj<ColorRolesStoryComponent> = {
-  globals: { seed: '#8a5a00', mode: 'dark', contrast: 'high' },
+  globals: { seed: '#8a5a00', mode: 'dark', contrast: 'high', locale: 'en' },
   play: expectThemeApplied,
 };
