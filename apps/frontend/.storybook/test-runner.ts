@@ -55,14 +55,29 @@ function trackStoryOutcome({ done, failures }: { done: string; failures: string[
 
 /**
  * Disabled controls are exempt from the contrast minimum (WCAG 1.4.3), but axe only recognises
- * them through ARIA attributes the list row must not carry on a plain div; so the dimmed row of
- * `ui-list-item` is left out of the scan.
+ * them through ARIA attributes the list row must not carry on a plain div. So the dimmed row of
+ * `ui-list-item` is scanned separately with `color-contrast` off; every other rule still applies
+ * to it, and every rule (contrast included) applies to the rest of the page.
  */
-const INACTIVE = ['.row--disabled'];
+const INACTIVE = '.row--disabled';
 
 async function checkStory(page: Page): Promise<void> {
   await injectAxe(page);
-  await checkA11y(page, { include: ['#storybook-root'], exclude: [INACTIVE] }, AXE_OPTIONS);
+  await checkA11y(page, { include: ['#storybook-root'], exclude: [[INACTIVE]] }, AXE_OPTIONS);
+  // axe throws on an empty include, so scan inactive rows only when the story has some.
+  if (await page.$(`#storybook-root ${INACTIVE}`)) {
+    await checkA11y(
+      page,
+      { include: [[`#storybook-root ${INACTIVE}`]] },
+      {
+        ...AXE_OPTIONS,
+        axeOptions: {
+          ...AXE_OPTIONS.axeOptions,
+          rules: { ...AXE_OPTIONS.axeOptions.rules, 'color-contrast': { enabled: false } },
+        },
+      },
+    );
+  }
 }
 
 const config: TestRunnerConfig = {
