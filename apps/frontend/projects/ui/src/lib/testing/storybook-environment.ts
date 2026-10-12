@@ -1,4 +1,5 @@
 import {
+  ApplicationRef,
   DOCUMENT,
   Injectable,
   effect,
@@ -23,8 +24,10 @@ import {
   type ThemeShape,
   type ThemeVariant,
 } from '@smart/contracts';
+import { firstValueFrom } from 'rxjs';
 import type { Decorator } from '@storybook/angular';
 import { loadUiTranslation } from '../i18n/ui-translations';
+import { UiFormatContext } from '../time/format-context';
 import { APPEARANCE_STORE } from '../theme/appearance-store';
 import { MemoryAppearanceStore } from '../theme/memory-appearance-store';
 import { provideTheme } from '../theme/provide-theme';
@@ -42,6 +45,15 @@ export interface ToolbarGlobals {
 }
 
 const toolbar = signal<ToolbarGlobals | null>(null);
+
+let translationsReady: Promise<unknown> = Promise.resolve();
+
+/**
+ * Resolves once the toolbar's language is loaded and rendered. Transloco renders empty strings
+ * until the lazy translation arrives, so a play function that inspects text, layout or sizes must
+ * await this first, or it checks an untranslated DOM.
+ */
+export const waitForTranslations = (): Promise<unknown> => translationsReady;
 
 /** Hands the toolbar selection to the story's app on every render. */
 export const withToolbarGlobals: Decorator = (story, context) => {
@@ -74,6 +86,8 @@ export function provideStorybookEnvironment(): EnvironmentProviders {
     provideEnvironmentInitializer(() => {
       const theme = inject(ThemeService);
       const transloco = inject(TranslocoService);
+      const formatContext = inject(UiFormatContext);
+      const appRef = inject(ApplicationRef);
       const html = inject(DOCUMENT).documentElement;
       effect(() => {
         const globals = toolbar();
@@ -90,6 +104,10 @@ export function provideStorybookEnvironment(): EnvironmentProviders {
         });
         theme.setPersonal({ mode: globals.mode, contrast: globals.contrast });
         transloco.setActiveLang(globals.locale);
+        formatContext.locale.set(globals.locale);
+        translationsReady = firstValueFrom(transloco.load(globals.locale)).then(() =>
+          appRef.whenStable(),
+        );
         html.lang = globals.locale;
       });
     }),

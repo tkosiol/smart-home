@@ -7,6 +7,7 @@ import {
   expectNoHorizontalOverflow,
   withPhoneFrame,
 } from '../testing/story-helpers';
+import { waitForTranslations } from '../testing/storybook-environment';
 import { ThemeEditorLiveStoryComponent } from './theme-editor-live.story-component';
 import { UiThemeEditor } from './theme-editor';
 
@@ -34,14 +35,10 @@ const expectTouchTargets = async (root: Element) => {
   }
 };
 
-/** The toolbar does not wait for the language to load: wait until no untranslated key is left. */
-const waitUntilTranslated = (root: Element) =>
-  waitFor(() => expect(root.textContent).not.toContain('ui.themeEditor.'));
-
 export const Persoenlich: StoryObj<UiThemeEditor> = {
   render: (args) => ({ props: { ...args }, template: editor('personal') }),
   play: async ({ canvas, canvasElement }) => {
-    await waitUntilTranslated(canvasElement);
+    await waitForTranslations();
     await expect(canvas.getByRole('radiogroup')).toBeVisible();
     await userEvent.click(canvas.getAllByRole('radio')[2]!);
     await expect(canvas.getAllByRole('radio')[2]).toBeChecked();
@@ -54,7 +51,7 @@ export const Persoenlich: StoryObj<UiThemeEditor> = {
 export const Installation: StoryObj<UiThemeEditor> = {
   render: (args) => ({ props: { ...args }, template: editor('instance') }),
   play: async ({ canvas, canvasElement }) => {
-    await waitUntilTranslated(canvasElement);
+    await waitForTranslations();
     await expect(canvas.queryByRole('radiogroup')).toBeNull();
     await expect(canvas.getAllByRole('combobox')).toHaveLength(3);
     await expectTouchTargets(canvasElement);
@@ -74,19 +71,35 @@ export const Schmal: StoryObj<UiThemeEditor> = {
   }),
   play: async ({ canvasElement }) => {
     const frame = canvasElement.querySelector('.story-narrow')!;
-    await waitUntilTranslated(frame);
+    await waitForTranslations();
+    const headings = [...frame.querySelectorAll('h2')];
+    await expect(headings.length, 'section headings').toBeGreaterThan(0);
+    for (const heading of headings) {
+      await expect(heading.textContent?.trim().length, 'heading text').toBeGreaterThan(0);
+    }
     await expectNoHorizontalOverflow(frame);
     await expectNoBrokenWords(frame);
     await expectTouchTargets(frame);
   },
 };
 
-/** Wired to the ThemeService: choosing "Dunkel" darkens the whole Storybook page. */
+/**
+ * Wired to the ThemeService: choosing the mode the page is not in switches the whole Storybook
+ * page. The toolbar sets the starting mode (dark in the second test-runner pass), so the story
+ * picks the opposite one to prove the change in both passes, then restores the starting mode (the
+ * test runner verifies the toolbar's theme after play).
+ */
 export const Live: StoryObj<UiThemeEditor> = {
   decorators: [moduleMetadata({ imports: [ThemeEditorLiveStoryComponent] })],
   render: () => ({ template: '<ui-theme-editor-live />' }),
   play: async ({ canvas }) => {
-    await userEvent.click(canvas.getAllByRole('radio')[2]!);
-    await waitFor(() => expect(document.documentElement.style.colorScheme).toBe('dark'));
+    await waitForTranslations();
+    const root = document.documentElement;
+    const wasDark = root.style.colorScheme === 'dark';
+    // Radios are ordered system, light, dark.
+    await userEvent.click(canvas.getAllByRole('radio')[wasDark ? 1 : 2]!);
+    await waitFor(() => expect(root.style.colorScheme).toBe(wasDark ? 'light' : 'dark'));
+    await userEvent.click(canvas.getAllByRole('radio')[wasDark ? 2 : 1]!);
+    await waitFor(() => expect(root.style.colorScheme).toBe(wasDark ? 'dark' : 'light'));
   },
 };
