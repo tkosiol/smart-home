@@ -37,3 +37,4 @@ export { UiDateTimePipe } from './lib/time/date-time.pipe';
 export { UiFormatContext } from './lib/time/format-context';
 export type { UiDateTimeStyle } from './lib/time/formatters';
 export { UiRelativeTimePipe } from './lib/time/relative-time.pipe';
+export { loadUiTranslation } from './lib/i18n/ui-translations';

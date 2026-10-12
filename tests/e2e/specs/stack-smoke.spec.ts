@@ -14,6 +14,20 @@ test('the app shell loads without console errors or CSP violations', async ({ pa
   expect(problems).toEqual([]);
 });
 
+for (const [locale, lang] of [
+  ['en-US', 'en'],
+  ['de-DE', 'de'],
+  ['fr-FR', 'de'],
+] as const) {
+  test(`a browser preferring ${locale} gets the page language ${lang}`, async ({ browser }) => {
+    const context = await browser.newContext({ locale });
+    const page = await context.newPage();
+    await page.goto('/');
+    await expect(page.locator('html')).toHaveAttribute('lang', lang);
+    await context.close();
+  });
+}
+
 test('every HTML response carries its own CSP nonce matching the page', async ({ request }) => {
   const nonces: string[] = [];
   for (let attempt = 0; attempt < 2; attempt += 1) {
