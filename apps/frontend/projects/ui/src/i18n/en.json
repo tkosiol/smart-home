@@ -37,7 +37,31 @@
       },
       "customize": "Customize {{color}}",
       "pickColor": "Choose {{color}}",
-      "derived": "Derived: {{hex}}"
+      "derived": "Derived: {{hex}}",
+      "display": "Display",
+      "mode": "Mode",
+      "modes": { "system": "System", "light": "Light", "dark": "Dark" },
+      "contrast": "Contrast",
+      "contrasts": {
+        "system": "System",
+        "standard": "Standard",
+        "medium": "Medium",
+        "high": "High"
+      },
+      "contrastSystemHint": "Standard, or high when the device asks for more contrast.",
+      "colors": "Colors",
+      "ownColors": "My own colors",
+      "installationColors": "The installation's colors apply.",
+      "shapeAndFont": "Shapes and font",
+      "shape": "Shapes",
+      "shapes": { "kantig": "Sharp", "standard": "Standard", "weich": "Soft" },
+      "font": "Font",
+      "fonts": {
+        "roboto-flex": "Roboto Flex",
+        "figtree": "Figtree",
+        "atkinson": "Atkinson Hyperlegible Next"
+      },
+      "reset": "Reset to default"
     }
   }
 }

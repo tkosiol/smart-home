@@ -31,6 +31,7 @@ export type { UiOption } from './lib/option';
 export { UiSelect } from './lib/select/select';
 export { UiSwitch } from './lib/switch/switch';
 export { UiColorField } from './lib/color-field/color-field';
+export { UiThemeEditor, type UiThemeEditorMode } from './lib/theme-editor/theme-editor';
 export { normalizeHexColor } from './lib/color-field/hex-color';
 export { UiTextField } from './lib/text-field/text-field';
 export { UiCard, UiCardActions } from './lib/card/card';

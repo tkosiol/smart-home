@@ -1,5 +1,12 @@
 import { marker } from '@jsverse/transloco-keys-manager/marker';
-import type { CoreColorId, ThemeVariant } from '@smart/contracts';
+import type {
+  CoreColorId,
+  ThemeContrast,
+  ThemeFont,
+  ThemeMode,
+  ThemeShape,
+  ThemeVariant,
+} from '@smart/contracts';
 
 // These keys are picked at runtime; marker() makes them visible to `pnpm i18n:check`.
 
@@ -38,3 +45,30 @@ export const CORE_COLOR_KEYS: Record<CoreColorId, string> = {
 };
 
 export const VARIANT_WITH_COLOR_MATCH_KEY = marker('ui.themeEditor.variantWithColorMatch');
+
+export const MODE_KEYS: Record<ThemeMode, string> = {
+  system: marker('ui.themeEditor.modes.system'),
+  light: marker('ui.themeEditor.modes.light'),
+  dark: marker('ui.themeEditor.modes.dark'),
+};
+
+export const CONTRAST_KEYS: Record<ThemeContrast, string> = {
+  system: marker('ui.themeEditor.contrasts.system'),
+  standard: marker('ui.themeEditor.contrasts.standard'),
+  medium: marker('ui.themeEditor.contrasts.medium'),
+  high: marker('ui.themeEditor.contrasts.high'),
+};
+
+export const SHAPE_KEYS: Record<ThemeShape, string> = {
+  kantig: marker('ui.themeEditor.shapes.kantig'),
+  standard: marker('ui.themeEditor.shapes.standard'),
+  weich: marker('ui.themeEditor.shapes.weich'),
+};
+
+export const FONT_KEYS: Record<ThemeFont, string> = {
+  'roboto-flex': marker('ui.themeEditor.fonts.roboto-flex'),
+  figtree: marker('ui.themeEditor.fonts.figtree'),
+  atkinson: marker('ui.themeEditor.fonts.atkinson'),
+};
+
+export const CONTRAST_SYSTEM_HINT_KEY = marker('ui.themeEditor.contrastSystemHint');
