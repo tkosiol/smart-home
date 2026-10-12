@@ -521,7 +521,7 @@ Angular Material (M3) ist ein internes Implementierungsdetail von `@smart/ui`.
 - Einstellbar pro User: **Grundfarbe** (Vorschläge + frei), **Schema-Variante** (Tonal Spot (Standard), Neutral, Vibrant, Expressive, Fidelity, Content, Monochrome), **Modus** (System/Hell/Dunkel), **Kontrast** (Standard/Mittel/Hoch; `prefers-contrast: more` wird respektiert).
 - Ein `ThemeService` berechnet das vollständige Schema und setzt die `--mat-sys-*`-Farbrollen zur Laufzeit; reagiert auf Systemänderungen (Farbschema, Kontrast).
 - **Statusfarben** (`dry`, `ok`, `wet`, `warning`, `offline` …) als Custom Colors, an die Grundfarbe harmonisiert, jeweils mit den Rollen `color`, `on-color`, `container`, `on-container` für alle Modi und Kontraststufen.
-- **Kein Aufblitzen:** Das Standard-Theme wird beim Build als CSS erzeugt; die User-Einstellung wird zusätzlich lokal zwischengespeichert und von einem Inline-Skript vor dem Angular-Start angewendet (per CSP-Hash erlaubt).
+- **Kein Aufblitzen:** Das Standard-Theme wird beim Build als CSS erzeugt; die User-Einstellung wird zusätzlich lokal zwischengespeichert und von der externen Datei `theme-boot.js` vor dem Angular-Start angewendet (die CSP erlaubt Skripte nur von `'self'`, Inline-Skripte sind gesperrt).
 - Persistenz am User (`users.theme`), dadurch auf allen Geräten gleich.
 - Nicht vorgesehen: Theme pro Haushalt, Farbextraktion aus Bildern (später nachrüstbar).
 

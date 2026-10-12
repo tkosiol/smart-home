@@ -66,3 +66,11 @@ Der `web`-Container schreibt beim Start `/config.json` aus zwei Umgebungsvariabl
 | `SMART_INSTANCE_APPEARANCE`        | Optional: Standard-Theme der Installation als JSON (`instanceAppearanceSchema` in `packages/contracts`). Gültiges JSON mit ungültigem Inhalt: die App nutzt den Build-Standard. Syntaktisch kaputtes JSON macht die gesamte `config.json` unbrauchbar, dann fällt auch `SMART_INSTANCE_APPEARANCE_EDITOR` auf „aus“ zurück (die App startet mit den Standardwerten). |
 
 Vorrang des Instanz-Themes: im Browser gespeicherte Instanz (nur solange der Editor aktiv ist) vor `SMART_INSTANCE_APPEARANCE` vor dem Build-Standard.
+
+Der Service Worker cached `config.json` mit Frische-Strategie: Netz zuerst, nach 2 s oder offline die zuletzt geladene Kopie. Eine geänderte Variable wirkt also beim nächsten Laden, sobald das Netz antwortet.
+
+## Manifest und Service Worker
+
+- **Manifest-Farbe:** `theme_color` (`#00687a`) und `background_color` (`#f5fafc`) in `apps/frontend/public/manifest.webmanifest` sowie `<meta name="theme-color">` in `index.html` sind Build-Standards. `SMART_INSTANCE_APPEARANCE` ändert sie nicht; eine andere Manifest-Farbe braucht einen neuen Build.
+- **Update:** Ein neues Deploy lädt der Service Worker im Hintergrund. Ist es fertig, erscheint in der App das Banner „Neue Version verfügbar“ mit „Neu laden“. Bis dahin läuft die alte Version weiter; ein Deploy aktualisiert installierte Apps nicht ohne Zutun des Nutzers.
+- **Nginx:** Der Service Worker prüft `index.html` byte für byte. Der `web`-Container darf die Datei nicht umschreiben (kein `sub_filter`, kein Nonce pro Antwort), sonst schlägt die Installation fehl.
