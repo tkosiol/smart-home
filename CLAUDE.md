@@ -31,6 +31,7 @@ Smart-Home-Plattform. Verbindliche Architektur: `docs/superpowers/specs/2026-10-
 | Produktions-Stack lokal testen                   | `sh infra/compose/test/stack-test.sh`                                           |
 | Deploy-Skripte testen                            | `bash infra/deploy/test/run-tests.sh`                                           |
 | Symbol-Schrift neu erzeugen                      | `pnpm icons:build`                                                              |
+| App-Icon (PNGs, Favicon) neu erzeugen            | `pnpm app-icon:build`                                                           |
 
 `pnpm install` baut `@smart/contracts` und `@smart/theme` nur bei einer echten Installation (pnpm überspringt Lifecycle-Skripte, wenn `node_modules` aktuell ist). Nach Änderungen an den Contracts oder Theme-Paketen daher `pnpm packages:build` (baut `@smart/contracts` und `@smart/theme` in Abhängigkeitsreihenfolge).
 
