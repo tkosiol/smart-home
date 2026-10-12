@@ -2,12 +2,12 @@ import { ChangeDetectionStrategy, Component, booleanAttribute, input, model } fr
 import type { ErrorStateMatcher } from '@angular/material/core';
 import { MatError, MatFormField, MatHint, MatLabel } from '@angular/material/form-field';
 import { MatInput } from '@angular/material/input';
-import { UiErrorStateSync } from '../form-field/error-state-sync';
+import { UiFieldStateSync } from '../form-field/field-state-sync';
 
 /** Outlined text field; the caller decides about errors (`error` set ⇒ invalid). Bind `[(value)]`. */
 @Component({
   selector: 'ui-text-field',
-  imports: [MatFormField, MatLabel, MatHint, MatError, MatInput, UiErrorStateSync],
+  imports: [MatFormField, MatLabel, MatHint, MatError, MatInput, UiFieldStateSync],
   templateUrl: './text-field.html',
   styleUrl: './text-field.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

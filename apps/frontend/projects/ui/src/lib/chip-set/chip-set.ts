@@ -6,13 +6,7 @@ import {
   type MatChipListboxChange,
 } from '@angular/material/chips';
 import { UiIcon } from '../icon/icon';
-import type { IconName } from '../icon/icon-codepoints';
-
-export interface UiChipOption<T extends string> {
-  readonly value: T;
-  readonly label: string;
-  readonly icon?: IconName;
-}
+import type { UiOption } from '../option';
 
 /**
  * Filter chips (spec: ui-chip). Rendered from `options` because Material's listbox only finds chip
@@ -26,10 +20,11 @@ export interface UiChipOption<T extends string> {
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class UiChipSet<T extends string> {
-  readonly options = input.required<readonly UiChipOption<T>[]>();
+  readonly options = input.required<readonly UiOption<T>[]>();
   readonly selected = model<readonly T[]>([]);
   readonly label = input.required<string>();
   readonly multiple = input(true, { transform: booleanAttribute });
+  readonly disabled = input(false, { transform: booleanAttribute });
 
   protected change(event: MatChipListboxChange): void {
     const value = event.value as T | T[] | undefined | null;

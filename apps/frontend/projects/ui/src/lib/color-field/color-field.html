@@ -5,16 +5,18 @@
     class="picker"
     type="color"
     [value]="value()"
+    [disabled]="disabled()"
     [attr.aria-label]="pickerLabel()"
     (input)="onPick($event)"
   />
   <input
     matInput
-    uiErrorStateSync
+    uiFieldStateSync
     type="text"
     spellcheck="false"
     autocomplete="off"
     [value]="draft()"
+    [disabled]="disabled()"
     [errorStateMatcher]="errorMatcher"
     (input)="onText($event)"
     (blur)="touched.set(true)"

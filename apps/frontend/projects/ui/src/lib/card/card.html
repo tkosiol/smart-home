@@ -2,8 +2,8 @@
   @if (heading(); as heading) {
     <mat-card-header>
       <h3 mat-card-title class="title">{{ heading }}</h3>
-      @if (subheading(); as subheading) {
-        <p mat-card-subtitle class="subtitle">{{ subheading }}</p>
+      @if (description(); as description) {
+        <p mat-card-subtitle class="subtitle">{{ description }}</p>
       }
     </mat-card-header>
   }

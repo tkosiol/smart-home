@@ -19,6 +19,7 @@ const meta: Meta<UiColorField> = {
       [pickerLabel]="pickerLabel"
       [invalidMessage]="invalidMessage"
       [hint]="hint"
+      [disabled]="disabled"
       [(value)]="value"
     />`,
   }),
@@ -47,5 +48,13 @@ export const MitHinweis: StoryObj<UiColorField> = {
   args: { hint: 'Daraus entsteht das ganze Farbschema.' },
   play: async ({ canvas }) => {
     await expect(canvas.getByText('Daraus entsteht das ganze Farbschema.')).toBeVisible();
+  },
+};
+
+export const Deaktiviert: StoryObj<UiColorField> = {
+  args: { disabled: true },
+  play: async ({ canvas }) => {
+    await expect(canvas.getByRole('textbox', { name: 'Grundfarbe' })).toBeDisabled();
+    await expect(canvas.getByLabelText('Grundfarbe wählen')).toBeDisabled();
   },
 };

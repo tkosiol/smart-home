@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  booleanAttribute,
   computed,
   input,
   linkedSignal,
@@ -10,13 +11,13 @@ import {
 import type { ErrorStateMatcher } from '@angular/material/core';
 import { MatError, MatFormField, MatHint, MatPrefix, MatLabel } from '@angular/material/form-field';
 import { MatInput } from '@angular/material/input';
-import { UiErrorStateSync } from '../form-field/error-state-sync';
+import { UiFieldStateSync } from '../form-field/field-state-sync';
 import { normalizeHexColor } from './hex-color';
 
 /** Hex color with a native picker; only valid, normalized colors reach `[(value)]`. */
 @Component({
   selector: 'ui-color-field',
-  imports: [MatFormField, MatLabel, MatHint, MatError, MatInput, MatPrefix, UiErrorStateSync],
+  imports: [MatFormField, MatLabel, MatHint, MatError, MatInput, MatPrefix, UiFieldStateSync],
   templateUrl: './color-field.html',
   styleUrl: './color-field.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -26,6 +27,7 @@ export class UiColorField {
   readonly pickerLabel = input.required<string>();
   readonly invalidMessage = input.required<string>();
   readonly hint = input<string>();
+  readonly disabled = input(false, { transform: booleanAttribute });
   readonly value = model('#000000');
 
   /**
