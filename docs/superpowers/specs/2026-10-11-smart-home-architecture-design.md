@@ -531,7 +531,7 @@ M3-Fensterklassen (Compact < 600 px, Medium 600–839 px, Expanded ≥ 840 px). 
 
 ### 10.7 Erweiterbarkeit
 
-Feature-Module registrieren sich über `provideFeature({ navigation, routes, deviceWidgets })`. Die Gerätedetailseite des Cores rendert registrierte Widgets passend zu den Capabilities des Geräts, ohne die Module zu kennen. Module importieren sich nicht gegenseitig.
+Feature-Module registrieren sich über `provideFeature({ moreEntries, overviewCards })`: Einträge der „Mehr“-Seite und Karten der Übersicht. Die Routen bleiben lazy in `app.routes.ts`. Die Gerätedetailseite des Cores rendert registrierte Widgets passend zu den Capabilities des Geräts, ohne die Module zu kennen; das Registrieren von `deviceWidgets` kommt mit Etappe 6. Module importieren sich nicht gegenseitig.
 
 ### 10.8 Daten und Zustand
 
