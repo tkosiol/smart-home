@@ -38,7 +38,7 @@ Neues Symbol: Namen in `src/lib/icon/icons.json` eintragen, dann `pnpm icons:bui
 
 ## Bundle-Größe
 
-Das initiale Bundle der App lag mit Etappe 3d bei rund 497 kB; die Grenze sind 500 kB (Build-Fehler, `angular.json`). Neuer Code, der beim Start geladen wird, braucht deshalb zuerst Platz: lazy laden (z. B. die Theme-Engine `@material/material-color-utilities`). Nutzen nur lazy Seiten einen Baustein, gehört er in `@smart/ui/forms`.
+Das initiale Bundle der App lag mit Etappe 3d bei rund 498 kB; die Grenze sind 500 kB (Build-Fehler, `angular.json`). Neuer Code, der beim Start geladen wird, braucht deshalb zuerst Platz: lazy laden (z. B. die Theme-Engine `@material/material-color-utilities`). Nutzen nur lazy Seiten einen Baustein, gehört er in `@smart/ui/forms`; `core/`, `shell/` und die App-Wurzel dürfen es per Lint nicht importieren.
 
 ## Texte und Sprache
 
