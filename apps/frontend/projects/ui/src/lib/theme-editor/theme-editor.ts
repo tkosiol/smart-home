@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, input, model, output } from '@angular/core';
-import { TranslocoPipe, translateSignal } from '@jsverse/transloco';
+import { TRANSLOCO_SCOPE, TranslocoPipe, translateSignal } from '@jsverse/transloco';
 import {
   DEFAULT_PERSONAL_APPEARANCE,
   THEME_CONTRASTS,
@@ -51,6 +51,9 @@ export type UiThemeEditorMode = 'personal' | 'instance';
   ],
   templateUrl: './theme-editor.html',
   styleUrl: './theme-editor.scss',
+  // The editor only uses the library's root texts (`ui.*`). Inside a page with a lazy Transloco
+  // scope, `translateSignal` would otherwise look them up in that scope only and miss them.
+  providers: [{ provide: TRANSLOCO_SCOPE, useValue: null }],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class UiThemeEditor {

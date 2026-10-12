@@ -4,6 +4,8 @@ Design-System der Smart-Home-PWA: Theme-Laufzeit (`ThemeService`, `provideTheme`
 
 Die Bibliothek wird weder separat gebaut noch veröffentlicht: Die App bindet sie über den Pfad-Alias `@smart/ui` (→ `projects/ui/src/public-api.ts`) direkt aus dem Quelltext ein.
 
+Formularelemente (`UiSegmentedButton`, `UiChipSet`, `UiSelect`, `UiSwitch`, `UiColorField`, `UiTextField`) und der `UiThemeEditor` liegen im zweiten Einstieg `@smart/ui/forms` (→ `projects/ui/src/forms.ts`). Der Grund ist die Paketgröße: Alles, was `public-api.ts` weiterreicht und irgendwo verwendet wird, landet im Bundle der Shell. So bleibt Materials Auswahl-, Schalter- und Formular-Code in den lazy geladenen Seiten, die ihn brauchen.
+
 | Zweck                   | Befehl                                                                                             |
 | ----------------------- | -------------------------------------------------------------------------------------------------- |
 | Unit-Tests (App und UI) | `pnpm --filter @smart/frontend test`                                                               |
