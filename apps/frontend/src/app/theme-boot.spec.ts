@@ -49,11 +49,11 @@ describe('theme-boot.js', () => {
   it.each([
     'not json',
     'null',
-    '{"mode":"dark"}',
-    '{"mode":"dark","light":null,"dark":null}',
-    '{"mode":"dark","light":{},"dark":{}}',
-    '{"mode":"dark","light":{},"dark":{"color":"red"}}',
-    '{"mode":"dark","light":{},"dark":{"--mat-sys-surface":42}}',
+    '{"v":2,"followsSystemContrast":false,"mode":"dark"}',
+    '{"v":2,"followsSystemContrast":false,"mode":"dark","light":null,"dark":null}',
+    '{"v":2,"followsSystemContrast":false,"mode":"dark","light":{},"dark":{}}',
+    '{"v":2,"followsSystemContrast":false,"mode":"dark","light":{},"dark":{"color":"red"}}',
+    '{"v":2,"followsSystemContrast":false,"mode":"dark","light":{},"dark":{"--mat-sys-surface":42}}',
     '{"mode":"dark","light":{},"dark":{"--mat-sys-surface":"#101415"}}',
     '{"v":1,"mode":"dark","followsSystemContrast":false,"light":{},"dark":{"--mat-sys-surface":"#101415"}}',
   ])('ignores unusable cache %j', (raw) => {
