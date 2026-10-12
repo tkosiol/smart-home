@@ -11,6 +11,7 @@ export const TEXT_ATTRIBUTES = new Set([
   'description',
   'error',
   'heading',
+  'headline',
   'hint',
   'invalidMessage',
   'label',
