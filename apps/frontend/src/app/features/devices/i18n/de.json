@@ -1,3 +1,7 @@
 {
-  "title": "Geräte"
+  "title": "Geräte",
+  "empty": {
+    "heading": "Noch keine Geräte",
+    "description": "Hier erscheinen später alle Geräte des Haushalts, die sich steuern oder ablesen lassen."
+  }
 }

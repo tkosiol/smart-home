@@ -1,7 +1,11 @@
 import { Routes } from '@angular/router';
 
 export const routes: Routes = [
-  { path: '', loadChildren: () => import('./features/dashboard').then((m) => m.dashboardRoutes) },
+  {
+    path: '',
+    pathMatch: 'full',
+    loadChildren: () => import('./features/dashboard').then((m) => m.dashboardRoutes),
+  },
   { path: 'raeume', loadChildren: () => import('./features/rooms').then((m) => m.roomsRoutes) },
   {
     path: 'geraete',
