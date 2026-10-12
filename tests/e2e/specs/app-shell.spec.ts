@@ -157,12 +157,16 @@ test.describe('offline, served by the service worker', () => {
 
     await page.goto('/mehr/einstellungen/darstellung');
     await expect(page.getByRole('heading', { level: 1, name: 'Darstellung' })).toBeVisible();
-    await expect(page.getByText('Offline – Anzeigen können veraltet sein')).toBeVisible();
+    await expect(
+      page.locator('ui-banner').getByText('Offline – Anzeigen können veraltet sein'),
+    ).toBeVisible();
     await expect(page).toHaveTitle('Darstellung – Smart Home');
 
     await page.goto('/gibt-es-nicht');
     await expect(page.getByRole('heading', { level: 1, name: 'Nicht gefunden' })).toBeVisible();
-    await expect(page.getByText('Offline – Anzeigen können veraltet sein')).toBeVisible();
+    await expect(
+      page.locator('ui-banner').getByText('Offline – Anzeigen können veraltet sein'),
+    ).toBeVisible();
   });
 });
 
