@@ -101,6 +101,30 @@ test('the navigation follows the window width without a reload', async ({ page }
   expect(bar.atLeft).toBe(false);
 });
 
+test('every page names itself in the document title and takes the focus', async ({ page }) => {
+  await page.goto('/');
+  await expect(page).toHaveTitle('Übersicht – Smart Home');
+  await navigation(page).getByRole('link', { name: 'Räume' }).click();
+  await expect(page).toHaveTitle('Räume – Smart Home');
+  // The focus moves to the heading, so a screen reader announces the new page.
+  await expect(page.getByRole('heading', { level: 1, name: 'Räume' })).toBeFocused();
+  await navigation(page).getByRole('link', { name: 'Mehr' }).click();
+  await expect(page).toHaveTitle('Mehr – Smart Home');
+  await page.getByRole('link', { name: /Einstellungen/ }).click();
+  await expect(page).toHaveTitle('Einstellungen – Smart Home');
+  await page.getByRole('link', { name: /Darstellung/ }).click();
+  await expect(page).toHaveTitle('Darstellung – Smart Home');
+  await page.goto('/gibt-es-nicht');
+  await expect(page).toHaveTitle('Nicht gefunden – Smart Home');
+});
+
+test('the document title follows the language', async ({ page }) => {
+  await page.goto('/mehr/einstellungen/darstellung');
+  await expect(page).toHaveTitle('Darstellung – Smart Home');
+  await page.getByRole('radio', { name: 'English' }).click();
+  await expect(page).toHaveTitle('Appearance – Smart Home');
+});
+
 test.describe('deep links', () => {
   test('a deep route loads its page directly', async ({ page }) => {
     const response = await page.goto('/mehr/einstellungen/darstellung');

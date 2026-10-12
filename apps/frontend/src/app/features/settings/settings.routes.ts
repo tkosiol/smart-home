@@ -1,6 +1,7 @@
 import { inject } from '@angular/core';
 import { Router, type CanMatchFn, type Routes } from '@angular/router';
 import { provideTranslocoScope } from '@jsverse/transloco';
+import { marker } from '@jsverse/transloco-keys-manager/marker';
 import { RUNTIME_CONFIG } from '../../core/config';
 
 /** The installation appearance is only reachable while the hoster enabled its editor (also by URL). */
@@ -29,10 +30,12 @@ export const settingsRoutes: Routes = [
       },
       {
         path: 'darstellung',
+        title: marker('app.title.appearance'),
         loadComponent: () => import('./appearance-page').then((m) => m.AppearancePage),
       },
       {
         path: 'installation',
+        title: marker('app.title.installation'),
         canMatch: [instanceEditorEnabled],
         loadComponent: () => import('./installation-page').then((m) => m.InstallationPage),
       },

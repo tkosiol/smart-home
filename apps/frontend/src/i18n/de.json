@@ -7,6 +7,16 @@
       "devices": "Geräte",
       "more": "Mehr"
     },
+    "title": {
+      "overview": "Übersicht",
+      "rooms": "Räume",
+      "devices": "Geräte",
+      "more": "Mehr",
+      "settings": "Einstellungen",
+      "appearance": "Darstellung",
+      "installation": "Erscheinungsbild der Installation",
+      "notFound": "Nicht gefunden"
+    },
     "household": {
       "placeholder": "Mein Zuhause"
     },

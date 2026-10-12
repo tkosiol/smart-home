@@ -22,7 +22,11 @@ const content = `
 export const Standard: StoryObj<UiPage> = {
   render: () => ({ template: content }),
   play: async ({ canvas }) => {
-    await expect(canvas.getByRole('heading', { level: 1, name: 'Darstellung' })).toBeVisible();
+    const heading = canvas.getByRole('heading', { level: 1, name: 'Darstellung' });
+    await expect(heading).toBeVisible();
+    // The app moves the focus here after a navigation.
+    heading.focus();
+    await expect(heading).toHaveFocus();
     await expect(canvas.getByRole('heading', { level: 2, name: 'Farben' })).toBeVisible();
     await expect(canvas.getByRole('heading', { level: 3, name: 'Unterabschnitt' })).toBeVisible();
   },

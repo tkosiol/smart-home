@@ -7,6 +7,16 @@
       "devices": "Devices",
       "more": "More"
     },
+    "title": {
+      "overview": "Overview",
+      "rooms": "Rooms",
+      "devices": "Devices",
+      "more": "More",
+      "settings": "Settings",
+      "appearance": "Appearance",
+      "installation": "Appearance of the installation",
+      "notFound": "Not found"
+    },
     "household": {
       "placeholder": "My home"
     },
