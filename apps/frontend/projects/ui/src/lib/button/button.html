@@ -1,0 +1,6 @@
+<button [matButton]="variant()" [type]="type()" [disabled]="disabled()" (click)="pressed.emit()">
+  @if (icon(); as icon) {
+    <ui-icon matButtonIcon [name]="icon" size="sm" />
+  }
+  <ng-content />
+</button>

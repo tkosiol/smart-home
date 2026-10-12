@@ -1,0 +1,19 @@
+:host {
+  display: block;
+  min-width: 0;
+}
+
+mat-form-field {
+  width: 100%;
+}
+
+.picker {
+  width: var(--smart-size-touch);
+  height: var(--smart-size-touch);
+  margin-inline-start: var(--smart-space-xs);
+  padding: 0;
+  border: none;
+  border-radius: var(--mat-sys-corner-small);
+  background: transparent;
+  cursor: pointer;
+}

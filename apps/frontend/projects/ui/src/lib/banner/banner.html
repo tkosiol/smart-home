@@ -1,0 +1,10 @@
+<ui-icon class="icon" [name]="shownIcon()" />
+<div class="body">
+  @if (heading(); as heading) {
+    <p class="heading">{{ heading }}</p>
+  }
+  <div class="text"><ng-content /></div>
+  @if (actions()) {
+    <div class="actions"><ng-content select="[uiBannerActions]" /></div>
+  }
+</div>

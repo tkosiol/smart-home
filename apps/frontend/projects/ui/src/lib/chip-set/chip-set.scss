@@ -1,0 +1,26 @@
+@use '@angular/material' as mat;
+
+:host {
+  display: block;
+  max-width: 100%;
+
+  // Material's filter chip is 32px high and has no separate touch target; the whole chip is the
+  // target, so it is raised to the 48px touch size.
+  @include mat.chips-overrides(
+    (
+      container-height: var(--smart-size-touch),
+    )
+  );
+}
+
+// Material keeps a chip's label on one line, so a long label pushed the chip past a 320px screen.
+// Our label wraps instead (long German words anywhere), and the chip grows with it.
+mat-chip-option {
+  height: auto;
+  min-height: var(--smart-size-touch);
+}
+
+.label {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}

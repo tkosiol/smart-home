@@ -1,0 +1,13 @@
+:host {
+  display: inline-flex;
+  max-width: 100%;
+}
+
+button {
+  max-width: 100%;
+}
+
+/* Material spaces icons only for .mat-icon / mat-icon, which ui-icon is not; keep the M3 8px gap. */
+ui-icon[matButtonIcon] {
+  margin-inline-end: var(--smart-space-sm);
+}

@@ -30,6 +30,11 @@ export default {
     'apps/frontend/projects/ui/src/lib/tokens/**',
   ],
   rules: {
+    // kebab-case, plus one BEM-style modifier (".ui-stack--wrap") for host state classes.
+    'selector-class-pattern': [
+      '^[a-z][a-z0-9]*(-[a-z0-9]+)*(--[a-z0-9]+(-[a-z0-9]+)*)?$',
+      { message: (selector) => `Expected class selector "${selector}" to be kebab-case` },
+    ],
     'unit-disallowed-list': ['px', 'rem', 'em', 'pt', 'ms', 's'],
     'scss/no-dollar-variables': true,
     'property-disallowed-list': ['/^--/'],

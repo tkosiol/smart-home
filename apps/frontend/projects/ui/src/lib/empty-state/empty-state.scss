@@ -1,0 +1,33 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--smart-space-md);
+  min-width: 0;
+  padding: var(--smart-space-2xl) var(--smart-space-lg);
+  text-align: center;
+}
+
+.icon {
+  color: var(--mat-sys-primary);
+}
+
+.heading {
+  margin: 0;
+  color: var(--mat-sys-on-surface);
+  font: var(--mat-sys-title-large);
+  overflow-wrap: anywhere;
+  hyphens: auto;
+}
+
+.text {
+  max-width: 40ch;
+  margin: 0;
+  color: var(--mat-sys-on-surface-variant);
+  font: var(--mat-sys-body-large);
+  overflow-wrap: anywhere;
+}
+
+.actions {
+  margin-top: var(--smart-space-sm);
+}

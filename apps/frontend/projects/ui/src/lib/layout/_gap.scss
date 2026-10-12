@@ -1,0 +1,34 @@
+// Gap per [data-gap] value; shared by layout components with a `gap: UiSpace` input.
+@mixin rules() {
+  :host([data-gap='none']) {
+    gap: 0;
+  }
+
+  :host([data-gap='xs']) {
+    gap: var(--smart-space-xs);
+  }
+
+  :host([data-gap='sm']) {
+    gap: var(--smart-space-sm);
+  }
+
+  :host([data-gap='md']) {
+    gap: var(--smart-space-md);
+  }
+
+  :host([data-gap='lg']) {
+    gap: var(--smart-space-lg);
+  }
+
+  :host([data-gap='xl']) {
+    gap: var(--smart-space-xl);
+  }
+
+  :host([data-gap='2xl']) {
+    gap: var(--smart-space-2xl);
+  }
+
+  :host([data-gap='3xl']) {
+    gap: var(--smart-space-3xl);
+  }
+}

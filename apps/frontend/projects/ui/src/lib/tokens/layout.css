@@ -1,4 +1,4 @@
-/* Spacing and line tokens on a 4px grid. Fixed lengths are only allowed in tokens/. */
+/* Spacing, size, line and motion tokens. Fixed lengths and durations are only allowed in tokens/. */
 :root {
   --smart-space-xs: 4px;
   --smart-space-sm: 8px;
@@ -8,4 +8,21 @@
   --smart-space-2xl: 32px;
   --smart-space-3xl: 48px;
   --smart-border-width: 1px;
+  /* Sizes */
+  --smart-size-touch: 48px;
+  --smart-size-icon-sm: 20px;
+  --smart-size-icon-md: 24px;
+  --smart-size-icon-lg: 40px;
+  --smart-size-grid-sm: 160px;
+  --smart-size-grid-md: 240px;
+  --smart-size-grid-lg: 320px;
+  --smart-size-content-max: 1200px;
+  --smart-size-skeleton-block: 96px;
+  --smart-focus-width: 3px;
+  --smart-line-height-icon: 1;
+  /* Motion */
+  --smart-motion-duration-short: 150ms;
+  --smart-motion-duration-medium: 300ms;
+  --smart-motion-duration-long: 1500ms;
+  --smart-motion-easing-standard: cubic-bezier(0.2, 0, 0, 1);
 }

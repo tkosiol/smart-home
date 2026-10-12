@@ -50,6 +50,14 @@ describe('stylelint: only design tokens in component styles', () => {
     expect(await rulesFor(css)).toContain(rule);
   });
 
+  it('accepts a BEM-style modifier class but not other casing', async () => {
+    expect(await rulesFor(':host(.ui-icon--filled) {\n  opacity: 1;\n}\n')).toEqual([]);
+    expect(await rulesFor('.uiIcon {\n  opacity: 1;\n}\n')).toContain('selector-class-pattern');
+    expect(await rulesFor('.ui-icon__x--y--z {\n  opacity: 1;\n}\n')).toContain(
+      'selector-class-pattern',
+    );
+  });
+
   it('accepts relative layout values', async () => {
     const css =
       '.a {\n  width: 100%;\n  grid-template-columns: 1fr 2fr;\n  padding: calc(var(--smart-space-md) * 2);\n}\n';

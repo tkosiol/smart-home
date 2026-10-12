@@ -47,6 +47,20 @@ test('hashed assets are cacheable and keep the security headers', async ({ page,
   expect(headers['x-content-type-options']).toBe('nosniff');
 });
 
+test('hashed font files are cacheable for a year', async ({ page, request }) => {
+  await page.goto('/');
+  const stylesheet = await page
+    .locator('link[rel="stylesheet"][href*="styles-"]')
+    .getAttribute('href');
+  expect(stylesheet).toBeTruthy();
+  const css = await (await request.get(`/${stylesheet}`)).text();
+  const font = /url\(["']?(?:\.\/)?(media\/[^"')]+\.woff2)["']?\)/.exec(css)?.[1];
+  expect(font, 'a self-hosted woff2 in the global styles').toBeTruthy();
+  const response = await request.get(`/${font}`);
+  expect(response.status()).toBe(200);
+  expect(response.headers()['cache-control']).toBe('public, max-age=31536000, immutable');
+});
+
 test('theme-boot.js is revalidated on every load and keeps the security headers', async ({
   request,
 }) => {

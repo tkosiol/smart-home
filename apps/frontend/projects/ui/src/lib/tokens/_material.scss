@@ -3,6 +3,14 @@
 // Material's system tokens; colors, corners and the font family are overridden at runtime by the
 // generated default theme and ThemeService (--mat-sys-*, --smart-font-family).
 @mixin core() {
+  // Keyboard focus shows Material's strong ring on every control, not only the faint state layer.
+  @include mat.strong-focus-indicators(
+    (
+      border-color: var(--mat-sys-primary),
+      border-width: var(--smart-focus-width),
+    )
+  );
+
   html {
     @include mat.theme(
       (

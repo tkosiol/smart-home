@@ -19,6 +19,10 @@ export const CORE_COLOR_IDS = [
   'neutral',
   'neutralVariant',
 ] as const;
+export const THEME_SHAPES = ['kantig', 'standard', 'weich'] as const;
+export const THEME_FONTS = ['roboto-flex', 'figtree', 'atkinson'] as const;
+export const THEME_MODES = ['system', 'light', 'dark'] as const;
+export const THEME_CONTRASTS = ['system', 'standard', 'medium', 'high'] as const;
 
 export const themeColorsSchema = z.object({
   seed: hexColor,
@@ -29,14 +33,14 @@ export const themeColorsSchema = z.object({
 
 export const instanceAppearanceSchema = z.object({
   colors: themeColorsSchema,
-  shape: z.enum(['kantig', 'standard', 'weich']),
-  font: z.enum(['roboto-flex', 'figtree', 'atkinson']),
+  shape: z.enum(THEME_SHAPES),
+  font: z.enum(THEME_FONTS),
 });
 
 export const personalAppearanceSchema = z.object({
   colors: z.optional(themeColorsSchema),
-  mode: z.enum(['system', 'light', 'dark']),
-  contrast: z.enum(['system', 'standard', 'medium', 'high']),
+  mode: z.enum(THEME_MODES),
+  contrast: z.enum(THEME_CONTRASTS),
 });
 
 export type ThemeVariant = (typeof THEME_VARIANTS)[number];

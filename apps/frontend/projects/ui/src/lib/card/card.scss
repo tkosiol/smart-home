@@ -1,0 +1,15 @@
+:host {
+  display: block;
+  min-width: 0;
+}
+
+.title,
+.subtitle {
+  margin: 0;
+  overflow-wrap: anywhere;
+  hyphens: auto;
+}
+
+mat-card-content {
+  overflow-wrap: anywhere;
+}

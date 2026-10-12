@@ -1,0 +1,34 @@
+:host {
+  display: inline-block;
+  flex-shrink: 0;
+  overflow: hidden;
+  font-family: var(--smart-font-icons);
+  font-style: normal;
+  font-variation-settings: 'FILL' 0;
+  line-height: var(--smart-line-height-icon);
+  text-align: center;
+  user-select: none;
+  white-space: nowrap;
+}
+
+:host([data-size='sm']) {
+  width: var(--smart-size-icon-sm);
+  height: var(--smart-size-icon-sm);
+  font-size: var(--smart-size-icon-sm);
+}
+
+:host([data-size='md']) {
+  width: var(--smart-size-icon-md);
+  height: var(--smart-size-icon-md);
+  font-size: var(--smart-size-icon-md);
+}
+
+:host([data-size='lg']) {
+  width: var(--smart-size-icon-lg);
+  height: var(--smart-size-icon-lg);
+  font-size: var(--smart-size-icon-lg);
+}
+
+:host(.ui-icon--filled) {
+  font-variation-settings: 'FILL' 1;
+}

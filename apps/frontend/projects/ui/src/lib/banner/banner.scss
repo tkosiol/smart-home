@@ -1,0 +1,74 @@
+@use '@angular/material' as mat;
+
+:host {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--smart-space-md);
+  min-width: 0;
+  padding: var(--smart-space-md) var(--smart-space-lg);
+  border-radius: var(--mat-sys-corner-medium);
+
+  // Text buttons take the banner's text color, including their state layers and ripples: Material's
+  // primary tints are not designed for the status containers (1.6:1 in the high-contrast dark theme).
+  @include mat.button-overrides(
+    (
+      text-label-text-color: currentColor,
+      text-state-layer-color: currentColor,
+      text-ripple-color: color-mix(in srgb, currentColor 12%, transparent),
+    )
+  );
+
+  // The global primary focus ring would be too faint on the status containers.
+  @include mat.strong-focus-indicators(
+    (
+      border-color: currentColor,
+    )
+  );
+}
+
+:host([data-tone='info']) {
+  background: var(--mat-sys-secondary-container);
+  color: var(--mat-sys-on-secondary-container);
+}
+
+:host([data-tone='warning']) {
+  background: var(--smart-status-warning-container);
+  color: var(--smart-status-on-warning-container);
+}
+
+:host([data-tone='offline']) {
+  background: var(--smart-status-offline-container);
+  color: var(--smart-status-on-offline-container);
+}
+
+.icon {
+  margin-top: var(--smart-space-xs);
+}
+
+.body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--smart-space-xs);
+  min-width: 0;
+}
+
+.heading {
+  margin: 0;
+  font: var(--mat-sys-title-small);
+  overflow-wrap: anywhere;
+  hyphens: auto;
+}
+
+.text {
+  font: var(--mat-sys-body-medium);
+  overflow-wrap: anywhere;
+  hyphens: auto;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--smart-space-sm);
+}
