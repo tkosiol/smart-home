@@ -80,7 +80,7 @@ Zusammenführung: Formen und Schrift kommen immer von der Instanz. Für die Farb
 1. **Build:** Ein Skript erzeugt aus dem Instanz-Default eine CSS-Datei mit allen Rollen für Hell und Dunkel (über `prefers-color-scheme`) – korrekte Farben vor dem ersten Skript.
 2. **Start:** Das externe Skript `theme-boot.js` (kein Inline-Skript wegen CSP) setzt die zuletzt berechneten Variablen des Nutzers aus dem Zwischenspeicher, für Hell und Dunkel getrennt gespeichert, damit „System“ ohne Aufblitzen funktioniert.
 3. **Laufzeit:** `ThemeService` berechnet bei jeder Änderung neu, reagiert auf Wechsel von `prefers-color-scheme` und `prefers-contrast` und aktualisiert den Zwischenspeicher.
-4. **Laufzeitkonfiguration (Self-Hosting):** Der Instanz-Default kann ohne Neubau über `config.json` (vom `web`-Container ausgeliefert, aus Umgebungsvariablen erzeugt) überschrieben werden; ist er gesetzt, hat er Vorrang vor dem Build-Default.
+4. **Laufzeitkonfiguration (Self-Hosting):** Der Instanz-Default kann ohne Neubau über `config.json` (vom `web`-Container ausgeliefert, aus den Umgebungsvariablen `SMART_INSTANCE_APPEARANCE_EDITOR` und `SMART_INSTANCE_APPEARANCE` erzeugt) überschrieben werden. Vorrang: im Browser gespeicherte Instanz (nur solange `features.instanceAppearanceEditor` aktiv ist) vor `config.json` vor Build-Default.
 
 ## 5. Komponenten (`@smart/ui`)
 

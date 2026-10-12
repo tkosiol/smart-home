@@ -55,3 +55,14 @@ Proxy Host pro Umgebung: Domain → `http://smart-prod-web:8080` bzw. `http://sm
 ssh -i <tmp-key> <DEPLOY_USER>@<VPS_HOST> "deploy 0000000000000000000000000000000000000000"   # → not on main
 ssh -i <tmp-key> <DEPLOY_USER>@<VPS_HOST> "ls"                                                # → usage
 ```
+
+## Laufzeitkonfiguration der Web-App
+
+Der `web`-Container schreibt beim Start `/config.json` aus zwei Umgebungsvariablen (`apps/frontend/nginx/40-smart-config.sh`). Änderungen wirken nach einem Neustart des Containers, ohne Neubau.
+
+| Variable                           | Wirkung                                                                                                                                                                |
+| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SMART_INSTANCE_APPEARANCE_EDITOR` | `true` zeigt „Einstellungen → Erscheinungsbild der Installation“ (bis Etappe 4 ohne Admin-Rolle). Staging `true`, Produktion nicht setzen.                             |
+| `SMART_INSTANCE_APPEARANCE`        | Optional: Standard-Theme der Installation als JSON (`instanceAppearanceSchema` in `packages/contracts`). Ungültiges JSON lässt die App mit dem Build-Standard starten. |
+
+Vorrang des Instanz-Themes: im Browser gespeicherte Instanz (nur solange der Editor aktiv ist) vor `SMART_INSTANCE_APPEARANCE` vor dem Build-Standard.

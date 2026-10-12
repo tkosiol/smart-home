@@ -14,6 +14,9 @@ services:
     image: ${IMAGE_REGISTRY:-ghcr.io/tkosiol}/smart-home-web:${IMAGE_TAG:?IMAGE_TAG is required}
     read_only: true
     tmpfs: [/tmp]
+    environment:
+      SMART_INSTANCE_APPEARANCE_EDITOR: ${SMART_INSTANCE_APPEARANCE_EDITOR:-false}
+      SMART_INSTANCE_APPEARANCE: ${SMART_INSTANCE_APPEARANCE:-}
     depends_on:
       api:
         condition: service_healthy

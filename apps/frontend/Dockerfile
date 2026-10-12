@@ -14,6 +14,7 @@ RUN apk upgrade --no-cache
 USER 101
 COPY apps/frontend/nginx/default.conf /etc/nginx/conf.d/default.conf
 COPY apps/frontend/nginx/security-headers.conf /etc/nginx/snippets/security-headers.conf
+COPY --chmod=755 apps/frontend/nginx/40-smart-config.sh /docker-entrypoint.d/40-smart-config.sh
 COPY --from=build /repo/apps/frontend/dist/frontend/browser /usr/share/nginx/html
 EXPOSE 8080
 HEALTHCHECK --interval=10s --timeout=3s --retries=5 CMD wget -q -O /dev/null http://127.0.0.1:8080/healthz || exit 1
