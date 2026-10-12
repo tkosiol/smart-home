@@ -14,6 +14,10 @@ ruleTester.run('no-literal-template-text', noLiteralTemplateText, {
     { code: '<button type="button" [attr.aria-label]="label()"></button>' },
     { code: '<ui-select [label]="\'ui.themeEditor.variant\' | transloco" />' },
     { code: '<input autocomplete="off" spellcheck="false" />' },
+    { code: "<p>{{ ok ? ('ui.a' | transloco) : ('ui.b' | transloco) }}</p>" },
+    { code: "<ui-x [label]=\"ok ? ('ui.a' | transloco) : ('ui.b' | transloco)\" />" },
+    { code: "<p>{{ 'ui.x' | transloco: { color: name, tone: 'warm' } }}</p>" },
+    { code: "@if (mode() === 'personal') { <p>{{ 'ui.x' | transloco }}</p> }" },
   ],
   invalid: [
     { code: '<p>Hallo</p>', errors: [{ messageId: 'literalText' }] },
@@ -33,6 +37,16 @@ ruleTester.run('no-literal-template-text', noLiteralTemplateText, {
     {
       code: '<button [attr.title]="\'Mehr\'"></button>',
       errors: [{ messageId: 'literalAttribute', data: { name: 'title' } }],
+    },
+    {
+      code: '<ui-x label="Zähler {{ n }}" />',
+      errors: [{ messageId: 'literalAttribute', data: { name: 'label' } }],
+    },
+    { code: "<p>{{ ok ? 'Ja' : 'Nein' }}</p>", errors: [{ messageId: 'literalText' }] },
+    { code: "<p>{{ 'Hallo' }}</p>", errors: [{ messageId: 'literalText' }] },
+    {
+      code: "<ui-x [label]=\"ok ? 'Ja' : 'Nein'\" />",
+      errors: [{ messageId: 'literalAttribute', data: { name: 'label' } }],
     },
   ],
 });

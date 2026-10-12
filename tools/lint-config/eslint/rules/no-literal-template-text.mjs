@@ -21,10 +21,46 @@ export const TEXT_ATTRIBUTES = new Set([
   'trailingText',
 ]);
 
-/** A quoted literal in a binding (`[label]="'Text'"`) is a string-valued LiteralPrimitive. */
-function literalString(value) {
-  const ast = value?.ast ?? value;
-  return typeof ast?.value === 'string' ? ast.value : null;
+/** Operators whose operands end up in the output (`a ?? 'x'`, `'Hello ' + name`); comparisons do not. */
+const VALUE_OPERATORS = new Set(['+', '??', '||', '&&']);
+
+/**
+ * True when the expression can produce visible text from a literal. Only value positions are
+ * followed (conditional branches, pipe input, concatenation, parentheses, template literals), so
+ * comparisons, call arguments and pipe parameters stay allowed. The direct input of the `transloco`
+ * pipe is a key, not text.
+ */
+function hasLiteralText(ast) {
+  if (!ast || typeof ast !== 'object') return false;
+  switch (ast.constructor?.name) {
+    case 'ASTWithSource':
+      return hasLiteralText(ast.ast);
+    case 'Interpolation':
+      return (
+        LETTER.test(ast.strings.join('')) || ast.expressions.some((item) => hasLiteralText(item))
+      );
+    case 'LiteralPrimitive':
+      return typeof ast.value === 'string' && LETTER.test(ast.value);
+    case 'Conditional':
+      return hasLiteralText(ast.trueExp) || hasLiteralText(ast.falseExp);
+    case 'BindingPipe':
+      return ast.name !== 'transloco' && hasLiteralText(ast.exp);
+    case 'Binary':
+      return (
+        VALUE_OPERATORS.has(ast.operation) &&
+        (hasLiteralText(ast.left) || hasLiteralText(ast.right))
+      );
+    case 'ParenthesizedExpression':
+    case 'NonNullAssert':
+      return hasLiteralText(ast.expression);
+    case 'TemplateLiteral':
+      return (
+        ast.elements.some((element) => LETTER.test(element.text)) ||
+        ast.expressions.some((item) => hasLiteralText(item))
+      );
+    default:
+      return false;
+  }
 }
 
 /** Spec 7: no visible text without a translation key. Templates only, stories and specs excluded by config. */
@@ -54,8 +90,7 @@ export const noLiteralTemplateText = {
         if (LETTER.test(node.value)) report(node, 'literalText');
       },
       BoundText(node) {
-        const strings = node.value?.ast?.strings ?? [];
-        if (LETTER.test(strings.join(''))) report(node, 'literalText');
+        if (hasLiteralText(node.value)) report(node, 'literalText');
       },
       TextAttribute(node) {
         if (TEXT_ATTRIBUTES.has(node.name) && LETTER.test(node.value)) {
@@ -63,8 +98,7 @@ export const noLiteralTemplateText = {
         }
       },
       BoundAttribute(node) {
-        const value = literalString(node.value);
-        if (TEXT_ATTRIBUTES.has(node.name) && value !== null && LETTER.test(value)) {
+        if (TEXT_ATTRIBUTES.has(node.name) && hasLiteralText(node.value)) {
           report(node, 'literalAttribute', { name: node.name });
         }
       },
