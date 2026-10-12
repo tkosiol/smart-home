@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { chromium } from 'playwright';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { inflateSync } from 'node:zlib';
+import { describe, expect, it } from 'vitest';
 
 const PUBLIC = join(import.meta.dirname, '../../../apps/frontend/public');
 const SOURCE = join(import.meta.dirname, '../app-icon.svg');
@@ -26,31 +26,22 @@ describe('app icon', () => {
     expect(readFileSync(join(PUBLIC, 'favicon.svg'), 'utf8')).toBe(readFileSync(SOURCE, 'utf8'));
   });
 
-  describe('rendering', () => {
-    let browser;
-    beforeAll(async () => {
-      browser = await chromium.launch();
-    });
-    afterAll(async () => {
-      await browser?.close();
-    });
-
-    it('fills the 512 px icon with the background colour up to the corner', async () => {
-      const png = readFileSync(join(PUBLIC, 'icons/icon-512.png')).toString('base64');
-      const page = await browser.newPage();
-      const pixel = await page.evaluate(async (data) => {
-        const img = new globalThis.Image();
-        img.src = `data:image/png;base64,${data}`;
-        await img.decode();
-        const canvas = globalThis.document.createElement('canvas');
-        canvas.width = img.width;
-        canvas.height = img.height;
-        const context = canvas.getContext('2d');
-        context.drawImage(img, 0, 0);
-        return [...context.getImageData(0, 0, 1, 1).data];
-      }, png);
-      await page.close();
-      expect(pixel).toEqual([0xd8, 0xf6, 0xff, 0xff]);
-    });
+  it('fills the 512 px icon with the background colour up to the corner', () => {
+    const png = readFileSync(join(PUBLIC, 'icons/icon-512.png'));
+    const colorType = png[25];
+    expect([2, 6]).toContain(colorType); // RGB or RGBA, 8 bit
+    expect(png[24]).toBe(8);
+    const data = [];
+    for (let offset = 8; offset < png.length;) {
+      const length = png.readUInt32BE(offset);
+      if (png.toString('ascii', offset + 4, offset + 8) === 'IDAT') {
+        data.push(png.subarray(offset + 8, offset + 8 + length));
+      }
+      offset += 12 + length;
+    }
+    // First scanline: one filter byte, then the first pixel. Left and up are zero there,
+    // so every filter type leaves the first pixel's raw bytes unchanged.
+    const first = inflateSync(Buffer.concat(data));
+    expect([...first.subarray(1, 4)]).toEqual([0xd8, 0xf6, 0xff]);
   });
 });
