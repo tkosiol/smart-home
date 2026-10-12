@@ -24,3 +24,12 @@ export const Raeume: StoryObj<UiEmptyState> = {
     await expectNoHorizontalOverflow(canvasElement.querySelector('.story-narrow')!);
   },
 };
+
+export const Ueberschriftenebene: StoryObj<UiEmptyState> = {
+  render: () => ({
+    template: `<ui-empty-state icon="meeting_room" heading="Auf Ebene 3" [level]="3" />`,
+  }),
+  play: async ({ canvas }) => {
+    await expect(canvas.getByRole('heading', { level: 3, name: 'Auf Ebene 3' })).toBeVisible();
+  },
+};

@@ -30,7 +30,7 @@ Nach Etappe 3 ist die PWA als App-Rahmen installierbar und vollständig gestalte
 | Medium (600–839 px) | Navigation Rail links                 |
 | Expanded (≥ 840 px) | Navigation Drawer, dauerhaft sichtbar |
 
-Routen (lazy geladene Features): `/` Übersicht, `/raeume`, `/geraete`, `/mehr`, `/mehr/einstellungen/darstellung`, `/mehr/einstellungen/installation`. Unbekannte Routen zeigen eine Seite „Nicht gefunden“ mit Weg zur Übersicht.
+Routen (lazy geladene Features): `/` Übersicht, `/raeume`, `/geraete`, `/mehr`, `/mehr/einstellungen` (Übersicht der Einstellungen), `/mehr/einstellungen/darstellung`, `/mehr/einstellungen/installation`. Unbekannte Routen zeigen eine Seite „Nicht gefunden“ mit Weg zur Übersicht.
 
 Erweiterbarkeit (Spec 10.7): Feature-Module registrieren Einträge für „Mehr“ und Karten für die Übersicht über `provideFeature()`, nicht über die Navigationsleiste. Die Leiste bleibt bei vier Zielen.
 
@@ -84,16 +84,16 @@ Zusammenführung: Formen und Schrift kommen immer von der Instanz. Für die Farb
 
 ## 5. Komponenten (`@smart/ui`)
 
-| Gruppe      | Komponenten                                                                                                 |
-| ----------- | ----------------------------------------------------------------------------------------------------------- |
-| Layout      | `ui-page`, `ui-stack`, `ui-grid`, `ui-section`                                                              |
-| Rahmen      | `ui-adaptive-shell`, `ui-top-app-bar`, `ui-badge`                                                           |
-| Bedienung   | `ui-button`, `ui-icon-button`, `ui-switch`, `ui-segmented-button`, `ui-select`, `ui-chip`, `ui-color-field` |
-| Inhalt      | `ui-card`, `ui-list`, `ui-list-item`, `ui-empty-state`, `ui-skeleton`, `ui-icon`                            |
-| Formular    | `ui-text-field`                                                                                             |
-| Theme       | `ui-theme-editor` (Modi: `personal` / `instance`)                                                           |
-| Rückmeldung | `ui-snackbar` (Service), `ui-banner`                                                                        |
-| Pipes       | `uiDateTime`, `uiRelativeTime` (Haushalts-Zeitzone, `Intl.DateTimeFormat`)                                  |
+| Gruppe      | Komponenten                                                                                                     |
+| ----------- | --------------------------------------------------------------------------------------------------------------- |
+| Layout      | `ui-page`, `ui-stack`, `ui-grid`, `ui-section`                                                                  |
+| Rahmen      | `ui-adaptive-shell`, `ui-top-app-bar`, `ui-badge`                                                               |
+| Bedienung   | `ui-button`, `ui-icon-button`, `ui-switch`, `ui-segmented-button`, `ui-select`, `ui-chip-set`, `ui-color-field` |
+| Inhalt      | `ui-card`, `ui-list`, `ui-list-item`, `ui-empty-state`, `ui-skeleton`, `ui-icon`                                |
+| Formular    | `ui-text-field`                                                                                                 |
+| Theme       | `ui-theme-editor` (Modi: `personal` / `instance`)                                                               |
+| Rückmeldung | `ui-snackbar` (Service), `ui-banner`                                                                            |
+| Pipes       | `uiDateTime`, `uiRelativeTime` (Haushalts-Zeitzone, `Intl.DateTimeFormat`)                                      |
 
 `ui-select` kam mit Plan 3c dazu: Auswahlen mit vier und mehr oder langen Optionen passen auf dem schmalsten Handy nicht in einen Segmented Button.
 

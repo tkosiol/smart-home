@@ -1,5 +1,9 @@
 <ui-icon class="icon" [name]="icon()" size="lg" />
-<h2 class="heading">{{ heading() }}</h2>
+@if (level() === 2) {
+  <h2 class="heading">{{ heading() }}</h2>
+} @else {
+  <h3 class="heading">{{ heading() }}</h3>
+}
 @if (description(); as description) {
   <p class="description">{{ description }}</p>
 }

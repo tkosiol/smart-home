@@ -1,12 +1,18 @@
+import { NgTemplateOutlet } from '@angular/common';
 import { ChangeDetectionStrategy, Component, booleanAttribute, input, output } from '@angular/core';
 import { MatIconButton } from '@angular/material/button';
+import { RouterLink } from '@angular/router';
 import { UiIcon } from '../icon/icon';
 import type { IconName } from '../icon/icon-codepoints';
 
-/** Icon-only button; `label` is its accessible name (and must come translated from the caller). */
+/**
+ * Icon-only button; `label` is its accessible name (and must come translated from the caller).
+ * Projected content replaces the plain icon, e.g. an icon inside a `ui-badge`. With a `route` it
+ * renders as a link instead and `pressed` never fires.
+ */
 @Component({
   selector: 'ui-icon-button',
-  imports: [MatIconButton, UiIcon],
+  imports: [MatIconButton, NgTemplateOutlet, RouterLink, UiIcon],
   templateUrl: './icon-button.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -15,5 +21,6 @@ export class UiIconButton {
   readonly label = input.required<string>();
   readonly type = input<'button' | 'submit'>('button');
   readonly disabled = input(false, { transform: booleanAttribute });
+  readonly route = input<string>();
   readonly pressed = output<void>();
 }

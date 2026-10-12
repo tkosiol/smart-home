@@ -1,4 +1,4 @@
-import { DOCUMENT, Injectable, inject, signal } from '@angular/core';
+import { DOCUMENT, DestroyRef, Injectable, inject, signal } from '@angular/core';
 import { TranslocoService } from '@jsverse/transloco';
 import { languageSchema, matchLanguage, type Language } from '@smart/contracts';
 import { UiFormatContext } from '@smart/ui';
@@ -18,6 +18,15 @@ export class LanguageService {
 
   constructor() {
     this.apply(this.state());
+    // Another tab chose a language: follow it (without storing it again) so all tabs agree.
+    const stopWatching = this.store.watch(() => {
+      const stored = this.store.load();
+      if (stored && stored !== this.state()) {
+        this.state.set(stored);
+        this.apply(stored);
+      }
+    });
+    inject(DestroyRef).onDestroy(stopWatching);
   }
 
   setLanguage(language: Language): void {

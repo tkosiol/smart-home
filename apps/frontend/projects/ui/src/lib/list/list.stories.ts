@@ -35,6 +35,10 @@ export const Mehr: StoryObj<UiList> = {
     await expect(canvas.getByRole('link', { name: /Gateways/ })).toHaveFocus();
     const focused = canvas.getByRole('link', { name: /Gateways/ });
     await expect(getComputedStyle(focused).outlineStyle).toBe('solid');
+    // A disabled row is dimmed by the token and carries no ARIA state on its div.
+    const disabled = canvas.getByText('Benachrichtigungen').closest('.row')!;
+    await expect(disabled.hasAttribute('aria-disabled')).toBe(false);
+    await expect(getComputedStyle(disabled).opacity).toBe('0.38');
   },
 };
 

@@ -1,0 +1,17 @@
+<div class="top-bar"><ng-content select="[uiShellTopBar]" /></div>
+<div class="banner"><ng-content select="[uiShellBanner]" /></div>
+<nav [attr.aria-label]="navigationLabel()">
+  @for (destination of destinations(); track destination.route) {
+    <a
+      class="destination"
+      [routerLink]="destination.route"
+      routerLinkActive="destination--active"
+      ariaCurrentWhenActive="page"
+      [routerLinkActiveOptions]="{ exact: destination.exact ?? false }"
+    >
+      <span class="indicator"><ui-icon [name]="destination.icon" /></span>
+      <span class="label">{{ destination.label }}</span>
+    </a>
+  }
+</nav>
+<main><ng-content /></main>

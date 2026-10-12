@@ -76,6 +76,21 @@ describe('UiThemeColors', () => {
     expect(host.colors().coreOverrides.tertiary).toBeUndefined();
   });
 
+  it('changes an existing override when its color is edited', async () => {
+    const { host, element, refresh } = await setup();
+    host.colors.set({ ...host.colors(), coreOverrides: { tertiary: '#112233' } });
+    await refresh();
+    const field = [...element.querySelectorAll('ui-color-field')].find(
+      (candidate) => candidate.querySelector('mat-label')?.textContent?.trim() === 'Tertiär',
+    )!;
+    const input = field.querySelector('input[type="text"]') as HTMLInputElement;
+    expect(input.value).toBe('#112233');
+    input.value = '#445566';
+    input.dispatchEvent(new Event('input'));
+    await refresh();
+    expect(host.colors().coreOverrides).toEqual({ tertiary: '#445566' });
+  });
+
   it('ignores an invalid color while typing', async () => {
     const { host, element, refresh } = await setup();
     const seedInput = element.querySelector('input[type="text"]') as HTMLInputElement;

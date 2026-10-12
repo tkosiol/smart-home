@@ -34,6 +34,13 @@ export function validateProject(dir) {
     const file = join(dir, config.rootTranslationsPath ?? '', `${lang}.json`);
     if (!existsSync(file)) problems.push(`${file} is missing`);
   }
+  // The tool would skip a scope whose folder is missing; every scope needs both language files.
+  for (const path of Object.values(config.scopePathMap ?? {})) {
+    for (const lang of LANGS) {
+      const file = join(dir, path, `${lang}.json`);
+      if (!existsSync(file)) problems.push(`${file} is missing`);
+    }
+  }
   return problems;
 }
 

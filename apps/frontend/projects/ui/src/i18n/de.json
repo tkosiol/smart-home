@@ -1,5 +1,6 @@
 {
   "ui": {
+    "snackbar": { "close": "Schließen" },
     "themeEditor": {
       "seed": "Grundfarbe",
       "seedPicker": "Grundfarbe auswählen",

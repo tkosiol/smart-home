@@ -1,0 +1,22 @@
+:host {
+  position: relative;
+  display: inline-flex;
+}
+
+.count {
+  position: absolute;
+  inset-block-start: calc(-1 * var(--smart-space-xs));
+  inset-inline-end: calc(-1 * var(--smart-space-xs));
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--smart-size-badge);
+  height: var(--smart-size-badge);
+  padding-inline: var(--smart-space-xs);
+  border-radius: calc(var(--smart-size-badge) / 2);
+  background: var(--mat-sys-error);
+  color: var(--mat-sys-on-error);
+  font: var(--mat-sys-label-small);
+  pointer-events: none;
+}

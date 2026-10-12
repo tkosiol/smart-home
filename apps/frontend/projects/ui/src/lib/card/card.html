@@ -1,7 +1,11 @@
 <mat-card [appearance]="appearance()">
   @if (heading(); as heading) {
     <mat-card-header>
-      <h3 mat-card-title class="title">{{ heading }}</h3>
+      @if (level() === 2) {
+        <h2 mat-card-title class="title">{{ heading }}</h2>
+      } @else {
+        <h3 mat-card-title class="title">{{ heading }}</h3>
+      }
       @if (description(); as description) {
         <p mat-card-subtitle class="subtitle">{{ description }}</p>
       }

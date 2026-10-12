@@ -1,15 +1,46 @@
+import { createHash } from 'node:crypto';
 import { expect, test } from '@playwright/test';
+import { loadWithServiceWorkerInControl } from '../helpers/service-worker';
 
-test('the app shell loads without console errors or CSP violations', async ({ page }) => {
+test('every page renders without console errors or CSP violations', async ({ page }) => {
+  const navigation = page.getByRole('navigation', { name: 'Hauptnavigation' });
   const problems: string[] = [];
   page.on('console', (message) => {
     if (message.type() === 'error') problems.push(message.text());
   });
   page.on('pageerror', (error) => problems.push(error.message));
+  await page.addInitScript(() => {
+    document.addEventListener('securitypolicyviolation', (event) => {
+      console.error(`CSP violation: ${event.violatedDirective} ${event.blockedURI}`);
+    });
+  });
 
   const response = await page.goto('/');
   expect(response?.status()).toBe(200);
-  await expect(page.locator('app-root')).toBeAttached();
+  await expect(page.getByRole('heading', { level: 1, name: 'Übersicht' })).toBeVisible();
+  for (const [link, heading] of [
+    ['Räume', 'Räume'],
+    ['Geräte', 'Geräte'],
+    ['Mehr', 'Mehr'],
+    ['Übersicht', 'Übersicht'],
+  ] as const) {
+    await navigation.getByRole('link', { name: link }).click();
+    await expect(page.getByRole('heading', { level: 1, name: heading })).toBeVisible();
+  }
+
+  await navigation.getByRole('link', { name: 'Mehr' }).click();
+  await page.getByRole('link', { name: /Einstellungen/ }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Einstellungen' })).toBeVisible();
+  await page.getByRole('link', { name: /Darstellung/ }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Darstellung' })).toBeVisible();
+  await page.goBack();
+  await page.getByRole('link', { name: /Erscheinungsbild der Installation/ }).click();
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Erscheinungsbild der Installation' }),
+  ).toBeVisible();
+
+  await page.goto('/gibt-es-nicht');
+  await expect(page.getByRole('heading', { level: 1, name: 'Nicht gefunden' })).toBeVisible();
   await page.waitForLoadState('networkidle');
   expect(problems).toEqual([]);
 });
@@ -28,18 +59,28 @@ for (const [locale, lang] of [
   });
 }
 
-test('every HTML response carries its own CSP nonce matching the page', async ({ request }) => {
-  const nonces: string[] = [];
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    const response = await request.get('/');
-    const csp = response.headers()['content-security-policy'] ?? '';
-    const headerNonce = /'nonce-([0-9a-f]{32})'/.exec(csp)?.[1];
-    const bodyNonce = /ngCspNonce="([0-9a-f]{32})"/i.exec(await response.text())?.[1];
-    expect(headerNonce).toBeDefined();
-    expect(bodyNonce).toBe(headerNonce);
-    nonces.push(headerNonce ?? '');
-  }
-  expect(nonces[0]).not.toBe(nonces[1]);
+test('the CSP keeps scripts strict and allows inline styles', async ({ request }) => {
+  const csp = (await request.get('/')).headers()['content-security-policy'] ?? '';
+  expect(csp).toContain("script-src 'self';");
+  expect(csp).toContain("style-src 'self' 'unsafe-inline';");
+  expect(csp).not.toMatch(/script-src[^;]*unsafe-inline/);
+});
+
+test('index.html is served byte-for-byte as the service worker manifest expects', async ({
+  request,
+}) => {
+  const manifest = (await (await request.get('/ngsw.json')).json()) as {
+    hashTable: Record<string, string>;
+  };
+  const body = await (await request.get('/index.html')).body();
+  expect(createHash('sha1').update(body).digest('hex')).toBe(manifest.hashTable['/index.html']);
+});
+
+test('the service worker installs and controls the page after a reload', async ({ page }) => {
+  await loadWithServiceWorkerInControl(page);
+
+  const state = await page.evaluate(async () => (await fetch('/ngsw/state')).text());
+  expect(state).toContain('Driver state: NORMAL');
 });
 
 for (const path of ['/', '/devices/123', '/api/health/live']) {
@@ -103,21 +144,21 @@ test('unknown API routes answer 404 instead of the app shell', async ({ request 
 });
 
 test('a stored dark theme applies even before the app bundle runs', async ({ page }) => {
-  await page.goto('/');
-  await page.evaluate(() =>
+  // Seeded before any page script: a running app would rewrite the cache after a first load.
+  await page.addInitScript((mode) => {
     localStorage.setItem(
       'smart.theme.boot',
       JSON.stringify({
         v: 2,
-        mode: 'dark',
+        mode,
         followsSystemContrast: false,
         light: { '--mat-sys-surface': '#ffffff' },
         dark: { '--mat-sys-surface': '#101415' },
       }),
-    ),
-  );
+    );
+  }, 'dark');
   await page.route(/main-[A-Z0-9]+\.js$/, (route) => route.abort());
-  await page.reload();
+  await page.goto('/');
   const surface = await page.evaluate(() =>
     getComputedStyle(document.documentElement).getPropertyValue('--mat-sys-surface').trim(),
   );
@@ -142,6 +183,8 @@ test('only the active font family is downloaded', async ({ page }) => {
   });
   await page.goto('/');
   await page.evaluate(() => document.fonts.ready.then(() => undefined));
+  // The stack's instance font is Roboto Flex: it is requested, the other families are not.
+  expect(fonts.filter((url) => /roboto-flex/i.test(url)).length).toBeGreaterThan(0);
   expect(fonts.filter((url) => /figtree|atkinson/i.test(url))).toEqual([]);
 });
 
@@ -149,21 +192,21 @@ test('a system-mode cache follows the browser color scheme before the app bundle
   page,
 }) => {
   await page.emulateMedia({ colorScheme: 'dark' });
-  await page.goto('/');
-  await page.evaluate(() =>
+  // Seeded before any page script: a running app would rewrite the cache after a first load.
+  await page.addInitScript((mode) => {
     localStorage.setItem(
       'smart.theme.boot',
       JSON.stringify({
         v: 2,
-        mode: 'system',
+        mode,
         followsSystemContrast: false,
         light: { '--mat-sys-surface': '#ffffff' },
         dark: { '--mat-sys-surface': '#101415' },
       }),
-    ),
-  );
+    );
+  }, 'system');
   await page.route(/main-[A-Z0-9]+\.js$/, (route) => route.abort());
-  await page.reload();
+  await page.goto('/');
   const surface = await page.evaluate(() =>
     getComputedStyle(document.documentElement).getPropertyValue('--mat-sys-surface').trim(),
   );

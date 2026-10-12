@@ -2,15 +2,20 @@ import {
   inject,
   isDevMode,
   makeEnvironmentProviders,
+  provideAppInitializer,
   provideEnvironmentInitializer,
   type EnvironmentProviders,
 } from '@angular/core';
-import { provideTransloco } from '@jsverse/transloco';
+import { TranslocoService, provideTransloco } from '@jsverse/transloco';
 import { DEFAULT_LANGUAGE, LANGUAGES } from '@smart/contracts';
+import { firstValueFrom } from 'rxjs';
 import { AppTranslationLoader } from './app-translation-loader';
 import { LanguageService } from './language.service';
 
-/** Transloco for the app; the LanguageService starts with the app and picks the language. */
+/**
+ * Transloco for the app; the LanguageService starts with the app and picks the language, which is
+ * loaded before the first render.
+ */
 export function provideI18n(): EnvironmentProviders {
   return makeEnvironmentProviders([
     ...provideTransloco({
@@ -26,6 +31,19 @@ export function provideI18n(): EnvironmentProviders {
     }),
     provideEnvironmentInitializer(() => {
       inject(LanguageService);
+    }),
+    // The first render already shows the active language instead of keys or a flash of German.
+    // A failed load must not block the start: the app then shows keys, which beats a blank page.
+    provideAppInitializer(() => {
+      const language = inject(LanguageService).language();
+      // No value when the injector is destroyed meanwhile (tests): that is not an error.
+      return firstValueFrom(inject(TranslocoService).load(language), {
+        defaultValue: undefined,
+      })
+        .then(() => undefined)
+        .catch((error: unknown) => {
+          if (isDevMode()) console.warn(`Translation ${language} could not be loaded`, error);
+        });
     }),
   ]);
 }

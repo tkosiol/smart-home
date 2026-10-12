@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Creates a stack's .env on the VPS. Run it yourself in a terminal – secrets never pass through chat or CI.
 # Usage: SMART_VPS=<user@host> infra/deploy/provision.sh <staging|production> [--force]
-# --force rewrites the file but keeps the generated DB and broker passwords (the data volumes depend on them).
+# --force rewrites the file but keeps the generated DB and broker passwords (the data volumes depend on them)
+# and the existing SMART_* runtime settings.
 set -euo pipefail
 
 environment="${1:-}"
@@ -44,6 +45,15 @@ lines=(
   "DB_PASSWORD=$(keep_or_generate DB_PASSWORD)"
   "MQTT_API_PASSWORD=$(keep_or_generate MQTT_API_PASSWORD)"
 )
+
+# Runtime settings (SMART_*) of an existing .env are carried over verbatim, also on --force.
+while IFS= read -r smart_line; do
+  lines+=("$smart_line")
+done < <(printf '%s\n' "$existing" | grep '^SMART_' || true)
+# Staging gets the editor switch only if the existing file has no such line yet.
+if [ "$environment" = staging ] && ! grep -q '^SMART_INSTANCE_APPEARANCE_EDITOR=' <<< "$existing"; then
+  lines+=("SMART_INSTANCE_APPEARANCE_EDITOR=true")
+fi
 
 if [ "$environment" = production ]; then
   backup_uid=$(ssh -n "$host" "id -u")

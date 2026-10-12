@@ -1,1 +1,45 @@
-{}
+{
+  "app": {
+    "nav": {
+      "label": "Main navigation",
+      "overview": "Overview",
+      "rooms": "Rooms",
+      "devices": "Devices",
+      "more": "More"
+    },
+    "title": {
+      "overview": "Overview",
+      "rooms": "Rooms",
+      "devices": "Devices",
+      "more": "More",
+      "settings": "Settings",
+      "appearance": "Appearance",
+      "installation": "Appearance of the installation",
+      "notFound": "Not found"
+    },
+    "household": {
+      "placeholder": "My home"
+    },
+    "notifications": {
+      "none": "Notifications, none new"
+    },
+    "notFound": {
+      "title": "Not found",
+      "heading": "This page does not exist",
+      "description": "The link may be outdated or misspelled.",
+      "home": "Go to overview"
+    },
+    "more": {
+      "modules": "Modules",
+      "notifications": "Notifications",
+      "household": "Household",
+      "gateways": "Gateways",
+      "settings": "Settings"
+    },
+    "offline": "Offline – displayed data may be out of date",
+    "update": {
+      "text": "New version available",
+      "reload": "Reload"
+    }
+  }
+}

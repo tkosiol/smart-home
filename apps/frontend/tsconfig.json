@@ -15,7 +15,8 @@
     "target": "ES2022",
     "module": "preserve",
     "paths": {
-      "@smart/ui": ["./projects/ui/src/public-api.ts"]
+      "@smart/ui": ["./projects/ui/src/public-api.ts"],
+      "@smart/ui/forms": ["./projects/ui/src/forms.ts"]
     }
   },
   "angularCompilerOptions": {

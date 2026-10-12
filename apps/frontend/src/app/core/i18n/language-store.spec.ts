@@ -37,4 +37,18 @@ describe('LocalStorageLanguageStore', () => {
     expect(store.load()).toBeNull();
     expect(() => store.save('en')).not.toThrow();
   });
+
+  it('calls back for the language key and for a cleared storage, until stopped', () => {
+    const store = new LocalStorageLanguageStore(storage());
+    let calls = 0;
+    const stop = store.watch(() => calls++);
+    window.dispatchEvent(new StorageEvent('storage', { key: 'smart.language', newValue: 'en' }));
+    window.dispatchEvent(new StorageEvent('storage', { key: 'smart.appearance.personal' }));
+    window.dispatchEvent(new StorageEvent('storage', { key: 'other' }));
+    // key null: the other tab cleared the whole storage.
+    window.dispatchEvent(new StorageEvent('storage', { key: null }));
+    stop();
+    window.dispatchEvent(new StorageEvent('storage', { key: 'smart.language' }));
+    expect(calls).toBe(2);
+  });
 });

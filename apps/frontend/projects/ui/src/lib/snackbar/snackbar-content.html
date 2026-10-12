@@ -1,0 +1,7 @@
+<span matSnackBarLabel>{{ data.message }}</span>
+@if (data.action; as action) {
+  <div matSnackBarActions>
+    <button matButton matSnackBarAction type="button" (click)="act()">{{ action }}</button>
+    <ui-icon-button icon="close" [label]="'ui.snackbar.close' | transloco" (pressed)="close()" />
+  </div>
+}

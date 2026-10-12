@@ -1,6 +1,7 @@
-import { Component, signal } from '@angular/core';
+import { Component, importProvidersFrom, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MATERIAL_ANIMATIONS } from '@angular/material/core';
+import { TRANSLOCO_SCOPE, TranslocoTestingModule } from '@jsverse/transloco';
 import {
   DEFAULT_INSTANCE_APPEARANCE,
   DEFAULT_PERSONAL_APPEARANCE,
@@ -8,6 +9,8 @@ import {
   type Language,
   type PersonalAppearance,
 } from '@smart/contracts';
+import de from '../../i18n/de.json';
+import en from '../../i18n/en.json';
 import { provideUiTranslocoTesting } from '../testing/i18n-testing';
 import { UiThemeEditor, type UiThemeEditorMode } from './theme-editor';
 
@@ -124,6 +127,16 @@ describe('UiThemeEditor in personal mode', () => {
 });
 
 describe('UiThemeEditor in instance mode', () => {
+  it('asks the host to reset the installation appearance', async () => {
+    const { host, element, refresh } = await setup('instance');
+    const reset = [...element.querySelectorAll('button')].find((button) =>
+      button.textContent?.includes('Auf Standard zurücksetzen'),
+    )!;
+    reset.click();
+    await refresh();
+    expect(host.resets()).toBe(1);
+  });
+
   it('edits colors, shape and font of the installation, but no personal settings', async () => {
     const { host, element, choose, refresh } = await setup('instance');
     expect(element.querySelector('mat-button-toggle-group')).toBeNull();
@@ -138,5 +151,40 @@ describe('UiThemeEditor in instance mode', () => {
       font: 'figtree',
     });
     expect(host.personal()).toEqual(DEFAULT_PERSONAL_APPEARANCE);
+  });
+});
+
+@Component({
+  imports: [UiThemeEditor],
+  providers: [{ provide: TRANSLOCO_SCOPE, useValue: 'page' }],
+  template: `<ui-theme-editor mode="personal" [instance]="instance" />`,
+})
+class ScopedHost {
+  readonly instance = DEFAULT_INSTANCE_APPEARANCE;
+}
+
+describe('UiThemeEditor inside a page with a Transloco scope', () => {
+  it('still finds its own texts', async () => {
+    TestBed.configureTestingModule({
+      providers: [
+        importProvidersFrom(
+          TranslocoTestingModule.forRoot({
+            langs: { de, en, 'page/de': {}, 'page/en': {} },
+            translocoConfig: { availableLangs: ['de', 'en'], defaultLang: 'de' },
+            preloadLangs: true,
+          }),
+        ),
+        { provide: MATERIAL_ANIMATIONS, useValue: { animationsDisabled: true } },
+      ],
+    });
+    const fixture = TestBed.createComponent(ScopedHost);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const labels = [...(fixture.nativeElement as HTMLElement).querySelectorAll('button')].map(
+      (button) => button.textContent?.trim(),
+    );
+
+    expect(labels).toEqual(expect.arrayContaining(['Hell', 'Dunkel']));
   });
 });

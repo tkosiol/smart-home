@@ -1,0 +1,35 @@
+{
+  "$schema": "./node_modules/@angular/service-worker/config/schema.json",
+  "index": "/index.html",
+  "navigationUrls": ["/**", "!/**/*.*", "!/**/*__*", "!/**/*__*/**", "!/api/**", "!/healthz"],
+  "assetGroups": [
+    {
+      "name": "app",
+      "installMode": "prefetch",
+      "resources": {
+        "files": [
+          "/index.html",
+          "/manifest.webmanifest",
+          "/theme-boot.js",
+          "/*.css",
+          "/*.js",
+          "/favicon.svg",
+          "/icons/*"
+        ]
+      }
+    },
+    {
+      "name": "assets",
+      "installMode": "lazy",
+      "updateMode": "prefetch",
+      "resources": { "files": ["/media/**", "/**/*.woff2"] }
+    }
+  ],
+  "dataGroups": [
+    {
+      "name": "runtime-config",
+      "urls": ["/config.json"],
+      "cacheConfig": { "strategy": "freshness", "timeout": "2s", "maxSize": 1, "maxAge": "30d" }
+    }
+  ]
+}

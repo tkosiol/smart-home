@@ -10,6 +10,17 @@
   --smart-border-width: 1px;
   /* Sizes */
   --smart-size-touch: 48px;
+  --smart-size-top-app-bar: 64px;
+  /* Adaptive navigation: bottom bar (compact), rail (medium), drawer (expanded) */
+  --smart-size-nav-bar: 80px;
+  --smart-size-nav-rail: 80px;
+  --smart-size-nav-drawer: 360px;
+  /* Stacking order: the fixed bottom bar above positioned content scrolling under it */
+  --smart-z-nav: 1;
+  --smart-size-nav-item: 56px;
+  --smart-size-nav-indicator-width: 64px;
+  --smart-size-nav-indicator-height: 32px;
+  --smart-size-badge: 16px;
   --smart-size-icon-sm: 20px;
   --smart-size-icon-md: 24px;
   --smart-size-icon-lg: 40px;
@@ -20,6 +31,8 @@
   --smart-size-skeleton-block: 96px;
   --smart-focus-width: 3px;
   --smart-line-height-icon: 1;
+  /* Opacity of disabled content (M3 uses 38%) */
+  --smart-opacity-disabled: 0.38;
   /* Motion */
   --smart-motion-duration-short: 150ms;
   --smart-motion-duration-medium: 300ms;

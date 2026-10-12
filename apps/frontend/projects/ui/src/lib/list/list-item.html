@@ -4,7 +4,7 @@
     <ui-icon class="chevron" name="chevron_right" />
   </a>
 } @else {
-  <div class="row" [attr.aria-disabled]="disabled() ? 'true' : null">
+  <div class="row" [class.row--disabled]="disabled()">
     <ng-container [ngTemplateOutlet]="content" />
   </div>
 }

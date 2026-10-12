@@ -29,7 +29,7 @@ const APPEARANCE: Record<UiCardVariant, MatCardAppearance> = {
 @Directive({ selector: '[uiCardActions]' })
 export class UiCardActions {}
 
-/** M3 card; the heading is an h3 because cards sit inside page sections (h1/h2). */
+/** M3 card; the heading is an h3 by default because cards sit inside page sections (h1/h2). */
 @Component({
   selector: 'ui-card',
   imports: [MatCard, MatCardHeader, MatCardTitle, MatCardSubtitle, MatCardContent, MatCardActions],
@@ -41,6 +41,7 @@ export class UiCard {
   readonly variant = input<UiCardVariant>('outlined');
   readonly heading = input<string>();
   readonly description = input<string>();
+  readonly level = input<2 | 3>(3);
 
   protected readonly actions = contentChild(UiCardActions);
   protected readonly appearance = computed(() => APPEARANCE[this.variant()]);

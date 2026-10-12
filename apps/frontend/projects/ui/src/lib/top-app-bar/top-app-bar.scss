@@ -1,0 +1,27 @@
+:host {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: var(--smart-space-sm);
+  min-width: 0;
+  height: var(--smart-size-top-app-bar);
+  padding-inline: var(--smart-space-lg) var(--smart-space-xs);
+  background: var(--mat-sys-surface);
+  color: var(--mat-sys-on-surface);
+}
+
+.title {
+  flex: 1;
+  min-width: 0;
+  font: var(--mat-sys-title-large);
+  white-space: nowrap;
+  overflow: hidden;
+  overflow-wrap: normal;
+  text-overflow: ellipsis;
+}
+
+.actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+}

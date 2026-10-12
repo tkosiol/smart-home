@@ -1,0 +1,16 @@
+{
+  "title": "Einstellungen",
+  "list": {
+    "appearance": "Darstellung",
+    "appearanceHint": "Sprache, Modus, Kontrast und Farben",
+    "installation": "Erscheinungsbild der Installation",
+    "installationHint": "Farben, Formen und Schrift für alle Nutzer"
+  },
+  "appearance": {
+    "title": "Darstellung",
+    "language": "Sprache"
+  },
+  "installation": {
+    "title": "Erscheinungsbild der Installation"
+  }
+}

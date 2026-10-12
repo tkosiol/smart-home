@@ -1,4 +1,4 @@
-// Public API of @smart/ui.
+// Public API of @smart/ui. The form controls and the theme editor are in ./forms.ts (@smart/ui/forms).
 export {
   APPEARANCE_STORE,
   BOOT_CACHE_VERSION,
@@ -25,21 +25,18 @@ export { UiGrid } from './lib/layout/grid/grid';
 export { UiPage } from './lib/layout/page/page';
 export { UiSection } from './lib/layout/section/section';
 export { UiStack } from './lib/layout/stack/stack';
-export { UiSegmentedButton } from './lib/segmented-button/segmented-button';
-export { UiChipSet } from './lib/chip-set/chip-set';
 export type { UiOption } from './lib/option';
-export { UiSelect } from './lib/select/select';
-export { UiSwitch } from './lib/switch/switch';
-export { UiColorField } from './lib/color-field/color-field';
-export { UiThemeEditor, type UiThemeEditorMode } from './lib/theme-editor/theme-editor';
-export { normalizeHexColor } from './lib/color-field/hex-color';
-export { UiTextField } from './lib/text-field/text-field';
 export { UiCard, UiCardActions } from './lib/card/card';
 export { UiEmptyState, UiEmptyStateActions } from './lib/empty-state/empty-state';
 export { UiSkeleton } from './lib/skeleton/skeleton';
 export { UiList } from './lib/list/list';
 export { UiListItem } from './lib/list/list-item';
 export { UiBanner, UiBannerActions, type UiBannerTone } from './lib/banner/banner';
+export { UiBadge } from './lib/badge/badge';
+export { UiTopAppBar, UiTopAppBarActions } from './lib/top-app-bar/top-app-bar';
+export { UiAdaptiveShell, UiShellBanner, UiShellTopBar } from './lib/adaptive-shell/adaptive-shell';
+export type { UiNavDestination, UiWindowClass } from './lib/adaptive-shell/navigation';
+export { UiAnnouncer } from './lib/announcer/announcer';
 export { UiSnackbar } from './lib/snackbar/snackbar';
 export { UiClock } from './lib/time/clock';
 export { UiDateTimePipe } from './lib/time/date-time.pipe';

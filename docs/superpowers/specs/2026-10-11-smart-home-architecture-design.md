@@ -521,7 +521,7 @@ Angular Material (M3) ist ein internes Implementierungsdetail von `@smart/ui`.
 - Einstellbar pro User: **Grundfarbe** (Vorschläge + frei), **Schema-Variante** (Tonal Spot (Standard), Neutral, Vibrant, Expressive, Fidelity, Content, Monochrome), **Modus** (System/Hell/Dunkel), **Kontrast** (Standard/Mittel/Hoch; `prefers-contrast: more` wird respektiert).
 - Ein `ThemeService` berechnet das vollständige Schema und setzt die `--mat-sys-*`-Farbrollen zur Laufzeit; reagiert auf Systemänderungen (Farbschema, Kontrast).
 - **Statusfarben** (`dry`, `ok`, `wet`, `warning`, `offline` …) als Custom Colors, an die Grundfarbe harmonisiert, jeweils mit den Rollen `color`, `on-color`, `container`, `on-container` für alle Modi und Kontraststufen.
-- **Kein Aufblitzen:** Das Standard-Theme wird beim Build als CSS erzeugt; die User-Einstellung wird zusätzlich lokal zwischengespeichert und von einem Inline-Skript vor dem Angular-Start angewendet (per CSP-Hash erlaubt).
+- **Kein Aufblitzen:** Das Standard-Theme wird beim Build als CSS erzeugt; die User-Einstellung wird zusätzlich lokal zwischengespeichert und von der externen Datei `theme-boot.js` vor dem Angular-Start angewendet (die CSP erlaubt Skripte nur von `'self'`, Inline-Skripte sind gesperrt).
 - Persistenz am User (`users.theme`), dadurch auf allen Geräten gleich.
 - Nicht vorgesehen: Theme pro Haushalt, Farbextraktion aus Bildern (später nachrüstbar).
 
@@ -531,7 +531,7 @@ M3-Fensterklassen (Compact < 600 px, Medium 600–839 px, Expanded ≥ 840 px). 
 
 ### 10.7 Erweiterbarkeit
 
-Feature-Module registrieren sich über `provideFeature({ navigation, routes, deviceWidgets })`. Die Gerätedetailseite des Cores rendert registrierte Widgets passend zu den Capabilities des Geräts, ohne die Module zu kennen. Module importieren sich nicht gegenseitig.
+Feature-Module registrieren sich über `provideFeature({ moreEntries, overviewCards })`: Einträge der „Mehr“-Seite und Karten der Übersicht. Die Routen bleiben lazy in `app.routes.ts`. Die Gerätedetailseite des Cores rendert registrierte Widgets passend zu den Capabilities des Geräts, ohne die Module zu kennen; das Registrieren von `deviceWidgets` kommt mit Etappe 6. Module importieren sich nicht gegenseitig.
 
 ### 10.8 Daten und Zustand
 
@@ -545,7 +545,7 @@ Signal-basierte Services pro Feature (kein NgRx). Typen aus `@smart/contracts`; 
 - **i18n:** Transloco, Deutsch und Englisch, Sprachumschalter, Übersetzungsdateien pro Feature (lazy geladen), CI prüft fehlende/ungenutzte Schlüssel. Die API liefert Fehlercodes, keine Texte.
 - **Storybook** für `@smart/ui`: alle Komponenten und Varianten, Umschalter für Grundfarbe, Variante, Modus, Kontrast und Sprache, Interaktionstests, axe-Prüfung. Veröffentlichung über GitHub Pages wird in Etappe 3 entschieden.
 - **Barrierefreiheit:** Ziel WCAG 2.2 AA.
-- **Security-Header** (`web`-nginx): strikte CSP, HSTS, `frame-ancestors 'none'`, `Referrer-Policy`, `Permissions-Policy`.
+- **Security-Header** (`web`-nginx): strikte CSP (Skripte nur `'self'`; Inline-Styles erlaubt, weil der Service Worker `index.html` byte-genau zwischenspeichert und kein Nonce pro Antwort eingefügt werden kann), HSTS, `frame-ancestors 'none'`, `Referrer-Policy`, `Permissions-Policy`.
 
 ---
 

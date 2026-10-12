@@ -107,5 +107,13 @@ setup; STUB_EXISTING_ENV=$(printf "STACK_NAME=smart-staging\nDB_PASSWORD=keep-db
 export SMART_VPS=deploy@vps STUB_ENV_EXISTS=1 STUB_EXISTING_ENV
 check "provision --force keeps the existing database and broker passwords" 'bash "$DEPLOY_DIR/provision.sh" staging --force < /dev/null > /dev/null 2>&1 && grep -qx "DB_PASSWORD=keep-db" "$STUB_REMOTE_FILE" && grep -qx "MQTT_API_PASSWORD=keep-mqtt" "$STUB_REMOTE_FILE"'; teardown
 
+setup; export SMART_VPS=deploy@vps
+check "provision writes the editor switch for staging" 'bash "$DEPLOY_DIR/provision.sh" staging < /dev/null > /dev/null 2>&1 && grep -qx "SMART_INSTANCE_APPEARANCE_EDITOR=true" "$STUB_REMOTE_FILE"'; teardown
+setup; export SMART_VPS=deploy@vps
+check "provision writes no editor switch for production" 'answers | bash "$DEPLOY_DIR/provision.sh" production > /dev/null 2>&1 && grep -qx "COMPOSE_PROFILES=backup" "$STUB_REMOTE_FILE" && ! grep -q "SMART_INSTANCE_APPEARANCE_EDITOR" "$STUB_REMOTE_FILE"'; teardown
+setup; STUB_EXISTING_ENV=$(printf 'STACK_NAME=smart-staging\nDB_PASSWORD=keep-db\nSMART_INSTANCE_APPEARANCE={"name":"kept"}')
+export SMART_VPS=deploy@vps STUB_ENV_EXISTS=1 STUB_EXISTING_ENV
+check "provision --force keeps existing runtime settings verbatim" 'bash "$DEPLOY_DIR/provision.sh" staging --force < /dev/null > /dev/null 2>&1 && grep -qxF "SMART_INSTANCE_APPEARANCE={\"name\":\"kept\"}" "$STUB_REMOTE_FILE"'; teardown
+
 echo "deploy tests: $passed passed, $failures failed"
 [ "$failures" -eq 0 ]

@@ -3,6 +3,7 @@ import { MATERIAL_ANIMATIONS } from '@angular/material/core';
 import { applicationConfig, type Meta, type StoryObj } from '@storybook/angular';
 import { expect, screen, userEvent, waitFor } from 'storybook/test';
 import { UiButton } from '../button/button';
+import { waitForTranslations } from '../testing/storybook-environment';
 import { UiSnackbar } from './snackbar';
 
 @Component({
@@ -39,5 +40,24 @@ export const MitAktion: StoryObj<SnackbarDemo> = {
     // Material keeps the action hidden from assistive tech for about 150 ms before announcing it.
     await userEvent.click(await screen.findByRole('button', { name: 'Rückgängig' }));
     await waitFor(() => expect(canvas.getByText('Ergebnis: action')).toBeVisible());
+  },
+};
+
+// A message with an action stays until it is closed; the keyboard reaches the close button.
+// The second test-runner pass repeats this in English, hence both names.
+export const Schliessen: StoryObj<SnackbarDemo> = {
+  play: async ({ canvas }) => {
+    await waitForTranslations();
+    await userEvent.click(canvas.getByRole('button', { name: 'Raum löschen' }));
+    const close = await screen.findByRole('button', { name: /^(Schließen|Close)$/ });
+    for (let presses = 0; presses < 4 && document.activeElement !== close; presses++) {
+      await userEvent.tab();
+    }
+    await expect(close).toHaveFocus();
+    // Readable on the inverse surface, not Material's default on-surface-variant.
+    const surface = close.closest('.mat-mdc-snackbar-surface')!;
+    await expect(getComputedStyle(close).color).toBe(getComputedStyle(surface).color);
+    await userEvent.keyboard('{Enter}');
+    await waitFor(() => expect(canvas.getByText('Ergebnis: dismissed')).toBeVisible());
   },
 };

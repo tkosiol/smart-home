@@ -1,1 +1,45 @@
-{}
+{
+  "app": {
+    "nav": {
+      "label": "Hauptnavigation",
+      "overview": "Übersicht",
+      "rooms": "Räume",
+      "devices": "Geräte",
+      "more": "Mehr"
+    },
+    "title": {
+      "overview": "Übersicht",
+      "rooms": "Räume",
+      "devices": "Geräte",
+      "more": "Mehr",
+      "settings": "Einstellungen",
+      "appearance": "Darstellung",
+      "installation": "Erscheinungsbild der Installation",
+      "notFound": "Nicht gefunden"
+    },
+    "household": {
+      "placeholder": "Mein Zuhause"
+    },
+    "notifications": {
+      "none": "Benachrichtigungen, keine neuen"
+    },
+    "notFound": {
+      "title": "Nicht gefunden",
+      "heading": "Diese Seite gibt es nicht",
+      "description": "Der Link ist vielleicht veraltet oder falsch geschrieben.",
+      "home": "Zur Übersicht"
+    },
+    "more": {
+      "modules": "Module",
+      "notifications": "Benachrichtigungen",
+      "household": "Haushalt",
+      "gateways": "Gateways",
+      "settings": "Einstellungen"
+    },
+    "offline": "Offline – Anzeigen können veraltet sein",
+    "update": {
+      "text": "Neue Version verfügbar",
+      "reload": "Neu laden"
+    }
+  }
+}
