@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { expect, test } from '@playwright/test';
+import { loadWithServiceWorkerInControl } from '../helpers/service-worker';
 
 test('every page renders without console errors or CSP violations', async ({ page }) => {
   const navigation = page.getByRole('navigation', { name: 'Hauptnavigation' });
@@ -76,13 +77,7 @@ test('index.html is served byte-for-byte as the service worker manifest expects'
 });
 
 test('the service worker installs and controls the page after a reload', async ({ page }) => {
-  await page.goto('/');
-  await page.evaluate(() => navigator.serviceWorker.ready.then(() => undefined));
-  // The worker prefetches the app shell on install; give it a moment to settle.
-  await page.waitForTimeout(1500);
-  await page.reload();
-  await page.waitForLoadState('networkidle');
-  expect(await page.evaluate(() => navigator.serviceWorker.controller !== null)).toBe(true);
+  await loadWithServiceWorkerInControl(page);
 
   const state = await page.evaluate(async () => (await fetch('/ngsw/state')).text());
   expect(state).toContain('Driver state: NORMAL');

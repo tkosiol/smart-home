@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { loadWithServiceWorkerInControl } from '../helpers/service-worker';
 
 const PHONE = { width: 390, height: 844 };
 const RAIL = { width: 700, height: 900 };
@@ -143,6 +144,25 @@ test.describe('deep links', () => {
     await page.getByRole('link', { name: 'Zur Übersicht' }).click();
     await expect(page).toHaveURL(/\/$/);
     await expect(page.getByRole('heading', { level: 1, name: 'Übersicht' })).toBeVisible();
+  });
+});
+
+test.describe('offline, served by the service worker', () => {
+  test('deep links and unknown routes still render their pages and show the offline banner', async ({
+    page,
+    context,
+  }) => {
+    await loadWithServiceWorkerInControl(page);
+    await context.setOffline(true);
+
+    await page.goto('/mehr/einstellungen/darstellung');
+    await expect(page.getByRole('heading', { level: 1, name: 'Darstellung' })).toBeVisible();
+    await expect(page.getByText('Offline – Anzeigen können veraltet sein')).toBeVisible();
+    await expect(page).toHaveTitle('Darstellung – Smart Home');
+
+    await page.goto('/gibt-es-nicht');
+    await expect(page.getByRole('heading', { level: 1, name: 'Nicht gefunden' })).toBeVisible();
+    await expect(page.getByText('Offline – Anzeigen können veraltet sein')).toBeVisible();
   });
 });
 
