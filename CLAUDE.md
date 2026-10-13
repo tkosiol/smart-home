@@ -35,7 +35,7 @@ Smart-Home-Plattform. Verbindliche Architektur: `docs/superpowers/specs/2026-10-
 
 `pnpm install` baut `@smart/contracts` und `@smart/theme` nur bei einer echten Installation (pnpm überspringt Lifecycle-Skripte, wenn `node_modules` aktuell ist). Nach Änderungen an den Contracts oder Theme-Paketen daher `pnpm packages:build` (baut `@smart/contracts` und `@smart/theme` in Abhängigkeitsreihenfolge).
 
-Lokale Ports (nur 127.0.0.1): DB 5433, MQTT 1884, Mailpit SMTP 1026 / UI 8026.
+Lokale Ports (nur 127.0.0.1): DB 5433, MQTT 1884, Mailpit SMTP 1026 / UI 8026. `ng serve` (4200) leitet `/api` per `apps/frontend/proxy.conf.json` an das Backend auf 127.0.0.1:3000 weiter (ohne `changeOrigin`, damit die Origin-Prüfung mit `APP_ORIGIN=http://localhost:4200` besteht).
 
 Anmeldung per E-Mail-Code: lokal fängt Mailpit die Mails ab; Betrieb (Resend, `APP_ORIGIN`, Admin anlegen) in `docs/runbooks/provisioning.md`.
 
