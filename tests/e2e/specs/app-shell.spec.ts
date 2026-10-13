@@ -1,6 +1,6 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 import { loadWithServiceWorkerInControl } from '../helpers/service-worker';
-import { test } from '../helpers/signed-in';
+import { test } from '../helpers/account';
 
 const PHONE = { width: 390, height: 844 };
 const RAIL = { width: 700, height: 900 };

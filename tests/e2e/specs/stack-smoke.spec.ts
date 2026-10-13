@@ -1,7 +1,9 @@
 import { createHash } from 'node:crypto';
 import { expect } from '@playwright/test';
 import { loadWithServiceWorkerInControl } from '../helpers/service-worker';
-import { test } from '../helpers/signed-in';
+import { test } from '../helpers/account';
+
+test.use({ account: 'smoke' });
 
 test('every page renders without console errors or CSP violations', async ({ page }) => {
   const navigation = page.getByRole('navigation', { name: 'Hauptnavigation' });
@@ -52,7 +54,8 @@ for (const [locale, lang] of [
   ['fr-FR', 'de'],
 ] as const) {
   test(`a browser preferring ${locale} gets the page language ${lang}`, async ({ browser }) => {
-    const context = await browser.newContext({ locale });
+    // A visitor without an account: the signed-in state of this file's person must not apply.
+    const context = await browser.newContext({ locale, storageState: undefined });
     const page = await context.newPage();
     await page.goto('/');
     await expect(page.locator('html')).toHaveAttribute('lang', lang);

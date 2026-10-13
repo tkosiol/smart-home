@@ -57,6 +57,12 @@ compose up -d --wait db broker
 compose run --rm --no-deps api node dist/migrate.js
 compose up -d --wait
 
+# The people of the end-to-end tests (tests/e2e/helpers/accounts.ts), created like the first admin on
+# the VPS; running the command again changes nothing.
+for person in shell smoke auth theme; do
+  compose exec -T api node dist/cli.js create-admin --email "e2e-$person@example.org" --name "E2E $person"
+done
+
 compose exec -T backup backup.sh
 compose exec -T backup restore-test.sh
 compose exec -T backup restic snapshots --tag config --json | grep -q '"paths":\["/stack-config"\]' || {
@@ -64,6 +70,6 @@ compose exec -T backup restic snapshots --tag config --json | grep -q '"paths":\
   exit 1
 }
 
-E2E_BASE_URL=http://127.0.0.1:18080 pnpm --filter @smart/e2e e2e
+E2E_BASE_URL=http://127.0.0.1:18080 E2E_MAILPIT_URL=http://127.0.0.1:18025 pnpm --filter @smart/e2e e2e
 
 echo "OK: stack test passed"
