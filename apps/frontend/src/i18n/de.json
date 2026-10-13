@@ -16,10 +16,14 @@
       "appearance": "Darstellung",
       "installation": "Erscheinungsbild der Installation",
       "signIn": "Anmelden",
+      "setup": "Haushalt einrichten",
+      "switchHousehold": "Haushalt wechseln",
+      "household": "Haushalt",
       "notFound": "Nicht gefunden"
     },
     "household": {
-      "switch": "Haushalt wechseln"
+      "switch": "Haushalt wechseln",
+      "saved": "Gespeichert."
     },
     "notifications": {
       "none": "Benachrichtigungen, keine neuen"
@@ -34,6 +38,7 @@
       "modules": "Module",
       "notifications": "Benachrichtigungen",
       "household": "Haushalt",
+      "members": "Mitglieder",
       "gateways": "Gateways",
       "settings": "Einstellungen"
     },

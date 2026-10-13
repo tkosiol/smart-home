@@ -16,10 +16,14 @@
       "appearance": "Appearance",
       "installation": "Appearance of the installation",
       "signIn": "Sign in",
+      "setup": "Set up a household",
+      "switchHousehold": "Switch household",
+      "household": "Household",
       "notFound": "Not found"
     },
     "household": {
-      "switch": "Switch household"
+      "switch": "Switch household",
+      "saved": "Saved."
     },
     "notifications": {
       "none": "Notifications, none new"
@@ -34,6 +38,7 @@
       "modules": "Modules",
       "notifications": "Notifications",
       "household": "Household",
+      "members": "Members",
       "gateways": "Gateways",
       "settings": "Settings"
     },

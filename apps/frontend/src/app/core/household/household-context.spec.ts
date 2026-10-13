@@ -26,11 +26,13 @@ interface Setup {
   put?: (householdId: string) => Response;
   cache?: MemoryMeCache;
   offline?: boolean;
+  /** `PUT /me` answers only after this promise resolved. */
+  holdPut?: Promise<void>;
 }
 
-async function setup({ me, put, cache = new MemoryMeCache(), offline = false }: Setup) {
+async function setup({ me, put, cache = new MemoryMeCache(), offline = false, holdPut }: Setup) {
   const calls: { method: string; path: string; body: unknown }[] = [];
-  const state = { me };
+  const state = { me, ended: false };
   TestBed.configureTestingModule({
     providers: [
       provideRouter([
@@ -43,8 +45,15 @@ async function setup({ me, put, cache = new MemoryMeCache(), offline = false }: 
           const method = init.method ?? 'GET';
           calls.push({ method, path, body: init.body ? JSON.parse(String(init.body)) : undefined });
           if (offline) throw new TypeError('Failed to fetch');
-          if (method === 'PUT')
+          if (method === 'POST' && path.endsWith('/auth/logout')) {
+            state.ended = true;
+            return new Response(null, { status: 204 });
+          }
+          if (state.ended) return apiError('auth.required', 401);
+          if (method === 'PUT') {
+            await holdPut;
             return (put ?? (() => json(state.me)))(JSON.parse(String(init.body)).householdId);
+          }
           return json(state.me);
         },
       },
@@ -152,6 +161,36 @@ describe('HouseholdContext', () => {
       });
       expect(context.current()).toEqual(auckland);
       expect(auth.me()?.currentHouseholdId).toBe(auckland.id);
+    });
+
+    it('drops the answer when the user signed out while the server was asked', async () => {
+      let answer!: () => void;
+      const { context, auth } = await setup({
+        me: meWith([berlin, auckland], berlin.id),
+        put: () => json(meWith([berlin, auckland], auckland.id)),
+        holdPut: new Promise<void>((resolve) => (answer = resolve)),
+      });
+      const switching = context.switchTo(auckland.id);
+      await auth.logout();
+      answer();
+      await switching;
+      expect(auth.status()).toBe('signedOut');
+      expect(auth.me()).toBeNull();
+    });
+
+    it('drops the answer when another user is signed in by then', async () => {
+      let answer!: () => void;
+      const { context, auth } = await setup({
+        me: meWith([berlin, auckland], berlin.id),
+        put: () => json(meWith([berlin, auckland], auckland.id)),
+        holdPut: new Promise<void>((resolve) => (answer = resolve)),
+      });
+      const switching = context.switchTo(auckland.id);
+      auth.updateMe({ ...meWith([berlin], berlin.id), id: 'someone-else' });
+      answer();
+      await switching;
+      expect(auth.me()?.id).toBe('someone-else');
+      expect(context.current()).toEqual(berlin);
     });
 
     it('keeps the current household when the server refuses', async () => {

@@ -62,6 +62,26 @@ describe('ApiClient', () => {
     );
   });
 
+  it('sends PATCH with a JSON body and DELETE without one', async () => {
+    const { api, fetchFn } = setup(() => new Response(null, { status: 204 }));
+    await api.patch('/api/v1/c', { z: 3 });
+    expect(await api.delete('/api/v1/d')).toBe(undefined);
+    expect(fetchFn).toHaveBeenNthCalledWith(
+      1,
+      '/api/v1/c',
+      expect.objectContaining({ method: 'PATCH', body: '{"z":3}' }),
+    );
+    expect(fetchFn).toHaveBeenNthCalledWith(
+      2,
+      '/api/v1/d',
+      expect.objectContaining({
+        method: 'DELETE',
+        body: undefined,
+        headers: { Accept: 'application/json' },
+      }),
+    );
+  });
+
   it('sends no content type for a POST without a body and passes the abort signal on', async () => {
     const { api, fetchFn } = setup(() => json({}));
     const controller = new AbortController();

@@ -41,6 +41,14 @@ export class ApiClient {
     return this.request<T>('PUT', path, body, init);
   }
 
+  patch<T>(path: string, body?: unknown, init?: ApiRequestInit): Promise<T> {
+    return this.request<T>('PATCH', path, body, init);
+  }
+
+  delete<T = void>(path: string, init?: ApiRequestInit): Promise<T> {
+    return this.request<T>('DELETE', path, undefined, init);
+  }
+
   private async request<T>(
     method: string,
     path: string,

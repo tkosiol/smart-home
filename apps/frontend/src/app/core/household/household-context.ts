@@ -31,9 +31,18 @@ export class HouseholdContext {
     effect(() => this.format.timeZone.set(this.current()?.timezone ?? this.browserTimeZone));
   }
 
-  /** Switches on the server (`PUT /api/v1/me`), then adopts the answered `me`. */
+  /**
+   * Switches on the server (`PUT /api/v1/me`), then adopts the answered `me`, unless the user
+   * signed out (or another one signed in) while the server was asked.
+   */
   async switchTo(householdId: string): Promise<void> {
-    this.auth.updateMe(await this.api.put(`${API_BASE}/me`, { householdId }));
+    const userId = this.auth.me()?.id;
+    const answered = await this.api.put<{ id?: unknown } | undefined>(`${API_BASE}/me`, {
+      householdId,
+    });
+    if (this.auth.status() === 'signedOut' || this.auth.me()?.id !== userId) return;
+    if (answered?.id !== userId) return;
+    this.auth.updateMe(answered);
   }
 
   /**

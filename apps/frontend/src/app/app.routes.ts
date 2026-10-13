@@ -1,19 +1,26 @@
 import { Routes } from '@angular/router';
 import { marker } from '@jsverse/transloco-keys-manager/marker';
 import { signedIn } from './core/auth';
-import { hasHousehold } from './core/household';
+import { hasHousehold, minRole } from './core/household';
 import { Shell } from './shell';
 
 /**
  * Every page lives inside the shell, which only matches for signed-in users with a household; the
  * sign-in page stands beside it. Whoever is not signed in is sent to the sign-in page by the
- * guard, whoever has no household to the set-up page (`/einrichten`, outside the shell).
+ * guard, whoever has no household to the set-up page (`/einrichten`, outside the shell and only
+ * for the signed in: it must not require a household, or the guard would send the user in circles).
  */
 export const routes: Routes = [
   {
     path: 'anmelden',
     title: marker('app.title.signIn'),
     loadChildren: () => import('./features/auth').then((m) => m.authRoutes),
+  },
+  {
+    path: 'einrichten',
+    title: marker('app.title.setup'),
+    canMatch: [signedIn],
+    loadChildren: () => import('./features/households').then((m) => m.setupRoutes),
   },
   {
     path: '',
@@ -36,7 +43,18 @@ export const routes: Routes = [
         title: marker('app.title.devices'),
         loadChildren: () => import('./features/devices').then((m) => m.devicesRoutes),
       },
-      // Before 'mehr': the more feature does not mount the settings itself (features never import each other).
+      {
+        path: 'haushalte',
+        title: marker('app.title.switchHousehold'),
+        loadChildren: () => import('./features/households').then((m) => m.switchRoutes),
+      },
+      // Before 'mehr': the more feature does not mount these pages itself (features never import each other).
+      {
+        path: 'mehr/haushalt',
+        title: marker('app.title.household'),
+        canMatch: [minRole('owner')],
+        loadChildren: () => import('./features/households').then((m) => m.householdRoutes),
+      },
       {
         path: 'mehr/einstellungen',
         title: marker('app.title.settings'),

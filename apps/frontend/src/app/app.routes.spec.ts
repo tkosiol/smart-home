@@ -9,7 +9,14 @@ import { ME_CACHE, signedIn } from './core/auth';
 import { hasHousehold } from './core/household';
 import { Shell } from './shell';
 import { BROWSER_LANGUAGES, LANGUAGE_STORE, provideI18n } from './core/i18n';
-import { apiError, json, MemoryMeCache, TEST_ME } from './testing/auth-testing';
+import {
+  apiError,
+  householdOf,
+  json,
+  MemoryMeCache,
+  meWith,
+  TEST_ME,
+} from './testing/auth-testing';
 
 async function setup(me: () => Response) {
   TestBed.configureTestingModule({
@@ -64,5 +71,59 @@ describe('routes', () => {
     expect((harness.routeNativeElement as HTMLElement).tagName.toLowerCase()).toBe('app-shell');
     await harness.navigateByUrl('/gibt-es-nicht');
     expect(router.url).toBe('/gibt-es-nicht');
+  });
+
+  describe('households', () => {
+    const element = (harness: RouterTestingHarness) => harness.routeNativeElement as HTMLElement;
+    const heading = async (harness: RouterTestingHarness, text: string) =>
+      vi.waitFor(() => {
+        harness.detectChanges();
+        expect(element(harness).querySelector('h1')?.textContent).toContain(text);
+      });
+
+    it('leads a user without a household to the set-up page, outside the shell', async () => {
+      const { harness, router } = await setup(() => json(meWith([])));
+      await harness.navigateByUrl('/raeume');
+      expect(router.url).toBe('/einrichten');
+      await heading(harness, 'Haushalt einrichten');
+      expect(element(harness).tagName.toLowerCase()).toBe('app-setup-page');
+      expect(element(harness).querySelector('nav')).toBeNull();
+    });
+
+    it('keeps the set-up page open for a user who already has a household', async () => {
+      const { harness, router } = await setup(() => json(TEST_ME));
+      await harness.navigateByUrl('/einrichten');
+      expect(router.url).toBe('/einrichten');
+      await heading(harness, 'Haushalt einrichten');
+    });
+
+    it('sends a signed-out user from the set-up page to the sign-in page', async () => {
+      const { harness, router } = await setup(() => apiError('auth.required', 401));
+      await harness.navigateByUrl('/einrichten');
+      expect(router.url).toBe('/anmelden?ziel=%2Feinrichten');
+    });
+
+    it('shows the switch page inside the shell', async () => {
+      const { harness, router } = await setup(() => json(TEST_ME));
+      await harness.navigateByUrl('/haushalte');
+      expect(router.url).toBe('/haushalte');
+      expect(element(harness).tagName.toLowerCase()).toBe('app-shell');
+      await heading(harness, 'Haushalt wechseln');
+    });
+
+    it('shows the household settings to an owner inside the shell', async () => {
+      const { harness, router } = await setup(() => json(TEST_ME));
+      await harness.navigateByUrl('/mehr/haushalt');
+      expect(router.url).toBe('/mehr/haushalt');
+      expect(element(harness).tagName.toLowerCase()).toBe('app-shell');
+      await heading(harness, 'Haushalt');
+    });
+
+    it('sends everyone else from the household settings to the overview', async () => {
+      const member = householdOf('Haus', { role: 'member' });
+      const { harness, router } = await setup(() => json(meWith([member])));
+      await harness.navigateByUrl('/mehr/haushalt');
+      expect(router.url).toBe('/');
+    });
   });
 });

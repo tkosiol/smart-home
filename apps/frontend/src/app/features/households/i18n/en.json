@@ -1,0 +1,37 @@
+{
+  "roles": {
+    "viewer": "Viewer",
+    "member": "Member",
+    "owner": "Owner"
+  },
+  "setup": {
+    "title": "Set up a household",
+    "description": "A household brings together rooms, devices and the people who use them.",
+    "submit": "Create household",
+    "cancel": "Cancel"
+  },
+  "form": {
+    "name": "Name",
+    "nameHint": "For example “Home”",
+    "nameError": "Please enter a name of at most 60 characters.",
+    "timezone": "Time zone",
+    "timezoneHint": "For the times and schedules of the household"
+  },
+  "switch": {
+    "title": "Switch household",
+    "current": "Current household",
+    "to": "Switch to {{ name }}",
+    "new": "Create a new household"
+  },
+  "household": {
+    "title": "Household",
+    "save": "Save",
+    "leave": {
+      "title": "Leave household",
+      "description": "You lose access to this household. You can only come back with a new invitation.",
+      "button": "Leave household",
+      "confirm": "Really leave?",
+      "lastOwner": "First make another person an owner."
+    }
+  }
+}
