@@ -10,6 +10,8 @@ export const TEST_ME: Me = {
   locale: 'de',
   appearance: DEFAULT_PERSONAL_APPEARANCE,
   isPlatformAdmin: false,
+  households: [],
+  currentHouseholdId: null,
 };
 
 /** A device copy of the user that lives in memory; `cleared` records what the app removed. */

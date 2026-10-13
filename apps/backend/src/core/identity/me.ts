@@ -9,5 +9,8 @@ export function toMe(user: User): Me {
     locale: user.locale,
     appearance: user.appearance,
     isPlatformAdmin: user.isPlatformAdmin,
+    // Task 2 replaces this with the memberships read by a MeService.
+    households: [],
+    currentHouseholdId: null,
   };
 }
