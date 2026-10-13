@@ -606,6 +606,8 @@ Umsetzung testgetrieben (TDD).
 
 Jede Etappe erhält einen eigenen, detaillierten Umsetzungsplan in `docs/superpowers/plans/`.
 
+Reihenfolge ab Etappe 4 (Entscheidung 2026-10-13): 4a → 4c → 5 → 6 → 7 → 8 → 4b. Passkeys und Sicherheitsseite (4b) folgen nach dem Pflanzenmodul; Details in `2026-10-13-etappe-4-identity-haushalte-design.md`, Abschnitt 2.
+
 | #   | Etappe                    | Ergebnis                                                                                                                                                     |
 | --- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | 0   | Vorbereitung (gemeinsam)  | GitHub-Repo, Accounts (Resend, Backblaze B2, UptimeRobot, healthchecks.io), DNS (`*.smart`)                                                                  |

@@ -12,7 +12,7 @@ Nach Etappe 4 meldet man sich ohne Passwort an (E-Mail-Code, Passkey), verwaltet
 
 ## 2. Aufteilung
 
-Eine Spec, drei Pläne in dieser Reihenfolge:
+Eine Spec, drei Pläne. Reihenfolge (Entscheidung 2026-10-13): **4a → 4c → Etappen 5–8 → 4b**. Passkeys kommen ans Ende, damit die Pflanzensensoren früher in der App erscheinen; bis dahin ist der E-Mail-Code der einzige Anmeldeweg. Als Notbremse ohne Sicherheitsseite liefert 4c den CLI-Befehl `revoke-sessions --email <e>` (beendet alle Sessions des Users).
 
 | Plan                          | Inhalt                                                                                                                                                                                                                                   | Sichtbares Ergebnis                                               |
 | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
@@ -27,7 +27,7 @@ Eine Spec, drei Pläne in dieser Reihenfolge:
 - `platform/mail`: Schnittstelle `MailSender`, ein Adapter `SmtpMailSender` (nodemailer) für alle Umgebungen. Templates (Betreff, Text, einfaches HTML) je Sprache `de`/`en`. Staging versendet nur an Adressen der Freigabeliste; andere werden protokolliert (maskiert) und verworfen.
 - `core/identity`: User, Sessions, E-Mail-Code, Passkeys, WebAuthn-Challenges, Recovery-Links, persönliche Einstellungen.
 - `core/households`: Haushalte, Mitgliedschaften, Einladungen, Instanz-Einstellungen.
-- CLI `apps/backend/src/cli.ts` (im API-Image als `node dist/cli.js`): `create-admin --email <e> --name <n>` (4a), `recovery-link --email <e>` (4b). Auf dem VPS über ein Skript im Deploy-Ordner; nur Till führt es aus.
+- CLI `apps/backend/src/cli.ts` (im API-Image als `node dist/cli.js`): `create-admin --email <e> --name <n>` (4a), `revoke-sessions --email <e>` (4c), `recovery-link --email <e>` (4b). Auf dem VPS über ein Skript im Deploy-Ordner; nur Till führt es aus.
 - Querschnitt: `SessionGuard` (global, Ausnahmen per `@Public()`), `@RequireRole('viewer'|'member'|'owner')` für Haushaltspfade, `@RequirePlatformAdmin()`, Origin-Prüfung, Rate-Limits (`@nestjs/throttler`), Fehlerformat `{ code, params, traceId }`.
 
 ### 3.2 Datenmodell (Drizzle-Migrationen)
@@ -78,7 +78,7 @@ Alle Geheimnisse (Session-Token, Codes, Nonces, Einladungs- und Recovery-Tokens)
 - API haushaltsbezogen unter `/api/v1/households/:householdId/...`; Guard prüft Mitgliedschaft und Mindestrolle; Repository-Methoden verlangen die `householdId`. Fremder oder unbekannter Haushalt → `404` (kein Hinweis auf Existenz).
 - Jeder angemeldete User darf Haushalte anlegen (`POST /api/v1/households`, wird owner).
 - Einladungen: owner lädt mit E-Mail und Rolle ein; Token 256 Bit, Hash, 7 Tage, einmalig; erneut senden erzeugt ein neues Token und macht das alte ungültig; widerrufbar. Annahme unter `/einladung/:token`:
-  - ohne Konto: Name eingeben → User (E-Mail aus der Einladung, gilt als bestätigt) + Session (`auth_method=invitation`) + Mitgliedschaft; danach Passkey-Angebot;
+  - ohne Konto: Name eingeben → User (E-Mail aus der Einladung, gilt als bestätigt) + Session (`auth_method=invitation`) + Mitgliedschaft; danach Passkey-Angebot (erst mit 4b);
   - mit Konto: nach Anmeldung annehmen; die E-Mail des angemeldeten Users muss passen, sonst `invitation.emailMismatch`;
   - ohne Mailversand zeigt die App dem owner den Link zum Kopieren.
 - `PUT /api/v1/me` speichert `last_household_id` (aktueller Haushalt, geräteübergreifend).
