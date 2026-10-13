@@ -1,7 +1,7 @@
 import * as z from 'zod/mini';
 import { personalAppearanceSchema } from './appearance.js';
 import { emailSchema, normalizeEmail } from './email.js';
-import { householdSummarySchema } from './households.js';
+import { householdSummarySchema } from './household-summary.js';
 import { languageSchema } from './language.js';
 
 // Lives in email.ts so households.ts can use it without an import cycle through this file.

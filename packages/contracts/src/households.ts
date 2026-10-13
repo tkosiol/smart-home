@@ -1,17 +1,18 @@
 import * as z from 'zod/mini';
 import { instanceAppearanceSchema } from './appearance.js';
 import { emailSchema } from './email.js';
+import { householdRoleSchema } from './household-summary.js';
 import { languageSchema } from './language.js';
 
-/** Ascending by privilege: a later role may do everything an earlier one may. */
-export const HOUSEHOLD_ROLES = ['viewer', 'member', 'owner'] as const;
-export type HouseholdRole = (typeof HOUSEHOLD_ROLES)[number];
-export const householdRoleSchema = z.enum(HOUSEHOLD_ROLES);
-
-/** True when `role` grants at least `minimum`. */
-export function hasRole(role: HouseholdRole, minimum: HouseholdRole): boolean {
-  return HOUSEHOLD_ROLES.indexOf(role) >= HOUSEHOLD_ROLES.indexOf(minimum);
-}
+// Defined apart (see household-summary.ts), part of this module's API all the same.
+export {
+  HOUSEHOLD_ROLES,
+  hasRole,
+  householdRoleSchema,
+  householdSummarySchema,
+  type HouseholdRole,
+  type HouseholdSummary,
+} from './household-summary.js';
 
 function hasControlCharacter(value: string): boolean {
   return [...value].some((character) => {
@@ -39,14 +40,6 @@ export const timeZoneSchema = z.string().check(
     }
   }, 'unknown time zone'),
 );
-
-export const householdSummarySchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  timezone: z.string(),
-  role: householdRoleSchema,
-});
-export type HouseholdSummary = z.infer<typeof householdSummarySchema>;
 
 export const householdCreateSchema = z.object({
   name: displayNameSchema,
