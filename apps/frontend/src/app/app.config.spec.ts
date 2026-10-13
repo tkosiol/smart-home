@@ -1,4 +1,10 @@
 import { TestBed } from '@angular/core/testing';
+import {
+  ApplicationInitStatus,
+  ApplicationRef,
+  ChangeDetectionStrategy,
+  Component,
+} from '@angular/core';
 import { DEFAULT_INSTANCE_APPEARANCE, type InstanceAppearance } from '@smart/contracts';
 import { APPEARANCE_STORE, MemoryAppearanceStore, ThemeService } from '@smart/ui';
 import { createAppConfig } from './app.config';
@@ -9,6 +15,9 @@ const plum: InstanceAppearance = {
   ...DEFAULT_INSTANCE_APPEARANCE,
   colors: { ...DEFAULT_INSTANCE_APPEARANCE.colors, seed: '#6e4c7e' },
 };
+
+@Component({ selector: 'app-shell', template: '', changeDetection: ChangeDetectionStrategy.OnPush })
+class Shell {}
 
 function setup(config: Parameters<typeof createAppConfig>[0], store = new MemoryAppearanceStore()) {
   TestBed.configureTestingModule({
@@ -38,6 +47,15 @@ describe('createAppConfig', () => {
       stored,
     );
     expect(theme.instance().shape).toBe('kantig');
+  });
+
+  it('restores the scroll position of pages the router comes back to', async () => {
+    setup({ features: { instanceAppearanceEditor: false }, instanceAppearance: plum });
+    history.scrollRestoration = 'auto';
+    await TestBed.inject(ApplicationInitStatus).donePromise;
+    // The router's scroller takes over the browser's restoration once the app is bootstrapped.
+    TestBed.inject(ApplicationRef).bootstrap(Shell, document.createElement('app-shell'));
+    expect(history.scrollRestoration).toBe('manual');
   });
 
   it('registers the settings entry for the More page', () => {

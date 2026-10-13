@@ -1,5 +1,5 @@
 import { ApplicationConfig, isDevMode, provideBrowserGlobalErrorListeners } from '@angular/core';
-import { TitleStrategy, provideRouter } from '@angular/router';
+import { TitleStrategy, provideRouter, withInMemoryScrolling } from '@angular/router';
 import { provideServiceWorker } from '@angular/service-worker';
 import { DEFAULT_RUNTIME_CONFIG, type RuntimeConfig } from '@smart/contracts';
 import { provideTheme } from '@smart/ui';
@@ -13,7 +13,7 @@ export function createAppConfig(config: RuntimeConfig = DEFAULT_RUNTIME_CONFIG):
   return {
     providers: [
       provideBrowserGlobalErrorListeners(),
-      provideRouter(routes),
+      provideRouter(routes, withInMemoryScrolling({ scrollPositionRestoration: 'enabled' })),
       { provide: TitleStrategy, useExisting: PageTitleStrategy },
       provideRuntimeConfig(config),
       provideI18n(),

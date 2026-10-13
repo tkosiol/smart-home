@@ -6,16 +6,13 @@ import {
   type InstanceAppearance,
   type PersonalAppearance,
 } from '@smart/contracts';
-import {
-  computeThemeVars,
-  resolveAppearance,
-  type ResolvedContrast,
-  type ResolvedMode,
-} from '@smart/theme';
+import { resolveAppearance } from '@smart/theme/resolve';
+import type { ResolvedContrast, ResolvedMode } from '@smart/theme';
 import { APPEARANCE_STORE, BOOT_CACHE_VERSION } from './appearance-store';
 import { applyThemeVars } from './apply-theme';
 import { INSTANCE_APPEARANCE, STORED_INSTANCE_ALLOWED } from './instance-appearance.token';
 import { MEDIA_QUERIES } from './media-queries';
+import { THEME_ENGINE_LOADER, type ThemeEngine } from './theme-engine';
 
 const DARK = '(prefers-color-scheme: dark)';
 const MORE_CONTRAST = '(prefers-contrast: more)';
@@ -27,6 +24,7 @@ export class ThemeService {
   private readonly media = inject(MEDIA_QUERIES);
   private readonly defaultInstance = inject(INSTANCE_APPEARANCE);
   private readonly storedInstanceAllowed = inject(STORED_INSTANCE_ALLOWED);
+  private readonly engine = signal<ThemeEngine | null>(null);
 
   private readonly instanceState = signal<InstanceAppearance>(this.loadInstance());
   private readonly personalState = signal<PersonalAppearance>(this.loadPersonal());
@@ -34,6 +32,12 @@ export class ThemeService {
   readonly personal = this.personalState.asReadonly();
   private readonly prefersDark = signal(this.media.matches(DARK));
   private readonly prefersMoreContrast = signal(this.media.matches(MORE_CONTRAST));
+
+  /**
+   * Settles once the color engine is loaded (or failed to load). Until then the theme from
+   * `theme-boot.js` and the default CSS stays; `resolved` works without the engine.
+   */
+  readonly ready: Promise<void>;
 
   readonly resolved = computed(() =>
     resolveAppearance(this.instance(), this.personal(), {
@@ -58,6 +62,11 @@ export class ThemeService {
       stopContrast();
       stopWatching();
     });
+    this.ready = inject(THEME_ENGINE_LOADER)()
+      .then((engine) => this.engine.set(engine))
+      .catch((error: unknown) =>
+        console.warn('Theme engine could not be loaded, keeping the default theme', error),
+      );
     effect(() => this.apply());
   }
 
@@ -100,9 +109,11 @@ export class ThemeService {
   }
 
   private apply(): void {
+    const engine = this.engine();
     const resolved = this.resolved();
+    if (!engine) return;
     const vars = (mode: ResolvedMode, contrast: ResolvedContrast) =>
-      computeThemeVars({ ...resolved, mode, contrast });
+      engine.computeThemeVars({ ...resolved, mode, contrast });
     applyThemeVars(
       this.document.documentElement,
       vars(resolved.mode, resolved.contrast),
