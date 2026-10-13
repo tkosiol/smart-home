@@ -13,6 +13,7 @@ import { Router } from '@angular/router';
 import { TranslocoPipe } from '@jsverse/transloco';
 import type { HouseholdRole, Invitation, InvitationCreated, Member } from '@smart/contracts';
 import { UiButton, UiDateTimePipe, UiPage, UiSection, UiStack } from '@smart/ui';
+import { ApiError } from '../../core/api';
 import { AuthService } from '../../core/auth';
 import { HouseholdContext } from '../../core/household';
 import { injectHouseholdErrorHandler } from './household-errors';
@@ -37,6 +38,11 @@ class LoadedList<T> {
     private readonly fetch: (householdId: string) => Promise<T[]>,
     private readonly onError: (error: unknown) => void,
   ) {}
+
+  /** Ends the list's life: answers still on their way are ignored. */
+  dispose(): void {
+    this.requests++;
+  }
 
   /** Loads the list of `householdId` (none: empties it); `keep` leaves the old rows while loading. */
   async load(householdId: string | undefined, keep = false): Promise<void> {
@@ -80,7 +86,8 @@ class LoadedList<T> {
       <ui-stack gap="xl">
         <ui-section [heading]="'households.members.people' | transloco">
           <ui-stack gap="lg">
-            @for (entry of members.items(); track entry.userId + ':' + rev()) {
+            @for (row of memberRows(); track row.key) {
+              @let entry = row.entry;
               @let own = entry.userId === auth.me()?.id;
               @let role =
                 entry.role === 'owner'
@@ -211,6 +218,11 @@ export class MembersPage {
   protected readonly busy = signal(false);
   /** Bumped after a refused role change, so the selects show the server's roles again. */
   protected readonly rev = signal(0);
+  // The key carries the generation: a changed key re-creates the row (a track expression that
+  // reads a signal itself would not be re-run when only the signal changes).
+  protected readonly memberRows = computed(() =>
+    this.members.items().map((entry) => ({ entry, key: `${entry.userId}:${this.rev()}` })),
+  );
   /** The link of the newest (or re-sent) invitation; shown once, never kept for another household. */
   protected readonly link = linkedSignal<string | undefined, string | null>({
     source: this.currentId,
@@ -223,7 +235,11 @@ export class MembersPage {
   });
 
   constructor() {
-    inject(DestroyRef).onDestroy(() => clearTimeout(this.confirmTimer));
+    inject(DestroyRef).onDestroy(() => {
+      clearTimeout(this.confirmTimer);
+      this.members.dispose();
+      this.invitations.dispose();
+    });
     // Keyed on the id (and the owner role for the invitations), not on the household object.
     effect(() => {
       const id = this.currentId();
@@ -306,6 +322,12 @@ export class MembersPage {
       await action();
     } catch (error) {
       this.handleError(error);
+      // Another owner may have acted first: the row this was about is gone, so show the truth.
+      if (error instanceof ApiError && error.code === 'household.notFound') {
+        const id = this.currentId();
+        void this.members.load(id, true);
+        void this.invitations.load(this.isOwner() ? id : undefined, true);
+      }
     } finally {
       this.busy.set(false);
     }

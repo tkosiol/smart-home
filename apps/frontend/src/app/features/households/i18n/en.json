@@ -54,8 +54,8 @@
   },
   "invite": {
     "title": "Invite",
-    "email": "Email address",
-    "emailError": "Please enter a valid email address.",
+    "email": "E-mail address",
+    "emailError": "Please enter a valid e-mail address.",
     "role": "Role",
     "send": "Send invitation",
     "linkLabel": "Invitation link",

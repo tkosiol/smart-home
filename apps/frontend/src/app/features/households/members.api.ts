@@ -11,8 +11,8 @@ export class MembersApi {
     return `${API_BASE}/households/${householdId}/${rest}`;
   }
 
-  members(householdId: string, signal?: AbortSignal): Promise<Member[]> {
-    return this.api.get<Member[]>(this.path(householdId, 'members'), { signal });
+  members(householdId: string): Promise<Member[]> {
+    return this.api.get<Member[]>(this.path(householdId, 'members'));
   }
 
   changeRole(householdId: string, userId: string, role: HouseholdRole): Promise<void> {
@@ -24,8 +24,8 @@ export class MembersApi {
     return this.api.delete(this.path(householdId, `members/${userId}`));
   }
 
-  invitations(householdId: string, signal?: AbortSignal): Promise<Invitation[]> {
-    return this.api.get<Invitation[]>(this.path(householdId, 'invitations'), { signal });
+  invitations(householdId: string): Promise<Invitation[]> {
+    return this.api.get<Invitation[]>(this.path(householdId, 'invitations'));
   }
 
   invite(householdId: string, email: string, role: HouseholdRole): Promise<InvitationCreated> {

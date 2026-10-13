@@ -48,14 +48,27 @@ interface Server {
   members: Member[];
   invitations: Invitation[];
   fail?: (call: RecordedCall) => Response | undefined;
+  /** Holds the answer to a call until the returned promise is resolved. */
+  hold?: (call: RecordedCall) => Promise<void> | undefined;
 }
+
+const zoe = member('user-zoe', 'Zoe', 'member');
+const xavier = invitation('inv-9', 'xavier@example.org');
 
 /** A small stand-in for the household API; `fail` may answer a call with an error first. */
 function server(overrides: Partial<Server> = {}) {
   const state: Server = { members: [till, anna, ben], invitations: [pending], ...overrides };
-  const respond = (call: RecordedCall): Response => {
+  const respond = async (call: RecordedCall): Promise<Response> => {
+    await state.hold?.(call);
     const failed = state.fail?.(call);
     if (failed) return failed;
+    // The second household of the user has its own people.
+    if (call.method === 'GET' && call.path === `/api/v1/households/${auckland.id}/members`) {
+      return json([till, zoe]);
+    }
+    if (call.method === 'GET' && call.path === `/api/v1/households/${auckland.id}/invitations`) {
+      return json([xavier]);
+    }
     const path = call.path.replace(base, '');
     if (call.method === 'GET' && path === '/members') return json(state.members);
     if (call.method === 'GET' && path === '/invitations') return json(state.invitations);
@@ -374,6 +387,118 @@ describe('members page', () => {
       expect(requests(page, 'GET').map((call) => call.path)).toContain(
         `/api/v1/households/${auckland.id}/members`,
       );
+    });
+  });
+
+  describe('races and rollbacks', () => {
+    const idle = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    it('ignores the late answer for the household the user has left', async () => {
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => (release = resolve));
+      const page = await open({
+        hold: (call) => (call.path.startsWith(`${base}/`) ? gate : undefined),
+      });
+      page.auth.updateMe(meWith([berlin, auckland], auckland.id));
+      await flush(page);
+      expect(headings(page)).toEqual(['Till', 'Zoe', 'xavier@example.org']);
+
+      release();
+      await flush(page);
+      expect(headings(page)).toEqual(['Till', 'Zoe', 'xavier@example.org']);
+    });
+
+    it('drops the shown link and an open question when the household changes', async () => {
+      const page = await open({}, async () => undefined);
+      typeInto(page, 'email', 'dora@example.org');
+      await press(page, 'Einladung senden');
+      sectionButton(page, 'Anna', 'Entfernen')!.click();
+      await flush(page);
+      expect(linkField(page)).not.toBeNull();
+      expect(pageButton(page.element, 'Wirklich entfernen?')).toBeTruthy();
+
+      page.auth.updateMe(meWith([berlin, auckland], auckland.id));
+      await flush(page);
+      expect(linkField(page)).toBeNull();
+      expect(pageButton(page.element, 'Wirklich')).toBeUndefined();
+    });
+
+    it('shows the server role again after a refused role change', async () => {
+      const page = await open({
+        members: [till, anna],
+        fail: (call) =>
+          call.method === 'PATCH' ? apiError('household.lastOwner', 409) : undefined,
+      });
+      selectOf(page, 'Anna').value.set('owner');
+      await flush(page);
+      expect(selectOf(page, 'Anna').value()).toBe('member');
+    });
+
+    it('clears the e-mail message when another address is typed or the household changes', async () => {
+      const page = await open();
+      typeInto(page, 'email', 'not an address');
+      await press(page, 'Einladung senden');
+      expect(pageText(page.element)).toContain('gültige E-Mail-Adresse');
+      typeInto(page, 'email', 'dora@example.org');
+      expect(pageText(page.element)).not.toContain('gültige E-Mail-Adresse');
+
+      typeInto(page, 'email', 'not an address');
+      await press(page, 'Einladung senden');
+      page.auth.updateMe(meWith([berlin, auckland], auckland.id));
+      await flush(page);
+      expect(pageText(page.element)).not.toContain('gültige E-Mail-Adresse');
+    });
+
+    it('shows the lists as they are when a member is already gone', async () => {
+      const members = [till, anna, ben];
+      const page = await open({
+        members,
+        fail: (call) => {
+          if (call.method !== 'DELETE') return undefined;
+          members.splice(1, 1);
+          return apiError('household.notFound', 404);
+        },
+      });
+      const accessChanged = vi.spyOn(page.household, 'accessChanged').mockResolvedValue();
+      sectionButton(page, 'Anna', 'Entfernen')!.click();
+      await flush(page);
+      sectionButton(page, 'Anna', 'Wirklich entfernen?')!.click();
+      await flush(page);
+      expect(accessChanged).toHaveBeenCalledOnce();
+      expect(headings(page)).not.toContain('Anna');
+    });
+
+    it('shows the lists as they are when an invitation is already gone', async () => {
+      const invitations = [pending];
+      const page = await open({
+        invitations,
+        fail: (call) => {
+          if (call.method !== 'POST' || !call.path.endsWith('/resend')) return undefined;
+          invitations.splice(0, 1);
+          return apiError('household.notFound', 404);
+        },
+      });
+      vi.spyOn(page.household, 'accessChanged').mockResolvedValue();
+      await press(page, 'Erneut senden');
+      expect(headings(page)).not.toContain('carla@example.org');
+    });
+
+    it('ignores answers that arrive after the page is gone', async () => {
+      const accessChanged = vi
+        .spyOn(HouseholdContext.prototype, 'accessChanged')
+        .mockResolvedValue();
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => (release = resolve));
+      const page = await open({
+        hold: (call) => (call.path.endsWith('/members') ? gate : undefined),
+        fail: (call) =>
+          call.path.endsWith('/members') ? apiError('household.forbidden', 403) : undefined,
+      });
+      page.harness.fixture.destroy();
+      release();
+      await idle();
+      await idle();
+      expect(accessChanged).not.toHaveBeenCalled();
     });
   });
 

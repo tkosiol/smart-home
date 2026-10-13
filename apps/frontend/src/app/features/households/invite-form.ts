@@ -119,7 +119,11 @@ export class InviteForm {
     source: this.currentId,
     computation: () => 'member',
   });
-  protected readonly emailError = signal<EmailError>(null);
+  // A message is about what was sent: typing another address, or another household, clears it.
+  protected readonly emailError = linkedSignal<readonly unknown[], EmailError>({
+    source: () => [this.currentId(), this.email()],
+    computation: () => null,
+  });
   protected readonly busy = signal(false);
 
   protected alreadyMemberText(): string {
