@@ -20,4 +20,11 @@ describe('secrets', () => {
     expect(sameHash(sha256('a'), sha256('b'))).toBe(false);
     expect(sameHash(sha256('a'), 'short')).toBe(false);
   });
+
+  it('never throws for strings of equal length but different byte length', () => {
+    expect(sameHash('é', 'a')).toBe(false);
+    expect(sameHash('a', 'é')).toBe(false);
+    expect(sameHash('é', 'ab')).toBe(false);
+    expect(sameHash('é', 'é')).toBe(true);
+  });
 });
