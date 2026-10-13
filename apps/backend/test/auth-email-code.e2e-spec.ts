@@ -67,12 +67,15 @@ describe('auth: e-mail code sign-in and sign-out', () => {
   let now = START;
   let userCounter = 0;
   let ipCounter = 0;
+  let ghostCounter = 0;
   const mailer = new InMemoryMailSender();
   const originalUrl = inject('testEnv').DATABASE_URL;
   const origin = inject('testEnv').APP_ORIGIN;
 
   /** A fresh client address per call: the per-IP limits must not leak between tests. */
   const nextIp = (): string => `203.0.113.${(ipCounter = (ipCounter % 250) + 1)}`;
+  /** An address without an account; unique per use because the per-address limits are in memory. */
+  const ghost = (): string => `ghost${(ghostCounter += 1)}@example.org`;
   const advance = (ms: number): void => {
     now = new Date(now.getTime() + ms);
   };
@@ -113,6 +116,13 @@ describe('auth: e-mail code sign-in and sign-out', () => {
   };
   const verify = (email: string, code: string, nonce?: string, ip?: string): request.Test =>
     post(VERIFY, { email, code }, { cookies: nonce ? [`${LOGIN_NONCE_COOKIE}=${nonce}`] : [], ip });
+  /** Status and body without the per-request trace id, for comparing responses. */
+  const shape = (response: request.Response): { status: number; body: unknown } => ({
+    status: response.status,
+    body: Object.fromEntries(
+      Object.entries(response.body as Record<string, unknown>).filter(([key]) => key !== 'traceId'),
+    ),
+  });
   const wrongCode = (real: string): string => (real === '000000' ? '000001' : '000000');
   const codeRow = async (email: string) => {
     const rows = await connection.sql`
@@ -201,16 +211,15 @@ describe('auth: e-mail code sign-in and sign-out', () => {
 
     it('answers an unknown address like a known one without mail or database writes', async () => {
       const before = await connection.sql`select count(*)::int as n from email_login_codes`;
-      const response = await post(EMAIL_CODE, { email: 'nobody@example.org' }).expect(204);
+      const email = ghost();
+      const response = await post(EMAIL_CODE, { email }).expect(204);
 
       expect(response.text).toBe('');
       expect(cookieValue(response, LOGIN_NONCE_COOKIE)).toMatch(/^[A-Za-z0-9_-]{43}$/);
       expect(mailer.sent).toHaveLength(0);
       const after = await connection.sql`select count(*)::int as n from email_login_codes`;
       expect(after[0]?.n).toBe(before[0]?.n);
-      expect(await connection.sql`select id from users where email = 'nobody@example.org'`).toEqual(
-        [],
-      );
+      expect(await connection.sql`select id from users where email = ${email}`).toEqual([]);
     });
 
     it('does not make the response time depend on the mail server, known or unknown', async () => {
@@ -225,7 +234,7 @@ describe('auth: e-mail code sign-in and sign-out', () => {
       const unknown: number[] = [];
       for (let i = 0; i < 3; i++) {
         known.push(await timed(await newUser()));
-        unknown.push(await timed(`nobody${i}@example.org`));
+        unknown.push(await timed(ghost()));
       }
       const median = (values: number[]): number => [...values].sort((a, b) => a - b)[1] ?? 0;
       expect(median(known)).toBeLessThan(750);
@@ -256,7 +265,7 @@ describe('auth: e-mail code sign-in and sign-out', () => {
       const response = await post(EMAIL_CODE, { email }).expect(503);
       expect(response.body).toMatchObject({ code: 'auth.mailDisabled' });
       expect(await codeRow(email)).toBeUndefined();
-      await post(EMAIL_CODE, { email: 'nobody@example.org' }).expect(503);
+      await post(EMAIL_CODE, { email: ghost() }).expect(503);
     });
 
     it('allows 3 codes per address in 15 minutes and 429 on the 4th, then again later', async () => {
@@ -279,6 +288,17 @@ describe('auth: e-mail code sign-in and sign-out', () => {
       expect(mailer.to(email)).toHaveLength(4);
     });
 
+    it('limits an unknown address exactly like a known one, with the same response', async () => {
+      const bodies: unknown[] = [];
+      for (const email of [await newUser(), ghost()]) {
+        for (let i = 0; i < 3; i++) await requestCode(email);
+        const response = await post(EMAIL_CODE, { email }).expect(429);
+        bodies.push(shape(response).body);
+      }
+      expect(bodies[0]).toEqual({ code: 'auth.rateLimited', params: { retryAfterSeconds: 900 } });
+      expect(bodies[1]).toEqual(bodies[0]);
+    });
+
     it('never exceeds the per-address limit under concurrent requests', async () => {
       const email = await newUser();
       const responses = await Promise.all(
@@ -295,11 +315,11 @@ describe('auth: e-mail code sign-in and sign-out', () => {
     it('limits requests per IP address to 10 in 15 minutes', async () => {
       const ip = '198.51.100.7';
       for (let i = 0; i < 10; i++) {
-        await post(EMAIL_CODE, { email: `nobody${i}@example.org` }, { ip }).expect(204);
+        await post(EMAIL_CODE, { email: ghost() }, { ip }).expect(204);
       }
-      const response = await post(EMAIL_CODE, { email: 'nobody@example.org' }, { ip }).expect(429);
+      const response = await post(EMAIL_CODE, { email: ghost() }, { ip }).expect(429);
       expect(response.body).toMatchObject({ code: 'auth.rateLimited' });
-      await post(EMAIL_CODE, { email: 'nobody@example.org' }, { ip: nextIp() }).expect(204);
+      await post(EMAIL_CODE, { email: ghost() }, { ip: nextIp() }).expect(204);
     });
 
     it('applies the rate limit before the session check on a protected route', async () => {
@@ -358,13 +378,13 @@ describe('auth: e-mail code sign-in and sign-out', () => {
       await verify(email, code, nonce).expect(200);
     });
 
-    it('rejects an expired code with auth.codeExpired', async () => {
+    it('rejects an expired code with the same auth.invalidCode as any other failure', async () => {
       const email = await newUser();
       const nonce = await requestCode(email);
       const code = mailer.codeFor(email);
       advance(10 * MINUTE);
       const response = await verify(email, code, nonce).expect(400);
-      expect(response.body).toMatchObject({ code: 'auth.codeExpired' });
+      expect(response.body).toMatchObject({ code: 'auth.invalidCode' });
     });
 
     it('accepts the code until the last moment of its 10 minutes', async () => {
@@ -380,15 +400,62 @@ describe('auth: e-mail code sign-in and sign-out', () => {
       const code = mailer.codeFor(email);
       await verify(email, code, nonce).expect(200);
       const again = await verify(email, code, nonce).expect(400);
-      expect(again.body).toMatchObject({ code: 'auth.codeExpired' });
+      expect(again.body).toMatchObject({ code: 'auth.invalidCode' });
       expect(setCookies(again).some((line) => line.startsWith(SESSION_COOKIE))).toBe(false);
     });
 
+    it('answers an unknown and a known address identically, up to the lock after 5 tries', async () => {
+      const known = await newUser();
+      const nonce = await requestCode(known);
+      const real = mailer.codeFor(known);
+      const unknown = ghost();
+      const unknownNonce = await requestCode(unknown);
+      const outcomes = async (email: string, browser: string): Promise<unknown[]> => {
+        const results: unknown[] = [];
+        for (let i = 0; i < 7; i++) {
+          // The 6th and 7th try use the right code: a locked address must not let it through.
+          const response = await verify(email, i < 5 ? wrongCode(real) : real, browser);
+          results.push(shape(response));
+        }
+        return results;
+      };
+      const forKnown = await outcomes(known, nonce);
+      const forUnknown = await outcomes(unknown, unknownNonce);
+      expect(forUnknown).toEqual(forKnown);
+      expect(forKnown.slice(0, 5)).toEqual(
+        Array(5).fill({ status: 400, body: { code: 'auth.invalidCode' } }),
+      );
+      expect(forKnown.slice(5)).toEqual(
+        Array(2).fill({ status: 429, body: { code: 'auth.tooManyAttempts' } }),
+      );
+    });
+
+    it('locks a browser without the nonce after 5 tries but leaves the owner untouched', async () => {
+      const email = await newUser();
+      const nonce = await requestCode(email);
+      const code = mailer.codeFor(email);
+      for (let i = 0; i < 5; i++) await verify(email, code, 'S'.repeat(43)).expect(400);
+      await verify(email, code, 'S'.repeat(43)).expect(429);
+      expect((await codeRow(email))?.attempts).toBe(0);
+      await verify(email, code, nonce).expect(200);
+    });
+
+    it('starts fresh tries when the browser asks for a new code, known address or not', async () => {
+      for (const email of [await newUser(), ghost()]) {
+        const nonce = await requestCode(email);
+        for (let i = 0; i < 5; i++) await verify(email, '000000', nonce).expect(400);
+        await verify(email, '000000', nonce).expect(429);
+        await requestCode(email, nonce);
+        await verify(email, '000000', nonce).expect(400);
+      }
+    });
+
     it('rejects an unknown address and an address that never asked for a code', async () => {
-      const nonce = await requestCode('nobody@example.org');
-      for (const email of ['nobody@example.org', await newUser()]) {
+      const unknown = ghost();
+      const nonce = await requestCode(unknown);
+      for (const email of [unknown, await newUser()]) {
         const response = await verify(email, '123456', nonce).expect(400);
-        expect(response.body).toMatchObject({ code: 'auth.codeExpired' });
+        expect(response.body).toMatchObject({ code: 'auth.invalidCode' });
       }
     });
 
@@ -398,10 +465,7 @@ describe('auth: e-mail code sign-in and sign-out', () => {
       const code = mailer.codeFor(email);
       for (let attempt = 1; attempt <= 5; attempt++) {
         const response = await verify(email, wrongCode(code), nonce).expect(400);
-        expect(response.body).toMatchObject({
-          code: 'auth.invalidCode',
-          params: { attemptsLeft: 5 - attempt },
-        });
+        expect(shape(response)).toEqual({ status: 400, body: { code: 'auth.invalidCode' } });
       }
       const locked = await verify(email, code, nonce).expect(429);
       expect(locked.body).toMatchObject({ code: 'auth.tooManyAttempts' });
@@ -465,7 +529,7 @@ describe('auth: e-mail code sign-in and sign-out', () => {
       const nonce = await requestCode(email);
       const code = mailer.codeFor(email);
       for (let i = 0; i < 20; i++) {
-        const response = await verify('nobody@example.org', '123456', nonce, ip);
+        const response = await verify(ghost(), '123456', nonce, ip);
         expect(response.status).toBe(400);
       }
       const limited = await verify(email, code, nonce, ip).expect(429);

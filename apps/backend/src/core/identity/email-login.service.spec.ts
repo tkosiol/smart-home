@@ -15,7 +15,7 @@ function setup(options: { known?: boolean; send?: MailSender['send']; enabled?: 
     enabled: options.enabled ?? true,
     send: options.send ?? ((message) => (sent.push(message), Promise.resolve())),
   };
-  const replaceOpen = vi.fn().mockResolvedValue({ issued: true });
+  const replaceOpen = vi.fn().mockResolvedValue(undefined);
   const findByEmail = vi.fn().mockResolvedValue(options.known === false ? undefined : user);
   const service = new EmailLoginService(
     { findByEmail } as unknown as UsersRepository,
@@ -42,16 +42,16 @@ describe('EmailLoginService.request', () => {
     await service.request('anna@example.org', 'the-nonce');
     expect(sent).toHaveLength(1);
     const code = /\b(\d{6})\b/.exec(sent[0]?.text ?? '')?.[1] ?? '';
-    const [email, stored, limit] = replaceOpen.mock.calls[0] as [
+    const [email, stored, at] = replaceOpen.mock.calls[0] as [
       string,
       Record<string, unknown>,
-      object,
+      Date,
     ];
     expect(email).toBe('anna@example.org');
     expect(JSON.stringify(stored)).not.toContain(code);
     expect(JSON.stringify(stored)).not.toContain('the-nonce');
     expect(stored.expiresAt).toEqual(new Date(NOW.getTime() + 10 * 60_000));
-    expect(limit).toEqual({ now: NOW, max: 3, windowMs: 15 * 60_000 });
+    expect(at).toEqual(NOW);
   });
 
   it('does not write or mail for an unknown address', async () => {
@@ -61,14 +61,17 @@ describe('EmailLoginService.request', () => {
     expect(replaceOpen).not.toHaveBeenCalled();
   });
 
-  it('turns an exhausted per-address limit into 429 with retryAfterSeconds', async () => {
-    const { service, replaceOpen } = setup();
-    replaceOpen.mockResolvedValue({ issued: false, retryAt: new Date(NOW.getTime() + 90_500) });
-    await expect(service.request('anna@example.org', 'n')).rejects.toMatchObject({
-      code: 'auth.rateLimited',
-      status: HttpStatus.TOO_MANY_REQUESTS,
-      params: { retryAfterSeconds: 91 },
-    });
+  it('answers the 4th request within 15 minutes with 429, for known and unknown addresses alike', async () => {
+    for (const known of [true, false]) {
+      const { service, replaceOpen } = setup({ known });
+      for (let i = 0; i < 3; i++) await service.request('anna@example.org', 'n');
+      await expect(service.request('anna@example.org', 'n')).rejects.toMatchObject({
+        code: 'auth.rateLimited',
+        status: HttpStatus.TOO_MANY_REQUESTS,
+        params: { retryAfterSeconds: 900 },
+      });
+      expect(replaceOpen).toHaveBeenCalledTimes(known ? 3 : 0);
+    }
   });
 
   it.each([

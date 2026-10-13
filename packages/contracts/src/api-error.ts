@@ -5,7 +5,6 @@ export const API_ERROR_CODES = [
   'auth.required',
   'auth.badOrigin',
   'auth.invalidCode',
-  'auth.codeExpired',
   'auth.tooManyAttempts',
   'auth.rateLimited',
   'auth.mailDisabled',

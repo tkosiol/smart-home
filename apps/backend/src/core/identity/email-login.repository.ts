@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, desc, eq, gt, isNull, lt, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, isNull, lt, sql } from 'drizzle-orm';
 import { DATABASE, type DatabaseConnection } from '../../platform/database/index.js';
 import { emailLoginCodes } from './identity.schema.js';
 
@@ -11,48 +11,22 @@ export interface NewLoginCode {
   expiresAt: Date;
 }
 
-/** At most `max` codes per e-mail within `windowMs` before `now`. */
-export interface IssueLimit {
-  now: Date;
-  windowMs: number;
-  max: number;
-}
-
-export type IssueResult = { issued: true } | { issued: false; retryAt: Date };
-
 @Injectable()
 export class EmailLoginRepository {
   constructor(@Inject(DATABASE) private readonly connection: DatabaseConnection) {}
 
   /**
-   * Invalidates the open codes of `email` and stores the new one, unless `limit` is reached. Runs
-   * under a per-address advisory lock so concurrent requests cannot exceed the limit.
+   * Invalidates the open codes of `email` and stores the new one. Runs under a per-address advisory
+   * lock so concurrent requests cannot leave two codes open.
    */
-  replaceOpen(email: string, code: NewLoginCode, limit: IssueLimit): Promise<IssueResult> {
-    const { now, windowMs, max } = limit;
-    return this.connection.db.transaction(async (tx): Promise<IssueResult> => {
+  replaceOpen(email: string, code: NewLoginCode, now: Date): Promise<void> {
+    return this.connection.db.transaction(async (tx): Promise<void> => {
       await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${email}, 0))`);
-      const recent = await tx
-        .select({ createdAt: emailLoginCodes.createdAt })
-        .from(emailLoginCodes)
-        .where(
-          and(
-            eq(emailLoginCodes.email, email),
-            gt(emailLoginCodes.createdAt, new Date(now.getTime() - windowMs)),
-          ),
-        )
-        .orderBy(asc(emailLoginCodes.createdAt));
-      // The oldest of the latest `max` codes decides when the next one is allowed.
-      const blocking = recent.length >= max ? recent[recent.length - max] : undefined;
-      if (blocking)
-        return { issued: false, retryAt: new Date(blocking.createdAt.getTime() + windowMs) };
-
       await tx
         .update(emailLoginCodes)
         .set({ usedAt: now })
         .where(and(eq(emailLoginCodes.email, email), isNull(emailLoginCodes.usedAt)));
       await tx.insert(emailLoginCodes).values({ email, ...code, createdAt: now });
-      return { issued: true };
     });
   }
 
