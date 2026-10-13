@@ -10,6 +10,7 @@ import {
 import type { ApiError as ApiErrorBody } from '@smart/contracts';
 import type { Request, Response } from 'express';
 import { $ZodError } from 'zod/v4/core';
+import { describeError, stackFrames } from '../errors/index.js';
 import { ApiError } from './api-error.js';
 
 /** A `BadRequestException` built from a message only (not from our own structured body). */
@@ -65,9 +66,11 @@ export class ApiErrorFilter implements ExceptionFilter {
         traceId,
       });
     } else {
+      // The message of a failed query quotes its parameters (e-mail addresses), so only the kind of
+      // error and the stack frames are logged.
       this.logger.error(
-        `Unhandled error (traceId ${traceId})`,
-        exception instanceof Error ? exception.stack : String(exception),
+        `Unhandled error (traceId ${traceId}): ${describeError(exception)}`,
+        stackFrames(exception),
       );
       this.send(response, HttpStatus.INTERNAL_SERVER_ERROR, { code: 'internal', traceId });
     }

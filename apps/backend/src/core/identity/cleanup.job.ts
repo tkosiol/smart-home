@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { lt, or } from 'drizzle-orm';
 import { DATABASE, type DatabaseConnection } from '../../platform/database/index.js';
+import { describeError, stackFrames } from '../../platform/errors/index.js';
 import { CLOCK, type Clock } from './clock.js';
 import { emailLoginCodes, sessions } from './identity.schema.js';
 
@@ -22,7 +23,7 @@ export class CleanupJob {
       const removed = await this.run();
       this.logger.log(`Removed ${removed.sessions} sessions and ${removed.codes} login codes`);
     } catch (error) {
-      this.logger.error('Identity cleanup failed', error instanceof Error ? error.stack : error);
+      this.logger.error(`Identity cleanup failed: ${describeError(error)}`, stackFrames(error));
     }
   }
 

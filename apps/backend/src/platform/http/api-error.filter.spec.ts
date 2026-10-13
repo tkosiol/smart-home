@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { apiErrorSchema } from '@smart/contracts';
+import { DrizzleQueryError } from 'drizzle-orm/errors';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import * as zm from 'zod/mini';
@@ -93,14 +94,40 @@ describe('ApiErrorFilter', () => {
     expect(run(Object.assign(new Error('x'), { status: 502 })).status).toBe(500);
   });
 
-  it('answers unknown errors with 500 internal and logs the stack, not the message body', () => {
-    const error = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
-    const boom = new Error('db password is hunter2');
-    const { status, body } = run(boom);
+  it('answers unknown errors with 500 internal without exposing the message', () => {
+    vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    const { status, body } = run(new Error('db password is hunter2'));
     expect(status).toBe(500);
     expect(apiErrorSchema.parse(body)).toEqual({ code: 'internal', traceId: 'trace-123' });
     expect(JSON.stringify(body)).not.toContain('hunter2');
-    expect(error).toHaveBeenCalledWith(expect.stringContaining('trace-123'), boom.stack);
+  });
+
+  it('logs class, code, trace id and stack frames of a failed query, never message or params', () => {
+    const error = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    const cause = Object.assign(new Error('terminating connection for till@example.org'), {
+      code: '57P01',
+    });
+    const failure = new DrizzleQueryError(
+      'select "id" from "users" where "users"."email" = $1',
+      ['till@example.org'],
+      cause,
+    );
+    run(failure);
+    const logged = error.mock.calls.flat().map(String).join('\n');
+    expect(logged).toContain('DrizzleQueryError');
+    expect(logged).toContain('57P01');
+    expect(logged).toContain('trace-123');
+    expect(logged).toContain('    at ');
+    expect(logged).not.toContain('till@example.org');
+    expect(logged).not.toContain('Failed query');
+    expect(logged).not.toContain('params');
+    expect(logged).not.toContain('terminating connection');
+  });
+
+  it('logs a thrown non-Error without its value', () => {
+    const error = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    expect(run('till@example.org').status).toBe(500);
+    expect(error.mock.calls.flat().map(String).join('\n')).not.toContain('till@example.org');
   });
 
   it('keeps the framework response of other HttpExceptions (404, health 503 body)', () => {
