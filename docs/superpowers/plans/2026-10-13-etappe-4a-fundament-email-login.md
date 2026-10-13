@@ -282,4 +282,37 @@ In dieser Task ohne `canMatch`; Task 8 ergänzt `canMatch: [signedIn]`. `App` re
 5. Offline-Start: angemeldet, Service Worker aktiv, offline neu laden → Übersicht mit Offline-Banner.
 6. Unbekannte E-Mail → gleiche Bestätigung, keine Mail in Mailpit.
 
-**Nach dem Merge (Till):** `provision.sh staging --force` (Resend-Schlüssel, Freigabeliste) und `production --force`; `admin.sh staging create-admin …`. Commit(s) `feat(infra): configure mail and origin, cover sign-in in the stack` und `docs: …`.
+**Vor dem Merge (Till, Staging deployt beim Merge automatisch):** `provision.sh staging --force` (Resend-Schlüssel, Freigabeliste) und `production --force`; nach dem Staging-Deploy `admin.sh staging create-admin …`. Commit(s) `feat(infra): configure mail and origin, cover sign-in in the stack` und `docs: …`.
+
+## Ergebnis und Übertrag
+
+Umgesetzt subagent-gestützt (Sonnet für Umsetzung und Reviews, Opus für das Gesamt-Review mit einer Nachbesserungsrunde). Dieser Abschnitt hält fest, wo die Umsetzung vom Plan abweicht und was die folgenden Pläne übernehmen müssen.
+
+### Abweichungen vom Plan (Entscheidungen)
+
+- **Reihenfolge (Entscheidung Till):** nach 4a folgen 4c, Etappen 5–8 und erst dann 4b (Passkeys, Sicherheitsseite). 4c liefert dafür den CLI-Befehl `revoke-sessions --email <e>`.
+- **HTTP ohne `HttpClient`:** ein schlanker `fetch`-basierter `ApiClient` in `core/api` (`get`/`post`/`put`, `API_FETCH`, `API_BASE`, `ApiError`, `UNAUTHORIZED_HANDLER`); `HttpClient` hätte rund 20 kB des initialen Bundles gekostet.
+- **Bundle:** initial rund 467 kB (Ziel unter 440 kB verfehlt, Grenze 500 kB hält). Theme-Engine lazy, Material-Snackbar lazy, `sideEffects: false` in Contracts und Theme.
+- **Keine Kontoaufzählung:** Anfordern antwortet immer `204`; Prüfen antwortet einheitlich `400 auth.invalidCode`, nach 5 Fehlversuchen je (E-Mail, Nonce) `429 auth.tooManyAttempts`; `auth.codeExpired` entfällt. Anforderungs-Limit pro Adresse im Speicher (3 Codes / 15 min), auch für unbekannte Adressen.
+- **Proxy-Vertrauen:** `TRUSTED_PROXY_HOPS` (Standard 1, VPS 2 wegen Nginx Proxy Manager), nie `trust proxy = true`.
+- **Fehlerprotokoll:** unbekannte Fehler werden nur mit Klasse, DB-Code, Trace-ID und Stack-Zeilen protokolliert (`platform/errors`), nie mit Meldung oder SQL-Parametern; gilt für HTTP-Filter, Aufräum-Job und CLI.
+- **Start:** `GET /me` beim Start bricht nach 5 s ab und fällt auf das Geräteabbild bzw. „Keine Verbindung“ zurück.
+- **Persönliche Einstellungen:** keine Zeitstempel, die ungesendete lokale Änderung geht zuerst raus (letzter `PUT` gewinnt); `smart.me.pending` ist an die User-ID gebunden.
+- **Lokale Entwicklung:** `ng serve` leitet `/api` per `proxy.conf.json` an `127.0.0.1:3000` weiter.
+- **E2E:** echte Anmeldung über die Mailpit-API mit vier Testkonten (Limit pro Adresse, Einstellungen hängen am Konto); keine Storybook-Story für die Anmelden-Seite (App-Seiten haben keine Stories).
+
+### Übertrag
+
+- **4c:** Haushalte im `me`-Abbild; `revoke-sessions` als Notbremse; nach erneuter Anmeldung mit vorhandenem Session-Cookie die alte Session beenden; Instanz-Theme in der DB ersetzt Editor-Schalter und Browser-Speicherung.
+- **4b:** Aussperren per Code-Anforderungen (spec-bedingt) mit dem Passkey-Weg entschärfen; Sicherheitsseite mit Sessions.
+- **Bundle:** jeder neue Startcode braucht vorher Platz (rund 33 kB Luft).
+- **Till, vor dem Merge:** `provision.sh staging --force` und `production --force`, nach dem Staging-Deploy `admin.sh … create-admin` (Adresse muss auf Staging in der Freigabeliste stehen).
+
+### Bewusst zurückgestellt (klein)
+
+- HitLimiter: Verdrängung bei 10 000 Schlüsseln öffnet, nach Neustart unterscheidbares 429/400; wenige Millisekunden Laufzeitunterschied bekannt/unbekannt.
+- Fehlerfilter: jede Nicht-`HttpException` mit 4xx wird still zu `validation.failed`; 404 behält Nests Format.
+- CLI startet das ganze `AppModule` (MQTT, Cron); Name ohne Längen-/Steuerzeichenprüfung; E-Mail ohne Höchstlänge.
+- Sessions: Wettlauf beim Verlängern einer gerade widerrufenen Session; veraltetes Cookie wird bei 401 nicht gelöscht.
+- Frontend: Fokus bleibt nach Validierungsfehler auf dem Knopf; Offline-Netzfehler mit allgemeinem Text; Abmelden im Offline-Abbild schlägt fehl; Snackbar „Bitte melde dich an“ über der Anmelden-Seite bei 401 während eines `PUT`; Darstellung und Sprache des vorigen Users bleiben bis zum nächsten `me`; 403/404/413 auf `PUT /me/preferences` bleiben ausstehend; veralteter zweiter Tab kann Einstellungen auf ein anderes Konto schreiben; Server langsamer als 5 s startet im Offline-Abbild.
+- Tests: Code-Erkennung in Mailpit nimmt die erste sechsstellige Zahl; Bestätigungstext bei bekannter Adresse nicht direkt verglichen; Cron-Zeitplan ungetestet.
