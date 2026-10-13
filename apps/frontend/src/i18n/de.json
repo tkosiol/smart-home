@@ -19,6 +19,7 @@
       "setup": "Haushalt einrichten",
       "switchHousehold": "Haushalt wechseln",
       "household": "Haushalt",
+      "members": "Mitglieder",
       "notFound": "Nicht gefunden"
     },
     "household": {
@@ -72,6 +73,9 @@
         "failed": "Die Eingabe ist ungültig."
       },
       "internal": "Etwas ist schiefgegangen. Bitte versuche es später noch einmal."
+    },
+    "members": {
+      "linkCopied": "Link kopiert"
     }
   }
 }

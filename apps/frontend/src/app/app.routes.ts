@@ -56,6 +56,12 @@ export const routes: Routes = [
         loadChildren: () => import('./features/households').then((m) => m.householdRoutes),
       },
       {
+        path: 'mehr/mitglieder',
+        title: marker('app.title.members'),
+        canMatch: [minRole('viewer')],
+        loadChildren: () => import('./features/households').then((m) => m.memberRoutes),
+      },
+      {
         path: 'mehr/einstellungen',
         title: marker('app.title.settings'),
         loadChildren: () => import('./features/settings').then((m) => m.settingsRoutes),

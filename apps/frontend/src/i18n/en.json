@@ -19,6 +19,7 @@
       "setup": "Set up a household",
       "switchHousehold": "Switch household",
       "household": "Household",
+      "members": "Members",
       "notFound": "Not found"
     },
     "household": {
@@ -72,6 +73,9 @@
         "failed": "The input is not valid."
       },
       "internal": "Something went wrong. Please try again later."
+    },
+    "members": {
+      "linkCopied": "Link copied"
     }
   }
 }

@@ -18,7 +18,7 @@ import {
   TEST_ME,
 } from './testing/auth-testing';
 
-async function setup(me: () => Response) {
+async function setup(me: (path: string) => Response) {
   TestBed.configureTestingModule({
     providers: [
       provideRouter(routes),
@@ -29,7 +29,7 @@ async function setup(me: () => Response) {
         useValue: { load: () => null, save: () => undefined, watch: () => () => undefined },
       },
       { provide: BROWSER_LANGUAGES, useValue: ['de-DE'] },
-      { provide: API_FETCH, useValue: async () => me() },
+      { provide: API_FETCH, useValue: async (input: RequestInfo | URL) => me(String(input)) },
       { provide: ME_CACHE, useValue: new MemoryMeCache() },
     ],
   });
@@ -117,6 +117,17 @@ describe('routes', () => {
       expect(router.url).toBe('/mehr/haushalt');
       expect(element(harness).tagName.toLowerCase()).toBe('app-shell');
       await heading(harness, 'Haushalt');
+    });
+
+    it('shows the members to a viewer inside the shell', async () => {
+      const viewer = householdOf('Haus', { role: 'viewer' });
+      const { harness, router } = await setup((path) =>
+        json(path.endsWith('/members') ? [] : meWith([viewer])),
+      );
+      await harness.navigateByUrl('/mehr/mitglieder');
+      expect(router.url).toBe('/mehr/mitglieder');
+      expect(element(harness).tagName.toLowerCase()).toBe('app-shell');
+      await heading(harness, 'Mitglieder');
     });
 
     it('sends everyone else from the household settings to the overview', async () => {

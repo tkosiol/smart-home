@@ -33,5 +33,33 @@
       "confirm": "Wirklich verlassen?",
       "lastOwner": "Ernenne zuerst eine andere Person zum Eigentümer."
     }
+  },
+  "members": {
+    "title": "Mitglieder",
+    "people": "Personen",
+    "entry": "{{ email }} · {{ role }}",
+    "role": "Rolle",
+    "remove": "Entfernen",
+    "removeConfirm": "Wirklich entfernen?",
+    "leave": "Verlassen",
+    "leaveConfirm": "Wirklich verlassen?"
+  },
+  "invitations": {
+    "title": "Offene Einladungen",
+    "entry": "{{ role }} · gültig bis {{ date }}",
+    "none": "Keine offenen Einladungen.",
+    "resend": "Erneut senden",
+    "revoke": "Widerrufen",
+    "revokeConfirm": "Wirklich widerrufen?"
+  },
+  "invite": {
+    "title": "Einladen",
+    "email": "E-Mail-Adresse",
+    "emailError": "Bitte gib eine gültige E-Mail-Adresse ein.",
+    "role": "Rolle",
+    "send": "Einladung senden",
+    "linkLabel": "Einladungslink",
+    "linkHint": "Der Link wird nur jetzt angezeigt. Gib ihn der eingeladenen Person weiter; danach lässt er sich nicht mehr anzeigen.",
+    "copy": "Link kopieren"
   }
 }

@@ -33,5 +33,33 @@
       "confirm": "Really leave?",
       "lastOwner": "First make another person an owner."
     }
+  },
+  "members": {
+    "title": "Members",
+    "people": "People",
+    "entry": "{{ email }} · {{ role }}",
+    "role": "Role",
+    "remove": "Remove",
+    "removeConfirm": "Really remove?",
+    "leave": "Leave",
+    "leaveConfirm": "Really leave?"
+  },
+  "invitations": {
+    "title": "Open invitations",
+    "entry": "{{ role }} · valid until {{ date }}",
+    "none": "No open invitations.",
+    "resend": "Send again",
+    "revoke": "Revoke",
+    "revokeConfirm": "Really revoke?"
+  },
+  "invite": {
+    "title": "Invite",
+    "email": "Email address",
+    "emailError": "Please enter a valid email address.",
+    "role": "Role",
+    "send": "Send invitation",
+    "linkLabel": "Invitation link",
+    "linkHint": "The link is only shown now. Pass it on to the invited person; it cannot be shown again afterwards.",
+    "copy": "Copy link"
   }
 }

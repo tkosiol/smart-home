@@ -41,3 +41,12 @@ export const householdRoutes: Routes = [
     loadComponent: () => import('./household-page').then((m) => m.HouseholdPage),
   },
 ];
+
+/** `/mehr/mitglieder`. */
+export const memberRoutes: Routes = [
+  {
+    path: '',
+    providers: [households()],
+    loadComponent: () => import('./members-page').then((m) => m.MembersPage),
+  },
+];

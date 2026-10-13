@@ -1,2 +1,2 @@
 export { provideHouseholdsFeature } from './households-feature';
-export { householdRoutes, setupRoutes, switchRoutes } from './households.routes';
+export { householdRoutes, memberRoutes, setupRoutes, switchRoutes } from './households.routes';
