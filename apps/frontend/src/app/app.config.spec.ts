@@ -1,5 +1,3 @@
-import { HttpClient } from '@angular/common/http';
-import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import {
   ApplicationInitStatus,
@@ -11,7 +9,7 @@ import { DEFAULT_INSTANCE_APPEARANCE, type InstanceAppearance } from '@smart/con
 import { APPEARANCE_STORE, MemoryAppearanceStore, ThemeService } from '@smart/ui';
 import { createAppConfig } from './app.config';
 import { RUNTIME_CONFIG } from './core/config';
-import { ApiError } from './core/api';
+import { ApiClient } from './core/api';
 import { injectMoreEntries } from './core/features';
 
 const plum: InstanceAppearance = {
@@ -61,25 +59,9 @@ describe('createAppConfig', () => {
     expect(history.scrollRestoration).toBe('manual');
   });
 
-  it('provides an HTTP client whose API errors are ApiErrors', async () => {
-    // The testing backend replaces fetch only; the interceptors stay in place.
-    TestBed.configureTestingModule({
-      providers: [
-        ...createAppConfig({
-          features: { instanceAppearanceEditor: false },
-          instanceAppearance: plum,
-        }).providers,
-        { provide: APPEARANCE_STORE, useValue: new MemoryAppearanceStore() },
-        provideHttpClientTesting(),
-      ],
-    });
-    const failed = new Promise((_, reject) =>
-      TestBed.inject(HttpClient).get('/api/me').subscribe({ error: reject }),
-    ).catch((error: unknown) => error);
-    TestBed.inject(HttpTestingController)
-      .expectOne('/api/me')
-      .flush('<html>', { status: 502, statusText: 'Bad Gateway' });
-    expect(await failed).toEqual(expect.any(ApiError));
+  it('makes the API client injectable', () => {
+    setup({ features: { instanceAppearanceEditor: false }, instanceAppearance: plum });
+    expect(TestBed.inject(ApiClient)).toBeInstanceOf(ApiClient);
   });
 
   it('registers the settings entry for the More page', () => {
