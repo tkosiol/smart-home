@@ -1,5 +1,5 @@
 import { DestroyRef, Injectable, effect, inject, untracked } from '@angular/core';
-import type { Me } from '@smart/contracts';
+import { meSchema, type Me, type PreferencesUpdate } from '@smart/contracts';
 import { ThemeService } from '@smart/ui';
 import { API_BASE, ApiClient, ApiError, injectShowApiError } from '../api';
 import { LanguageService } from '../i18n';
@@ -56,6 +56,7 @@ export class PreferencesSync {
       return;
     }
     if (!me) return;
+    if (this.pending && this.pending.userId !== me.id) this.discard();
     if (this.pending) this.sendWhenPossible();
     else if (me !== this.adopted) {
       this.adopted = me;
@@ -64,10 +65,15 @@ export class PreferencesSync {
     }
   }
 
-  private record(change: PendingPreferences): void {
+  private record(change: PreferencesUpdate): void {
     const status = this.auth.status();
-    if (status !== 'signedIn' && status !== 'offline') return;
-    this.pending = { ...this.pending, ...change };
+    const userId = this.auth.me()?.id;
+    if ((status !== 'signedIn' && status !== 'offline') || !userId) return;
+    this.pending = {
+      ...(this.pending?.userId === userId ? this.pending : null),
+      ...change,
+      userId,
+    };
     this.store.save(this.pending);
     this.revision++;
     clearTimeout(this.timer);
@@ -81,23 +87,30 @@ export class PreferencesSync {
   private sendWhenPossible(): void {
     if (this.timer || this.sending || !this.pending) return;
     if (this.auth.status() !== 'signedIn' || !this.online()) return;
-    void this.send(this.pending);
+    // The session may belong to someone else than the one who made the change.
+    if (this.auth.me()?.id !== this.pending.userId) return this.discard();
+    const { userId, ...body } = this.pending;
+    void this.send(userId, body);
   }
 
-  private async send(body: PendingPreferences): Promise<void> {
+  private async send(userId: string, body: PreferencesUpdate): Promise<void> {
     const revision = this.revision;
     this.sending = true;
     try {
       const answer = await this.api.put(`${API_BASE}/me/preferences`, body);
-      // The session may have ended meanwhile; the answer must not sign anyone in again.
+      // The session may have ended or another user may have signed in meanwhile; the answer
+      // must neither sign anyone in again nor replace the user.
       if (this.auth.status() === 'signedOut') return;
+      const me = meSchema.parse(answer);
+      if (me.id !== userId || me.id !== this.auth.me()?.id) return;
       if (revision === this.revision) this.clearPending();
-      this.auth.updateMe(answer);
+      this.auth.updateMe(me);
     } catch (error) {
       // The server refused the change itself: sending it again would never succeed and would
-      // keep the user's values from the server out for good.
-      const refused = error instanceof ApiError && error.status >= 400 && error.status < 500;
-      if (refused && error.status !== 401 && revision === this.revision) this.clearPending();
+      // keep the user's values from the server out for good. Waiting requests (408, 425, 429)
+      // and failures of the connection stay pending.
+      const refused = error instanceof ApiError && (error.status === 400 || error.status === 422);
+      if (refused && revision === this.revision) this.clearPending();
       this.showError(error);
     } finally {
       this.sending = false;

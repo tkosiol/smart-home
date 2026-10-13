@@ -20,6 +20,11 @@ import { PreferencesSync } from './preferences-sync';
 
 const DARK: PersonalAppearance = { mode: 'dark', contrast: 'system' };
 const HIGH: PersonalAppearance = { mode: 'light', contrast: 'high' };
+const USER_B: Me = {
+  ...TEST_ME,
+  id: 'b0000000-0000-4000-8000-000000000002',
+  email: 'b@example.org',
+};
 
 class MemoryPending {
   value: PendingPreferences | null = null;
@@ -33,6 +38,7 @@ function setup(options: { cached?: Me | null; pending?: PendingPreferences | nul
   let server: Me = TEST_ME;
   let unreachable = false;
   let failPut: (() => Response) | null = null;
+  let meAnswer: (() => Response) | null = null;
   const puts: { body: unknown; at: number }[] = [];
   const calls: string[] = [];
   const release: (() => void)[] = [];
@@ -45,11 +51,13 @@ function setup(options: { cached?: Me | null; pending?: PendingPreferences | nul
     if (path.endsWith('/me/preferences')) {
       const body = JSON.parse(String(init?.body)) as Partial<Me>;
       puts.push({ body, at: Date.now() });
+      const next = { ...server, ...body };
       if (holdPuts) await new Promise<void>((resolve) => release.push(resolve));
       if (failPut) return failPut();
-      server = { ...server, ...body };
-      return json(server);
+      server = next;
+      return json(next);
     }
+    if (path.endsWith('/me') && meAnswer) return meAnswer();
     return json(server);
   });
   const online = signal(true);
@@ -103,6 +111,7 @@ function setup(options: { cached?: Me | null; pending?: PendingPreferences | nul
     fetchFn,
     setServer: (me: Me) => (server = me),
     setUnreachable: (value: boolean) => (unreachable = value),
+    answerMeWith: (response: (() => Response) | null) => (meAnswer = response),
     failPutWith: (response: (() => Response) | null) => (failPut = response),
     holdPuts: () => (holdPuts = true),
     releasePuts: () => release.splice(0).forEach((resolve) => resolve()),
@@ -312,22 +321,35 @@ describe('PreferencesSync', () => {
       expect(harness.pending.value).toBeNull();
     });
 
-    it('gives up on a change the server rejects, so later server values still arrive', async () => {
+    it('keeps the change when the server only asks to wait', async () => {
       const harness = setup();
       await harness.auth.load();
-      harness.failPutWith(() => apiError('validation.failed', 400));
+      harness.failPutWith(() => apiError('auth.rateLimited', 429));
       harness.theme.setPersonal(DARK);
       await pass(500);
       expect(harness.show).toHaveBeenCalledTimes(1);
-      expect(harness.pending.value).toBeNull();
-      expect(harness.theme.personal()).toEqual(DARK);
-
-      harness.failPutWith(null);
-      harness.setServer({ ...TEST_ME, appearance: HIGH });
-      await harness.auth.load();
-      await pass();
-      expect(harness.theme.personal()).toEqual(HIGH);
+      expect(harness.pending.value).toEqual({ userId: TEST_ME.id, appearance: DARK });
     });
+
+    it.each([400, 422])(
+      'gives up on a change the server rejects with %i, so later server values still arrive',
+      async (status) => {
+        const harness = setup();
+        await harness.auth.load();
+        harness.failPutWith(() => apiError('validation.failed', status));
+        harness.theme.setPersonal(DARK);
+        await pass(500);
+        expect(harness.show).toHaveBeenCalledTimes(1);
+        expect(harness.pending.value).toBeNull();
+        expect(harness.theme.personal()).toEqual(DARK);
+
+        harness.failPutWith(null);
+        harness.setServer({ ...TEST_ME, appearance: HIGH });
+        await harness.auth.load();
+        await pass();
+        expect(harness.theme.personal()).toEqual(HIGH);
+      },
+    );
   });
 
   describe('changes without a connection', () => {
@@ -397,7 +419,7 @@ describe('PreferencesSync', () => {
     });
 
     it('sends a change of an earlier visit before it takes over the user', async () => {
-      const harness = setup({ pending: { appearance: DARK } });
+      const harness = setup({ pending: { userId: TEST_ME.id, appearance: DARK } });
       harness.setServer({ ...TEST_ME, appearance: HIGH });
       await harness.auth.load();
       await pass();
@@ -407,12 +429,77 @@ describe('PreferencesSync', () => {
     });
 
     it('does not ask the server while it is unreachable', async () => {
-      const harness = setup({ cached: TEST_ME, pending: { locale: 'en' } });
+      const harness = setup({ cached: TEST_ME, pending: { userId: TEST_ME.id, locale: 'en' } });
       harness.setUnreachable(true);
       await harness.auth.load();
       await pass(2000);
       expect(harness.calls).toEqual(['GET /api/v1/me']);
-      expect(harness.pending.value).toEqual({ locale: 'en' });
+      expect(harness.pending.value).toEqual({ userId: TEST_ME.id, locale: 'en' });
+    });
+  });
+
+  describe('another account on the same device', () => {
+    /** User A has an unsent change, the server cannot be reached and no copy exists; the retry says 401. */
+    async function sessionEndedAfterUnreachableStart() {
+      const harness = setup({ pending: { userId: TEST_ME.id, appearance: DARK } });
+      harness.setUnreachable(true);
+      await harness.auth.load();
+      await pass();
+      expect(harness.auth.connectionLost()).toBe(true);
+
+      harness.setUnreachable(false);
+      harness.answerMeWith(() => apiError('auth.required', 401));
+      await harness.auth.load();
+      await pass(2000);
+      expect(harness.auth.status()).toBe('signedOut');
+      expect(harness.auth.connectionLost()).toBe(false);
+      harness.answerMeWith(null);
+      return harness;
+    }
+
+    it('does not send the change of the previous user for the next one', async () => {
+      const harness = await sessionEndedAfterUnreachableStart();
+      harness.setServer(USER_B);
+      await harness.auth.verifyCode('b@example.org', '123456');
+      await pass(2000);
+      expect(harness.puts).toEqual([]);
+      expect(harness.pending.value).toBeNull();
+      expect(harness.theme.personal()).toEqual(USER_B.appearance);
+    });
+
+    it('still sends it when the same user signs in again', async () => {
+      const harness = await sessionEndedAfterUnreachableStart();
+      await harness.auth.verifyCode('till@example.org', '123456');
+      await pass();
+      expect(harness.puts.map((put) => put.body)).toEqual([{ appearance: DARK }]);
+    });
+
+    it('discards an unsent change that carries no user', async () => {
+      const harness = setup({ pending: { appearance: DARK } as PendingPreferences });
+      await harness.auth.load();
+      await pass(2000);
+      expect(harness.puts).toEqual([]);
+      expect(harness.pending.value).toBeNull();
+    });
+
+    it('ignores the answer of a request that finished after another user signed in', async () => {
+      const harness = setup();
+      await harness.auth.load();
+      harness.holdPuts();
+      harness.theme.setPersonal(DARK);
+      await pass(500);
+      expect(harness.puts).toHaveLength(1);
+
+      harness.auth.handleUnauthorized();
+      harness.setServer({ ...USER_B, appearance: HIGH });
+      await harness.auth.verifyCode('b@example.org', '123456');
+      await pass();
+      harness.releasePuts();
+      await pass();
+
+      expect(harness.auth.me()?.id).toBe(USER_B.id);
+      expect(harness.auth.me()?.appearance).toEqual(HIGH);
+      expect(harness.theme.personal()).toEqual(HIGH);
     });
   });
 
@@ -438,12 +525,12 @@ describe('PreferencesSync', () => {
     });
 
     it('keeps a change that could not be sent when the first load did not reach the server', async () => {
-      const harness = setup({ pending: { locale: 'en' } });
+      const harness = setup({ pending: { userId: TEST_ME.id, locale: 'en' } });
       harness.setUnreachable(true);
       await harness.auth.load();
       await pass();
       expect(harness.auth.connectionLost()).toBe(true);
-      expect(harness.pending.value).toEqual({ locale: 'en' });
+      expect(harness.pending.value).toEqual({ userId: TEST_ME.id, locale: 'en' });
     });
   });
 });

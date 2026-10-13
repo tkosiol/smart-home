@@ -4,9 +4,12 @@ import { preferencesUpdateSchema, type PreferencesUpdate } from '@smart/contract
 /**
  * Settings the user changed that the server has not confirmed yet (no connection, or the request
  * failed). While one exists it is newer than anything the server told this device, so it wins
- * over the user of the next load and is sent first.
+ * over the user of the next load and is sent first. It belongs to `userId` and is never sent
+ * for anyone else.
  */
-export type PendingPreferences = PreferencesUpdate;
+export interface PendingPreferences extends PreferencesUpdate {
+  readonly userId: string;
+}
 
 export interface PendingPreferencesStore {
   load(): PendingPreferences | null;
@@ -26,8 +29,13 @@ export class LocalStoragePendingPreferences implements PendingPreferencesStore {
     try {
       const raw = (this.storage ?? globalThis.localStorage)?.getItem(KEY);
       if (!raw) return null;
-      const parsed = preferencesUpdateSchema.safeParse(JSON.parse(raw));
-      return parsed.success ? parsed.data : null;
+      const stored: unknown = JSON.parse(raw);
+      const userId = (stored as { userId?: unknown } | null)?.userId;
+      const parsed = preferencesUpdateSchema.safeParse(stored);
+      // A record without a user (an older version) cannot be tied to anyone: drop it.
+      return parsed.success && typeof userId === 'string' && userId !== ''
+        ? { ...parsed.data, userId }
+        : null;
     } catch {
       return null;
     }
