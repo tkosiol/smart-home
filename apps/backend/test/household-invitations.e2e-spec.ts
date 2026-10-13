@@ -16,6 +16,7 @@ import { configureApp } from '../src/app.setup.js';
 import { HouseholdsCleanupJob } from '../src/core/households/index.js';
 import {
   CLOCK,
+  LOGIN_NONCE_COOKIE,
   sha256,
   SESSION_COOKIE,
   SessionService,
@@ -689,6 +690,65 @@ describe('household invitations', () => {
       const loser = responses.find((response) => response.status === 409);
       expect(loser && errorCode(loser)).toBe('invitation.accountExists');
       expect(await userCount(email)).toBe(1);
+    });
+  });
+
+  describe('first e-mail-code sign-in after accept-new', () => {
+    const sessionCookieOf = (response: request.Response): string => {
+      const line = (response.headers['set-cookie'] as unknown as string[]).find((entry) =>
+        entry.startsWith(`${SESSION_COOKIE}=`),
+      );
+      const pair = line?.split(';')[0];
+      if (!pair) throw new Error('no session cookie');
+      return pair;
+    };
+    /** Signs in like the invitee's own browser, with the code from the mailbox. */
+    const signInByCode = async (email: string): Promise<string> => {
+      const requested = await call('post', '/api/v1/auth/email-code').send({ email }).expect(204);
+      const nonce = (requested.headers['set-cookie'] as unknown as string[])
+        .find((entry) => entry.startsWith(`${LOGIN_NONCE_COOKIE}=`))
+        ?.split(';')[0];
+      const code = /\b(\d{6})\b/.exec(mailer.to(email).at(-1)?.text ?? '')?.[1];
+      if (!nonce || !code) throw new Error('no nonce or code');
+      const response = await call('post', '/api/v1/auth/email-code/verify', { cookie: nonce })
+        .send({ email, code })
+        .expect(200);
+      return sessionCookieOf(response);
+    };
+
+    it('ends a session someone else got through the link, but keeps ordinary code sessions', async () => {
+      const { id, users } = await household('owner');
+      const [owner] = users as [TestUser];
+      const email = guestEmail();
+      const created = await invite(id, owner, email);
+      // The inviter holds the token too: his browser creates the account and keeps the cookie.
+      const foreign = sessionCookieOf(await acceptNew(tokenOf(created)).expect(200));
+      await call('get', ME, { cookie: foreign }).expect(200);
+      const user = await app.get(UsersRepository).findByEmail(email);
+      if (!user) throw new Error('account missing');
+      const { token } = await app.get(SessionService).create(user.id, 'email_code', 'Other/1');
+      const otherDevice = `${SESSION_COOKIE}=${token}`;
+
+      const own = await signInByCode(email);
+
+      expect(errorCode(await call('get', ME, { cookie: foreign }).expect(401))).toBe(
+        'auth.required',
+      );
+      expect(meSchema.parse((await call('get', ME, { cookie: own }).expect(200)).body).email).toBe(
+        email,
+      );
+      await call('get', ME, { cookie: otherDevice }).expect(200);
+    });
+
+    it('revokes invitation sessions only once the code is proven, not on a request', async () => {
+      const { id, users } = await household('owner');
+      const [owner] = users as [TestUser];
+      const email = guestEmail();
+      const foreign = sessionCookieOf(
+        await acceptNew(tokenOf(await invite(id, owner, email))).expect(200),
+      );
+      await call('post', '/api/v1/auth/email-code').send({ email }).expect(204);
+      await call('get', ME, { cookie: foreign }).expect(200);
     });
   });
 

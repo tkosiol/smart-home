@@ -61,4 +61,18 @@ export class SessionsRepository {
       .returning({ id: sessions.id });
     return rows.length;
   }
+
+  /** Revokes the user's open sessions that were created with `authMethod`. */
+  async revokeByMethod(userId: string, authMethod: AuthMethod, at: Date): Promise<void> {
+    await this.connection.db
+      .update(sessions)
+      .set({ revokedAt: at })
+      .where(
+        and(
+          eq(sessions.userId, userId),
+          eq(sessions.authMethod, authMethod),
+          isNull(sessions.revokedAt),
+        ),
+      );
+  }
 }

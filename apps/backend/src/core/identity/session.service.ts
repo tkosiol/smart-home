@@ -69,4 +69,9 @@ export class SessionService {
   async revoke(sessionId: string): Promise<void> {
     await this.sessions.revoke(sessionId, this.clock());
   }
+
+  /** Ends every open session of the user that was created with `authMethod`. */
+  async revokeByMethod(userId: string, authMethod: AuthMethod): Promise<void> {
+    await this.sessions.revokeByMethod(userId, authMethod, this.clock());
+  }
 }
