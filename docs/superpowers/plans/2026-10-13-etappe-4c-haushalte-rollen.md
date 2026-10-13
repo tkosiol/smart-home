@@ -198,7 +198,7 @@ async change(householdId: string, userId: string, next: HouseholdRole | 'removed
 
 **Owner-Endpunkte** (`v1/households/:householdId/invitations`, owner): `GET` offene Einladungen (nicht angenommen, nicht widerrufen, nicht abgelaufen). `POST` (`invitationCreateSchema`): E-Mail schon Mitglied → `409 invitation.alreadyMember`; offene Einladung derselben E-Mail wird widerrufen und ersetzt; Token `newToken()`, Hash, 7 Tage; Mail (Sprache des Einladenden, Link `${APP_ORIGIN}/einladung/${token}`, Haushaltsname, Name des Einladenden), Versand nicht abwarten, Fehler maskiert loggen; ohne Mail kein Fehler; Antwort `invitationCreatedSchema` (`201`). `POST .../:invitationId/resend`: neues Token, neue 7 Tage, Mail, Antwort wie `POST`. `DELETE .../:invitationId`: `revoked_at`, `204`. Fremde oder unbekannte `invitationId` → `404 household.notFound`.
 
-**Annahme** (`v1/invitations/:token`, Rate-Limit 20 je IP in 15 min für alle drei):
+**Annahme** (`v1/invitations/…`, Token im Request-Body statt in der URL, damit er weder in Pfaden noch in Logs landet; Rate-Limit 20 je IP in 15 min für alle drei):
 
 ```ts
 /** An invitation that can still be accepted, or `invitation.invalid` – one answer for every reason. */
@@ -216,9 +216,9 @@ private async open(token: string): Promise<Invitation> {
 }
 ```
 
-- `GET` (`@Public`): `invitationPreviewSchema` (`accountExists` = User mit der E-Mail existiert; der Token-Inhaber kennt die Adresse ohnehin).
-- `POST .../accept` (Session): E-Mail des angemeldeten Users ≠ Einladung → `403 invitation.emailMismatch`; schon Mitglied → Mitgliedschaft unverändert lassen; sonst Mitgliedschaft mit der Rolle der Einladung; `accepted_at` setzen; `last_household_id` = Haushalt; Antwort `me`. Alles in einer Transaktion; `accepted_at` per `UPDATE … WHERE accepted_at IS NULL AND revoked_at IS NULL` setzen und bei 0 Zeilen `invitation.invalid` (gleichzeitige Annahmen).
-- `POST .../accept-new` (`@Public`, `invitationAcceptNewSchema`): User mit der E-Mail existiert → `409 invitation.accountExists`; sonst in einer Transaktion User (E-Mail aus der Einladung, `displayName`, `locale`), Mitgliedschaft, `accepted_at`, `last_household_id`; danach Session `auth_method=invitation` und Session-Cookie (`SessionService.create`, `setSessionCookie` aus `core/identity`); Antwort `me`.
+- `POST /api/v1/invitations/preview` (`@Public`, `{ token }`): `invitationPreviewSchema` (`accountExists` = User mit der E-Mail existiert; der Token-Inhaber kennt die Adresse ohnehin).
+- `POST /api/v1/invitations/accept` (Session, `{ token }`): E-Mail des angemeldeten Users ≠ Einladung → `403 invitation.emailMismatch`; schon Mitglied → Mitgliedschaft unverändert lassen; sonst Mitgliedschaft mit der Rolle der Einladung; `accepted_at` setzen; `last_household_id` = Haushalt; Antwort `me`. Alles in einer Transaktion; `accepted_at` per `UPDATE … WHERE accepted_at IS NULL AND revoked_at IS NULL` setzen und bei 0 Zeilen `invitation.invalid` (gleichzeitige Annahmen).
+- `POST /api/v1/invitations/accept-new` (`@Public`, `invitationAcceptNewSchema` mit `token`): User mit der E-Mail existiert → `409 invitation.accountExists`; sonst in einer Transaktion User (E-Mail aus der Einladung, `displayName`, `locale`), Mitgliedschaft, `accepted_at`, `last_household_id`; danach Session `auth_method=invitation` und Session-Cookie (`SessionService.create`, `setSessionCookie` aus `core/identity`); Antwort `me`.
 
 **Tests:** Anlegen als owner → Mail mit Link (In-Memory-`MailSender`), Antwort mit `link`, DB nur Hash; als member → `403`; schon Mitglied → `409 invitation.alreadyMember`; zweite Einladung derselben E-Mail macht die erste ungültig; erneut senden → altes Token `invitation.invalid`, neues gültig; widerrufen → `invitation.invalid`; abgelaufen (Clock) → `invitation.invalid`; angenommen → zweite Annahme `invitation.invalid`; Annahme mit anderer E-Mail → `403 invitation.emailMismatch`; Annahme als schon Mitglied → Rolle unverändert; `accept-new` → User, Mitgliedschaft mit Einladungsrolle, Session-Cookie mit den Flags aus 4a, `me` mit Haushalt; `accept-new` für vorhandenes Konto → `409 invitation.accountExists`, kein zweiter User; zwei gleichzeitige `accept-new` → genau ein Erfolg; Mail aus → Anlegen klappt, Link in der Antwort; Logs enthalten weder Token noch volle E-Mail. **Mandanten-Tabellentest** (`household-tenancy.e2e-spec.ts`): Für jeden Haushaltsendpunkt (Tasks 2–4) mit zwei Haushalten A und B: User aus A mit `householdId` von B → `404`; IDs (Mitglied, Einladung) aus B im Pfad von A → `404`, Daten von B unverändert. Commit(s) `feat(backend): invite members by link and mail`.
 
@@ -338,12 +338,12 @@ Fehler `403`/`404` auf Haushaltspfaden → `household.accessChanged()`; alle and
 
 **Files:** `apps/frontend/src/app/features/invitation/{index.ts,invitation.routes.ts,invitation-page.ts,i18n/{de,en}.json,*.spec.ts}`, `apps/frontend/src/app/app.routes.ts`, `apps/frontend/transloco.config.cjs`.
 
-**Seite `/einladung/:token`** (außerhalb des Rahmens, ohne Guard; Instanz-Theme und Browsersprache wie die Anmelden-Seite): lädt `GET /api/v1/invitations/:token`.
+**Seite `/einladung/:token`** (außerhalb des Rahmens, ohne Guard; Instanz-Theme und Browsersprache wie die Anmelden-Seite): lädt `POST /api/v1/invitations/preview` mit `{ token }`. Die Seite setzt `<meta name="referrer" content="no-referrer">` bzw. `referrerPolicy: 'no-referrer'` für ihre Anfragen, damit der Token nicht als Referer mitreist.
 
 - `invitation.invalid` → Hinweis „Einladung ungültig oder abgelaufen“ mit Link zur Anmeldung.
-- Angemeldet: „Du wurdest von <Name> in <Haushalt> als <Rolle> eingeladen“ → „Annehmen“ → `POST .../accept` → `auth.adopt(me)` → `/`. `invitation.emailMismatch` → Hinweis mit der eingeladenen Adresse und „Abmelden und mit dieser Adresse anmelden“.
+- Angemeldet: „Du wurdest von <Name> in <Haushalt> als <Rolle> eingeladen“ → „Annehmen“ → `POST /api/v1/invitations/accept` `{ token }` → `auth.adopt(me)` → `/`. `invitation.emailMismatch` → Hinweis mit der eingeladenen Adresse und „Abmelden und mit dieser Adresse anmelden“.
 - Nicht angemeldet, `accountExists`: „Melde dich mit <E-Mail> an“ → `/anmelden?ziel=/einladung/<token>` (`safeTarget` muss den Pfad zulassen).
-- Nicht angemeldet, ohne Konto: Feld „Dein Name“ → `POST .../accept-new` (`locale` = aktive Sprache) → `auth.adopt(me)` → `/`. `invitation.accountExists` → wie `accountExists`.
+- Nicht angemeldet, ohne Konto: Feld „Dein Name“ → `POST /api/v1/invitations/accept-new` `{ token, displayName, locale }` (`locale` = aktive Sprache) → `auth.adopt(me)` → `/`. `invitation.accountExists` → wie `accountExists`.
 - Der Token erscheint nicht im Seitentitel und wird nicht im Abbild gespeichert.
 
 **Tests:** alle fünf Zweige; nach `accept-new` ist der User angemeldet und im Haushalt; `ziel` führt nach der Anmeldung zurück auf die Einladung; ungültig zeigt den Hinweis ohne Formular. Commit(s) `feat(frontend): accept invitations`.
