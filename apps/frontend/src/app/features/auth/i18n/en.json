@@ -1,0 +1,27 @@
+{
+  "title": "Sign in",
+  "noConnection": "No connection. Your device needs a connection to the server to sign in.",
+  "mailDisabled": "Signing in with an emailed code is not set up on this server. Please contact the person who runs it.",
+  "email": {
+    "description": "We will email you a code.",
+    "label": "Email address",
+    "submit": "Send code"
+  },
+  "code": {
+    "description": "If {{ email }} belongs to an account, we have sent a code. It is valid for 10 minutes.",
+    "label": "Code (6 digits)",
+    "submit": "Sign in",
+    "resend": "Send a new code",
+    "resendWait": "You can request a new code after one minute.",
+    "resent": "We have sent a new code if this address belongs to an account.",
+    "otherEmail": "Different email address"
+  },
+  "errors": {
+    "email": "Please enter a valid email address.",
+    "code": "Please enter the 6 digits from the email.",
+    "invalidCode": "Code wrong or expired.",
+    "tooManyAttempts": "Too many attempts. Please request a new code.",
+    "rateLimited": "Too many requests. Please try again in {{ seconds }} seconds.",
+    "rateLimitedLater": "Too many requests. Please try again later."
+  }
+}

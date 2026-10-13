@@ -1,4 +1,7 @@
 import type { Language } from '@smart/contracts';
+import { UiSnackbar } from '@smart/ui';
+import { ApiError } from '../../core/api';
+import { AuthService } from '../../core/auth';
 import { provideFeature } from '../../core/features';
 import { settle, setupPage } from '../../testing/page-testing';
 import { moreRoutes } from './more.routes';
@@ -20,7 +23,7 @@ async function open(language: Language, ...features: ReturnType<typeof provideFe
   await harness.navigateByUrl('/');
   await settle(harness);
   const element = harness.routeNativeElement as HTMLElement;
-  return { element, items: [...element.querySelectorAll('ui-list-item')] };
+  return { harness, element, items: [...element.querySelectorAll('ui-list-item')] };
 }
 
 describe('more page', () => {
@@ -84,5 +87,52 @@ describe('more page', () => {
       expect.stringContaining('Settings'),
     ]);
     expect(items[0].textContent).toContain('Coming soon');
+  });
+
+  describe('signing out', () => {
+    async function openWithAuth(language: Language, logout: () => Promise<void>) {
+      const snackbar = { show: vi.fn().mockResolvedValue(undefined) };
+      const page = await open(
+        language,
+        { provide: AuthService, useValue: { logout } },
+        {
+          provide: UiSnackbar,
+          useValue: snackbar,
+        },
+      );
+      const signOut = [...page.element.querySelectorAll('button')].find((b) =>
+        /Abmelden|Sign out/.test(b.textContent ?? ''),
+      ) as HTMLButtonElement;
+      return { ...page, signOut, snackbar };
+    }
+
+    it.each([
+      ['de', 'Abmelden'],
+      ['en', 'Sign out'],
+    ] as const)('offers the button "%s" in the page language', async (language, label) => {
+      const { signOut } = await openWithAuth(language, async () => undefined);
+      expect(signOut.textContent?.trim()).toBe(label);
+    });
+
+    it('ends the session when the button is pressed', async () => {
+      const logout = vi.fn().mockResolvedValue(undefined);
+      const { signOut } = await openWithAuth('de', logout);
+      signOut.click();
+      expect(logout).toHaveBeenCalledOnce();
+    });
+
+    it('reports a failing server as a snackbar and allows another try', async () => {
+      const logout = vi.fn().mockRejectedValue(new ApiError('internal', 0));
+      const { signOut, snackbar, harness } = await openWithAuth('de', logout);
+      signOut.click();
+      await vi.waitFor(() =>
+        expect(snackbar.show).toHaveBeenCalledWith(
+          'Etwas ist schiefgegangen. Bitte versuche es später noch einmal.',
+          expect.anything(),
+        ),
+      );
+      harness.detectChanges();
+      expect(signOut.disabled).toBe(false);
+    });
   });
 });

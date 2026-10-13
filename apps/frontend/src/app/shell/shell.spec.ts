@@ -1,14 +1,17 @@
-import { ApplicationInitStatus, signal } from '@angular/core';
+import { ApplicationInitStatus, signal, type Provider } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { UiAnnouncer } from '@smart/ui';
 import { routes } from '../app.routes';
 import { BROWSER_LANGUAGES, LANGUAGE_STORE, provideI18n } from '../core/i18n';
+import { API_FETCH } from '../core/api';
+import { AuthService, ME_CACHE } from '../core/auth';
 import { AppUpdates, OnlineStatus } from '../core/pwa';
+import { MemoryMeCache, TEST_ME, signedInProviders } from '../testing/auth-testing';
 import { Shell } from './shell';
 
-async function setup() {
+async function setup(extra: Provider[] = signedInProviders()) {
   const online = signal(true);
   const updateReady = signal(false);
   const reload = vi.fn();
@@ -25,6 +28,7 @@ async function setup() {
         useValue: { load: () => null, save: () => undefined, watch: () => () => undefined },
       },
       { provide: BROWSER_LANGUAGES, useValue: ['de-DE'] },
+      ...extra,
     ],
   });
   await TestBed.inject(ApplicationInitStatus).donePromise;
@@ -79,6 +83,24 @@ describe('Shell', () => {
     online.set(true);
     fixture.detectChanges();
     expect(element.querySelector('ui-banner')).toBeNull();
+  });
+
+  it('shows the offline banner when the app started from the device copy although the browser is online', async () => {
+    await setup([
+      {
+        provide: API_FETCH,
+        useValue: async () => {
+          throw new TypeError('Failed to fetch');
+        },
+      },
+      { provide: ME_CACHE, useValue: new MemoryMeCache(TEST_ME) },
+    ]);
+    await TestBed.inject(AuthService).load();
+    const fixture = TestBed.createComponent(Shell);
+    fixture.detectChanges();
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector('ui-banner[data-tone="offline"]'),
+    ).not.toBeNull();
   });
 
   it('offers to reload when a new version is ready and announces it', async () => {

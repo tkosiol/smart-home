@@ -4,6 +4,7 @@ import { provideServiceWorker } from '@angular/service-worker';
 import { DEFAULT_RUNTIME_CONFIG, type RuntimeConfig } from '@smart/contracts';
 import { provideTheme } from '@smart/ui';
 import { routes } from './app.routes';
+import { provideAuth } from './core/auth';
 import { provideRuntimeConfig } from './core/config';
 import { provideI18n } from './core/i18n';
 import { PageTitleStrategy } from './core/routing';
@@ -16,6 +17,7 @@ export function createAppConfig(config: RuntimeConfig = DEFAULT_RUNTIME_CONFIG):
       provideRouter(routes, withInMemoryScrolling({ scrollPositionRestoration: 'enabled' })),
       { provide: TitleStrategy, useExisting: PageTitleStrategy },
       provideRuntimeConfig(config),
+      provideAuth(),
       provideI18n(),
       provideSettingsFeature(),
       provideServiceWorker('ngsw-worker.js', {

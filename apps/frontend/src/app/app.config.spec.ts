@@ -9,7 +9,8 @@ import { DEFAULT_INSTANCE_APPEARANCE, type InstanceAppearance } from '@smart/con
 import { APPEARANCE_STORE, MemoryAppearanceStore, ThemeService } from '@smart/ui';
 import { createAppConfig } from './app.config';
 import { RUNTIME_CONFIG } from './core/config';
-import { ApiClient } from './core/api';
+import { ApiClient, UNAUTHORIZED_HANDLER } from './core/api';
+import { AuthService } from './core/auth';
 import { injectMoreEntries } from './core/features';
 
 const plum: InstanceAppearance = {
@@ -62,6 +63,13 @@ describe('createAppConfig', () => {
   it('makes the API client injectable', () => {
     setup({ features: { instanceAppearanceEditor: false }, instanceAppearance: plum });
     expect(TestBed.inject(ApiClient)).toBeInstanceOf(ApiClient);
+  });
+
+  it('hands a 401 of the API client to the AuthService', () => {
+    setup({ features: { instanceAppearanceEditor: false }, instanceAppearance: plum });
+    const handle = vi.spyOn(TestBed.inject(AuthService), 'handleUnauthorized');
+    TestBed.inject(UNAUTHORIZED_HANDLER)();
+    expect(handle).toHaveBeenCalledOnce();
   });
 
   it('registers the settings entry for the More page', () => {

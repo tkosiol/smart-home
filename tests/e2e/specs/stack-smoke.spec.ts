@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
-import { expect, test } from '@playwright/test';
+import { expect } from '@playwright/test';
 import { loadWithServiceWorkerInControl } from '../helpers/service-worker';
+import { test } from '../helpers/signed-in';
 
 test('every page renders without console errors or CSP violations', async ({ page }) => {
   const navigation = page.getByRole('navigation', { name: 'Hauptnavigation' });

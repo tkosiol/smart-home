@@ -1,12 +1,22 @@
 import { Routes } from '@angular/router';
 import { marker } from '@jsverse/transloco-keys-manager/marker';
+import { signedIn } from './core/auth';
 import { Shell } from './shell';
 
-/** Every page lives inside the shell; the sign-in route joins as a sibling in a later step. */
+/**
+ * Every page lives inside the shell, which only matches for signed-in users; the sign-in page
+ * stands beside it. Whoever is not signed in is sent to the sign-in page by the guard.
+ */
 export const routes: Routes = [
+  {
+    path: 'anmelden',
+    title: marker('app.title.signIn'),
+    loadChildren: () => import('./features/auth').then((m) => m.authRoutes),
+  },
   {
     path: '',
     component: Shell,
+    canMatch: [signedIn],
     children: [
       {
         path: '',
@@ -42,4 +52,6 @@ export const routes: Routes = [
       },
     ],
   },
+  // Safety net: the guard already redirects, so this is only reached when it lets nothing match.
+  { path: '**', redirectTo: 'anmelden' },
 ];
