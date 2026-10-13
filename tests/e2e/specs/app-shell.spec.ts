@@ -60,7 +60,7 @@ test.describe('on a phone', () => {
 test.describe('on a desktop', () => {
   test.use({ viewport: DESKTOP });
 
-  test('the drawer leads to the more list with settings and inert coming-soon rows', async ({
+  test('the drawer leads to the more list with settings, household and inert coming-soon rows', async ({
     page,
   }) => {
     await page.goto('/');
@@ -75,10 +75,14 @@ test.describe('on a desktop', () => {
 
     const list = page.getByRole('list');
     await expect(list.getByRole('link', { name: /Einstellungen/ })).toBeVisible();
-    await expect(list.getByText('Kommt bald')).toHaveCount(4);
-    for (const name of ['Module', 'Benachrichtigungen', 'Haushalt', 'Gateways']) {
+    await expect(list.getByText('Kommt bald')).toHaveCount(3);
+    for (const name of ['Module', 'Benachrichtigungen', 'Gateways']) {
       await expect(list.getByText(name, { exact: true })).toBeVisible();
       await expect(list.getByRole('link', { name: new RegExp(name) })).toHaveCount(0);
+    }
+    // The account owns its household, so the household entries are real links.
+    for (const name of ['Haushalt', 'Mitglieder']) {
+      await expect(list.getByRole('link', { name: new RegExp(name) })).toBeVisible();
     }
   });
 });

@@ -1,10 +1,13 @@
 import { expect, test } from '@playwright/test';
 import { mailsTo } from '../helpers/mailpit';
+import { stateFile } from '../helpers/accounts';
 import { loadWithServiceWorkerInControl } from '../helpers/service-worker';
 import { signInThroughUi } from '../helpers/ui-sign-in';
 
-// The people are created by infra/compose/test/stack-test.sh. The API allows three codes per address
-// in 15 minutes: `auth` is used for two sign-ins here, `theme` for two.
+// The people are created by infra/compose/test/stack-test.sh and signed in once by `global-setup.ts`
+// (which also gives them a household). The API allows three codes per address in 15 minutes and ten
+// per IP address: so each of `auth` and `theme` signs in through the page only once here and takes
+// the saved session of `global-setup.ts` for the rest.
 
 const OFFLINE_BANNER = 'Offline – Anzeigen können veraltet sein';
 
@@ -44,11 +47,10 @@ test('the emailed code signs in and the menu signs out again', async ({ page, co
 });
 
 test('a theme chosen on one device arrives on another after signing in', async ({ browser }) => {
-  const first = await browser.newContext();
+  const first = await browser.newContext({ storageState: stateFile('theme') });
   const second = await browser.newContext();
   try {
     const pageA = await first.newPage();
-    await signInThroughUi(pageA, 'theme');
     await pageA.goto('/mehr/einstellungen/darstellung');
     const saved = pageA.waitForResponse(
       (response) =>
@@ -69,14 +71,17 @@ test('a theme chosen on one device arrives on another after signing in', async (
   }
 });
 
-test('a signed-in app starts offline with the offline banner', async ({ page, context }) => {
-  await signInThroughUi(page, 'auth');
-  await loadWithServiceWorkerInControl(page);
-  await context.setOffline(true);
+test.describe('a signed-in app', () => {
+  test.use({ storageState: stateFile('auth') });
 
-  await page.reload();
-  await expect(page.getByRole('heading', { level: 1, name: 'Übersicht' })).toBeVisible();
-  await expect(page.locator('ui-banner').getByText(OFFLINE_BANNER)).toBeVisible();
+  test('starts offline with the offline banner', async ({ page, context }) => {
+    await loadWithServiceWorkerInControl(page);
+    await context.setOffline(true);
+
+    await page.reload();
+    await expect(page.getByRole('heading', { level: 1, name: 'Übersicht' })).toBeVisible();
+    await expect(page.locator('ui-banner').getByText(OFFLINE_BANNER)).toBeVisible();
+  });
 });
 
 test('an unknown address gets the same confirmation and no mail', async ({ page }) => {
