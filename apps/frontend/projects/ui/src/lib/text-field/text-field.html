@@ -9,6 +9,7 @@
     [disabled]="disabled()"
     [errorStateMatcher]="errorMatcher"
     [attr.autocomplete]="autocomplete() ?? null"
+    [attr.inputmode]="inputmode() ?? null"
     [attr.name]="name() ?? null"
     (input)="onInput($event)"
   />

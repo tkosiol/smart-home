@@ -11,9 +11,11 @@ import { UiTextField } from './text-field';
     [error]="error()"
     [(value)]="email"
     autocomplete="email"
+    [inputmode]="inputmode()"
   />`,
 })
 class Host {
+  readonly inputmode = signal<'numeric' | undefined>(undefined);
   readonly email = signal('');
   readonly error = signal<string | null>(null);
 }
@@ -42,6 +44,14 @@ describe('UiTextField', () => {
     expect(label.htmlFor).toBe(input.id);
     expect(input.type).toBe('email');
     expect(input.getAttribute('autocomplete')).toBe('email');
+  });
+
+  it('passes the keyboard hint only when one is given', () => {
+    const { fixture, input, host } = render();
+    expect(input.hasAttribute('inputmode')).toBe(false);
+    host.inputmode.set('numeric');
+    fixture.detectChanges();
+    expect(input.getAttribute('inputmode')).toBe('numeric');
   });
 
   it('writes typed text back to the binding', () => {

@@ -14,6 +14,8 @@ const meta: Meta<UiTextField> = {
       [hint]="hint"
       [error]="error"
       [disabled]="disabled"
+      [inputmode]="inputmode"
+      [autocomplete]="autocomplete"
       [(value)]="value"
     />`,
   }),
@@ -45,5 +47,21 @@ export const Deaktiviert: StoryObj<UiTextField> = {
   args: { value: 'Wohnung Süd', disabled: true },
   play: async ({ canvas }) => {
     await expect(canvas.getByRole('textbox', { name: 'Haushaltsname' })).toBeDisabled();
+  },
+};
+
+export const Zifferncode: StoryObj<UiTextField> = {
+  args: {
+    label: 'Code aus der E-Mail',
+    hint: undefined,
+    inputmode: 'numeric',
+    autocomplete: 'one-time-code',
+  },
+  play: async ({ canvas }) => {
+    const input = canvas.getByRole('textbox', { name: 'Code aus der E-Mail' });
+    await expect(input).toHaveAttribute('inputmode', 'numeric');
+    await expect(input).toHaveAttribute('autocomplete', 'one-time-code');
+    await userEvent.type(input, '123456');
+    await expect(input).toHaveValue('123456');
   },
 };
