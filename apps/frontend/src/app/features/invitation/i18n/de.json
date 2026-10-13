@@ -25,6 +25,7 @@
   },
   "mismatch": {
     "text": "Diese Einladung gehört zu einer anderen E-Mail-Adresse: {{ email }}.",
-    "switch": "Abmelden und mit dieser Adresse anmelden"
+    "switch": "Abmelden und mit dieser Adresse anmelden",
+    "create": "Abmelden und Konto anlegen"
   }
 }

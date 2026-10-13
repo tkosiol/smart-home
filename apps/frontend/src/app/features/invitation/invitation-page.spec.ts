@@ -26,6 +26,8 @@ const PREVIEW = {
   invitedByName: 'Till',
   accountExists: false,
 };
+/** The invited address, signed in: the page offers "Annehmen" at once. */
+const ANNA: Me = { ...TEST_ME, email: 'anna@example.org' };
 const JOINED = meWith([householdOf('Sonnenweg', { role: 'member' })]);
 
 /**
@@ -118,8 +120,8 @@ async function open(
             return new Response(null, { status: 204 });
           }
           if (call.path === '/api/v1/auth/email-code/verify') {
-            state.me = TEST_ME;
-            return json(TEST_ME);
+            state.me = ANNA;
+            return json(ANNA);
           }
           return respond(call);
         },
@@ -195,7 +197,7 @@ describe('invitation page', () => {
     });
 
     it('asks for no referrer on every request that carries it', async () => {
-      const page = await open(answers(), { signedIn: TEST_ME });
+      const page = await open(answers(), { signedIn: ANNA });
       await press(page, 'Annehmen');
       expect(posts(page, 'preview')[0].init.referrerPolicy).toBe('no-referrer');
       expect(posts(page, 'accept')[0].init.referrerPolicy).toBe('no-referrer');
@@ -265,7 +267,7 @@ describe('invitation page', () => {
 
   describe('signed in', () => {
     const open_ = (respond: Responder = answers(), options: { language?: Language } = {}) =>
-      open(respond, { signedIn: TEST_ME, ...options });
+      open(respond, { signedIn: ANNA, ...options });
 
     it.each([
       ['de', 'Du wurdest von Till in Haus Sonnenweg als Mitglied eingeladen.', 'Annehmen'],
@@ -298,8 +300,12 @@ describe('invitation page', () => {
       await vi.waitFor(() => expect(page.router.url).toBe('/'));
     });
 
-    it('explains an address mismatch and offers to sign out and sign in with the right one', async () => {
-      const page = await open_(answers(PREVIEW, () => apiError('invitation.emailMismatch', 403)));
+    it('still explains a mismatch that only the server sees, after accepting', async () => {
+      const page = await open_(
+        answers({ ...PREVIEW, accountExists: true }, () =>
+          apiError('invitation.emailMismatch', 403),
+        ),
+      );
       await press(page, 'Annehmen');
       expect(text(page)).toContain('anna@example.org');
       expect(text(page)).toContain('gehört zu einer anderen E-Mail-Adresse');
@@ -325,6 +331,80 @@ describe('invitation page', () => {
       expect(page.snackbar.show).toHaveBeenCalled();
       expect(control(page, 'Annehmen')).toBeTruthy();
       expect(stored(page)).toBe(TOKEN);
+    });
+  });
+
+  describe('signed in as someone else', () => {
+    const other = TEST_ME; // till@example.org, the invitation is for anna@example.org
+    const noAccept: Responder = () => {
+      throw new Error('nothing may be accepted here');
+    };
+
+    it.each([
+      ['the same address in other letters', ' Anna@Example.ORG '],
+      ['the same address', 'anna@example.org'],
+    ])('offers "Annehmen" for %s', async (_name, email) => {
+      const page = await open(answers(PREVIEW), { signedIn: { ...TEST_ME, email } });
+      expect(control(page, 'Annehmen')).toBeTruthy();
+      expect(text(page)).not.toContain('anderen E-Mail-Adresse');
+    });
+
+    it('compares trimmed and lower-cased addresses on both sides', async () => {
+      const page = await open(answers({ ...PREVIEW, email: ' ANNA@example.org' }), {
+        signedIn: ANNA,
+      });
+      expect(control(page, 'Annehmen')).toBeTruthy();
+    });
+
+    it('with an existing account: explains at once and signs out to sign in with the address', async () => {
+      const page = await open(answers({ ...PREVIEW, accountExists: true }, noAccept), {
+        signedIn: other,
+      });
+      expect(text(page)).toContain('gehört zu einer anderen E-Mail-Adresse: anna@example.org');
+      expect(control(page, 'Annehmen')).toBeUndefined();
+      expect(control(page, 'Abmelden und Konto anlegen')).toBeUndefined();
+      expect(posts(page, 'accept')).toEqual([]);
+
+      await press(page, 'Abmelden und mit dieser Adresse anmelden');
+      expect(page.calls.some((call) => call.path === '/api/v1/auth/logout')).toBe(true);
+      await vi.waitFor(() => expect(page.router.url).toBe('/anmelden?ziel=%2Feinladung'));
+      expect(stored(page)).toBe(TOKEN);
+    });
+
+    it.each([
+      ['de', 'Abmelden und Konto anlegen', 'Dein Name'],
+      ['en', 'Sign out and create account', 'Your name'],
+    ] as const)(
+      'without an account (%s): signs out and shows the name form, never the sign-in page',
+      async (language, button, label) => {
+        const page = await open(answers(PREVIEW, noAccept), { signedIn: other, language });
+        expect(text(page)).toContain('anna@example.org');
+        expect(control(page, 'Annehmen')).toBeUndefined();
+        expect(control(page, 'Accept')).toBeUndefined();
+        expect(page.element.querySelector('input')).toBeNull();
+        expect(posts(page, 'accept')).toEqual([]);
+
+        await press(page, button);
+        expect(page.calls.some((call) => call.path === '/api/v1/auth/logout')).toBe(true);
+        await vi.waitFor(() =>
+          expect(page.element.querySelector('label')?.textContent).toContain(label),
+        );
+        expect(page.router.url).toBe('/einladung');
+        expect(stored(page)).toBe(TOKEN);
+        expect(page.auth.status()).toBe('signedOut');
+      },
+    );
+
+    it('creates the account after signing out, with the name form', async () => {
+      const page = await open(answers(PREVIEW), { signedIn: other });
+      await press(page, 'Abmelden und Konto anlegen');
+      await vi.waitFor(() => expect(page.element.querySelector('input')).not.toBeNull());
+      typeName(page, 'Anna');
+      await press(page, 'Annehmen');
+      expect(posts(page, 'accept-new')[0].body).toMatchObject({
+        token: TOKEN,
+        displayName: 'Anna',
+      });
     });
   });
 
@@ -432,7 +512,7 @@ describe('invitation page', () => {
   });
 
   it('picks the token up from storage after the sign-in round trip', async () => {
-    const page = await open(answers(), { url: '/einladung', stored: TOKEN, signedIn: TEST_ME });
+    const page = await open(answers(), { url: '/einladung', stored: TOKEN, signedIn: ANNA });
     expect(posts(page, 'preview')[0].body).toEqual({ token: TOKEN });
     expect(text(page)).toContain('Du wurdest von Till');
   });

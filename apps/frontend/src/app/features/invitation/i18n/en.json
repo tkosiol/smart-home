@@ -25,6 +25,7 @@
   },
   "mismatch": {
     "text": "This invitation belongs to a different email address: {{ email }}.",
-    "switch": "Sign out and sign in with this address"
+    "switch": "Sign out and sign in with this address",
+    "create": "Sign out and create account"
   }
 }

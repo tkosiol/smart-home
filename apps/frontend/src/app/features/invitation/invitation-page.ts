@@ -21,6 +21,8 @@ const API = `${API_BASE}/invitations`;
 /** After signing in the sign-in page leads back here; the token waits in `InvitationToken`. */
 const INVITATION_PATH = '/einladung';
 
+const normalize = (email: string): string => email.trim().toLowerCase();
+
 /** `failed`: the server could not be asked (retry); `invalid`: unknown, expired, revoked or used. */
 type View = 'loading' | 'ready' | 'invalid' | 'failed';
 
@@ -78,7 +80,10 @@ type View = 'loading' | 'ready' | 'invalid' | 'failed';
                       'invitation.mismatch.text' | transloco: { email: invitation.email }
                     }}</ui-banner>
                     <ui-button [disabled]="busy()" (pressed)="switchAccount()">{{
-                      'invitation.mismatch.switch' | transloco
+                      (createsAccount()
+                        ? 'invitation.mismatch.create'
+                        : 'invitation.mismatch.switch'
+                      ) | transloco
                     }}</ui-button>
                   </ui-stack>
                 } @else {
@@ -132,8 +137,8 @@ export class InvitationPage {
   protected readonly preview = signal<InvitationPreview | null>(null);
   /** The server said that the invited address has an account after all (409). */
   private readonly accountFound = signal(false);
-  /** The signed-in user's address is not the invited one (403). */
-  protected readonly mismatch = signal(false);
+  /** The server said the signed-in user's address is not the invited one (403): the fallback. */
+  private readonly serverMismatch = signal(false);
   protected readonly name = signal('');
   protected readonly nameInvalid = signal(false);
   protected readonly busy = signal(false);
@@ -142,6 +147,15 @@ export class InvitationPage {
     const status = this.auth.status();
     return status === 'signedIn' || status === 'offline';
   });
+  /** Signed in with another address than the invited one, seen without asking the server. */
+  private readonly otherAddress = computed(() => {
+    const own = this.auth.me()?.email;
+    const invited = this.preview()?.email;
+    return own !== undefined && invited !== undefined && normalize(own) !== normalize(invited);
+  });
+  protected readonly mismatch = computed(() => this.serverMismatch() || this.otherAddress());
+  /** The invited address has no account yet: the way on is to sign out and name oneself. */
+  protected readonly createsAccount = computed(() => this.preview()?.accountExists === false);
   protected readonly mustSignIn = computed(
     () => this.accountFound() || this.preview()?.accountExists === true,
   );
@@ -188,13 +202,21 @@ export class InvitationPage {
     void this.router.navigate(['/anmelden'], { queryParams: { ziel: INVITATION_PATH } });
   }
 
-  /** The signed-in user is not the invitee: sign out and sign in with the invited address. */
+  /**
+   * The signed-in user is not the invitee: sign out, then sign in with the invited address, or,
+   * without an account (no code would ever be mailed), back here for the name form.
+   */
   protected async switchAccount(): Promise<void> {
     if (this.busy()) return;
     this.busy.set(true);
     try {
       await this.auth.logout();
-      this.signIn();
+      if (this.createsAccount()) {
+        this.serverMismatch.set(false);
+        await this.router.navigateByUrl(INVITATION_PATH);
+      } else {
+        this.signIn();
+      }
     } catch (error) {
       this.showError(error);
     } finally {
@@ -226,7 +248,7 @@ export class InvitationPage {
     if (this.isGone(error)) {
       this.markInvalid();
     } else if (error instanceof ApiError && error.code === 'invitation.emailMismatch') {
-      this.mismatch.set(true);
+      this.serverMismatch.set(true);
     } else if (error instanceof ApiError && error.code === 'invitation.accountExists') {
       this.accountFound.set(true);
     } else {
