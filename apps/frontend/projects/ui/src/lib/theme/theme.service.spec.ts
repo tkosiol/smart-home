@@ -143,6 +143,46 @@ describe('ThemeService', () => {
     expect(store.boot?.light['--mat-sys-primary']).not.toBe(store.boot?.dark['--mat-sys-primary']);
   });
 
+  describe('personal changes by the user and by the server', () => {
+    it('tells listeners about changes the user makes, not about adopted ones', async () => {
+      const { service } = await setup();
+      const seen: unknown[] = [];
+      service.onPersonalChange((value) => seen.push(value));
+      service.setPersonal({ mode: 'dark', contrast: 'system' });
+      service.resetPersonal();
+      service.setPersonal({ mode: 'dark', contrast: 'system', colors: plum });
+      service.resetPersonalColors();
+      service.adoptPersonal({ mode: 'light', contrast: 'high' });
+      expect(seen).toEqual([
+        { mode: 'dark', contrast: 'system' },
+        DEFAULT_PERSONAL_APPEARANCE,
+        { mode: 'dark', contrast: 'system', colors: plum },
+        { mode: 'dark', contrast: 'system' },
+      ]);
+    });
+
+    it('adopts a value from the server: applies and stores it without telling listeners', async () => {
+      const { service, store } = await setup();
+      const listener = vi.fn();
+      service.onPersonalChange(listener);
+      service.adoptPersonal({ mode: 'dark', contrast: 'high', colors: plum });
+      TestBed.tick();
+      expect(service.personal()).toEqual({ mode: 'dark', contrast: 'high', colors: plum });
+      expect(store.personal).toEqual({ mode: 'dark', contrast: 'high', colors: plum });
+      expect(store.boot?.mode).toBe('dark');
+      expect(listener).not.toHaveBeenCalled();
+    });
+
+    it('stops telling a listener that unsubscribed', async () => {
+      const { service } = await setup();
+      const listener = vi.fn();
+      const stop = service.onPersonalChange(listener);
+      stop();
+      service.setPersonal({ mode: 'dark', contrast: 'system' });
+      expect(listener).not.toHaveBeenCalled();
+    });
+  });
+
   it('resets personal colors to the instance default', async () => {
     const { service } = await setup();
     service.setPersonal({ mode: 'system', contrast: 'system', colors: plum });

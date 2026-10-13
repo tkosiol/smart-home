@@ -180,6 +180,85 @@ describe('AuthService coming back online', () => {
   });
 });
 
+describe('AuthService coming back to the page', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  function show(state: DocumentVisibilityState) {
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue(state);
+    document.dispatchEvent(new Event('visibilitychange'));
+  }
+
+  it('asks again when the page becomes visible after a server error left it offline', async () => {
+    let reachable = false;
+    const { auth, fetchFn } = setup(
+      () => (reachable ? json(TEST_ME) : apiError('internal', 502)),
+      TEST_ME,
+    );
+    await auth.load();
+    expect(auth.status()).toBe('offline');
+
+    reachable = true;
+    show('visible');
+    await vi.waitFor(() => expect(auth.status()).toBe('signedIn'));
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+  });
+
+  it('asks again after a start without a copy that could not reach the server', async () => {
+    let reachable = false;
+    const { auth } = setup(() => (reachable ? json(TEST_ME) : apiError('internal', 502)));
+    await auth.load();
+    expect(auth.connectionLost()).toBe(true);
+
+    reachable = true;
+    show('visible');
+    await vi.waitFor(() => expect(auth.status()).toBe('signedIn'));
+    expect(auth.connectionLost()).toBe(false);
+  });
+
+  it('does not ask when the page gets hidden', async () => {
+    const { auth, fetchFn } = setup(() => apiError('internal', 502), TEST_ME);
+    await auth.load();
+    show('hidden');
+    await Promise.resolve();
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not ask for a user who is signed in or signed out', async () => {
+    const signedIn = setup(() => json(TEST_ME));
+    await signedIn.auth.load();
+    show('visible');
+    await Promise.resolve();
+    expect(signedIn.fetchFn).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops listening when the service is destroyed', async () => {
+    const { auth, fetchFn } = setup(() => apiError('internal', 502), TEST_ME);
+    await auth.load();
+    TestBed.resetTestingModule();
+    show('visible');
+    await Promise.resolve();
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('AuthService.updateMe', () => {
+  it('takes over the user from an answer and keeps the copy', async () => {
+    const { auth, cache } = setup(() => json(TEST_ME));
+    await auth.load();
+    const changed = { ...TEST_ME, locale: 'en' as const };
+    auth.updateMe(changed);
+    expect(auth.me()).toEqual(changed);
+    expect(cache.me).toEqual(changed);
+  });
+
+  it('refuses an answer that is not a user', async () => {
+    const { auth } = setup(() => json(TEST_ME));
+    await auth.load();
+    expect(() => auth.updateMe({ nope: 1 })).toThrow();
+    expect(auth.me()).toEqual(TEST_ME);
+  });
+});
+
 describe('AuthService.handleUnauthorized', () => {
   async function signedInAt(url: string) {
     const harness = setup(() => json(TEST_ME));
@@ -197,6 +276,12 @@ describe('AuthService.handleUnauthorized', () => {
     await vi.waitFor(() =>
       expect(router.url).toBe('/anmelden?ziel=%2Fmehr%2Feinstellungen%3Fx%3D1'),
     );
+  });
+
+  it('also removes the theme cache so the next person on the device does not get its colors', async () => {
+    const { auth, cache } = await signedInAt('/mehr');
+    auth.handleUnauthorized();
+    expect(cache.themeBootCleared).toBe(true);
   });
 
   it('omits the target when the user was on the start page', async () => {

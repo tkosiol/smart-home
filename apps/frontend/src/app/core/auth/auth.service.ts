@@ -1,4 +1,4 @@
-import { Injectable, effect, inject, signal, untracked } from '@angular/core';
+import { DOCUMENT, DestroyRef, Injectable, effect, inject, signal, untracked } from '@angular/core';
 import { Router } from '@angular/router';
 import { meSchema, type Me } from '@smart/contracts';
 import { API_BASE, ApiClient, ApiError } from '../api';
@@ -19,6 +19,7 @@ export class AuthService {
   private readonly router = inject(Router);
   private readonly cache = inject(ME_CACHE);
   private readonly online = inject(OnlineStatus).online;
+  private readonly document = inject(DOCUMENT);
 
   private readonly meState = signal<Me | null>(null);
   private readonly statusState = signal<AuthStatus>('unknown');
@@ -43,6 +44,16 @@ export class AuthService {
         });
       }
     });
+    // A server error while the browser is online raises no `online` event: ask again when the
+    // user comes back to the page, so "offline" does not stick.
+    const onVisible = () => {
+      if (this.document.visibilityState !== 'visible') return;
+      if (this.status() === 'offline' || this.connectionLost()) void this.load();
+    };
+    this.document.addEventListener('visibilitychange', onVisible);
+    inject(DestroyRef).onDestroy(() =>
+      this.document.removeEventListener('visibilitychange', onVisible),
+    );
   }
 
   /** The first `load()`, started on demand; the route guard and the sign-in page wait for it. */
@@ -61,9 +72,15 @@ export class AuthService {
     if (this.status() !== 'signedIn' && this.status() !== 'offline') return;
     const target = this.router.url;
     this.signOutLocally();
+    this.cache.clearThemeBoot();
     void this.router.navigate(['/anmelden'], {
       queryParams: target === '/' ? undefined : { ziel: target },
     });
+  }
+
+  /** Takes over a user the server just returned (e.g. after saving preferences); refuses anything else. */
+  updateMe(raw: unknown): void {
+    this.setSignedIn(this.parseMe(raw));
   }
 
   /** Always answers 204: whether the address belongs to an account is not revealed. */

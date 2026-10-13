@@ -14,6 +14,7 @@ export class LanguageService {
   private readonly state = signal<Language>(
     this.store.load() ?? matchLanguage(inject(BROWSER_LANGUAGES)),
   );
+  private readonly listeners = new Set<(language: Language) => void>();
   readonly language = this.state.asReadonly();
 
   constructor() {
@@ -29,11 +30,24 @@ export class LanguageService {
     inject(DestroyRef).onDestroy(stopWatching);
   }
 
+  /** The user chose a language: switches, stores and tells the listeners. */
   setLanguage(language: Language): void {
+    this.adopt(language);
+    for (const listener of this.listeners) listener(this.state());
+  }
+
+  /** Takes over a language that did not come from the user (the account on the server): no listener hears of it. */
+  adopt(language: Language): void {
     const parsed = languageSchema.parse(language);
     this.state.set(parsed);
     this.store.save(parsed);
     this.apply(parsed);
+  }
+
+  /** Calls back after every choice of the user, never for `adopt` or another tab; returns the unsubscribe function. */
+  onChange(listener: (language: Language) => void): () => void {
+    this.listeners.add(listener);
+    return () => void this.listeners.delete(listener);
   }
 
   /** `<html lang>` drives screen reader pronunciation and `hyphens: auto`; the format context drives dates and numbers. */

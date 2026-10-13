@@ -93,6 +93,29 @@ describe('LanguageService', () => {
     expect(html.lang).toBe('en');
   });
 
+  it('tells listeners about a language the user chose, not one adopted from the server', () => {
+    const { service } = setup();
+    const listener = vi.fn();
+    const stop = service.onChange(listener);
+    service.setLanguage('en');
+    expect(listener).toHaveBeenCalledExactlyOnceWith('en');
+    service.adopt('de');
+    expect(listener).toHaveBeenCalledTimes(1);
+    stop();
+    service.setLanguage('en');
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it('adopts a language from the server: switches, stores and announces it', () => {
+    const { service, store, transloco, html, formatContext } = setup();
+    service.adopt('en');
+    expect(service.language()).toBe('en');
+    expect(store.value).toBe('en');
+    expect(transloco.getActiveLang()).toBe('en');
+    expect(html.lang).toBe('en');
+    expect(formatContext.locale()).toBe('en');
+  });
+
   it('rejects languages the app does not support', () => {
     const { service } = setup();
     expect(() => service.setLanguage('fr' as Language)).toThrow();
