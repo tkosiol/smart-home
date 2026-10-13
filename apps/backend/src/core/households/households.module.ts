@@ -5,6 +5,8 @@ import { HouseholdsCleanupJob } from './cleanup.job.js';
 import { HouseholdGuard } from './household.guard.js';
 import { HouseholdController, HouseholdsController } from './households.controller.js';
 import { HouseholdsRepository } from './households.repository.js';
+import { InstanceController } from './instance.controller.js';
+import { InstanceSettingsRepository } from './instance-settings.repository.js';
 import { InvitationAcceptController } from './invitation-accept.controller.js';
 import { InvitationsController } from './invitations.controller.js';
 import { InvitationsRepository } from './invitations.repository.js';
@@ -24,9 +26,11 @@ import { MembershipsRepository } from './memberships.repository.js';
     MembersController,
     InvitationsController,
     InvitationAcceptController,
+    InstanceController,
   ],
   providers: [
     HouseholdsRepository,
+    InstanceSettingsRepository,
     MembershipsRepository,
     MembersService,
     InvitationsRepository,

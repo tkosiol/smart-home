@@ -24,4 +24,17 @@ describe('parseCommand', () => {
     expect(() => parseCommand(['create-admin', '--force'])).toThrow(/--force/);
     expect(() => parseCommand(['create-admin', 'extra'])).toThrow(/extra/);
   });
+
+  it('reads revoke-sessions with its only option', () => {
+    expect(parseCommand(['revoke-sessions', '--email', 'a@example.org'])).toEqual({
+      command: 'revoke-sessions',
+      options: { email: 'a@example.org' },
+    });
+  });
+
+  it('rejects an option the command does not take', () => {
+    expect(() =>
+      parseCommand(['revoke-sessions', '--email', 'a@example.org', '--name', 'X']),
+    ).toThrow(/--name/);
+  });
 });

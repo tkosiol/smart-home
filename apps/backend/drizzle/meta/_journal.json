@@ -29,6 +29,13 @@
       "when": 1791927333655,
       "tag": "0003_invitations",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1791928467690,
+      "tag": "0004_instance_settings",
+      "breakpoints": true
     }
   ]
 }

@@ -27,6 +27,6 @@ import { UsersRepository } from './users.repository.js';
     CleanupJob,
     { provide: APP_GUARD, useClass: SessionGuard },
   ],
-  exports: [CLOCK, UsersRepository, SessionService, MeService],
+  exports: [CLOCK, UsersRepository, SessionsRepository, SessionService, MeService],
 })
 export class IdentityModule {}

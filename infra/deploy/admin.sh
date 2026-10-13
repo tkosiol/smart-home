@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # Runs an administration command of the API inside the running stack on the VPS. Run it yourself in a terminal.
 # Usage: SMART_VPS=<user@host> infra/deploy/admin.sh <staging|production> create-admin --email <address> --name <name>
-# Only create-admin is allowed. Every argument reaches the remote command as exactly one word.
+#        SMART_VPS=<user@host> infra/deploy/admin.sh <staging|production> revoke-sessions --email <address>
+# Only create-admin and revoke-sessions are allowed. Every argument reaches the remote command as exactly one word.
 set -euo pipefail
 
 usage() {
   echo "usage: SMART_VPS=<user@host> admin.sh <staging|production> create-admin --email <address> --name <name>" >&2
+  echo "       SMART_VPS=<user@host> admin.sh <staging|production> revoke-sessions --email <address>" >&2
   exit 2
 }
 
@@ -19,7 +21,7 @@ case "$environment" in
   *) usage ;;
 esac
 case "$command" in
-  create-admin) ;;
+  create-admin | revoke-sessions) ;;
   *) echo "admin.sh: command '$command' is not allowed" >&2; usage ;;
 esac
 host="${SMART_VPS:?set SMART_VPS=<user@host> (see .local/server.md)}"

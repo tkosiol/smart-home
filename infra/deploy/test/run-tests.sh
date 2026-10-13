@@ -151,6 +151,7 @@ setup; export SMART_VPS=deploy@vps
 check "admin refuses an unknown command" '[ "$(run_admin staging recovery-link --email a@example.org)" = 2 ]'
 check "admin refuses a shell command as the command" '[ "$(run_admin staging "create-admin; id")" = 2 ]'
 check "admin refuses an unknown environment" '[ "$(run_admin prod create-admin --email a@example.org --name A)" = 2 ]'
+check "admin refuses a shell command after revoke-sessions" '[ "$(run_admin staging "revoke-sessions; id")" = 2 ]'
 check "admin refuses a missing command" '[ "$(run_admin staging)" = 2 ]'
 check "admin contacts the VPS only for allowed commands" '[ ! -s "$STUB_CALLS" ]'; teardown
 setup; unset SMART_VPS
@@ -164,6 +165,7 @@ mkdir -p "$STUB_REMOTE_HOME/docker/apps/smart-staging"
 NASTY_NAME="O'Neil \"\$(touch $WORK/pwned)\" \`touch $WORK/pwned\`; touch $WORK/pwned #"
 check "admin hands every argument to the remote command as one word" 'run_admin staging create-admin --email "a b@example.org" --name "$NASTY_NAME" > /dev/null && [ "$(tail -n 1 "$STUB_ARGV_LOG")" = "docker <compose> <-f> <compose.yaml> <--env-file> <.env> <--env-file> <deploy.env> <exec> <-T> <api> <node> <dist/cli.js> <create-admin> <--email> <a b@example.org> <--name> <$NASTY_NAME>" ]'
 check "admin lets no argument run on the VPS" '[ ! -e "$WORK/pwned" ]'
+check "admin runs revoke-sessions and hands its arguments over as one word each" 'run_admin staging revoke-sessions --email "a b@example.org" > /dev/null && [ "$(tail -n 1 "$STUB_ARGV_LOG")" = "docker <compose> <-f> <compose.yaml> <--env-file> <.env> <--env-file> <deploy.env> <exec> <-T> <api> <node> <dist/cli.js> <revoke-sessions> <--email> <a b@example.org>" ]'
 check "admin keeps empty arguments" 'run_admin staging create-admin --name "" > /dev/null && tail -n 1 "$STUB_ARGV_LOG" | grep -q "<--name> <>$"'; teardown
 
 echo "deploy tests: $passed passed, $failures failed"

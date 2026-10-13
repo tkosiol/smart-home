@@ -94,7 +94,17 @@ SMART_VPS=<DEPLOY_USER>@<VPS_HOST> infra/deploy/admin.sh production create-admin
 
 Auf Staging muss die Adresse des Admins in `MAIL_ALLOWLIST` stehen, sonst kommt kein Code an. Die Anmeldung danach: `/anmelden`, Adresse eingeben, Code aus der Mail eintragen.
 
-`admin.sh` führt `node dist/cli.js create-admin …` im laufenden `api`-Container des Stacks aus (`docker compose … exec -T api`). Erlaubt ist nur `create-admin`; jedes Argument wird einzeln gequotet und kommt auf dem VPS als genau ein Wort an. Die E-Mail wird normalisiert (Kleinbuchstaben). Der Befehl ist idempotent: existiert der Benutzer schon, setzt er nur `is_platform_admin` und lässt Name und Sprache unverändert. Ausgabe: Ergebnis mit maskierter Adresse, keine Geheimnisse. Exit-Code 1 bei ungültiger E-Mail oder fehlendem `--name`, 2 bei falschem Aufruf.
+`admin.sh` führt `node dist/cli.js create-admin …` im laufenden `api`-Container des Stacks aus (`docker compose … exec -T api`). Erlaubt sind nur `create-admin` und `revoke-sessions`; jedes Argument wird einzeln gequotet und kommt auf dem VPS als genau ein Wort an. Die E-Mail wird normalisiert (Kleinbuchstaben). Der Befehl ist idempotent: existiert der Benutzer schon, setzt er nur `is_platform_admin` und lässt Name und Sprache unverändert. Ausgabe: Ergebnis mit maskierter Adresse, keine Geheimnisse. Exit-Code 1 bei ungültiger E-Mail oder fehlendem `--name`, 2 bei falschem Aufruf.
+
+### Sessions eines Benutzers widerrufen
+
+Ist ein Gerät verloren oder eine Sitzung nicht mehr vertrauenswürdig, widerruft Till alle offenen Sessions des Benutzers; danach muss sich dieser überall neu anmelden:
+
+```bash
+SMART_VPS=<DEPLOY_USER>@<VPS_HOST> infra/deploy/admin.sh production revoke-sessions --email <E-MAIL>
+```
+
+Ausgabe: `revoked <n> sessions: <maskierte Adresse>` (gezählt werden nur Sessions, die noch offen waren). Exit-Code 1 bei unbekannter oder ungültiger E-Mail (`no such user`, die Adresse wird nicht wiederholt), 2 bei falschem Aufruf. Der Befehl ändert sonst nichts am Benutzer.
 
 ## Laufzeitkonfiguration der Web-App
 
