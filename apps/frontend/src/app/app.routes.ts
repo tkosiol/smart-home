@@ -1,11 +1,13 @@
 import { Routes } from '@angular/router';
 import { marker } from '@jsverse/transloco-keys-manager/marker';
 import { signedIn } from './core/auth';
+import { hasHousehold } from './core/household';
 import { Shell } from './shell';
 
 /**
- * Every page lives inside the shell, which only matches for signed-in users; the sign-in page
- * stands beside it. Whoever is not signed in is sent to the sign-in page by the guard.
+ * Every page lives inside the shell, which only matches for signed-in users with a household; the
+ * sign-in page stands beside it. Whoever is not signed in is sent to the sign-in page by the
+ * guard, whoever has no household to the set-up page (`/einrichten`, outside the shell).
  */
 export const routes: Routes = [
   {
@@ -16,7 +18,7 @@ export const routes: Routes = [
   {
     path: '',
     component: Shell,
-    canMatch: [signedIn],
+    canMatch: [signedIn, hasHousehold],
     children: [
       {
         path: '',

@@ -19,7 +19,7 @@
       "notFound": "Not found"
     },
     "household": {
-      "placeholder": "My home"
+      "switch": "Switch household"
     },
     "notifications": {
       "none": "Notifications, none new"

@@ -8,7 +8,14 @@ import { BROWSER_LANGUAGES, LANGUAGE_STORE, provideI18n } from '../core/i18n';
 import { API_FETCH } from '../core/api';
 import { AuthService, ME_CACHE } from '../core/auth';
 import { AppUpdates, OnlineStatus } from '../core/pwa';
-import { MemoryMeCache, TEST_ME, signedInProviders } from '../testing/auth-testing';
+import {
+  MemoryMeCache,
+  TEST_HOUSEHOLD,
+  TEST_ME,
+  householdOf,
+  meWith,
+  signedInProviders,
+} from '../testing/auth-testing';
 import { Shell } from './shell';
 
 async function setup(extra: Provider[] = signedInProviders()) {
@@ -32,6 +39,7 @@ async function setup(extra: Provider[] = signedInProviders()) {
     ],
   });
   await TestBed.inject(ApplicationInitStatus).donePromise;
+  await TestBed.inject(AuthService).load();
   return { online, updateReady, reload, announce };
 }
 
@@ -58,11 +66,31 @@ describe('Shell', () => {
     fixture.detectChanges();
     const element = fixture.nativeElement as HTMLElement;
 
-    expect(element.querySelector('header')?.textContent).toContain('Mein Zuhause');
+    expect(element.querySelector('header')?.textContent).toContain(TEST_HOUSEHOLD.name);
     const bell = element.querySelector('header a') as HTMLAnchorElement;
     expect(bell.getAttribute('aria-label')).toBe('Benachrichtigungen, keine neuen');
     expect(bell.getAttribute('href')).toBe('/mehr');
     expect(element.querySelector('main')).not.toBeNull();
+  });
+
+  it('offers no switch button with a single household', async () => {
+    await setup();
+    const fixture = TestBed.createComponent(Shell);
+    fixture.detectChanges();
+    expect((fixture.nativeElement as HTMLElement).querySelectorAll('header a')).toHaveLength(1);
+  });
+
+  it('shows the current household and a switch button to /haushalte with several', async () => {
+    const [home, office] = [householdOf('Zuhause'), householdOf('Büro')];
+    await setup(signedInProviders(meWith([home, office], office.id)));
+    const fixture = TestBed.createComponent(Shell);
+    fixture.detectChanges();
+    const header = (fixture.nativeElement as HTMLElement).querySelector('header') as HTMLElement;
+
+    expect(header.textContent).toContain('Büro');
+    const links = [...header.querySelectorAll('a')];
+    const swap = links.find((a) => a.getAttribute('aria-label') === 'Haushalt wechseln');
+    expect(swap?.getAttribute('href')).toBe('/haushalte');
   });
 
   it('shows the offline banner only while offline and announces it', async () => {

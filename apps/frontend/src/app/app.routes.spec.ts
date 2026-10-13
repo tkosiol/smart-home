@@ -5,7 +5,9 @@ import { RouterTestingHarness } from '@angular/router/testing';
 import { provideServiceWorker } from '@angular/service-worker';
 import { routes } from './app.routes';
 import { API_FETCH } from './core/api';
-import { ME_CACHE } from './core/auth';
+import { ME_CACHE, signedIn } from './core/auth';
+import { hasHousehold } from './core/household';
+import { Shell } from './shell';
 import { BROWSER_LANGUAGES, LANGUAGE_STORE, provideI18n } from './core/i18n';
 import { apiError, json, MemoryMeCache, TEST_ME } from './testing/auth-testing';
 
@@ -29,6 +31,11 @@ async function setup(me: () => Response) {
 }
 
 describe('routes', () => {
+  it('lets the shell match only for signed-in users with a household', () => {
+    const frame = routes.find((route) => route.component === Shell);
+    expect(frame?.canMatch).toEqual([signedIn, hasHousehold]);
+  });
+
   afterEach(() => document.documentElement.setAttribute('lang', 'de'));
 
   it.each([

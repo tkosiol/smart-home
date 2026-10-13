@@ -23,6 +23,7 @@ import {
   type UiNavDestination,
 } from '@smart/ui';
 import { AuthService } from '../core/auth';
+import { HouseholdContext } from '../core/household';
 import { AppUpdates, OnlineStatus } from '../core/pwa';
 import { MAIN_DESTINATIONS } from './navigation';
 
@@ -53,6 +54,10 @@ export class Shell {
   private readonly online = inject(OnlineStatus).online;
   private readonly auth = inject(AuthService);
   private readonly updates = inject(AppUpdates);
+  private readonly household = inject(HouseholdContext);
+
+  protected readonly householdName = computed(() => this.household.current()?.name ?? '');
+  protected readonly canSwitchHousehold = computed(() => this.household.households().length > 1);
 
   /** Also when the browser says online but the server could not be asked (started from the device's copy). */
   protected readonly offline = computed(() => !this.online() || this.auth.status() === 'offline');

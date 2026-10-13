@@ -1,16 +1,7 @@
-import { inject } from '@angular/core';
-import { Router, type CanMatchFn, type Routes } from '@angular/router';
+import type { Routes } from '@angular/router';
 import { provideTranslocoScope } from '@jsverse/transloco';
 import { marker } from '@jsverse/transloco-keys-manager/marker';
-import { AuthService } from '../../core/auth';
-
-/**
- * The installation appearance is for the platform admin only (also by URL); Task 7 moves this
- * guard to core/household. The shell's `signedIn` guard has settled the user before it runs.
- */
-const platformAdmin: CanMatchFn = () =>
-  inject(AuthService).me()?.isPlatformAdmin === true ||
-  inject(Router).parseUrl('/mehr/einstellungen');
+import { platformAdmin } from '../../core/household';
 
 // Pages load lazily (loadComponent): the app config imports this folder's index at startup for
 // provideSettingsFeature(), and must not pull the pages into the initial bundle with it.
