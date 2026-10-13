@@ -57,7 +57,6 @@ export const API_ERROR_CODES = [
   'auth.required',
   'auth.badOrigin',
   'auth.invalidCode',
-  'auth.codeExpired',
   'auth.tooManyAttempts',
   'auth.rateLimited',
   'auth.mailDisabled',
@@ -183,11 +182,11 @@ async request(email: string, nonce: string): Promise<void> {
 
 Controller: Nonce aus Cookie `__Host-login-nonce` übernehmen oder neu erzeugen und setzen (15 min); Limit je E-Mail (3/15 min, Zähler aus `email_login_codes` der letzten 15 min) und je IP (Throttler 10/15 min); immer `204`.
 
-**Prüfen:** offenen Code der E-Mail laden (neuester, `used_at` null). Kein Code, falsche Nonce oder abgelaufen → `400 auth.codeExpired` bzw. `auth.invalidCode` (falsche Nonce wie ungültig behandeln); `attempts >= 5` → `429 auth.tooManyAttempts`; falscher Code → `attempts + 1`, `400 auth.invalidCode` (`params.attemptsLeft`); richtig → `used_at`, Nonce-Cookie löschen, Session (`email_code`), Session-Cookie, Antwort `me`. Vergleich mit `sameHash`. Throttler 20/15 min je IP.
+**Prüfen:** Anfordern und Prüfen zählen im Speicher (Schlüssel aus SHA-256 von E-Mail und Nonce), für bekannte und unbekannte Adressen gleich (keine Kontoaufzählung): 3 Anforderungen je E-Mail in 15 min, 5 Versuche je E-Mail und Browser (danach `429 auth.tooManyAttempts`). Offenen Code der E-Mail laden (neuester, `used_at` null). Kein Code, abgelaufen, benutzt, falsche Nonce oder falscher Code → immer dieselbe Antwort `400 auth.invalidCode` (ohne Parameter); bei echtem Code zusätzlich `attempts + 1` (DB, nur mit richtiger Nonce); `attempts >= 5` → `429 auth.tooManyAttempts`; richtig → `used_at`, Nonce-Cookie löschen, Session (`email_code`), Session-Cookie, Antwort `me`. Vergleich mit `sameHash`. Throttler 20/15 min je IP.
 
 **Abmelden:** aktuelle Session widerrufen, Cookie löschen, `204`.
 
-**Tests (E2E mit In-Memory-`MailSender`, Override des Tokens):** bekannte E-Mail → genau eine Mail mit Code; unbekannte → `204`, keine Mail, Laufzeit beider Anfragen im selben Rahmen (keine DB-Schreibzugriffe für unbekannt); Großschreibung/Leerzeichen in der E-Mail egal; richtiger Code → Session-Cookie + `me`; falsche Nonce (anderer Agent) → abgelehnt; abgelaufen (Zeit per Clock-Injection oder DB-Update) → `auth.codeExpired`; schon benutzt → abgelehnt; 5 Fehlversuche, dann auch der richtige Code → `auth.tooManyAttempts`; zweiter angeforderter Code macht den ersten ungültig; 4. Anforderung derselben E-Mail in 15 min → `429`; Mail aus → `503 auth.mailDisabled`; Abmelden widerruft (danach 401). Commit(s) `feat(backend): sign in with an emailed code`.
+**Tests (E2E mit In-Memory-`MailSender`, Override des Tokens):** bekannte E-Mail → genau eine Mail mit Code; unbekannte → `204`, keine Mail, Laufzeit beider Anfragen im selben Rahmen (keine DB-Schreibzugriffe für unbekannt); Großschreibung/Leerzeichen in der E-Mail egal; richtiger Code → Session-Cookie + `me`; falsche Nonce (anderer Agent) → abgelehnt; abgelaufen (Zeit per Clock-Injection oder DB-Update) → `auth.invalidCode`; bekannte und unbekannte Adresse liefern identische Antworten (4. Anforderung → `429`, 6. Versuch → `429`); schon benutzt → abgelehnt; 5 Fehlversuche, dann auch der richtige Code → `auth.tooManyAttempts`; zweiter angeforderter Code macht den ersten ungültig; 4. Anforderung derselben E-Mail in 15 min → `429` (auch unbekannt); Mail aus → `503 auth.mailDisabled`; Abmelden widerruft (danach 401). Commit(s) `feat(backend): sign in with an emailed code`.
 
 ---
 
@@ -254,7 +253,7 @@ In dieser Task ohne `canMatch`; Task 8 ergänzt `canMatch: [signedIn]`. `App` re
 
 **Guard `signedIn`:** wartet auf den ersten `load()`; `signedIn` oder `offline` → true; sonst UrlTree `/anmelden?ziel=…`.
 
-**Anmelden-Seite** (außerhalb des Rahmens, `ui-page`): Schritt 1 E-Mail (`ui-text-field type="email" autocomplete="email"`), „Code senden“; Schritt 2 Code (ein Feld, `inputmode="numeric"`, `autocomplete="one-time-code"`, 6 Ziffern), „Anmelden“, „Neuen Code senden“ nach 60 s, „Andere E-Mail“. Fehler übersetzt am Feld (`auth.invalidCode` mit verbleibenden Versuchen, `auth.codeExpired`, `auth.tooManyAttempts`, `auth.rateLimited` mit Sekunden). `auth.mailDisabled` → Hinweis statt Formular. Nach Erfolg zu `ziel` (nur relative App-Pfade erlaubt, sonst `/`).
+**Anmelden-Seite** (außerhalb des Rahmens, `ui-page`): Schritt 1 E-Mail (`ui-text-field type="email" autocomplete="email"`), „Code senden“; Schritt 2 Code (ein Feld, `inputmode="numeric"`, `autocomplete="one-time-code"`, 6 Ziffern), „Anmelden“, „Neuen Code senden“ nach 60 s, „Andere E-Mail“. Fehler übersetzt am Feld (`auth.invalidCode` als „Code falsch oder abgelaufen“, `auth.tooManyAttempts`, `auth.rateLimited` mit Sekunden). `auth.mailDisabled` → Hinweis statt Formular. Nach Erfolg zu `ziel` (nur relative App-Pfade erlaubt, sonst `/`).
 
 **Tests:** AuthService (Erfolg speichert Abbild; 401 löscht; offline mit/ohne Abbild; logout räumt auf; `ziel`-Prüfung gegen offene Weiterleitung `//evil.example`, `https://…`); Guard; Seite (beide Schritte, Fehlertexte de/en, Timer für „Neuen Code senden“ mit Fake-Timern); Story der Seite in beiden Sprachen und Themes. Commit(s) `feat(frontend): sign in with an emailed code`.
 

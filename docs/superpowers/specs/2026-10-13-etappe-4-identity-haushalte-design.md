@@ -50,7 +50,7 @@ Alle Geheimnisse (Session-Token, Codes, Nonces, Einladungs- und Recovery-Tokens)
 ### 3.3 E-Mail-Code (4a)
 
 1. `POST /api/v1/auth/email-code` `{ email }`: setzt Cookie `__Host-login-nonce` (32 Byte zufällig, 15 min, `HttpOnly`, `Secure`, `SameSite=Lax`). Existiert ein User mit dieser E-Mail, entsteht ein Code (6 Ziffern, kryptografisch zufällig) mit Hash von Code und Nonce, gültig 10 min; frühere offene Codes dieser E-Mail werden ungültig; Mail in der Sprache des Users. Antwort immer `204` (keine Kontoaufzählung). Ist Mail abgeschaltet: `503` mit `auth.mailDisabled`.
-2. `POST /api/v1/auth/email-code/verify` `{ email, code }`: nur mit passender Nonce, nicht abgelaufen, nicht benutzt, höchstens 5 Versuche (jeder Fehlversuch zählt hoch; danach `auth.tooManyAttempts`). Erfolg: Code als benutzt markiert, Nonce-Cookie gelöscht, Session angelegt, Antwort `me`.
+2. `POST /api/v1/auth/email-code/verify` `{ email, code }`: nur mit passender Nonce, nicht abgelaufen, nicht benutzt, höchstens 5 Versuche (jeder Fehlversuch zählt hoch; danach `auth.tooManyAttempts`). Jeder Fehlschlag (kein Code, abgelaufen, benutzt, falsche Nonce, falscher Code) liefert dieselbe Antwort `400 auth.invalidCode`; die Grenzen (3 Anforderungen, 5 Versuche) gelten im Speicher je E-Mail und Browser auch für unbekannte Adressen, damit keine Konten aufgezählt werden können. Erfolg: Code als benutzt markiert, Nonce-Cookie gelöscht, Session angelegt, Antwort `me`.
 3. Rate-Limits: Anfordern höchstens 3 je E-Mail und 10 je IP in 15 min; Prüfen höchstens 20 je IP in 15 min. Überschreitung `429` mit `auth.rateLimited` und `params.retryAfterSeconds`.
 
 ### 3.4 Sessions (4a)
@@ -97,7 +97,7 @@ Alle Geheimnisse (Session-Token, Codes, Nonces, Einladungs- und Recovery-Tokens)
 
 - Ändernde Anfragen (`POST`, `PUT`, `PATCH`, `DELETE`) unter `/api` ohne `Origin` gleich `APP_ORIGIN` → `403` `auth.badOrigin`.
 - Alle `/api`-Antworten `Cache-Control: no-store`.
-- Fehlercodes als Enum in `@smart/contracts` (u. a. `auth.required`, `auth.invalidCode`, `auth.codeExpired`, `auth.tooManyAttempts`, `auth.rateLimited`, `auth.mailDisabled`, `auth.badOrigin`, `auth.passkeyFailed`, `household.lastOwner`, `invitation.invalid`, `invitation.emailMismatch`, `validation.failed`); das Frontend übersetzt sie.
+- Fehlercodes als Enum in `@smart/contracts` (u. a. `auth.required`, `auth.invalidCode`, `auth.tooManyAttempts`, `auth.rateLimited`, `auth.mailDisabled`, `auth.badOrigin`, `auth.passkeyFailed`, `household.lastOwner`, `invitation.invalid`, `invitation.emailMismatch`, `validation.failed`); das Frontend übersetzt sie.
 - Logs enthalten keine Codes, Tokens oder vollständigen E-Mail-Adressen (maskiert `t***@example.org`).
 
 ## 4. Frontend
