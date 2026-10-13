@@ -363,3 +363,32 @@ Fehler `403`/`404` auf Haushaltspfaden → `household.accessChanged()`; alle and
 5. Plattform-Admin ändert das Instanz-Theme → anderer, nicht angemeldeter Kontext auf `/anmelden` zeigt die neue Grundfarbe (Theme-Variable am `:root` prüfen).
 
 Pro Adresse höchstens zwei Code-Anforderungen (Limit 3/15 min, siehe 4a); bestehende Specs bleiben grün, weil `global-setup` ihren Konten einen Haushalt gibt. Commit(s) `test(infra): cover households and invitations in the stack` und `docs: describe households, invitations and revoke-sessions`.
+
+## Ergebnis und Übertrag
+
+Umgesetzt subagent-gestützt (Sonnet für Umsetzung und Reviews, Haiku für kleine Nachprüfungen, Opus für das Gesamt-Review mit einer Nachbesserungsrunde). Dieser Abschnitt hält fest, wo die Umsetzung vom Plan abweicht und was die folgenden Pläne übernehmen müssen.
+
+### Abweichungen vom Plan (Entscheidungen)
+
+- **Einladungs-API:** Der Token steht im Request-Body (`POST /api/v1/invitations/preview|accept|accept-new`), nicht in der URL; die App protokolliert keinen `Referer`. Die Seite `/einladung/:token` leitet sofort auf `/einladung` um und hält den Token in `sessionStorage` (`smart.invitation`) bis zur Annahme. Die Zugriffslogs von nginx und Nginx Proxy Manager enthalten den Link weiterhin (einmalig, 7 Tage, nur Server-Admin).
+- **Einladungslink und Kontoübernahme:** Der owner sieht den Link immer. Damit niemand ein Konto über den Link vorab übernimmt und behält, beendet die erste Anmeldung per E-Mail-Code alle Sessions dieses Kontos, die über einen Einladungslink entstanden sind.
+- **Eingeladene auf fremdem Gerät:** Die Einladungsseite vergleicht die eingeladene Adresse mit dem angemeldeten Konto; ohne Konto führt „Abmelden und Konto anlegen“ direkt zum Namensformular.
+- **`/me` mit Haushalten:** Port `ME_HOUSEHOLDS` in `core/identity`, bereitgestellt vom globalen `HouseholdsModule` (keine Rückabhängigkeit). Fremdschlüssel `users.last_household_id` von Hand in Migration 0002.
+- **Letzter owner:** alle Mitgliedschaften des Haushalts werden in fester Reihenfolge (`ORDER BY user_id … FOR UPDATE`) gesperrt.
+- **Mandanten-Test:** ein Tabellentest über alle Haushaltspfade plus eine Metadatenprüfung, dass jeder Controller mit `:householdId` den `HouseholdGuard` trägt.
+- **Frontend:** kein `AuthService.adopt`/`reload` – `updateMe(raw)` und `load()` genügen; jeder Guard wartet selbst auf `auth.ready()`. `ApiClient` hat jetzt `patch`, `delete` und eine `referrerPolicy`-Option. Eigene kleine `LoadedList` statt Angulars `resource()` (sparte 6,5 kB im initialen Bundle).
+- **CLI:** `runCli(argv, { users, sessions, clock }, io)`; `revoke-sessions` widerruft nur offene Sessions.
+- **Bundle:** initial rund 481,7 kB (Grenze 500 kB).
+
+### Übertrag
+
+- **Bundle (vor Etappe 6 klären):** Was lazy Seiten aus `@smart/ui` oder `@angular/core` nutzen, kann im initialen Bundle landen (gemessen: `ui-card` rund 9 kB, `resource()` rund 6,5 kB, Datums-Pipe rund 3,4 kB). Vermutlich über den Barrel-Import der App beim Start; eigene Untersuchung (Unterpfade/Secondary Entry Points, `sideEffects`) einplanen. Es bleiben rund 18 kB Luft.
+- **4b:** Passkey- und Recovery-Anmeldungen müssen ebenfalls die Einladungs-Sessions beenden; Passkeys, die aus einer Einladungs-Session angelegt wurden, bei der ersten Postfach-Bestätigung widerrufen oder nicht anerkennen. Sicherheitsseite mit Sessions; Aussperren per Code-Anforderungen entschärfen.
+- **Stack-E2E:** Das Limit von 10 Code-Anforderungen je IP und 15 Minuten ist im Testlauf voll ausgeschöpft; jede weitere Anmeldung per Code braucht vorher eine Einsparung (gespeicherte Sessions nutzen).
+- **Till, nach dem Merge:** beim ersten Öffnen landet jedes Konto ohne Haushalt auf `/einrichten`; das Instanz-Theme stellt der Plattform-Admin unter „Mehr → Einstellungen → Erscheinungsbild der Installation“ ein. Eine alte `SMART_INSTANCE_APPEARANCE_EDITOR`-Zeile in `.env` stört nicht.
+
+### Bewusst zurückgestellt (klein)
+
+- Backend: Zeitzonen-Schema akzeptiert Offsets (`+01:00`) und abweichende Schreibweise; Rolle des Aufrufers wird außerhalb der Sperre geprüft; Rate-Limit zählt je Route; Session nach `accept-new` entsteht nach dem Commit; Einladungen überdauern die Rechte des Einladenden; zwei gleichzeitige Einladungen an eine Adresse können offen bleiben; Kontoaufzählung über Einladen und Vorschau für owner; Haushalte unbegrenzt anlegbar; `HouseholdsModule` exportiert Guard und Repository noch nicht für `modules/*`; CLI-Kleinigkeiten (`Object.hasOwn`, Plural, Positionsargumente im Fehlertext).
+- Frontend: Haushaltsseite setzt das Formular bei einem `me`-Neuladen zurück; Offline-`accessChanged` behält das veraltete Abbild still; Link bleibt nach Widerruf sichtbar; keine Lade-/Fehleranzeige der Mitgliederliste; Token bleibt nach normalem Abmelden im `sessionStorage` des Tabs; kurzes Aufblitzen nach Annahme; `last_household_id` gilt geräteübergreifend.
+- Tests: einige Fehlerpfade (`patch`/`delete`, fehlgeschlagenes Abmelden, verlassen → `/einrichten` auf Seitenebene) und schwache E2E-Prüfungen („kein Haushalt“-Eintrag, ungebundener Wechsel-Locator, `finally` in E5) – Details in den Reviews.
