@@ -36,6 +36,13 @@ describe('UiSnackbar', () => {
     expect(open.mock.calls[0]![1]).toMatchObject({ duration: 4000, politeness: 'polite' });
   });
 
+  it('sets the panel class that keeps it clear of the compact bottom bar', () => {
+    const { snackbar, material } = setup();
+    const open = vi.spyOn(material, 'openFromComponent');
+    void snackbar.show('Gespeichert');
+    expect(open.mock.calls[0]![1]!.panelClass).toBe('ui-snackbar');
+  });
+
   it('keeps messages with an action open and can be assertive', () => {
     const { snackbar, material } = setup();
     const open = vi.spyOn(material, 'openFromComponent');

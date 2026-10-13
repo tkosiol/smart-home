@@ -99,13 +99,16 @@ describe('Shell', () => {
     expect(reload).toHaveBeenCalledOnce();
   });
 
-  it('shows "Nicht gefunden" for an unknown route', async () => {
+  it('shows "Nicht gefunden" inside the frame for an unknown route', async () => {
     await setup();
     const harness = await RouterTestingHarness.create();
     await harness.navigateByUrl('/gibt-es-nicht');
     const element = harness.routeNativeElement as HTMLElement;
 
-    expect(element.querySelector('h1')?.textContent).toContain('Nicht gefunden');
-    expect(element.querySelector('a[href="/"]')).not.toBeNull();
+    // The page sits inside the frame: the shell is the routed component, the page its child.
+    expect(element.tagName.toLowerCase()).toBe('app-shell');
+    expect(element.querySelector('nav')).not.toBeNull();
+    expect(element.querySelector('main h1')?.textContent).toContain('Nicht gefunden');
+    expect(element.querySelector('main a[href="/"]')).not.toBeNull();
   });
 });

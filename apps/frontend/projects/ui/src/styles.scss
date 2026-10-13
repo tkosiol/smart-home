@@ -20,3 +20,8 @@ body {
 :root:has(ui-adaptive-shell[data-window-class='compact']) {
   scroll-padding-bottom: var(--smart-size-nav-bar);
 }
+
+// The snack bar (panel class of `UiSnackbar`) rises above the fixed bottom bar instead of hiding behind it.
+:root:has(ui-adaptive-shell[data-window-class='compact']) .ui-snackbar {
+  margin-bottom: calc(var(--smart-size-nav-bar) + var(--smart-space-sm));
+}

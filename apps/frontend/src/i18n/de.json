@@ -40,6 +40,20 @@
     "update": {
       "text": "Neue Version verfügbar",
       "reload": "Neu laden"
+    },
+    "errors": {
+      "auth": {
+        "required": "Bitte melde dich an.",
+        "badOrigin": "Die Anfrage kam von einer nicht erlaubten Adresse.",
+        "invalidCode": "Der Code stimmt nicht oder ist abgelaufen.",
+        "tooManyAttempts": "Zu viele Versuche. Bitte warte kurz und fordere einen neuen Code an.",
+        "rateLimited": "Zu viele Anfragen. Bitte versuche es gleich noch einmal.",
+        "mailDisabled": "Der E-Mail-Versand ist nicht eingerichtet."
+      },
+      "validation": {
+        "failed": "Die Eingabe ist ungültig."
+      },
+      "internal": "Etwas ist schiefgegangen. Bitte versuche es später noch einmal."
     }
   }
 }

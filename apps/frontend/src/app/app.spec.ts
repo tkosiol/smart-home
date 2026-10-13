@@ -5,7 +5,7 @@ import { App } from './app';
 import { provideI18n } from './core/i18n';
 
 describe('App', () => {
-  it('renders the app shell', async () => {
+  it('renders only the router outlet', async () => {
     TestBed.configureTestingModule({
       imports: [App],
       providers: [
@@ -18,7 +18,7 @@ describe('App', () => {
     fixture.detectChanges();
     const host = fixture.nativeElement as HTMLElement;
 
-    expect(host.querySelector('app-shell')).not.toBeNull();
-    expect(host.children.length).toBe(1);
+    expect(host.querySelector('router-outlet')).not.toBeNull();
+    expect(host.querySelector('app-shell')).toBeNull();
   });
 });

@@ -1,7 +1,12 @@
 import { Component, inject, signal } from '@angular/core';
 import { MATERIAL_ANIMATIONS } from '@angular/material/core';
-import { applicationConfig, type Meta, type StoryObj } from '@storybook/angular';
+import { BreakpointObserver } from '@angular/cdk/layout';
+import { provideLocationMocks } from '@angular/common/testing';
+import { provideRouter, withDisabledInitialNavigation } from '@angular/router';
+import { of } from 'rxjs';
+import { applicationConfig, moduleMetadata, type Meta, type StoryObj } from '@storybook/angular';
 import { expect, screen, userEvent, waitFor } from 'storybook/test';
+import { UiAdaptiveShell } from '../adaptive-shell/adaptive-shell';
 import { UiButton } from '../button/button';
 import { waitForTranslations } from '../testing/storybook-environment';
 import { UiSnackbar } from './snackbar';
@@ -19,6 +24,15 @@ class SnackbarDemo {
     this.result.set(await this.snackbar.show('Raum gelöscht', { action: 'Rückgängig' }));
   }
 }
+
+@Component({
+  selector: 'ui-snackbar-shell-demo',
+  imports: [UiAdaptiveShell, SnackbarDemo],
+  template: `<ui-adaptive-shell [destinations]="[]" navigationLabel="Hauptnavigation">
+    <ui-snackbar-demo />
+  </ui-adaptive-shell>`,
+})
+class SnackbarShellDemo {}
 
 // Material's snack bar starts at opacity 0 and fades in after its enter animation. Disabling
 // Material's animations shows it at once, so the play function's visibility check need not wait.
@@ -59,5 +73,35 @@ export const Schliessen: StoryObj<SnackbarDemo> = {
     await expect(getComputedStyle(close).color).toBe(getComputedStyle(surface).color);
     await userEvent.keyboard('{Enter}');
     await waitFor(() => expect(canvas.getByText('Ergebnis: dismissed')).toBeVisible());
+  },
+};
+
+// On a compact window the fixed bottom bar must not cover the message: it rises above the bar.
+export const UeberDerLeiste: StoryObj<SnackbarShellDemo> = {
+  render: () => ({ template: '<ui-snackbar-shell-demo />' }),
+  decorators: [
+    moduleMetadata({ imports: [SnackbarShellDemo] }),
+    applicationConfig({
+      providers: [
+        provideLocationMocks(),
+        provideRouter([], withDisabledInitialNavigation()),
+        {
+          provide: BreakpointObserver,
+          useValue: { observe: () => of({ matches: false, breakpoints: {} }) },
+        },
+      ],
+    }),
+  ],
+  play: async ({ canvas, canvasElement }) => {
+    await expect(canvasElement.querySelector('ui-adaptive-shell')).toHaveAttribute(
+      'data-window-class',
+      'compact',
+    );
+    await userEvent.click(canvas.getByRole('button', { name: 'Raum löschen' }));
+    const container = (await screen.findByText('Raum gelöscht')).closest(
+      'mat-snack-bar-container',
+    )!;
+    const bar = canvasElement.querySelector('nav')!.getBoundingClientRect();
+    await expect(container.getBoundingClientRect().bottom).toBeLessThanOrEqual(bar.top);
   },
 };

@@ -1,3 +1,5 @@
+import { HttpClient } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import {
   ApplicationInitStatus,
@@ -9,6 +11,7 @@ import { DEFAULT_INSTANCE_APPEARANCE, type InstanceAppearance } from '@smart/con
 import { APPEARANCE_STORE, MemoryAppearanceStore, ThemeService } from '@smart/ui';
 import { createAppConfig } from './app.config';
 import { RUNTIME_CONFIG } from './core/config';
+import { ApiError } from './core/api';
 import { injectMoreEntries } from './core/features';
 
 const plum: InstanceAppearance = {
@@ -56,6 +59,27 @@ describe('createAppConfig', () => {
     // The router's scroller takes over the browser's restoration once the app is bootstrapped.
     TestBed.inject(ApplicationRef).bootstrap(Shell, document.createElement('app-shell'));
     expect(history.scrollRestoration).toBe('manual');
+  });
+
+  it('provides an HTTP client whose API errors are ApiErrors', async () => {
+    // The testing backend replaces fetch only; the interceptors stay in place.
+    TestBed.configureTestingModule({
+      providers: [
+        ...createAppConfig({
+          features: { instanceAppearanceEditor: false },
+          instanceAppearance: plum,
+        }).providers,
+        { provide: APPEARANCE_STORE, useValue: new MemoryAppearanceStore() },
+        provideHttpClientTesting(),
+      ],
+    });
+    const failed = new Promise((_, reject) =>
+      TestBed.inject(HttpClient).get('/api/me').subscribe({ error: reject }),
+    ).catch((error: unknown) => error);
+    TestBed.inject(HttpTestingController)
+      .expectOne('/api/me')
+      .flush('<html>', { status: 502, statusText: 'Bad Gateway' });
+    expect(await failed).toEqual(expect.any(ApiError));
   });
 
   it('registers the settings entry for the More page', () => {

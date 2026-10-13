@@ -5,6 +5,12 @@ import { UiSnackbarContent, type UiSnackbarData } from './snackbar-content';
 /** Plain messages close after this time; messages with an action stay until the user reacts (WCAG 2.2.1). */
 const PLAIN_DURATION_MS = 4000;
 
+/**
+ * Marks the snack bar for the global rule in `styles.scss` that lifts it above the compact
+ * bottom navigation bar.
+ */
+const PANEL_CLASS = 'ui-snackbar';
+
 /** Short, temporary feedback at the bottom of the screen. Texts come translated from the caller. */
 @Injectable({ providedIn: 'root' })
 export class UiSnackbar {
@@ -23,6 +29,7 @@ export class UiSnackbar {
       data,
       duration: options.action ? undefined : PLAIN_DURATION_MS,
       politeness: options.politeness ?? 'polite',
+      panelClass: PANEL_CLASS,
     });
     return new Promise((resolve) => {
       ref
