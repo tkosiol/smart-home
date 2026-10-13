@@ -92,13 +92,13 @@ SMART_VPS=<DEPLOY_USER>@<VPS_HOST> infra/deploy/admin.sh staging create-admin --
 SMART_VPS=<DEPLOY_USER>@<VPS_HOST> infra/deploy/admin.sh production create-admin --email <E-MAIL> --name "<Name>"
 ```
 
-Auf Staging muss die Adresse des Admins in `MAIL_ALLOWLIST` stehen, sonst kommt kein Code an. Die Anmeldung danach: `/anmelden`, Adresse eingeben, Code aus der Mail eintragen.
+Auf Staging muss die Adresse des Admins in `MAIL_ALLOWLIST` stehen, sonst kommt kein Code an. Die Anmeldung danach: `/anmelden`, Adresse eingeben, Code aus der Mail eintragen. Der erste Admin hat noch keinen Haushalt: Die App führt ihn nach der Anmeldung zu `/einrichten`, wo er Namen und Zeitzone des ersten Haushalts festlegt (er wird dessen Eigentümer). Weitere Personen lädt er danach unter „Mehr → Mitglieder“ per E-Mail ein; den Einladungslink sieht er dort auch, falls keine Mail ankommt.
 
 `admin.sh` führt `node dist/cli.js create-admin …` im laufenden `api`-Container des Stacks aus (`docker compose … exec -T api`). Erlaubt sind nur `create-admin` und `revoke-sessions`; jedes Argument wird einzeln gequotet und kommt auf dem VPS als genau ein Wort an. Die E-Mail wird normalisiert (Kleinbuchstaben). Der Befehl ist idempotent: existiert der Benutzer schon, setzt er nur `is_platform_admin` und lässt Name und Sprache unverändert. Ausgabe: Ergebnis mit maskierter Adresse, keine Geheimnisse. Exit-Code 1 bei ungültiger E-Mail oder fehlendem `--name`, 2 bei falschem Aufruf.
 
 ### Sessions eines Benutzers widerrufen
 
-Ist ein Gerät verloren oder eine Sitzung nicht mehr vertrauenswürdig, widerruft Till alle offenen Sessions des Benutzers; danach muss sich dieser überall neu anmelden:
+Notbremse, solange die App keine eigene Sicherheitsseite (Geräte und Sitzungen) hat. Ist ein Gerät verloren oder eine Sitzung nicht mehr vertrauenswürdig, widerruft Till alle offenen Sessions des Benutzers; danach muss sich dieser überall neu anmelden:
 
 ```bash
 SMART_VPS=<DEPLOY_USER>@<VPS_HOST> infra/deploy/admin.sh production revoke-sessions --email <E-MAIL>
@@ -114,7 +114,7 @@ Der `web`-Container schreibt beim Start `/config.json` aus der Umgebungsvariable
 | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `SMART_INSTANCE_APPEARANCE` | Optional: Standard-Theme der Installation als JSON (`instanceAppearanceSchema` in `packages/contracts`). Gültiges JSON mit ungültigem Inhalt: die App nutzt den Build-Standard. Syntaktisch kaputtes JSON macht die gesamte `config.json` unbrauchbar (die App startet mit den Standardwerten). |
 
-Vorrang des Instanz-Themes: der Wert der Installation auf dem Server (den der Plattform-Admin unter „Einstellungen → Erscheinungsbild der Installation“ setzt; der Browser hält davon eine Kopie für den Start ohne Netz) vor `SMART_INSTANCE_APPEARANCE` vor dem Build-Standard. „Auf Standard zurücksetzen“ löscht den Wert auf dem Server. Den früheren Schalter `SMART_INSTANCE_APPEARANCE_EDITOR` gibt es nicht mehr; eine vorhandene Zeile in der `.env` wird ignoriert.
+Das Instanz-Theme bearbeitet der Plattform-Admin in der App (kein Editor-Schalter in der Umgebung nötig). Vorrang: der Wert der Installation auf dem Server (den der Plattform-Admin unter „Einstellungen → Erscheinungsbild der Installation“ setzt; der Browser hält davon eine Kopie für den Start ohne Netz) vor `SMART_INSTANCE_APPEARANCE` vor dem Build-Standard. „Auf Standard zurücksetzen“ löscht den Wert auf dem Server. Den früheren Schalter `SMART_INSTANCE_APPEARANCE_EDITOR` gibt es nicht mehr; eine vorhandene Zeile in der `.env` wird ignoriert.
 
 Der Service Worker cached `config.json` mit Frische-Strategie: Netz zuerst, nach 2 s oder offline die zuletzt geladene Kopie. Eine geänderte Variable wirkt also beim nächsten Laden, sobald das Netz antwortet.
 

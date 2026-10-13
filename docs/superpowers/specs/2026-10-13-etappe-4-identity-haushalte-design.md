@@ -80,7 +80,8 @@ Alle Geheimnisse (Session-Token, Codes, Nonces, Einladungs- und Recovery-Tokens)
 - Einladungen: owner lädt mit E-Mail und Rolle ein; Token 256 Bit, Hash, 7 Tage, einmalig; erneut senden erzeugt ein neues Token und macht das alte ungültig; widerrufbar. Annahme unter `/einladung/:token`:
   - ohne Konto: Name eingeben → User (E-Mail aus der Einladung, gilt als bestätigt) + Session (`auth_method=invitation`) + Mitgliedschaft; danach Passkey-Angebot (erst mit 4b);
   - mit Konto: nach Anmeldung annehmen; die E-Mail des angemeldeten Users muss passen, sonst `invitation.emailMismatch`;
-  - ohne Mailversand zeigt die App dem owner den Link zum Kopieren.
+  - Der Link erscheint dem owner immer (nicht nur ohne Mailversand) einmalig nach dem Einladen oder erneuten Senden, zum Kopieren; danach lässt er sich nicht mehr anzeigen (nur der Hash ist gespeichert).
+  - Abweichung von der ursprünglichen Planung: Die Einladungs-API nimmt das Token im Body, nicht im Pfad (`POST /api/v1/invitations/preview`, `/accept`, `/accept-new`), damit es nicht in Zugriffsprotokollen landet. Die Seite `/einladung/:token` merkt sich das Token in der `sessionStorage` (`smart.invitation`) und leitet sofort auf `/einladung` weiter; der Weg über die Anmeldung läuft über `/anmelden?ziel=/einladung`.
 - `PUT /api/v1/me` speichert `last_household_id` (aktueller Haushalt, geräteübergreifend).
 
 ### 3.8 Instanz-Einstellungen (4c)
@@ -153,7 +154,7 @@ Titel der oberen Leiste = aktueller Haushalt; bei mehreren Haushalten ein Auswah
 ## 6. Tests
 
 - Backend: Unit-Tests (Codes, Hashing, Laufzeitregeln, Maskierung); Integrationstests gegen echte DB (vorhandene Helfer). Pflicht-Sicherheitstests: falscher/fehlender `Origin`; Rate-Limits; keine Kontoaufzählung (gleiche Antwort, vergleichbare Zeit); Cookie-Flags; abgelaufene, widerrufene und über 180 Tage alte Sessions abgewiesen; Code nur mit passender Nonce, einmalig, maximal 5 Versuche; letzter owner; Mandanten-Guard (fremder Haushalt → 404); Einladung an andere E-Mail.
-- Frontend: Specs für Guards, Interceptor, Auth-Zustand inkl. Offline-Start und 401; Storybook für Anmelden, Einrichten, Einladung, Sicherheitsseite, Mitglieder (beide Sprachen, beide Prüfthemes).
+- Frontend: Specs für Guards, Interceptor, Auth-Zustand inkl. Offline-Start und 401; Storybook nur für `@smart/ui`; App-Seiten (Anmelden, Einrichten, Einladung, Sicherheitsseite, Mitglieder) prüfen Specs und E2E.
 - Stack-E2E (Playwright): Anmelden per Code (Code aus der Mailpit-API), Abmelden, Passkey anlegen und damit anmelden (CDP `WebAuthn` virtueller Authenticator), Session auf anderem Kontext widerrufen, Einladung annehmen (mit und ohne Konto), Rollen wirken, Theme-Sync zwischen zwei Kontexten, Offline-Start mit letztem Stand.
 - Bundle-Budget: initiales JavaScript unter 500 kB (Fehler), Ziel nach 4a unter 440 kB.
 
