@@ -357,19 +357,28 @@ describe('household members and roles', () => {
         await released;
       });
       await lockTaken;
-      const both = Promise.all([
-        call('patch', membersPath(id, second.id), first.cookie).send({ role: 'member' }),
-        call('patch', membersPath(id, first.id), second.cookie).send({ role: 'member' }),
-      ]);
-      await waitForLockWaiters(2);
-      release();
-      await holder;
-      const responses = await both;
+      let both: Promise<request.Response[]> | undefined;
+      try {
+        both = Promise.all([
+          call('patch', membersPath(id, second.id), first.cookie).send({ role: 'member' }),
+          call('patch', membersPath(id, first.id), second.cookie).send({ role: 'member' }),
+        ]);
+        await waitForLockWaiters(2);
+        release();
+        await holder;
+        const responses = await both;
 
-      expect(responses.map((response) => response.status).sort()).toEqual([204, 409]);
-      const failed = responses.find((response) => response.status === 409);
-      expect(failed && errorCode(failed)).toBe('household.lastOwner');
-      expect(await ownerCount(id)).toBe(1);
+        expect(responses.map((response) => response.status).sort()).toEqual([204, 409]);
+        const failed = responses.find((response) => response.status === 409);
+        expect(failed && errorCode(failed)).toBe('household.lastOwner');
+        expect(await ownerCount(id)).toBe(1);
+      } finally {
+        // On a failure the lock must not stay held: the requests would block and the app could
+        // not close.
+        release();
+        await holder.catch(() => undefined);
+        await both?.catch(() => undefined);
+      }
     });
 
     it('lets exactly one of two owners leave concurrently', async () => {

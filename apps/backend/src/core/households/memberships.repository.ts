@@ -55,6 +55,7 @@ export class MembershipsRepository {
         .select()
         .from(memberships)
         .where(eq(memberships.householdId, householdId))
+        .orderBy(memberships.userId) // one lock order for everybody: no deadlocks
         .for('update');
       const target = rows.find((row) => row.userId === userId);
       if (!target) throw new ApiError(HttpStatus.NOT_FOUND, 'household.notFound');
