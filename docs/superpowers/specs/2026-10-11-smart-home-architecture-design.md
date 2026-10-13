@@ -281,16 +281,20 @@ Zusätzlich: CodeQL (eigener Workflow), Trivy-Scan der gebauten Images.
 
 Ein Haushalt hat immer mindestens einen `owner`. Registrierte User dürfen eigene Haushalte anlegen (und sind dort `owner`). Feature-Module können eigene, feinere Berechtigungen auf Basis dieser Rollen definieren.
 
+- **Letzter Haushalt:** `users.last_household_id` merkt den zuletzt gewählten Haushalt geräteübergreifend.
+- **Instanz-Einstellungen:** `instance_settings` hält das Instanz-Theme in der Datenbank; ändern darf es nur ein Plattform-Admin. Es hat Vorrang vor `config.json` und dem Build-Standard.
+- **Erster Haushalt:** Ein angemeldeter User ohne Haushalt landet auf einer Einrichtungsseite, auf der er seinen ersten Haushalt anlegt.
+
 ### 7.2 Login
 
 - **Keine Passwörter.**
 - **Passkeys (WebAuthn)** als Hauptweg, `@simplewebauthn/server`. Discoverable Credentials (Login ohne E-Mail-Eingabe), `userVerification: required`. RP-ID pro Umgebung (`smart.tillkosiol.de`, `staging.smart.tillkosiol.de`, `localhost`). Fremdgeräte nutzen den Cross-Device-Flow (QR-Code + Handy).
-- **E-Mail-Code** als Alternative (Versand über Resend): 6 Ziffern, 10 Minuten gültig, einmalig, gehasht gespeichert, max. 5 Versuche; Rate-Limits pro E-Mail und pro IP; Code nur gültig im anfordernden Browser (Bindung über ein Nonce-Cookie); neutrale Antwort („Falls ein Konto existiert …“); Info-Mail „Neue Anmeldung“ nach jedem Login per Code; anschließend Angebot, einen Passkey anzulegen.
-- **Notfall:** CLI-Befehl auf dem Server erzeugt einen einmaligen Recovery-Link für einen User.
+- **E-Mail-Code** als Alternative (Versand über Resend per SMTP): 6 Ziffern, 10 Minuten gültig, einmalig, gehasht gespeichert, max. 5 Versuche; Rate-Limits: Anfordern höchstens 3 je E-Mail und 10 je IP in 15 Minuten, Prüfen höchstens 20 je IP in 15 Minuten; Code nur gültig im anfordernden Browser (Bindung über ein Nonce-Cookie); neutrale Antwort („Falls ein Konto existiert …“); Info-Mail „Neue Anmeldung“ nach jedem Login per Code; anschließend Angebot, einen Passkey anzulegen.
+- **Notfall:** CLI-Befehl auf dem Server erzeugt einen einmaligen Recovery-Link für einen User (1 Stunde gültig).
 
 > **Self-Hosting-Leitplanken 3 und 5 (ADR-0018):** Mailversand ist optional (generisches SMTP oder Resend); ohne Mail-Konfiguration ist der E-Mail-Code abgeschaltet. Passkeys setzen HTTPS mit festem Hostnamen voraus; die App erkennt einen unsicheren Kontext und erklärt ihn.
 
-- **Erster Admin:** CLI-Befehl auf dem Server. Keine offene Registrierung.
+- **Erster Admin:** CLI-Befehl `create-admin` auf dem Server (auf dem VPS über `infra/deploy/admin.sh`). Keine offene Registrierung.
 - **Voraussetzung:** Das E-Mail-Konto ist der Generalschlüssel und muss selbst mit 2FA gesichert sein.
 
 ### 7.3 Sessions
@@ -339,17 +343,19 @@ apps/backend/src/
 
 **Identität und Haushalte**
 
-| Tabelle             | Wesentliche Felder                                                                                                                                                        |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `users`             | `id`, `email` (eindeutig, case-insensitiv), `display_name`, `locale` (`de`/`en`), `is_platform_admin`, `theme` (JSON: Grundfarbe, Variante, Modus, Kontrast), Zeitstempel |
-| `passkeys`          | `user_id`, `credential_id`, `public_key`, `counter`, `transports`, `name`, `last_used_at`                                                                                 |
-| `sessions`          | `token_hash`, `user_id`, `auth_method`, `user_agent`, `created_at`, `last_seen_at`, `expires_at`, `absolute_expires_at`, `revoked_at`                                     |
-| `email_login_codes` | `email`, `code_hash`, `browser_nonce_hash`, `attempts`, `expires_at`, `used_at`                                                                                           |
-| `recovery_tokens`   | `user_id`, `token_hash`, `expires_at`, `used_at`                                                                                                                          |
-| `households`        | `id`, `name`, `timezone` (IANA)                                                                                                                                           |
-| `memberships`       | `household_id`, `user_id`, `role`                                                                                                                                         |
-| `invitations`       | `household_id`, `email`, `role`, `token_hash`, `invited_by`, `expires_at`, `accepted_at`, `revoked_at`                                                                    |
-| `rooms`             | `household_id`, `name`, `sort_order`                                                                                                                                      |
+| Tabelle               | Wesentliche Felder                                                                                                                                                                    |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `users`               | `id`, `email` (eindeutig, case-insensitiv), `display_name`, `locale` (`de`/`en`), `is_platform_admin`, `appearance` (JSON: Farben, Modus, Kontrast), `last_household_id`, Zeitstempel |
+| `passkeys`            | `user_id`, `credential_id`, `public_key`, `counter`, `transports`, `name`, `last_used_at`                                                                                             |
+| `sessions`            | `token_hash`, `user_id`, `auth_method`, `user_agent`, `created_at`, `last_seen_at`, `expires_at`, `absolute_expires_at`, `revoked_at`                                                 |
+| `email_login_codes`   | `email`, `code_hash`, `browser_nonce_hash`, `attempts`, `expires_at`, `used_at`                                                                                                       |
+| `webauthn_challenges` | `challenge`, `browser_nonce_hash`, `user_id` (optional), `purpose` (`register`/`login`), `expires_at`                                                                                 |
+| `recovery_tokens`     | `user_id`, `token_hash`, `expires_at`, `used_at`                                                                                                                                      |
+| `households`          | `id`, `name`, `timezone` (IANA)                                                                                                                                                       |
+| `memberships`         | `household_id`, `user_id`, `role`                                                                                                                                                     |
+| `invitations`         | `household_id`, `email`, `role`, `token_hash`, `invited_by`, `expires_at`, `accepted_at`, `revoked_at`                                                                                |
+| `rooms`               | `household_id`, `name`, `sort_order`                                                                                                                                                  |
+| `instance_settings`   | `id` (immer 1), `appearance` (JSON, Instanz-Theme, optional), `updated_at`, `updated_by`                                                                                              |
 
 **Gateways, Hardware und Geräte**
 
@@ -451,7 +457,7 @@ Fehler einer Nachricht beenden nie den Konsumenten. Beim Herunterfahren wird der
 
 ### 8.11 Mail
 
-Schnittstelle `MailSender` mit Adaptern `ResendMailSender` (Staging/Prod) und `SmtpMailSender` (lokal → Mailpit). Templates pro Sprache. Staging versendet nur an eine Freigabeliste.
+Schnittstelle `MailSender` mit einem Adapter, `SmtpMailSender` (nodemailer, `SMTP_URL`): Staging und Produktion versenden über Resend per SMTP, lokal und im Stack-Test fängt Mailpit die Mails ab. Ohne `SMTP_URL` ist der Versand abgeschaltet (`DisabledMailSender`) und damit der E-Mail-Code. Templates pro Sprache. Staging versendet nur an eine Freigabeliste (`MAIL_ALLOWLIST`).
 
 ---
 

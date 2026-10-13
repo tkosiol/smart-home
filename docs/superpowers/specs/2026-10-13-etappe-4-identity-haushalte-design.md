@@ -130,7 +130,7 @@ Hauptknopf „Mit Passkey anmelden“ (4b); darunter „Code per E-Mail“: E-Ma
 
 ### 4.6 HTTP und Rückmeldung
 
-`provideHttpClient(withFetch(), withInterceptors([...]))`: Fehlerformat lesen, `401` behandeln, Fehler als Snackbar (übersetzter Code). Die Snackbar hält auf dem Handy Abstand zur unteren Leiste.
+Ein kleiner, auf `fetch` gestützter `ApiClient` (`core/api`: `get`, `post`, `put`; Token `API_FETCH` für die Browser-`fetch`, Präfix `API_BASE` = `/api/v1`): Er liest das Fehlerformat und wirft `ApiError`, meldet `401` über den Token `UNAUTHORIZED_HANDLER` und gibt Fehler als Snackbar aus (übersetzter Code). Angulars `HttpClient` entfällt; das spart rund 20 kB im initialen Bundle. Die Snackbar hält auf dem Handy Abstand zur unteren Leiste.
 
 ### 4.7 Haushalt in der Oberfläche (4c)
 
