@@ -42,6 +42,22 @@ describe('ApiClient', () => {
     );
   });
 
+  it('passes a referrer policy on to fetch only when asked to', async () => {
+    const { api, fetchFn } = setup(() => json({}));
+    await api.post('/api/v1/a', { x: 1 }, { referrerPolicy: 'no-referrer' });
+    await api.get('/api/v1/b');
+    expect(fetchFn).toHaveBeenNthCalledWith(
+      1,
+      '/api/v1/a',
+      expect.objectContaining({ referrerPolicy: 'no-referrer' }),
+    );
+    expect(fetchFn).toHaveBeenNthCalledWith(
+      2,
+      '/api/v1/b',
+      expect.objectContaining({ referrerPolicy: undefined }),
+    );
+  });
+
   it('sends POST and PUT bodies as JSON', async () => {
     const { api, fetchFn } = setup(() => json({ ok: true }));
     await api.post('/api/v1/a', { x: 1 });

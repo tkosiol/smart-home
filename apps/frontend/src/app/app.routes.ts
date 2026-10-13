@@ -17,6 +17,13 @@ export const routes: Routes = [
     loadChildren: () => import('./features/auth').then((m) => m.authRoutes),
   },
   {
+    // Outside the shell and without a guard: the invited may be signed in or not. The route's own
+    // title is fixed, so the token never reaches the page title.
+    path: 'einladung',
+    title: marker('app.title.invitation'),
+    loadChildren: () => import('./features/invitation').then((m) => m.invitationRoutes),
+  },
+  {
     path: 'einrichten',
     title: marker('app.title.setup'),
     canMatch: [signedIn],

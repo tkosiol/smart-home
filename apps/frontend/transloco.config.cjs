@@ -13,6 +13,7 @@ module.exports = {
     settings: 'src/app/features/settings/i18n',
     auth: 'src/app/features/auth/i18n',
     households: 'src/app/features/households/i18n',
+    invitation: 'src/app/features/invitation/i18n',
   },
   keysManager: { input: ['src/app'], unflat: true, emitErrorOnExtraKeys: true },
 };

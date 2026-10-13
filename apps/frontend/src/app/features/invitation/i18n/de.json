@@ -1,0 +1,30 @@
+{
+  "title": "Einladung",
+  "roles": {
+    "viewer": "Betrachter",
+    "member": "Mitglied",
+    "owner": "Eigentümer"
+  },
+  "summary": "Du wurdest von {{ inviter }} in {{ household }} als {{ role }} eingeladen.",
+  "invalid": {
+    "text": "Einladung ungültig oder abgelaufen. Bitte lass dir von der einladenden Person einen neuen Link schicken.",
+    "signIn": "Zur Anmeldung"
+  },
+  "failed": {
+    "text": "Die Einladung konnte nicht geladen werden.",
+    "retry": "Erneut versuchen"
+  },
+  "accept": "Annehmen",
+  "name": {
+    "label": "Dein Name",
+    "error": "Bitte gib einen Namen mit höchstens 60 Zeichen ein."
+  },
+  "signIn": {
+    "text": "Melde dich mit {{ email }} an.",
+    "button": "Anmelden"
+  },
+  "mismatch": {
+    "text": "Diese Einladung gehört zu einer anderen E-Mail-Adresse: {{ email }}.",
+    "switch": "Abmelden und mit dieser Adresse anmelden"
+  }
+}

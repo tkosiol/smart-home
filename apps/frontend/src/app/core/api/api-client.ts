@@ -16,6 +16,8 @@ export const API_BASE = '/api/v1';
 
 export interface ApiRequestInit {
   readonly signal?: AbortSignal;
+  /** For requests that carry a secret in the body: `no-referrer` keeps the page's URL out of the Referer header. */
+  readonly referrerPolicy?: ReferrerPolicy;
 }
 
 /**
@@ -67,6 +69,7 @@ export class ApiClient {
         body: body === undefined ? undefined : JSON.stringify(body),
         credentials: 'same-origin',
         signal: init?.signal,
+        referrerPolicy: init?.referrerPolicy,
       });
     } catch (error) {
       // An abort is the caller's own doing, not an API failure.
