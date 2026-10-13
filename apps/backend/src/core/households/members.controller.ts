@@ -11,15 +11,9 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { memberRoleUpdateSchema, type Member } from '@smart/contracts';
-import { HouseholdGuard, type HouseholdRequest } from './household.guard.js';
-import type { Membership } from './households.schema.js';
+import { HouseholdGuard, membershipOf, type HouseholdRequest } from './household.guard.js';
 import { MembersService } from './members.service.js';
 import { RequireRole } from './require-role.decorator.js';
-
-const membershipOf = (request: HouseholdRequest): Membership => {
-  if (!request.membership) throw new Error('household guard did not attach the membership');
-  return request.membership;
-};
 
 @Controller('v1/households/:householdId/members')
 @UseGuards(HouseholdGuard)

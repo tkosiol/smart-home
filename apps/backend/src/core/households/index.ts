@@ -1,3 +1,4 @@
+export { HouseholdsCleanupJob } from './cleanup.job.js';
 export { HouseholdGuard, type HouseholdRequest } from './household.guard.js';
 export { HouseholdsModule } from './households.module.js';
 export { HouseholdsRepository } from './households.repository.js';

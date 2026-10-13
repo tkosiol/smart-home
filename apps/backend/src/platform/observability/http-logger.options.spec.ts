@@ -52,6 +52,19 @@ describe('createHttpLoggerOptions', () => {
     expect(raw).not.toContain('server-secret');
   });
 
+  it('keeps invitation tokens out of the logged URL', async () => {
+    const { url, lines } = await serve();
+    await fetch(`${url}/api/v1/invitations/secret-token_123/accept-new?x=1`);
+    await fetch(`${url}/api/v1/invitations/other-secret`);
+    await fetch(`${url}/api/v1/households/abc/invitations`);
+
+    const raw = JSON.stringify(lines());
+    expect(raw).not.toContain('secret-token_123');
+    expect(raw).not.toContain('other-secret');
+    expect(raw).toContain('/api/v1/invitations/[redacted]/accept-new?x=1');
+    expect(raw).toContain('/api/v1/households/abc/invitations');
+  });
+
   it('does not log health probes', async () => {
     const { url, lines } = await serve();
     await fetch(`${url}/api/health/live`);

@@ -12,6 +12,8 @@ const MINUTE_MS = 60_000;
 export const RATE_LIMITS = {
   emailCodeRequestPerIp: { limit: 10, ttl: 15 * MINUTE_MS },
   emailCodeVerifyPerIp: { limit: 20, ttl: 15 * MINUTE_MS },
+  /** Preview, accept and accept-new of an invitation link; each route counts on its own. */
+  invitationPerIp: { limit: 20, ttl: 15 * MINUTE_MS },
 } as const;
 export type RateLimitName = keyof typeof RATE_LIMITS;
 

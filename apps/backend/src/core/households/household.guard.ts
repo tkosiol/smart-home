@@ -11,6 +11,12 @@ import { REQUIRED_ROLE } from './require-role.decorator.js';
 /** A request after `HouseholdGuard`: the caller's membership in `:householdId`. */
 export type HouseholdRequest = AuthenticatedRequest & { membership?: Membership };
 
+/** The membership `HouseholdGuard` attached; a missing one means the route lacks the guard. */
+export const membershipOf = (request: HouseholdRequest): Membership => {
+  if (!request.membership) throw new Error('household guard did not attach the membership');
+  return request.membership;
+};
+
 /**
  * Tenant guard for routes under `v1/households/:householdId`: the caller must be a member with at
  * least the role declared by `@RequireRole`. Runs after the global session check.

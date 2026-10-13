@@ -14,7 +14,7 @@ import {
   MeService,
   UsersRepository,
 } from '../identity/index.js';
-import { HouseholdGuard, type HouseholdRequest } from './household.guard.js';
+import { HouseholdGuard, membershipOf, type HouseholdRequest } from './household.guard.js';
 import { HouseholdsRepository } from './households.repository.js';
 import { isUuid } from './is-uuid.js';
 import { MembershipsRepository } from './memberships.repository.js';
@@ -69,8 +69,7 @@ export class HouseholdController {
   @RequireRole('owner')
   async update(@Req() request: HouseholdRequest, @Body() body: unknown): Promise<HouseholdSummary> {
     const update = householdUpdateSchema.parse(body);
-    const membership = request.membership;
-    if (!membership) throw new Error('household guard did not attach the membership');
+    const membership = membershipOf(request);
     const household = await this.households.update(membership.householdId, update);
     if (!household) throw new ApiError(HttpStatus.NOT_FOUND, 'household.notFound');
     const { id, name, timezone } = household;
