@@ -1,16 +1,10 @@
+import { Body, Controller, HttpCode, HttpStatus, Inject, Post, Req, Res } from '@nestjs/common';
 import {
-  Body,
-  Controller,
-  Get,
-  HttpCode,
-  HttpStatus,
-  Inject,
-  Param,
-  Post,
-  Req,
-  Res,
-} from '@nestjs/common';
-import { invitationAcceptNewSchema, type InvitationPreview, type Me } from '@smart/contracts';
+  invitationAcceptNewSchema,
+  invitationTokenSchema,
+  type InvitationPreview,
+  type Me,
+} from '@smart/contracts';
 import type { Request, Response } from 'express';
 import { Public, RateLimit } from '../../platform/http/index.js';
 import {
@@ -25,10 +19,11 @@ import {
 import { InvitationsService } from './invitations.service.js';
 
 /**
- * Whoever holds the link reaches these routes; the token in the path is the secret. All three are
- * limited per address (20 in 15 minutes each).
+ * Whoever holds the link reaches these routes; the token is the secret and travels in the body, so
+ * it appears in no URL, access log or Referer. Each route allows 20 requests per address in 15
+ * minutes.
  */
-@Controller('v1/invitations/:token')
+@Controller('v1/invitations')
 @RateLimit('invitationPerIp')
 export class InvitationAcceptController {
   constructor(
@@ -38,19 +33,19 @@ export class InvitationAcceptController {
     @Inject(CLOCK) private readonly clock: Clock,
   ) {}
 
+  /** A POST (the token stays out of the URL), but it only reads. */
   @Public()
-  @Get()
-  preview(@Param('token') token: string): Promise<InvitationPreview> {
-    return this.invitations.preview(token);
+  @Post('preview')
+  @HttpCode(HttpStatus.OK)
+  preview(@Body() body: unknown): Promise<InvitationPreview> {
+    return this.invitations.preview(invitationTokenSchema.parse(body).token);
   }
 
   /** For an account that exists: the signed-in user must own the invited address. */
   @Post('accept')
   @HttpCode(HttpStatus.OK)
-  async accept(
-    @CurrentUser() current: AuthenticatedUser,
-    @Param('token') token: string,
-  ): Promise<Me> {
+  async accept(@CurrentUser() current: AuthenticatedUser, @Body() body: unknown): Promise<Me> {
+    const { token } = invitationTokenSchema.parse(body);
     return this.meService.forUser(await this.invitations.accept(token, current.id));
   }
 
@@ -59,13 +54,12 @@ export class InvitationAcceptController {
   @Post('accept-new')
   @HttpCode(HttpStatus.OK)
   async acceptNew(
-    @Param('token') token: string,
     @Body() body: unknown,
     @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
   ): Promise<Me> {
     const input = invitationAcceptNewSchema.parse(body);
-    const user = await this.invitations.acceptNew(token, input);
+    const user = await this.invitations.acceptNew(input.token, input);
     const session = await this.sessions.create(
       user.id,
       'invitation',

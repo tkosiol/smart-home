@@ -109,7 +109,14 @@ export const invitationPreviewSchema = z.object({
 });
 export type InvitationPreview = z.infer<typeof invitationPreviewSchema>;
 
+/** The secret of an invitation link; sent in the body, never in a URL. */
+const invitationTokenField = z.string().check(z.minLength(1), z.maxLength(100));
+
+export const invitationTokenSchema = z.object({ token: invitationTokenField });
+export type InvitationToken = z.infer<typeof invitationTokenSchema>;
+
 export const invitationAcceptNewSchema = z.object({
+  token: invitationTokenField,
   displayName: displayNameSchema,
   locale: languageSchema,
 });

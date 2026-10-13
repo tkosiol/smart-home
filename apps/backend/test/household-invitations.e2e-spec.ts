@@ -135,11 +135,11 @@ describe('household invitations', () => {
     return invitationCreatedSchema.parse(response.body);
   };
   const preview = (token: string, ip?: string): request.Test =>
-    call('get', `${INVITATIONS}/${token}`, { ip });
+    call('post', `${INVITATIONS}/preview`, { ip }).send({ token });
   const accept = (token: string, cookie: string): request.Test =>
-    call('post', `${INVITATIONS}/${token}/accept`, { cookie });
+    call('post', `${INVITATIONS}/accept`, { cookie }).send({ token });
   const acceptNew = (token: string, body: object = { displayName: 'Gast', locale: 'en' }) =>
-    call('post', `${INVITATIONS}/${token}/accept-new`).send(body);
+    call('post', `${INVITATIONS}/accept-new`).send({ token, ...body });
   const roleOf = async (householdId: string, userId: string): Promise<string | undefined> => {
     const rows = await connection.sql<{ role: string }[]>`
       select role from memberships where household_id = ${householdId} and user_id = ${userId}`;
@@ -428,7 +428,7 @@ describe('household invitations', () => {
     );
   });
 
-  describe('GET /invitations/:token', () => {
+  describe('POST /invitations/preview', () => {
     it('previews household, role, address, inviter and whether an account exists', async () => {
       const { id, users } = await household('owner');
       const [owner] = users as [TestUser];
@@ -469,6 +469,26 @@ describe('household invitations', () => {
       expect(errorCode(await preview(tokenOf(created)).expect(404))).toBe('invitation.invalid');
     });
 
+    it.each(['preview', 'accept', 'accept-new'])(
+      'requires the token in the body of %s: 400 validation.failed',
+      async (route) => {
+        const cookie = (await signedIn()).cookie;
+        for (const body of [{}, { token: '' }, { token: 'x'.repeat(101) }]) {
+          const response = await call('post', `${INVITATIONS}/${route}`, { cookie })
+            .send({ displayName: 'Gast', locale: 'en', ...body })
+            .expect(400);
+          expect(errorCode(response)).toBe('validation.failed');
+        }
+      },
+    );
+
+    it('has no route with the token in the URL', async () => {
+      await call('get', `${INVITATIONS}/${'z'.repeat(43)}`).expect(404);
+      await call('post', `${INVITATIONS}/${'z'.repeat(43)}/accept-new`)
+        .send({ displayName: 'Gast', locale: 'en' })
+        .expect(404);
+    });
+
     it('limits requests to 20 per address in 15 minutes', async () => {
       const ip = '203.0.113.77';
       const token = 'y'.repeat(43);
@@ -481,7 +501,7 @@ describe('household invitations', () => {
     });
   });
 
-  describe('POST /invitations/:token/accept', () => {
+  describe('POST /invitations/accept', () => {
     it('adds the signed-in invitee with the invited role and answers /me', async () => {
       const { id, users } = await household('owner');
       const [owner] = users as [TestUser];
@@ -523,7 +543,9 @@ describe('household invitations', () => {
       const { id, users } = await household('owner');
       const [owner] = users as [TestUser];
       const created = await invite(id, owner);
-      const response = await call('post', `${INVITATIONS}/${tokenOf(created)}/accept`).expect(401);
+      const response = await call('post', `${INVITATIONS}/accept`)
+        .send({ token: tokenOf(created) })
+        .expect(401);
       expect(errorCode(response)).toBe('auth.required');
       await preview(tokenOf(created)).expect(200);
     });
@@ -564,7 +586,7 @@ describe('household invitations', () => {
     });
   });
 
-  describe('POST /invitations/:token/accept-new', () => {
+  describe('POST /invitations/accept-new', () => {
     it('creates the account, the membership and a session with the flags of 4a', async () => {
       const { id, users } = await household('owner');
       const [owner] = users as [TestUser];

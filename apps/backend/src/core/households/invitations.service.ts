@@ -7,6 +7,7 @@ import type {
   InvitationPreview,
 } from '@smart/contracts';
 import { ENV, type Env } from '../../platform/config/index.js';
+import { describeError } from '../../platform/errors/index.js';
 import { ApiError } from '../../platform/http/index.js';
 import { invitation as invitationMail, MAIL_SENDER, maskEmail } from '../../platform/mail/index.js';
 import type { MailSender } from '../../platform/mail/index.js';
@@ -176,8 +177,10 @@ export class InvitationsService {
           }),
         });
       // Failures are logged without the error itself, which may quote the address or the link.
-      void send().catch(() => {
-        this.logger.error(`Invitation mail to ${maskEmail(row.email)} failed`);
+      void send().catch((error: unknown) => {
+        this.logger.error(
+          `Invitation mail to ${maskEmail(row.email)} failed: ${describeError(error)}`,
+        );
       });
     }
     return { invitation: toInvitation(row, inviter.displayName), link };

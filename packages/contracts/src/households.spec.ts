@@ -12,6 +12,7 @@ import {
   invitationCreatedSchema,
   invitationPreviewSchema,
   invitationSchema,
+  invitationTokenSchema,
   memberRoleUpdateSchema,
   memberSchema,
   timeZoneSchema,
@@ -148,11 +149,22 @@ describe('invitations', () => {
     ).toBe(true);
   });
 
-  it('accepts a new account with name and language', () => {
+  it('takes the token from the body: non-empty, at most 100 characters', () => {
+    expect(invitationTokenSchema.safeParse({ token: 'abc' }).success).toBe(true);
+    expect(invitationTokenSchema.safeParse({ token: '' }).success).toBe(false);
+    expect(invitationTokenSchema.safeParse({ token: 'x'.repeat(101) }).success).toBe(false);
+    expect(invitationTokenSchema.safeParse({}).success).toBe(false);
+  });
+
+  it('accepts a new account with token, name and language', () => {
     expect(
-      invitationAcceptNewSchema.safeParse({ displayName: ' Gast ', locale: 'en' }).data,
-    ).toEqual({ displayName: 'Gast', locale: 'en' });
-    expect(invitationAcceptNewSchema.safeParse({ displayName: 'Gast', locale: 'fr' }).success).toBe(
+      invitationAcceptNewSchema.safeParse({ token: 't', displayName: ' Gast ', locale: 'en' }).data,
+    ).toEqual({ token: 't', displayName: 'Gast', locale: 'en' });
+    expect(
+      invitationAcceptNewSchema.safeParse({ token: 't', displayName: 'Gast', locale: 'fr' })
+        .success,
+    ).toBe(false);
+    expect(invitationAcceptNewSchema.safeParse({ displayName: 'Gast', locale: 'en' }).success).toBe(
       false,
     );
   });
