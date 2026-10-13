@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
-import { DEFAULT_RUNTIME_CONFIG } from '@smart/contracts';
 import { APPEARANCE_STORE, MemoryAppearanceStore, ThemeService } from '@smart/ui';
-import { provideRuntimeConfig } from '../../core/config';
+import { AuthService } from '../../core/auth';
+import { signedInProviders, TEST_ME } from '../../testing/auth-testing';
 import { settle, setupPage } from '../../testing/page-testing';
 import { settingsRoutes } from './settings.routes';
 
@@ -13,13 +13,11 @@ describe('installation page', () => {
       [{ path: 'mehr/einstellungen', loadChildren: () => settingsRoutes }],
       'de',
       [
-        provideRuntimeConfig({
-          ...DEFAULT_RUNTIME_CONFIG,
-          features: { instanceAppearanceEditor: true },
-        }),
+        ...signedInProviders({ ...TEST_ME, isPlatformAdmin: true }),
         { provide: APPEARANCE_STORE, useValue: new MemoryAppearanceStore() },
       ],
     );
+    await TestBed.inject(AuthService).load();
     await harness.navigateByUrl('/mehr/einstellungen/installation');
     await settle(harness);
     return harness.routeNativeElement as HTMLElement;

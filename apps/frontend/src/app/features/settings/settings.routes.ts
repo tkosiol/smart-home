@@ -2,11 +2,14 @@ import { inject } from '@angular/core';
 import { Router, type CanMatchFn, type Routes } from '@angular/router';
 import { provideTranslocoScope } from '@jsverse/transloco';
 import { marker } from '@jsverse/transloco-keys-manager/marker';
-import { RUNTIME_CONFIG } from '../../core/config';
+import { AuthService } from '../../core/auth';
 
-/** The installation appearance is only reachable while the hoster enabled its editor (also by URL). */
-const instanceEditorEnabled: CanMatchFn = () =>
-  inject(RUNTIME_CONFIG).features.instanceAppearanceEditor ||
+/**
+ * The installation appearance is for the platform admin only (also by URL); Task 7 moves this
+ * guard to core/household. The shell's `signedIn` guard has settled the user before it runs.
+ */
+const platformAdmin: CanMatchFn = () =>
+  inject(AuthService).me()?.isPlatformAdmin === true ||
   inject(Router).parseUrl('/mehr/einstellungen');
 
 // Pages load lazily (loadComponent): the app config imports this folder's index at startup for
@@ -36,7 +39,7 @@ export const settingsRoutes: Routes = [
       {
         path: 'installation',
         title: marker('app.title.installation'),
-        canMatch: [instanceEditorEnabled],
+        canMatch: [platformAdmin],
         loadComponent: () => import('./installation-page').then((m) => m.InstallationPage),
       },
     ],

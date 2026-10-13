@@ -94,10 +94,6 @@ if [ -n "$mail_allowlist" ]; then lines+=("MAIL_ALLOWLIST=$mail_allowlist"); fi
 while IFS= read -r smart_line; do
   lines+=("$smart_line")
 done < <(printf '%s\n' "$existing" | grep '^SMART_' || true)
-# Staging gets the editor switch only if the existing file has no such line yet.
-if [ "$environment" = staging ] && ! grep -q '^SMART_INSTANCE_APPEARANCE_EDITOR=' <<< "$existing"; then
-  lines+=("SMART_INSTANCE_APPEARANCE_EDITOR=true")
-fi
 
 if [ "$environment" = production ]; then
   backup_uid=$(ssh -n "$host" "id -u")

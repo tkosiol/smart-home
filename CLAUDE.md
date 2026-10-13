@@ -39,7 +39,7 @@ Lokale Ports (nur 127.0.0.1): DB 5433, MQTT 1884, Mailpit SMTP 1026 / UI 8026. `
 
 Anmeldung per E-Mail-Code: lokal fängt Mailpit die Mails ab; Betrieb (Resend, `APP_ORIGIN`, Admin anlegen) in `docs/runbooks/provisioning.md`.
 
-Laufzeitkonfiguration der Web-App: `SMART_INSTANCE_APPEARANCE_EDITOR`, `SMART_INSTANCE_APPEARANCE` → `/config.json` (siehe `docs/runbooks/provisioning.md`).
+Laufzeitkonfiguration der Web-App: `SMART_INSTANCE_APPEARANCE` → `/config.json` (siehe `docs/runbooks/provisioning.md`). Das Instanz-Theme selbst liegt auf dem Server (`/api/v1/instance/appearance`, Plattform-Admin); Vorrang: Server, `config.json`, Build-Standard.
 
 ## Architekturregeln (per Lint erzwungen)
 

@@ -36,6 +36,10 @@ Neues Symbol: Namen in `src/lib/icon/icons.json` eintragen, dann `pnpm icons:bui
 - **Ansagen:** `UiAnnouncer.announce(text, politeness)` meldet Änderungen ohne Fokusziel an Screenreader, etwa einen Eintrag, der nach dem Speichern verschwindet.
 - **Fensterklassen:** `ui-adaptive-shell` zeigt die Navigation unter 600 px als Leiste unten, von 600 bis 839 px als Rail und ab 840 px als Drawer. Die Ziele übergibt der Aufrufer als `UiNavDestination[]`.
 
+## Instanz-Theme
+
+Das Instanz-Theme gehört dem Server. Vorrang (Spec 3.8): Wert des Servers, `config.json` (`provideTheme({ instance })`), Build-Standard. Der Browser hält nur eine Kopie des Server-Werts (für den Start ohne Netz); die App holt den Wert beim Start und übergibt ihn mit `ThemeService.adoptInstance(value)` (`null`: auf dem Server ist nichts gespeichert). `adoptInstance` benachrichtigt niemanden. Änderungen im Editor (`setInstance`, `resetInstance`) speichern die Kopie und rufen die Hörer aus `onInstanceChange(listener)` (`resetInstance` meldet `null`); die App schickt sie an den Server. Gleiches Muster wie `adoptPersonal` und `onPersonalChange`.
+
 ## Bundle-Größe
 
 Das initiale Bundle der App lag mit Etappe 3d bei rund 498 kB; die Grenze sind 500 kB (Build-Fehler, `angular.json`). Seit Etappe 4a lädt der `ThemeService` die Theme-Engine (`@smart/theme` mit `@material/material-color-utilities`, rund 50 kB) erst nach dem ersten Rendern als eigenen Chunk (`loadThemeEngine()`, `ThemeService.ready`); bis dahin bleibt das Theme aus `theme-boot.js` und dem Default-CSS stehen. Der Stand liegt jetzt bei rund 448 kB. Nur die engine-freie Auflösung (`resolveAppearance` aus `@smart/theme/resolve`) ist statisch importiert; `@smart/theme` selbst darf im Startpfad nur per `import()` vorkommen. Neuer Code, der beim Start geladen wird, braucht trotzdem zuerst Platz: lazy laden. Nutzen nur lazy Seiten einen Baustein, gehört er in `@smart/ui/forms`; `core/`, `shell/` und die App-Wurzel dürfen es per Lint nicht importieren.

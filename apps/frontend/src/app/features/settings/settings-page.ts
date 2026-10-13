@@ -1,9 +1,9 @@
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { TranslocoPipe } from '@jsverse/transloco';
 import { UiList, UiListItem, UiPage } from '@smart/ui';
-import { RUNTIME_CONFIG } from '../../core/config';
+import { AuthService } from '../../core/auth';
 
-/** Entry point of the settings: appearance for everyone, the installation only when enabled. */
+/** Entry point of the settings: appearance for everyone, the installation only for the platform admin. */
 @Component({
   selector: 'app-settings-page',
   imports: [TranslocoPipe, UiList, UiListItem, UiPage],
@@ -16,7 +16,7 @@ import { RUNTIME_CONFIG } from '../../core/config';
           [headline]="'settings.list.appearance' | transloco"
           [supporting]="'settings.list.appearanceHint' | transloco"
         />
-        @if (instanceEditor) {
+        @if (isPlatformAdmin()) {
           <ui-list-item
             icon="home"
             route="/mehr/einstellungen/installation"
@@ -30,5 +30,6 @@ import { RUNTIME_CONFIG } from '../../core/config';
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class SettingsPage {
-  protected readonly instanceEditor = inject(RUNTIME_CONFIG).features.instanceAppearanceEditor;
+  private readonly auth = inject(AuthService);
+  protected readonly isPlatformAdmin = computed(() => this.auth.me()?.isPlatformAdmin === true);
 }
