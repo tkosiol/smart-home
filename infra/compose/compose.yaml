@@ -38,6 +38,10 @@ services:
       MQTT_URL: mqtt://broker:1883
       MQTT_USERNAME: smart-api
       MQTT_PASSWORD: ${MQTT_API_PASSWORD:?MQTT_API_PASSWORD is required}
+      APP_ORIGIN: ${APP_ORIGIN:?APP_ORIGIN is required}
+      # Proxies in front of the api whose X-Forwarded-For entries are trusted: web nginx (1); on the
+      # VPS Nginx Proxy Manager sits in front as well (2).
+      TRUSTED_PROXY_HOPS: ${TRUSTED_PROXY_HOPS:-1}
     depends_on:
       db:
         condition: service_healthy

@@ -47,6 +47,8 @@ Produktion fragt B2-Zugang, restic-Passwort und healthchecks.io-URLs ab (vorher 
 
 ## 5. Reverse Proxy (Nginx Proxy Manager)
 
+Hinweis: Die API liest die Client-IP (Rate-Limits) aus `X-Forwarded-For`. `TRUSTED_PROXY_HOPS` in der `.env` der Umgebung muss der Zahl der vorgeschalteten Proxys entsprechen: 1 (Standard) nur mit dem Web-nginx, auf dem VPS 2, weil Nginx Proxy Manager davorsteht.
+
 Proxy Host pro Umgebung: Domain → `http://smart-prod-web:8080` bzw. `http://smart-staging-web:8080`, „Block Common Exploits“ an; SSL: neues Let's-Encrypt-Zertifikat, „Force SSL“, „HTTP/2“, „HSTS“.
 
 ## 6. Prüfen

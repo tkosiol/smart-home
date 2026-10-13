@@ -18,6 +18,7 @@ BACKUP_UID=4242
 BACKUP_GID=4343
 DB_PASSWORD=stack-test-db
 MQTT_API_PASSWORD=stack-test-mqtt
+APP_ORIGIN=http://127.0.0.1:18080
 ENV
 
 compose() {
