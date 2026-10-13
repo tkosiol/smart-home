@@ -25,6 +25,15 @@ export class SmtpMailSender implements MailSender {
       this.logger.warn(`Dropped mail to ${maskEmail(normalizeEmail(message.to))}: not allowlisted`);
       return;
     }
-    await this.transport.sendMail({ from: this.from, ...message });
+    // Transport errors can quote the recipient or the server's reply, so none is attached as cause;
+    // only the codes are logged.
+    await this.transport.sendMail({ from: this.from, ...message }).catch((error: unknown) => {
+      const { code, responseCode } = error as { code?: unknown; responseCode?: unknown };
+      this.logger.error(
+        `Mail to ${maskEmail(normalizeEmail(message.to))} failed (code ${String(code)}, ` +
+          `response ${String(responseCode)})`,
+      );
+      throw new Error('Mail delivery failed');
+    });
   }
 }

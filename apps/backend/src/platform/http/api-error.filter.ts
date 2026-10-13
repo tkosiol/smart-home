@@ -1,5 +1,6 @@
 import {
   type ArgumentsHost,
+  BadRequestException,
   Catch,
   type ExceptionFilter,
   HttpException,
@@ -10,6 +11,21 @@ import type { ApiError as ApiErrorBody } from '@smart/contracts';
 import type { Request, Response } from 'express';
 import { $ZodError } from 'zod/v4/core';
 import { ApiError } from './api-error.js';
+
+/** A `BadRequestException` built from a message only (not from our own structured body). */
+function isPlainBadRequest(exception: unknown): boolean {
+  if (!(exception instanceof BadRequestException)) return false;
+  const body = exception.getResponse();
+  return typeof body === 'object' && 'error' in body && body.error === 'Bad Request';
+}
+
+/** The 4xx status of an http-errors style error (as thrown by Express body parsers), if any. */
+function clientErrorStatus(exception: unknown): number | undefined {
+  if (typeof exception !== 'object' || exception === null) return undefined;
+  const { status, statusCode } = exception as { status?: unknown; statusCode?: unknown };
+  const value = typeof status === 'number' ? status : statusCode;
+  return typeof value === 'number' && value >= 400 && value <= 499 ? value : undefined;
+}
 
 /**
  * Renders every failure as `{ code, params, traceId }`. Other HttpExceptions keep the framework's
@@ -33,12 +49,21 @@ export class ApiErrorFilter implements ExceptionFilter {
     } else if (exception instanceof $ZodError) {
       // The issues name fields and may echo values; the client only learns that validation failed.
       this.send(response, HttpStatus.BAD_REQUEST, { code: 'validation.failed', traceId });
+    } else if (isPlainBadRequest(exception)) {
+      // Express maps malformed JSON bodies to a bare BadRequestException (message = parser text).
+      this.send(response, HttpStatus.BAD_REQUEST, { code: 'validation.failed', traceId });
     } else if (exception instanceof HttpException) {
       const body = exception.getResponse();
       const status = exception.getStatus();
       response
         .status(status)
         .json(typeof body === 'string' ? { statusCode: status, message: body } : body);
+    } else if (clientErrorStatus(exception) !== undefined) {
+      // Body-parser failures (malformed JSON, oversize body, ...) are the client's fault.
+      this.send(response, clientErrorStatus(exception) ?? HttpStatus.BAD_REQUEST, {
+        code: 'validation.failed',
+        traceId,
+      });
     } else {
       this.logger.error(
         `Unhandled error (traceId ${traceId})`,

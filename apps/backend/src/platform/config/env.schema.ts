@@ -23,6 +23,11 @@ export const envSchema = z
         (value) => URL.canParse(value) && new URL(value).origin === value,
         'expected an origin without a path',
       ),
+    /**
+     * Reverse proxies in front of the API (web nginx = 1, plus Nginx Proxy Manager on the VPS = 2).
+     * Client IPs (rate limits) are read that many entries from the right of X-Forwarded-For.
+     */
+    TRUSTED_PROXY_HOPS: z.coerce.number().int().min(0).default(1),
     /** Without it the e-mail sign-in is switched off. Carries credentials: never log it. */
     SMTP_URL: optional(z.url({ protocol: /^smtps?$/ })),
     MAIL_FROM: optional(z.string().min(1)),

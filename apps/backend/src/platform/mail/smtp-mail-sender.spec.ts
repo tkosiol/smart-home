@@ -49,11 +49,30 @@ describe('SmtpMailSender', () => {
     expect(logged).not.toContain('till@example.org');
   });
 
-  it('propagates transport failures without logging the message', async () => {
-    const transport = { sendMail: vi.fn().mockRejectedValue(new Error('connection refused')) };
+  it('hides the recipient and transport details when delivery fails', async () => {
+    const failure = Object.assign(new Error('550 5.1.1 <till@example.org>: user unknown'), {
+      code: 'EENVELOPE',
+      responseCode: 550,
+    });
+    const transport = { sendMail: vi.fn().mockRejectedValue(failure) };
+    const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const error = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
     const sender = new SmtpMailSender(transport, 'noreply@example.org');
 
-    await expect(sender.send(message)).rejects.toThrow('connection refused');
+    const rejection = await sender.send(message).then(
+      () => undefined,
+      (caught: unknown) => caught as Error,
+    );
+
+    expect(rejection?.message).toBe('Mail delivery failed');
+    expect(JSON.stringify([rejection?.message, rejection?.stack])).not.toContain(
+      'till@example.org',
+    );
+    const logged = JSON.stringify([...warn.mock.calls, ...error.mock.calls]);
+    expect(logged).toContain('t***@example.org');
+    expect(logged).toContain('EENVELOPE');
+    expect(logged).toContain('550');
+    expect(logged).not.toContain('till@example.org');
   });
 });
 

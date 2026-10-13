@@ -1,10 +1,19 @@
-import { Controller, Get, Global, type INestApplication, Module, Post, Req } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Global,
+  type INestApplication,
+  Logger,
+  Module,
+  Post,
+  Req,
+} from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { apiErrorSchema } from '@smart/contracts';
 import type { Request } from 'express';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { configureApp } from '../../app.setup.js';
 import { ENV, type Env } from '../config/index.js';
@@ -48,7 +57,10 @@ class ProbeController {
 }
 
 @Global()
-@Module({ providers: [{ provide: ENV, useValue: { APP_ORIGIN: ORIGIN } as Env }], exports: [ENV] })
+@Module({
+  providers: [{ provide: ENV, useValue: { APP_ORIGIN: ORIGIN, TRUSTED_PROXY_HOPS: 1 } as Env }],
+  exports: [ENV],
+})
 class TestEnvModule {}
 
 @Module({ imports: [TestEnvModule, HttpModule], controllers: [ProbeController] })
@@ -129,5 +141,46 @@ describe('HTTP platform', () => {
     for (let attempt = 0; attempt < 30; attempt++) {
       await request(app.getHttpServer()).get('/api/probe/ok').expect(200);
     }
+  });
+
+  it('keys rate limits on the address the trusted proxy saw, not on a spoofed header entry', async () => {
+    const send = (forwardedFor: string) =>
+      request(app.getHttpServer())
+        .post('/api/probe/limited')
+        .set('Origin', ORIGIN)
+        .set('X-Forwarded-For', forwardedFor);
+    for (let attempt = 0; attempt < 20; attempt++) {
+      await send(`10.0.0.${attempt}, 5.6.7.8`).expect(201);
+    }
+    const blocked = await send('10.9.9.9, 5.6.7.8').expect(429);
+    expect(apiErrorSchema.parse(blocked.body).code).toBe('auth.rateLimited');
+    await send('1.2.3.4, 5.6.7.9').expect(201);
+  });
+
+  describe('client errors from the body parser', () => {
+    it('answers malformed JSON with 400 validation.failed and logs no error', async () => {
+      const error = vi.spyOn(Logger.prototype, 'error');
+      const response = await request(app.getHttpServer())
+        .post('/api/probe/write')
+        .set('Origin', ORIGIN)
+        .set('Content-Type', 'application/json')
+        .send('{"broken":')
+        .expect(400);
+      expect(apiErrorSchema.parse(response.body).code).toBe('validation.failed');
+      expect(error).not.toHaveBeenCalled();
+      error.mockRestore();
+    });
+
+    it('answers an oversize body with 413 validation.failed and logs no error', async () => {
+      const error = vi.spyOn(Logger.prototype, 'error');
+      const response = await request(app.getHttpServer())
+        .post('/api/probe/write')
+        .set('Origin', ORIGIN)
+        .send({ filler: 'x'.repeat(200_000) })
+        .expect(413);
+      expect(apiErrorSchema.parse(response.body).code).toBe('validation.failed');
+      expect(error).not.toHaveBeenCalled();
+      error.mockRestore();
+    });
   });
 });

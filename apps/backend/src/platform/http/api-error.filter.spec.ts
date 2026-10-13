@@ -61,6 +61,38 @@ describe('ApiErrorFilter', () => {
     expect(run(result.error)).toMatchObject({ status: 400, body: { code: 'validation.failed' } });
   });
 
+  it('turns a message-only BadRequestException (malformed JSON) into validation.failed', () => {
+    const { status, body } = run(new BadRequestException('Unexpected token \'b\' in {"secret"'));
+    expect(status).toBe(400);
+    expect(apiErrorSchema.parse(body)).toEqual({ code: 'validation.failed', traceId: 'trace-123' });
+    expect(JSON.stringify(body)).not.toContain('secret');
+  });
+
+  it.each([
+    [400, 'entity.parse.failed'],
+    [413, 'entity.too.large'],
+    [415, 'charset.unsupported'],
+  ])('keeps the %i status of body-parser client errors as validation.failed', (status, type) => {
+    const error = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    const clientError = Object.assign(new Error('Unexpected token in JSON'), {
+      status,
+      statusCode: status,
+      type,
+    });
+    const result = run(clientError);
+    expect(result.status).toBe(status);
+    expect(apiErrorSchema.parse(result.body)).toEqual({
+      code: 'validation.failed',
+      traceId: 'trace-123',
+    });
+    expect(error).not.toHaveBeenCalled();
+  });
+
+  it('does not mistake a 5xx status on a foreign error for a client error', () => {
+    vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    expect(run(Object.assign(new Error('x'), { status: 502 })).status).toBe(500);
+  });
+
   it('answers unknown errors with 500 internal and logs the stack, not the message body', () => {
     const error = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
     const boom = new Error('db password is hunter2');

@@ -16,6 +16,7 @@ describe('loadEnv', () => {
       NODE_ENV: 'development',
       PORT: 3000,
       LOG_LEVEL: 'info',
+      TRUSTED_PROXY_HOPS: 1,
     });
   });
 
@@ -67,6 +68,17 @@ describe('loadEnv', () => {
         expect(() => loadEnv({ ...valid, APP_ORIGIN })).toThrowError(/APP_ORIGIN/);
       },
     );
+  });
+
+  describe('TRUSTED_PROXY_HOPS', () => {
+    it('coerces to a number', () => {
+      expect(loadEnv({ ...valid, TRUSTED_PROXY_HOPS: '2' }).TRUSTED_PROXY_HOPS).toBe(2);
+      expect(loadEnv({ ...valid, TRUSTED_PROXY_HOPS: '0' }).TRUSTED_PROXY_HOPS).toBe(0);
+    });
+
+    it.each(['-1', '1.5', 'many'])('rejects %s', (TRUSTED_PROXY_HOPS) => {
+      expect(() => loadEnv({ ...valid, TRUSTED_PROXY_HOPS })).toThrowError(/TRUSTED_PROXY_HOPS/);
+    });
   });
 
   describe('mail settings', () => {
