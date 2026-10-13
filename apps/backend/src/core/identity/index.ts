@@ -14,7 +14,7 @@ export {
   type User,
 } from './identity.schema.js';
 export { LOGIN_NONCE_COOKIE } from './login-nonce.cookie.js';
-export { toMe } from './me.js';
+export { ME_HOUSEHOLDS, MeService, type MeHouseholds } from './me.service.js';
 export { newLoginCode, newToken, sameHash, sha256 } from './secrets.js';
 export { clearSessionCookie, SESSION_COOKIE, setSessionCookie } from './session.cookie.js';
 export { SessionService, type ValidSession } from './session.service.js';

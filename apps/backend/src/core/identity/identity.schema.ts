@@ -26,6 +26,12 @@ export const users = pgTable('users', {
     .notNull()
     .default(DEFAULT_PERSONAL_APPEARANCE),
   isPlatformAdmin: boolean('is_platform_admin').notNull().default(false),
+  /**
+   * The household the user selected last. A plain uuid here because `households` lives in
+   * core/households, which depends on identity; the foreign key (`on delete set null`) is added
+   * in the households migration.
+   */
+  lastHouseholdId: uuid('last_household_id'),
   createdAt: timestamptz('created_at').notNull().defaultNow(),
   updatedAt: timestamptz('updated_at').notNull().defaultNow(),
 });

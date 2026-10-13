@@ -15,6 +15,13 @@
       "when": 1791912741973,
       "tag": "0001_identity_sessions",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791926538799,
+      "tag": "0002_households",
+      "breakpoints": true
     }
   ]
 }

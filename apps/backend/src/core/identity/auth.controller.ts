@@ -12,7 +12,7 @@ import {
   readNonce,
   setLoginNonceCookie,
 } from './login-nonce.cookie.js';
-import { toMe } from './me.js';
+import { MeService } from './me.service.js';
 import { newToken } from './secrets.js';
 import { clearSessionCookie, setSessionCookie } from './session.cookie.js';
 import { SessionService } from './session.service.js';
@@ -25,6 +25,7 @@ export class AuthController {
   constructor(
     private readonly emailLogin: EmailLoginService,
     private readonly sessions: SessionService,
+    private readonly meService: MeService,
     @Inject(CLOCK) private readonly clock: Clock,
   ) {}
 
@@ -61,7 +62,7 @@ export class AuthController {
     );
     clearLoginNonceCookie(response);
     setSessionCookie(response, token, expiresAt, this.clock());
-    return toMe(user);
+    return this.meService.forUser(user);
   }
 
   @Post('logout')
