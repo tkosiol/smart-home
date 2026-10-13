@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for the deploy wrapper, deploy.sh and provision.sh using stubbed docker, curl and ssh.
+# Tests for the deploy wrapper, deploy.sh, provision.sh and admin.sh using stubbed docker, curl and ssh.
 # shellcheck disable=SC2016 # check() expressions are evaluated later on purpose
 set -u
 cd "$(dirname "$0")/.." || exit 1
@@ -16,7 +16,7 @@ setup() {
   export SMART_STACKS_DIR="$WORK/apps" SMART_READY_DELAY=0
   export PATH="$STUBS:$PATH"
   : > "$STUB_CALLS"
-  unset STUB_FAIL_INFRA STUB_FAIL_MIGRATE STUB_FAIL_UP STUB_READY_FAILURES STUB_COMPARE_STATUS STUB_ENV_EXISTS STUB_SSH_DOWN STUB_EXISTING_ENV SSH_ORIGINAL_COMMAND
+  unset STUB_FAIL_INFRA STUB_FAIL_MIGRATE STUB_FAIL_UP STUB_READY_FAILURES STUB_COMPARE_STATUS STUB_ENV_EXISTS STUB_SSH_DOWN STUB_EXISTING_ENV STUB_SSH_EXEC STUB_REMOTE_HOME STUB_ARGV_LOG SSH_ORIGINAL_COMMAND
 }
 teardown() { rm -rf "$WORK"; }
 check() {
@@ -114,6 +114,27 @@ check "provision writes no editor switch for production" 'answers | bash "$DEPLO
 setup; STUB_EXISTING_ENV=$(printf 'STACK_NAME=smart-staging\nDB_PASSWORD=keep-db\nSMART_INSTANCE_APPEARANCE={"name":"kept"}')
 export SMART_VPS=deploy@vps STUB_ENV_EXISTS=1 STUB_EXISTING_ENV
 check "provision --force keeps existing runtime settings verbatim" 'bash "$DEPLOY_DIR/provision.sh" staging --force < /dev/null > /dev/null 2>&1 && grep -qxF "SMART_INSTANCE_APPEARANCE={\"name\":\"kept\"}" "$STUB_REMOTE_FILE"'; teardown
+
+# --- admin.sh ---
+run_admin() { (bash "$DEPLOY_DIR/admin.sh" "$@" < /dev/null > "$WORK/out" 2>&1); echo $?; }
+setup; export SMART_VPS=deploy@vps
+check "admin refuses an unknown command" '[ "$(run_admin staging recovery-link --email a@example.org)" = 2 ]'
+check "admin refuses a shell command as the command" '[ "$(run_admin staging "create-admin; id")" = 2 ]'
+check "admin refuses an unknown environment" '[ "$(run_admin prod create-admin --email a@example.org --name A)" = 2 ]'
+check "admin refuses a missing command" '[ "$(run_admin staging)" = 2 ]'
+check "admin contacts the VPS only for allowed commands" '[ ! -s "$STUB_CALLS" ]'; teardown
+setup; unset SMART_VPS
+check "admin requires SMART_VPS" '[ "$(run_admin staging create-admin --email a@example.org --name A)" != 0 ] && [ ! -s "$STUB_CALLS" ]'; teardown
+setup; export SMART_VPS=deploy@vps
+check "admin runs create-admin in the production stack with a terminal" '[ "$(run_admin production create-admin --email a@example.org --name Anna)" = 0 ] && grep -q "^ssh -t deploy@vps cd docker/apps/smart-prod && docker compose -f compose.yaml --env-file .env --env-file deploy.env exec -T api node dist/cli.js create-admin " "$STUB_CALLS"'
+check "admin uses the staging stack for staging" 'run_admin staging create-admin --email a@example.org --name Anna > /dev/null && grep -q "cd docker/apps/smart-staging &&" "$STUB_CALLS"'; teardown
+setup; export SMART_VPS=deploy@vps STUB_SSH_EXEC=1 STUB_REMOTE_HOME="$WORK/home" STUB_ARGV_LOG="$WORK/argv"
+mkdir -p "$STUB_REMOTE_HOME/docker/apps/smart-staging"
+# shellcheck disable=SC2034 # used by the check() expressions below
+NASTY_NAME="O'Neil \"\$(touch $WORK/pwned)\" \`touch $WORK/pwned\`; touch $WORK/pwned #"
+check "admin hands every argument to the remote command as one word" 'run_admin staging create-admin --email "a b@example.org" --name "$NASTY_NAME" > /dev/null && [ "$(tail -n 1 "$STUB_ARGV_LOG")" = "docker <compose> <-f> <compose.yaml> <--env-file> <.env> <--env-file> <deploy.env> <exec> <-T> <api> <node> <dist/cli.js> <create-admin> <--email> <a b@example.org> <--name> <$NASTY_NAME>" ]'
+check "admin lets no argument run on the VPS" '[ ! -e "$WORK/pwned" ]'
+check "admin keeps empty arguments" 'run_admin staging create-admin --name "" > /dev/null && tail -n 1 "$STUB_ARGV_LOG" | grep -q "<--name> <>$"'; teardown
 
 echo "deploy tests: $passed passed, $failures failed"
 [ "$failures" -eq 0 ]

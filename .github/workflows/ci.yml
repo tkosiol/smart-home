@@ -108,7 +108,7 @@ jobs:
       - name: shellcheck
         run: >
           docker run --rm -v "$PWD:/mnt" -w /mnt koalaman/shellcheck:v0.11.0
-          infra/deploy/smart-deploy infra/deploy/deploy.sh infra/deploy/provision.sh
+          infra/deploy/smart-deploy infra/deploy/deploy.sh infra/deploy/provision.sh infra/deploy/admin.sh
           infra/deploy/test/run-tests.sh infra/deploy/test/stubs/docker infra/deploy/test/stubs/curl infra/deploy/test/stubs/ssh
           infra/backup/backup.sh infra/backup/restore-test.sh infra/broker/entrypoint.sh
           infra/local/smoke-test.sh infra/compose/test/stack-test.sh

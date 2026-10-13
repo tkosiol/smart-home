@@ -1,4 +1,5 @@
 export { type AuthenticatedRequest, type AuthenticatedUser } from './authenticated-user.js';
+export { runCli, type CliOutput } from './cli/run-cli.js';
 export { CleanupJob } from './cleanup.job.js';
 export { CLOCK, type Clock } from './clock.js';
 export { CurrentUser } from './current-user.decorator.js';

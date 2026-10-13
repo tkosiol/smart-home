@@ -1,6 +1,12 @@
 #!/bin/sh
 # Test double: records every call; fails or answers depending on STUB_* variables.
 printf '%s\n' "$*" >> "$STUB_CALLS"
+# One line per argument, to prove how arguments arrive (word boundaries survive).
+if [ -n "${STUB_ARGV_LOG:-}" ]; then
+  printf 'docker' >> "$STUB_ARGV_LOG"
+  for argument; do printf ' <%s>' "$argument" >> "$STUB_ARGV_LOG"; done
+  printf '\n' >> "$STUB_ARGV_LOG"
+fi
 case "$*" in
   *"up -d --wait db broker"*)
     [ "${STUB_FAIL_INFRA:-0}" = 1 ] && exit 1 ;;

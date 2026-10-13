@@ -58,6 +58,17 @@ ssh -i <tmp-key> <DEPLOY_USER>@<VPS_HOST> "deploy 000000000000000000000000000000
 ssh -i <tmp-key> <DEPLOY_USER>@<VPS_HOST> "ls"                                                # → usage
 ```
 
+## Ersten Admin anlegen
+
+Nach dem ersten Deploy gibt es noch keinen Benutzer, also auch keine Anmeldung. Till legt sich im eigenen Terminal selbst als Plattform-Admin an (E-Mail-Code-Anmeldung danach wie gewohnt):
+
+```bash
+SMART_VPS=<DEPLOY_USER>@<VPS_HOST> infra/deploy/admin.sh staging create-admin --email <E-MAIL> --name "<Name>"
+SMART_VPS=<DEPLOY_USER>@<VPS_HOST> infra/deploy/admin.sh production create-admin --email <E-MAIL> --name "<Name>"
+```
+
+`admin.sh` führt `node dist/cli.js create-admin …` im laufenden `api`-Container des Stacks aus (`docker compose … exec -T api`). Erlaubt ist nur `create-admin`; jedes Argument wird einzeln gequotet und kommt auf dem VPS als genau ein Wort an. Die E-Mail wird normalisiert (Kleinbuchstaben). Der Befehl ist idempotent: existiert der Benutzer schon, setzt er nur `is_platform_admin` und lässt Name und Sprache unverändert. Ausgabe: Ergebnis mit maskierter Adresse, keine Geheimnisse. Exit-Code 1 bei ungültiger E-Mail oder fehlendem `--name`, 2 bei falschem Aufruf.
+
 ## Laufzeitkonfiguration der Web-App
 
 Der `web`-Container schreibt beim Start `/config.json` aus zwei Umgebungsvariablen (`apps/frontend/nginx/40-smart-config.sh`). Änderungen wirken nach einem Neustart des Containers, ohne Neubau.

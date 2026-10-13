@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { normalizeEmail, type Language } from '@smart/contracts';
-import { eq } from 'drizzle-orm';
+import { normalizeEmail, type Language, type PreferencesUpdate } from '@smart/contracts';
+import { eq, sql } from 'drizzle-orm';
 import { DATABASE, type DatabaseConnection } from '../../platform/database/index.js';
 import { users, type User } from './identity.schema.js';
 
@@ -34,6 +34,25 @@ export class UsersRepository {
 
   async findById(id: string): Promise<User | undefined> {
     const [row] = await this.connection.db.select().from(users).where(eq(users.id, id));
+    return row;
+  }
+
+  async setPlatformAdmin(id: string): Promise<User | undefined> {
+    const [row] = await this.connection.db
+      .update(users)
+      .set({ isPlatformAdmin: true, updatedAt: sql`now()` })
+      .where(eq(users.id, id))
+      .returning();
+    return row;
+  }
+
+  /** Replaces what is given (`appearance` as a whole); fields left out stay as they are. */
+  async updatePreferences(id: string, update: PreferencesUpdate): Promise<User | undefined> {
+    const [row] = await this.connection.db
+      .update(users)
+      .set({ ...update, updatedAt: sql`now()` })
+      .where(eq(users.id, id))
+      .returning();
     return row;
   }
 }

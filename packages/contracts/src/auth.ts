@@ -8,7 +8,7 @@ export function normalizeEmail(raw: string): string {
 }
 
 /** Normalizes first, then validates the address. */
-const emailSchema = z.pipe(z.pipe(z.string(), z.transform(normalizeEmail)), z.email());
+export const emailSchema = z.pipe(z.pipe(z.string(), z.transform(normalizeEmail)), z.email());
 
 export const emailCodeRequestSchema = z.object({ email: emailSchema });
 export type EmailCodeRequest = z.infer<typeof emailCodeRequestSchema>;
