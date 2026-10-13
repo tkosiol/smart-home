@@ -99,6 +99,27 @@ describe('me and preferences', () => {
       });
     });
 
+    it('ignores fields that are not preferences (no mass assignment)', async () => {
+      const user = await signedIn();
+      const response = await put(user.cookie, {
+        isPlatformAdmin: true,
+        email: 'taken@example.org',
+        id: '00000000-0000-4000-8000-000000000000',
+        locale: 'en',
+      }).expect(200);
+      expect(response.body).toMatchObject({
+        id: user.id,
+        email: user.email,
+        locale: 'en',
+        isPlatformAdmin: false,
+      });
+      expect(await users.findById(user.id)).toMatchObject({
+        id: user.id,
+        email: user.email,
+        isPlatformAdmin: false,
+      });
+    });
+
     it('rejects an invalid mode with 400 validation.failed and stores nothing', async () => {
       const user = await signedIn();
       const response = await put(user.cookie, {

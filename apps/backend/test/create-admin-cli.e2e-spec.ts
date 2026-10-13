@@ -97,4 +97,38 @@ describe('create-admin command', () => {
     await run('create-admin', '--email', 'quote@example.org', '--name', name);
     expect((await users.findByEmail('quote@example.org'))?.displayName).toBe(name);
   });
+
+  it('names an unexpected failure by class and code, without message, SQL or address', async () => {
+    class PostgresError extends Error {
+      override name = 'PostgresError';
+      constructor(
+        message: string,
+        readonly code: string,
+      ) {
+        super(message);
+      }
+    }
+    const failing = Object.create(users) as UsersRepository;
+    failing.findByEmail = () => {
+      // Like drizzle: a wrapper whose message holds the query and its parameters.
+      throw new Error('Failed query: select ... params: secret@example.org', {
+        cause: new PostgresError('duplicate key value (secret@example.org)', '23505'),
+      });
+    };
+    const out: string[] = [];
+    const err: string[] = [];
+    const code = await runCli(
+      ['create-admin', '--email', 'secret@example.org', '--name', 'X'],
+      failing,
+      {
+        out: (line) => out.push(line),
+        err: (line) => err.push(line),
+      },
+    );
+    expect(code).toBe(1);
+    const printed = [...out, ...err].join('\n');
+    expect(printed).toContain('PostgresError');
+    expect(printed).toContain('23505');
+    expect(printed).not.toMatch(/secret|example\.org|Failed query|duplicate/);
+  });
 });
