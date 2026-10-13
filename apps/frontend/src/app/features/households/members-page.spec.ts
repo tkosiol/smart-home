@@ -412,15 +412,15 @@ describe('members page', () => {
       const page = await open({}, async () => undefined);
       typeInto(page, 'email', 'dora@example.org');
       await press(page, 'Einladung senden');
-      sectionButton(page, 'Anna', 'Entfernen')!.click();
+      sectionButton(page, 'Till', 'Verlassen')!.click();
       await flush(page);
       expect(linkField(page)).not.toBeNull();
-      expect(pageButton(page.element, 'Wirklich entfernen?')).toBeTruthy();
+      expect(pageButton(page.element, 'Wirklich verlassen?')).toBeTruthy();
 
       page.auth.updateMe(meWith([berlin, auckland], auckland.id));
       await flush(page);
       expect(linkField(page)).toBeNull();
-      expect(pageButton(page.element, 'Wirklich')).toBeUndefined();
+      expect(pageButton(page.element, 'Wirklich verlassen?')).toBeUndefined();
     });
 
     it('shows the server role again after a refused role change', async () => {
