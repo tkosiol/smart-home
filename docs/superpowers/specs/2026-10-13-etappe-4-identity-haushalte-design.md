@@ -80,7 +80,7 @@ Alle Geheimnisse (Session-Token, Codes, Nonces, Einladungs- und Recovery-Tokens)
 - Einladungen: owner lädt mit E-Mail und Rolle ein; Token 256 Bit, Hash, 7 Tage, einmalig; erneut senden erzeugt ein neues Token und macht das alte ungültig; widerrufbar. Annahme unter `/einladung/:token`:
   - ohne Konto: Name eingeben → User (E-Mail aus der Einladung, gilt als bestätigt) + Session (`auth_method=invitation`) + Mitgliedschaft; danach Passkey-Angebot (erst mit 4b);
   - mit Konto: nach Anmeldung annehmen; die E-Mail des angemeldeten Users muss passen, sonst `invitation.emailMismatch`;
-  - Der Link erscheint dem owner immer (nicht nur ohne Mailversand) einmalig nach dem Einladen oder erneuten Senden, zum Kopieren; danach lässt er sich nicht mehr anzeigen (nur der Hash ist gespeichert).
+  - Der Link erscheint dem owner immer (nicht nur ohne Mailversand) einmalig nach dem Einladen oder erneuten Senden, zum Kopieren; danach lässt er sich nicht mehr anzeigen (nur der Hash ist gespeichert). Weil damit auch der Einladende das Token kennt, beendet die erste Anmeldung per E-Mail-Code alle über den Einladungslink erhaltenen Sitzungen dieses Kontos (andere Sitzungen bleiben).
   - Abweichung von der ursprünglichen Planung: Die Einladungs-API nimmt das Token im Body, nicht im Pfad (`POST /api/v1/invitations/preview`, `/accept`, `/accept-new`), damit es nicht in Zugriffsprotokollen landet. Die Seite `/einladung/:token` merkt sich das Token in der `sessionStorage` (`smart.invitation`) und leitet sofort auf `/einladung` weiter; der Weg über die Anmeldung läuft über `/anmelden?ziel=/einladung`.
 - `PUT /api/v1/me` speichert `last_household_id` (aktueller Haushalt, geräteübergreifend).
 
