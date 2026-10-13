@@ -5,6 +5,9 @@ import { API_BASE, ApiClient, ApiError } from '../api';
 import { OnlineStatus } from '../pwa';
 import { ME_CACHE } from './me-cache';
 
+/** How long the start waits for `GET /me` before it falls back to the copy on the device. */
+export const START_LOAD_TIMEOUT_MS = 5000;
+
 /** `offline`: signed in according to the device's copy, the server could not be asked. */
 export type AuthStatus = 'unknown' | 'signedIn' | 'signedOut' | 'offline';
 
@@ -109,7 +112,15 @@ export class AuthService {
 
   private async fetchMe(): Promise<void> {
     try {
-      this.setSignedIn(this.parseMe(await this.api.get(`${API_BASE}/me`)));
+      this.setSignedIn(
+        this.parseMe(
+          // A hanging server fails like a lost connection (`TimeoutError` becomes `internal`), so
+          // the start falls back to the copy on the device instead of waiting for it.
+          await this.api.get(`${API_BASE}/me`, {
+            signal: AbortSignal.timeout(START_LOAD_TIMEOUT_MS),
+          }),
+        ),
+      );
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) {
         this.signOutLocally();

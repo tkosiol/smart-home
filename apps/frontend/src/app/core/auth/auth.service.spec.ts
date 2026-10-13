@@ -4,7 +4,7 @@ import { Router, provideRouter } from '@angular/router';
 import { API_FETCH } from '../api';
 import { OnlineStatus } from '../pwa';
 import { apiError, json, MemoryMeCache, TEST_ME } from '../../testing/auth-testing';
-import { AuthService } from './auth.service';
+import { AuthService, START_LOAD_TIMEOUT_MS } from './auth.service';
 import { ME_CACHE } from './me-cache';
 
 type Responder = (path: string, init?: RequestInit) => Response | Promise<Response>;
@@ -100,6 +100,51 @@ describe('AuthService.load', () => {
     await auth.load();
     expect(auth.status()).toBe('signedOut');
     expect(auth.connectionLost()).toBe(true);
+  });
+
+  describe('when the server does not answer', () => {
+    /** A server that accepts the connection and never replies; only the request's signal ends it. */
+    const hanging: Responder = (_path, init) =>
+      new Promise<Response>((_resolve, reject) =>
+        init?.signal?.addEventListener('abort', () => reject(init.signal?.reason)),
+      );
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+      // The platform's own timeout timer ignores fake timers; this one follows them.
+      vi.spyOn(AbortSignal, 'timeout').mockImplementation((ms) => {
+        const controller = new AbortController();
+        setTimeout(() => controller.abort(new DOMException('timed out', 'TimeoutError')), ms);
+        return controller.signal;
+      });
+    });
+    afterEach(() => {
+      vi.restoreAllMocks();
+      vi.useRealTimers();
+    });
+
+    it('gives up after the start timeout and starts from the copy of the device', async () => {
+      const { auth } = setup(hanging, TEST_ME);
+      const settled = vi.fn();
+      void auth.ready().then(settled);
+
+      await vi.advanceTimersByTimeAsync(START_LOAD_TIMEOUT_MS - 1);
+      expect(settled).not.toHaveBeenCalled();
+      expect(auth.status()).toBe('unknown');
+
+      await vi.advanceTimersByTimeAsync(1);
+      expect(settled).toHaveBeenCalled();
+      expect(auth.status()).toBe('offline');
+      expect(auth.me()).toEqual(TEST_ME);
+    });
+
+    it('without a copy says the connection is lost', async () => {
+      const { auth } = setup(hanging);
+      void auth.ready();
+      await vi.advanceTimersByTimeAsync(START_LOAD_TIMEOUT_MS);
+      expect(auth.status()).toBe('signedOut');
+      expect(auth.connectionLost()).toBe(true);
+    });
   });
 
   it('asks once while a request is running', async () => {
