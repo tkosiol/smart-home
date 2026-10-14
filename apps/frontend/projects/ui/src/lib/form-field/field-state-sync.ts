@@ -10,10 +10,11 @@ import { MatInput } from '@angular/material/input';
  * a field that shows an error must stay invalid, so the attribute is written after Material's host
  * binding has run, on every check.
  */
-@Directive({ selector: 'input[matInput][uiFieldStateSync]' })
+@Directive({ selector: 'input[matInput][uiFieldStateSync], textarea[matInput][uiFieldStateSync]' })
 export class UiFieldStateSync implements DoCheck, AfterViewChecked {
   private readonly input = inject(MatInput);
-  private readonly element = inject<ElementRef<HTMLInputElement>>(ElementRef).nativeElement;
+  private readonly element =
+    inject<ElementRef<HTMLInputElement | HTMLTextAreaElement>>(ElementRef).nativeElement;
   private readonly renderer = inject(Renderer2);
 
   ngDoCheck(): void {
