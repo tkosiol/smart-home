@@ -27,6 +27,8 @@ fail() { echo "deploy[$environment]: $*" >&2; exit 1; }
 cp "$source_dir/compose.yaml" "$stack_dir/compose.next.yaml"
 printf 'IMAGE_TAG=%s\n' "$sha" > "$stack_dir/deploy.env.next"
 cd "$stack_dir"
+# The compose file bind-mounts ./certs; Docker would create a missing directory as root.
+mkdir -p certs
 
 next() { docker compose -f compose.next.yaml --env-file .env --env-file deploy.env.next "$@"; }
 current() { docker compose -f compose.yaml --env-file .env --env-file deploy.env "$@"; }

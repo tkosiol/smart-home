@@ -2,7 +2,8 @@
 # Creates a stack's .env on the VPS. Run it yourself in a terminal – secrets never pass through chat or CI.
 # Usage: SMART_VPS=<user@host> infra/deploy/provision.sh <staging|production> [--force]
 # --force rewrites the file but keeps the generated DB and broker passwords (the data volumes depend on them),
-# the existing SMART_* runtime settings and, when a prompt is answered with Enter, the stored mail settings.
+# the existing SMART_* runtime settings, MQTT_TLS (broker-certs.sh sets it to on) and, when a prompt is answered with
+# Enter, the stored mail settings.
 set -euo pipefail
 
 environment="${1:-}"
@@ -77,6 +78,8 @@ if [ "$environment" = staging ]; then
 fi
 
 existing_hops=$(existing_value TRUSTED_PROXY_HOPS)
+# MQTT_TLS stays off until broker-certs.sh has copied the certificates and switched it on; --force keeps that.
+existing_tls=$(existing_value MQTT_TLS)
 lines=(
   "STACK_NAME=$stack"
   "APP_DOMAIN=$domain"
@@ -85,6 +88,7 @@ lines=(
   "TRUSTED_PROXY_HOPS=${existing_hops:-2}"
   "DB_PASSWORD=$(keep_or_generate DB_PASSWORD)"
   "MQTT_API_PASSWORD=$(keep_or_generate MQTT_API_PASSWORD)"
+  "MQTT_TLS=${existing_tls:-off}"
   "SMTP_URL=$smtp_url"
   "MAIL_FROM=$mail_from"
 )
@@ -96,6 +100,9 @@ while IFS= read -r smart_line; do
 done < <(printf '%s\n' "$existing" | grep '^SMART_' || true)
 
 if [ "$environment" = production ]; then
+  # Gateways reach the production broker from the internet; staging publishes 127.0.0.1:18883 only (compose default).
+  existing_port=$(existing_value MQTT_PUBLIC_PORT)
+  lines+=("MQTT_PUBLIC_PORT=${existing_port:-8883}")
   backup_uid=$(ssh -n "$host" "id -u")
   backup_gid=$(ssh -n "$host" "id -g")
   read -r -p "B2 S3 endpoint (e.g. s3.eu-central-003.backblazeb2.com): " b2_endpoint
@@ -129,5 +136,7 @@ if [ "$environment" = production ]; then
 fi
 
 # shellcheck disable=SC2029 # see above
-printf '%s\n' "${lines[@]}" | ssh "$host" "umask 077 && mkdir -p $remote_dir && cat > $remote_dir/.env"
-echo "wrote $remote_dir/.env on the VPS (mode 600)"
+# certs/ is created here (not by Docker, which would make it root-owned); it is world-searchable like in
+# broker-certs.sh so the containers can read the public files, the server key inside stays 600.
+printf '%s\n' "${lines[@]}" | ssh "$host" "umask 077 && mkdir -p $remote_dir/certs && chmod 755 $remote_dir/certs && cat > $remote_dir/.env"
+echo "wrote $remote_dir/.env on the VPS (mode 600) and created $remote_dir/certs"

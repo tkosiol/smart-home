@@ -46,6 +46,11 @@ services:
       SMTP_URL: ${SMTP_URL:-}
       MAIL_FROM: ${MAIL_FROM:-}
       MAIL_ALLOWLIST: ${MAIL_ALLOWLIST:-}
+      # Trust anchor and CRL expiry of the gateway certificates (copied by infra/deploy/broker-certs.sh).
+      GATEWAY_CA_FILE: /smart/certs/ca.crt
+      GATEWAY_CRL_NEXT_UPDATE_FILE: /smart/certs/crl-next-update
+    volumes:
+      - ./certs:/smart/certs:ro
     depends_on:
       db:
         condition: service_healthy
@@ -85,9 +90,20 @@ services:
     environment:
       MQTT_USER: smart-api
       MQTT_PASSWORD: ${MQTT_API_PASSWORD:?MQTT_API_PASSWORD is required}
+      # off until infra/deploy/broker-certs.sh has copied the certificates and switched it on; the
+      # entrypoint aborts when it is on and a file is missing, and on any value other than on or off.
+      MQTT_TLS: ${MQTT_TLS:-off}
+      # Optional simulator user for one gateway ID (gw-xxxxxxxx); empty = no simulator.
+      MQTT_SIMULATOR_PASSWORD: ${MQTT_SIMULATOR_PASSWORD:-}
+      MQTT_SIMULATOR_GATEWAY_ID: ${MQTT_SIMULATOR_GATEWAY_ID:-}
       TZ: UTC
     volumes:
       - broker-data:/mosquitto/data
+      - ./certs:/mosquitto/certs:ro
+    # Gateways connect here with a client certificate. Production publishes 8883 to the internet
+    # (MQTT_PUBLIC_PORT=8883); everywhere else it stays on localhost.
+    ports:
+      - '${MQTT_PUBLIC_PORT:-127.0.0.1:18883}:8883'
     networks: [internal]
 
   backup:

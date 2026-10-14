@@ -19,6 +19,7 @@ setup() {
   unset STUB_FAIL_INFRA STUB_FAIL_MIGRATE STUB_FAIL_UP STUB_READY_FAILURES STUB_COMPARE_STATUS STUB_ENV_EXISTS STUB_SSH_DOWN STUB_EXISTING_ENV STUB_SSH_EXEC STUB_REMOTE_HOME STUB_ARGV_LOG SSH_ORIGINAL_COMMAND
 }
 teardown() { rm -rf "$WORK"; }
+mode_of() { stat -c %a "$1" 2> /dev/null || stat -f %Lp "$1"; }
 check() {
   if eval "$2"; then passed=$((passed + 1)); else echo "FAIL: $1"; failures=$((failures + 1)); fi
 }
@@ -63,6 +64,13 @@ check "deploy runs pull, migrate, up and readiness in order" '[ "$(grep -oE "pul
 check "deploy records the new sha" 'grep -qx "IMAGE_TAG=$SHA" "$SMART_STACKS_DIR/smart-prod/deploy.env"'
 check "deploy promotes the commit compose file after success" 'grep -qx "name: next" "$SMART_STACKS_DIR/smart-prod/compose.yaml" && [ ! -e "$SMART_STACKS_DIR/smart-prod/compose.next.yaml" ]'
 check "deploy runs the new version with the new compose file" 'grep -q "compose -f compose.next.yaml --env-file .env --env-file deploy.env.next up -d --wait --remove-orphans" "$STUB_CALLS"'; teardown
+# Docker would create a missing ./certs bind mount as root; the stack directory must own it before anything starts.
+setup; prepare_stack smart-prod "$OLD_SHA"
+check "deploy creates the certs directory before the first compose call" '[ "$(run_deploy production)" = 0 ] && [ -d "$SMART_STACKS_DIR/smart-prod/certs" ]'; teardown
+setup; prepare_stack smart-prod "$OLD_SHA"; mkdir "$SMART_STACKS_DIR/smart-prod/certs"; echo keep > "$SMART_STACKS_DIR/smart-prod/certs/ca.crt"
+check "deploy leaves an existing certs directory alone" '[ "$(run_deploy production)" = 0 ] && [ "$(cat "$SMART_STACKS_DIR/smart-prod/certs/ca.crt")" = keep ]'; teardown
+setup; prepare_stack smart-prod "$OLD_SHA"; export STUB_FAIL_INFRA=1
+check "deploy has created the certs directory even when the broker does not start" '[ "$(run_deploy production)" = 1 ] && [ -d "$SMART_STACKS_DIR/smart-prod/certs" ]'; teardown
 setup; prepare_stack smart-prod "$OLD_SHA"; export STUB_READY_FAILURES=2
 check "deploy retries readiness while the new version warms up" '[ "$(run_deploy production)" = 0 ]'
 check "deploy does not roll back a version that becomes ready" '! grep -q "env-file deploy.env up" "$STUB_CALLS"'; teardown
@@ -124,6 +132,33 @@ check "provision --force keeps existing runtime settings verbatim" 'provision_st
 setup; STUB_EXISTING_ENV=$(printf 'STACK_NAME=smart-staging\nDB_PASSWORD=keep-db\nSMART_INSTANCE_APPEARANCE_EDITOR=true')
 export SMART_VPS=deploy@vps STUB_ENV_EXISTS=1 STUB_EXISTING_ENV
 check "provision --force tolerates the retired editor switch of an existing file" 'provision_staging --force && grep -qx "DB_PASSWORD=keep-db" "$STUB_REMOTE_FILE"'; teardown
+
+# MQTT settings and the certs directory. The stub ssh runs the remote commands for real in a fake home.
+exec_provision_setup() {
+  setup
+  export SMART_VPS=deploy@vps STUB_SSH_EXEC=1 STUB_REMOTE_HOME="$WORK/home"
+  mkdir -p "$STUB_REMOTE_HOME"
+}
+exec_provision_setup
+STAGING_STACK="$STUB_REMOTE_HOME/docker/apps/smart-staging"
+check "provision writes MQTT_TLS=off and no public port for staging" 'provision_staging && grep -qx "MQTT_TLS=off" "$STAGING_STACK/.env" && [ "$(grep -c "^MQTT_TLS=" "$STAGING_STACK/.env")" = 1 ] && ! grep -q "MQTT_PUBLIC_PORT" "$STAGING_STACK/.env"'
+check "provision creates the certs directory readable for the containers" '[ -d "$STAGING_STACK/certs" ] && [ "$(mode_of "$STAGING_STACK/certs")" = 755 ] && [ "$(mode_of "$STAGING_STACK/.env")" = 600 ]'
+check "provision keeps the stack directory private" '[ "$(mode_of "$STAGING_STACK")" = 700 ]'
+teardown
+exec_provision_setup
+# shellcheck disable=SC2034 # used by the check() expression below
+PROD_STACK="$STUB_REMOTE_HOME/docker/apps/smart-prod"
+check "provision publishes the MQTT port of production" 'answers | bash "$DEPLOY_DIR/provision.sh" production > /dev/null 2>&1 && grep -qx "MQTT_TLS=off" "$PROD_STACK/.env" && grep -qx "MQTT_PUBLIC_PORT=8883" "$PROD_STACK/.env" && [ "$(mode_of "$PROD_STACK/certs")" = 755 ]'
+teardown
+exec_provision_setup
+STAGING_STACK="$STUB_REMOTE_HOME/docker/apps/smart-staging"
+mkdir -p "$STAGING_STACK/certs" && printf 'ca\n' > "$STAGING_STACK/certs/ca.crt" && chmod 755 "$STAGING_STACK/certs"
+printf 'STACK_NAME=smart-staging\nDB_PASSWORD=keep-db\nMQTT_API_PASSWORD=keep-mqtt\nMQTT_TLS=on\n' > "$STAGING_STACK/.env"
+check "provision --force keeps MQTT_TLS=on set by broker-certs and the certificates" 'provision_staging --force && grep -qx "MQTT_TLS=on" "$STAGING_STACK/.env" && [ "$(grep -c "^MQTT_TLS=" "$STAGING_STACK/.env")" = 1 ] && [ "$(cat "$STAGING_STACK/certs/ca.crt")" = ca ]'
+teardown
+setup; STUB_EXISTING_ENV=$(printf 'STACK_NAME=smart-staging\nDB_PASSWORD=keep-db\nMQTT_TLS=on')
+export SMART_VPS=deploy@vps STUB_ENV_EXISTS=1 STUB_EXISTING_ENV
+check "provision --force writes the stored MQTT_TLS value once" 'provision_staging --force && [ "$(grep -c "^MQTT_TLS=" "$STUB_REMOTE_FILE")" = 1 ] && grep -qx "MQTT_TLS=on" "$STUB_REMOTE_FILE"'; teardown
 
 # Mail, origin and proxy settings.
 setup; export SMART_VPS=deploy@vps
@@ -188,7 +223,6 @@ remote_stack() {
   printf 'STACK_NAME=%s\nDB_PASSWORD=keep-db\nMQTT_TLS=off\nSMTP_URL=smtps://resend:re_keep@smtp.resend.com:465' "$1" > "$STUB_REMOTE_HOME/docker/apps/$1/.env"
   chmod 600 "$STUB_REMOTE_HOME/docker/apps/$1/.env"
 }
-mode_of() { stat -c %a "$1" 2> /dev/null || stat -f %Lp "$1"; }
 run_certs() { (bash "$DEPLOY_DIR/broker-certs.sh" "$@" < /dev/null > "$WORK/out" 2>&1); echo $?; }
 certs_setup() {
   setup; fake_pki

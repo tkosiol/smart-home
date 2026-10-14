@@ -23,7 +23,8 @@ services:
     image: eclipse-mosquitto:2.1.2-alpine
     entrypoint: ['/bin/sh', '/smart/entrypoint.sh']
     environment:
-      MQTT_USER: ${LOCAL_MQTT_USER:-smart-api}
+      # The ACL grants the backend's rights to this exact name; MQTT_TLS stays off locally (the default).
+      MQTT_USER: smart-api
       MQTT_PASSWORD: ${LOCAL_MQTT_PASSWORD:-smart-dev-only}
     ports:
       - '127.0.0.1:1884:1883'

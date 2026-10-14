@@ -23,12 +23,17 @@ done
 export SMART_OPENSSL="$OSSL"
 
 WORK=$(mktemp -d)
-cleanup() {
+remove_test_containers() {
   docker rm -fv "$PREFIX-off" "$PREFIX-on" "$PREFIX-client" "$PREFIX-abort" > /dev/null 2>&1
   docker network rm "$NET" > /dev/null 2>&1
+}
+cleanup() {
+  remove_test_containers
   rm -rf "$WORK"
 }
 trap cleanup EXIT
+# Leftovers of an aborted earlier run would make the names below clash.
+remove_test_containers
 
 check() {
   if eval "$2"; then passed=$((passed + 1)); else echo "FAIL: $1"; failures=$((failures + 1)); fi
@@ -73,16 +78,21 @@ chmod 644 "$CLIENT"/*
 docker build -q -t "$IMAGE" infra/broker > /dev/null || { echo "docker build failed" >&2; exit 1; }
 docker network create "$NET" > /dev/null || { echo "docker network create failed" >&2; exit 1; }
 
+# A container that cannot even be started makes every later result meaningless: stop at once.
+must_start() {
+  "$@" > /dev/null || { echo "could not start the test container: $*" >&2; exit 1; }
+}
+
 # Starts the broker like in production; extra arguments are docker run options (env, mounts).
 start_broker() {
   local name="$1"
   shift
-  docker run -d --name "$name" --network "$NET" --network-alias broker --read-only \
+  must_start docker run -d --name "$name" --network "$NET" --network-alias broker --read-only \
     --tmpfs /mosquitto/run --tmpfs /tmp -v /mosquitto/data \
-    -e MQTT_USER=smart-api -e MQTT_PASSWORD="$API_PW" "$@" "$IMAGE" > /dev/null
+    -e MQTT_USER=smart-api -e MQTT_PASSWORD="$API_PW" "$@" "$IMAGE"
 }
 
-docker run -d --name "$PREFIX-client" --network "$NET" -v "$CLIENT:/c:ro" --entrypoint sleep "$IMAGE" 3600 > /dev/null
+must_start docker run -d --name "$PREFIX-client" --network "$NET" -v "$CLIENT:/c:ro" --entrypoint sleep "$IMAGE" 3600
 
 cl() { docker exec "$PREFIX-client" "$@"; }
 
@@ -108,12 +118,35 @@ wait_for() {
 }
 api_ready() { cl mosquitto_sub -h broker -p 1883 -u smart-api -P "$API_PW" -t '$SYS/broker/uptime' -C 1 -W 2; }
 
-# Runs the function $2 while smart-api listens on gw/# for 4 seconds and writes what arrived into the file $1.
+# Calls "$@" every 0.25 s until the file $1 contains the line pattern $2 (a probe that went through a subscription
+# that is not active yet is simply lost, so it is repeated); fails after about 10 s.
+probe_until() {
+  local out="$1" pattern="$2"
+  shift 2
+  for _ in $(seq 1 40); do
+    "$@" > /dev/null 2>&1
+    if grep -q "$pattern" "$out" 2> /dev/null; then return 0; fi
+    sleep 0.25
+  done
+  return 1
+}
+# A subscriber that never became ready would make every "nothing arrived" check pass for the wrong reason.
+require_ready() {
+  if ! "$@"; then
+    echo "FAIL: subscriber was not ready: $1 $2"
+    failures=$((failures + 1))
+  fi
+}
+LISTEN_WINDOW=10
+probe_gw() { api_pub "gw/probe/z2m/ready" probe-ready; }
+
+# Runs the function $2 while smart-api listens on gw/# (window of $LISTEN_WINDOW seconds, started once a probe
+# has arrived) and writes what arrived into the file $1.
 listen_while() {
   local out="$1" action="$2" pid
-  cl mosquitto_sub -h broker -p 1883 -u smart-api -P "$API_PW" -t 'gw/#' -v -W 4 > "$out" 2>&1 &
+  cl mosquitto_sub -h broker -p 1883 -u smart-api -P "$API_PW" -t 'gw/#' -v -W "$LISTEN_WINDOW" > "$out" 2>&1 &
   pid=$!
-  sleep 1
+  require_ready probe_until "$out" probe-ready probe_gw
   "$action"
   wait "$pid" 2> /dev/null
   return 0
@@ -123,8 +156,8 @@ listen_while() {
 # running is a failure (status 99), not a hang.
 run_expect_abort() {
   docker rm -f "$PREFIX-abort" > /dev/null 2>&1
-  docker run -d --name "$PREFIX-abort" --read-only --tmpfs /mosquitto/run --tmpfs /tmp -v /mosquitto/data \
-    -e MQTT_USER=smart-api -e MQTT_PASSWORD="$API_PW" "$@" "$IMAGE" > /dev/null
+  must_start docker run -d --name "$PREFIX-abort" --read-only --tmpfs /mosquitto/run --tmpfs /tmp -v /mosquitto/data \
+    -e MQTT_USER=smart-api -e MQTT_PASSWORD="$API_PW" "$@" "$IMAGE"
   status=99
   for _ in $(seq 1 20); do
     if [ "$(docker inspect -f '{{.State.Running}}' "$PREFIX-abort")" = false ]; then
@@ -164,7 +197,7 @@ check "an unknown MQTT_TLS value aborts instead of silently staying off" '[ "$st
 
 # --- the simulator gateway ID is checked before it reaches the ACL ---
 NEWLINE_ID=$(printf 'gw-testsimu\ntopic readwrite #')
-for bad in 'gw-abc' 'GW-testsimu' 'gw-testsimu9' 'gw-testsimu/#' 'gw-test+imu' "$NEWLINE_ID" ''; do
+for bad in 'gw-abc' 'GW-testsimu' 'gw-TESTSIMU' 'gw-testsimu9' 'gw-testsimu/#' 'gw-test+imu' "$NEWLINE_ID" ''; do
   run_expect_abort -e MQTT_SIMULATOR_PASSWORD="$SIM_PW" -e "MQTT_SIMULATOR_GATEWAY_ID=$bad"
   check "simulator gateway ID '$(printf '%s' "$bad" | tr '\n' '|')' aborts the container" '[ "$status" -ne 0 ] && echo "$out" | grep -q "MQTT_SIMULATOR_GATEWAY_ID"'
 done
@@ -194,35 +227,37 @@ check "a gateway publishes under its own prefix and smart-api receives it" 'grep
 check "gateway A cannot publish under the prefix of gateway B" '! grep -q "foreign" "$WORK/prefixes.out"'
 
 # Commands: only the own prefix is readable, and only while connected.
+# gw_listen ID OUT TOPIC PROBE_TOPIC [mosquitto_sub options]: subscribes as gateway ID in the background and returns
+# once smart-api's probe on PROBE_TOPIC has arrived; GW_LISTEN_PID is the subscriber (it ends after LISTEN_WINDOW).
+probe_command() { api_pub "$1" probe-ready; }
 gw_listen() {
-  local id="$1" out="$2" topic="$3"
-  shift 3
+  local id="$1" out="$2" topic="$3" probe="$4"
+  shift 4
   # shellcheck disable=SC2046 # one argument per line
-  cl mosquitto_sub $(gw_args "$id") -t "$topic" -v -W 4 "$@" > "$out" 2>&1 &
+  cl mosquitto_sub $(gw_args "$id") -t "$topic" -v -W "$LISTEN_WINDOW" "$@" > "$out" 2>&1 &
   GW_LISTEN_PID=$!
+  require_ready probe_until "$out" probe-ready probe_command "$probe"
 }
-gw_listen "$GW_A" "$WORK/commands.out" "gw/+/z2m/+/set"
-sleep 1
+gw_listen "$GW_A" "$WORK/commands.out" "gw/+/z2m/+/set" "gw/$GW_A/z2m/probe/set"
 api_pub "gw/$GW_A/z2m/dev/set" own-command > /dev/null 2>&1
 api_pub "gw/$GW_B/z2m/dev/set" foreign-command > /dev/null 2>&1
 wait "$GW_LISTEN_PID" 2> /dev/null
 check "a gateway receives commands for itself" 'grep -qx "gw/$GW_A/z2m/dev/set own-command" "$WORK/commands.out"'
 check "a gateway never receives commands for another gateway" '! grep -q foreign-command "$WORK/commands.out"'
 
-gw_listen "$GW_A" "$WORK/bridge-requests.out" "gw/+/z2m/bridge/request/#"
-sleep 1
+gw_listen "$GW_A" "$WORK/bridge-requests.out" "gw/+/z2m/bridge/request/#" "gw/$GW_A/z2m/bridge/request/probe"
 api_pub "gw/$GW_A/z2m/bridge/request/permit_join" own-request > /dev/null 2>&1
 api_pub "gw/$GW_B/z2m/bridge/request/permit_join" foreign-request > /dev/null 2>&1
 wait "$GW_LISTEN_PID" 2> /dev/null
 check "a gateway receives bridge requests for itself only" 'grep -q own-request "$WORK/bridge-requests.out" && ! grep -q foreign-request "$WORK/bridge-requests.out"'
 
 # A persistent session (like the bridge's) must not collect QoS 0 commands while the gateway is offline.
-gw_listen "$GW_A" "$WORK/session1.out" "gw/$GW_A/z2m/dev/set" -c -i "$GW_A-session" -q 0 -W 2
+# Session 1 subscribes (a probe proves it) and leaves after the first message; the session stays at the broker.
+gw_listen "$GW_A" "$WORK/session1.out" "gw/$GW_A/z2m/dev/set" "gw/$GW_A/z2m/dev/set" -c -i "$GW_A-session" -q 0 -C 1
 wait "$GW_LISTEN_PID" 2> /dev/null
 api_pub "gw/$GW_A/z2m/dev/set" offline-command-qos1 > /dev/null 2>&1
 cl mosquitto_pub -h broker -p 1883 -u smart-api -P "$API_PW" -q 0 -t "gw/$GW_A/z2m/dev/set" -m offline-command-qos0 > /dev/null 2>&1
-gw_listen "$GW_A" "$WORK/session2.out" "gw/$GW_A/z2m/dev/set" -c -i "$GW_A-session" -q 0
-sleep 1
+gw_listen "$GW_A" "$WORK/session2.out" "gw/$GW_A/z2m/dev/set" "gw/$GW_A/z2m/dev/set" -c -i "$GW_A-session" -q 0
 api_pub "gw/$GW_A/z2m/dev/set" online-command > /dev/null 2>&1
 wait "$GW_LISTEN_PID" 2> /dev/null
 check "a command sent while the gateway is connected arrives" 'grep -q online-command "$WORK/session2.out"'
@@ -241,9 +276,9 @@ check "the simulator publishes under its own prefix" 'grep -qx "gw/$GW_SIM/z2m/x
 check "the simulator cannot publish under a foreign prefix" '! grep -q "sim-foreign" "$WORK/sim.out" && ! grep -q "sim-other" "$WORK/sim.out"'
 
 sim_listen_out="$WORK/sim-listen.out"
-cl mosquitto_sub -h broker -p 1883 -u smart-simulator -P "$SIM_PW" -t 'gw/+/z2m/+/set' -v -W 4 > "$sim_listen_out" 2>&1 &
+cl mosquitto_sub -h broker -p 1883 -u smart-simulator -P "$SIM_PW" -t 'gw/+/z2m/+/set' -v -W "$LISTEN_WINDOW" > "$sim_listen_out" 2>&1 &
 sim_pid=$!
-sleep 1
+require_ready probe_until "$sim_listen_out" probe-ready probe_command "gw/$GW_SIM/z2m/probe/set"
 api_pub "gw/$GW_SIM/z2m/dev/set" sim-command > /dev/null 2>&1
 api_pub "gw/$GW_A/z2m/dev/set" sim-foreign-command > /dev/null 2>&1
 wait "$sim_pid" 2> /dev/null
