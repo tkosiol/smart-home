@@ -2,9 +2,15 @@
 
 Design-System der Smart-Home-PWA: Theme-Laufzeit (`ThemeService`, `provideTheme`), Design-Tokens und die Komponenten auf Basis von Angular Material. Nur diese Bibliothek darf `@angular/material` und `@angular/cdk` verwenden und Komponenten-Styles enthalten.
 
-Die Bibliothek wird weder separat gebaut noch veröffentlicht: Die App bindet sie über den Pfad-Alias `@smart/ui` (→ `projects/ui/src/public-api.ts`) direkt aus dem Quelltext ein.
+Die Bibliothek wird weder separat gebaut noch veröffentlicht: Die App bindet sie über Pfad-Aliasse direkt aus dem Quelltext ein. Es gibt drei Einstiege:
 
-Formularelemente (`UiSegmentedButton`, `UiChipSet`, `UiSelect`, `UiSwitch`, `UiColorField`, `UiTextField`, `normalizeHexColor`) und der `UiThemeEditor` liegen im zweiten Einstieg `@smart/ui/forms` (→ `projects/ui/src/forms.ts`). Alles andere kommt aus `@smart/ui`. Der Grund ist die Paketgröße: Alles, was `public-api.ts` weiterreicht und irgendwo verwendet wird, landet im Bundle der Shell. So bleibt Materials Auswahl-, Schalter- und Formular-Code in den lazy geladenen Seiten, die ihn brauchen. Material-lastige Bausteine, die nur lazy Seiten nutzen, gehören deshalb in `forms.ts`.
+| Einstieg          | Datei                           | Wer importiert ihn                                                                                                                                               |
+| ----------------- | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@smart/ui/shell` | `projects/ui/src/shell.ts`      | Startcode: App-Wurzel, `core/`, `shell/` (Theme, Icon, Button, Banner, Badge, Rahmen, Snackbar, Zeit)                                                            |
+| `@smart/ui`       | `projects/ui/src/public-api.ts` | Lazy Seiten: `export * from './shell'` plus Layout, Karten, Listen, Leerzustand, Skeleton, Zeit-Pipes                                                            |
+| `@smart/ui/forms` | `projects/ui/src/forms.ts`      | Lazy Seiten: Formularelemente (`UiSegmentedButton`, `UiChipSet`, `UiSelect`, `UiSwitch`, `UiColorField`, `UiTextField`, `normalizeHexColor`) und `UiThemeEditor` |
+
+Der Grund ist die Paketgröße: esbuild ordnet ganze Dateien einem Chunk zu. Ein Barrel, den der Startcode importiert, hat für jede Datei, die er weiterreicht, einen Import; wird eine davon irgendwo (auch nur von einer lazy Seite) verwendet, landet sie im initialen Bundle. Deshalb importiert Startcode nur `@smart/ui/shell`, nie `@smart/ui` (Lint: `no-restricted-imports`, Ausnahme `shell/not-found.ts`, eine lazy Seite, und Specs) und nie `@smart/ui/forms`. In `shell.ts` gehört nur, was Startcode tatsächlich braucht; alles andere nur in `public-api.ts` oder `forms.ts`. Ein neuer Baustein, den nur lazy Seiten nutzen, kann so nicht versehentlich ins initiale Bundle geraten.
 
 | Zweck                   | Befehl                                                                                             |
 | ----------------------- | -------------------------------------------------------------------------------------------------- |
@@ -42,7 +48,9 @@ Das Instanz-Theme gehört dem Server. Vorrang (Spec 3.8): Wert des Servers, `con
 
 ## Bundle-Größe
 
-Das initiale Bundle der App lag mit Etappe 3d bei rund 498 kB; die Grenze sind 500 kB (Build-Fehler, `angular.json`). Seit Etappe 4a lädt der `ThemeService` die Theme-Engine (`@smart/theme` mit `@material/material-color-utilities`, rund 50 kB) erst nach dem ersten Rendern als eigenen Chunk (`loadThemeEngine()`, `ThemeService.ready`); bis dahin bleibt das Theme aus `theme-boot.js` und dem Default-CSS stehen. Der Stand liegt mit Etappe 4c bei rund 481,7 kB (Haushalts-, Einladungs- und Rollenlogik der App, dazu Symbole aus `@smart/ui` und `@angular/core`, die lazy Seiten nutzen und trotzdem im Startpfad landen: `ui-card` rund 9 kB, `resource()` rund 6,5 kB, die Date-Pipe rund 3,4 kB; nach neuen solchen Importen messen). Nur die engine-freie Auflösung (`resolveAppearance` aus `@smart/theme/resolve`) ist statisch importiert; `@smart/theme` selbst darf im Startpfad nur per `import()` vorkommen. Neuer Code, der beim Start geladen wird, braucht trotzdem zuerst Platz: lazy laden. Nutzen nur lazy Seiten einen Baustein, gehört er in `@smart/ui/forms`; `core/`, `shell/` und die App-Wurzel dürfen es per Lint nicht importieren.
+Das initiale Bundle der App lag mit Etappe 3d bei rund 498 kB. Seit Etappe 4a lädt der `ThemeService` die Theme-Engine (`@smart/theme` mit `@material/material-color-utilities`, rund 50 kB) erst nach dem ersten Rendern als eigenen Chunk (`loadThemeEngine()`, `ThemeService.ready`); bis dahin bleibt das Theme aus `theme-boot.js` und dem Default-CSS stehen. Nur die engine-freie Auflösung (`resolveAppearance` aus `@smart/theme/resolve`) ist statisch importiert; `@smart/theme` selbst darf im Startpfad nur per `import()` vorkommen. Mit dem Einstieg `@smart/ui/shell` (siehe oben) sank der Stand von rund 481,7 kB (Etappe 4c) auf rund 469,1 kB, weil lazy Seiten keine UI-Dateien mehr in den Startpfad ziehen. Die Grenze im Build (`angular.json`) liegt bei 480 kB (Fehler) und 400 kB (Warnung).
+
+Nicht abgedeckt: Symbole aus `@angular/core`, die nur lazy Seiten nutzen, können trotzdem im Startpfad landen (gemessen: `resource()` rund 6,5 kB, `httpResource()` rund 31 kB). Nach neuen solchen Importen `pnpm build` ausführen und die Größe prüfen. Neuer Code, der beim Start geladen wird, braucht zuerst Platz: lazy laden.
 
 ## Texte und Sprache
 
