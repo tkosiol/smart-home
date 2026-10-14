@@ -24,7 +24,10 @@ const CERTIFICATE_ERROR_KEYS = {
 } as const;
 
 type ServerError = keyof typeof CERTIFICATE_ERROR_KEYS;
-type CertificateError = ServerError | 'empty';
+type CertificateError = ServerError | 'empty' | 'privateKey';
+
+/** A private key is never sent: the server would refuse it, but it would still cross the network. */
+const PRIVATE_KEY = /PRIVATE KEY/i;
 
 function isCertificateError(code: string): code is ServerError {
   return Object.hasOwn(CERTIFICATE_ERROR_KEYS, code);
@@ -51,6 +54,7 @@ function isCertificateError(code: string): code is ServerError {
         <ui-text-field
           name="certificate"
           multiline
+          verbatim
           [rows]="8"
           autocomplete="off"
           required
@@ -59,7 +63,9 @@ function isCertificateError(code: string): code is ServerError {
           [error]="
             certificateError() === 'empty'
               ? ('gateways.register.certificateError' | transloco)
-              : serverMessage()
+              : certificateError() === 'privateKey'
+                ? ('gateways.register.privateKeyError' | transloco)
+                : serverMessage()
           "
           [(value)]="certificate"
         />
@@ -105,7 +111,7 @@ export class GatewayRegisterForm {
   /** The server's refusal of the certificate, in the page language (a method: re-read on each check). */
   protected serverMessage(): string | null {
     const error = this.certificateError();
-    return error === null || error === 'empty'
+    return error === null || error === 'empty' || error === 'privateKey'
       ? null
       : this.transloco.translate(CERTIFICATE_ERROR_KEYS[error]);
   }
@@ -120,8 +126,11 @@ export class GatewayRegisterForm {
     });
     const failed = new Set(parsed.success ? [] : parsed.error.issues.map((issue) => issue.path[0]));
     this.nameInvalid.set(failed.has('name'));
-    this.certificateError.set(failed.has('certificate') ? 'empty' : null);
-    if (!parsed.success) return;
+    const certificate = this.certificate();
+    this.certificateError.set(
+      failed.has('certificate') ? 'empty' : PRIVATE_KEY.test(certificate) ? 'privateKey' : null,
+    );
+    if (!parsed.success || this.certificateError() === 'privateKey') return;
     this.busy.set(true);
     try {
       await this.api.register(id, parsed.data);

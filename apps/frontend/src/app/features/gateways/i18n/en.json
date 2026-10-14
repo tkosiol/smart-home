@@ -22,12 +22,12 @@
     "certExpiring": "The certificate expires in {{ days }} days.",
     "certExpiringSoon": "The certificate expires in less than a day.",
     "certExpired": "The certificate has expired. The gateway can no longer connect.",
-    "crlExpiring": "The revocation list expires soon. Renew it on the server with “pki.sh crl” and distribute it with “broker-certs.sh”."
+    "crlExpiring": "The revocation list expires soon. Renew it on your own computer (where the CA is) with “pki.sh crl” and distribute it with “broker-certs.sh”."
   },
   "revokedHint": "The gateway is revoked in the app. Now revoke its certificate too with “pki.sh revoke” and distribute the revocation list with “broker-certs.sh”; only then will the broker turn it away.",
   "empty": {
     "title": "No gateways yet",
-    "description": "You issue a gateway with “pki.sh” on the server; a platform administrator registers it here with its certificate. The steps are in the “Gateway” runbook."
+    "description": "You issue a gateway with “pki.sh” on your own computer (where the CA is); a platform administrator registers it here with its certificate. The steps are in the “Gateway” runbook."
   },
   "register": {
     "title": "Register a gateway",
@@ -36,6 +36,7 @@
     "certificate": "Certificate",
     "certificateHint": "The text of the certificate, including the BEGIN and END lines. Never paste the private key.",
     "certificateError": "Please paste the certificate (at most 20,000 characters).",
+    "privateKeyError": "This looks like a private key and was not sent. Only the certificate (the public part) belongs here; the key stays on the gateway.",
     "submit": "Register gateway"
   }
 }

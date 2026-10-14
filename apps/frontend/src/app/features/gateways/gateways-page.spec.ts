@@ -39,6 +39,10 @@ const flur = gateway('gw-aaaaaaaa', 'Flur');
 const keller = gateway('gw-bbbbbbbb', 'Keller', { bridgeStatus: 'offline', z2mStatus: 'unknown' });
 const PEM = '-----BEGIN CERTIFICATE-----\nMIIB\nabc=\n-----END CERTIFICATE-----\n';
 
+/** Assembled from parts: a complete block in the source would trip the secret scanners. */
+const keyBlock = (kind: string) =>
+  ['-----BEGIN ', kind, '-----\nMIIB\n-----END ', kind, '-----\n'].join('');
+
 interface Server {
   gateways: Gateway[];
   fail?: (call: RecordedCall) => Response | undefined;
@@ -192,6 +196,29 @@ describe('gateways page', () => {
       expect(text).toContain('Runbook');
     });
 
+    it.each([
+      ['de', 'auf deinem Rechner'],
+      ['en', 'on your own computer'],
+    ] as const)(
+      'places the CA on the operator computer, not on the server (%s)',
+      async (language, computer) => {
+        const page = await open({ language, gateways: [] });
+        const text = pageText(page.element);
+        expect(text).toContain(computer);
+        expect(text).not.toMatch(/auf dem Server|on the server/);
+      },
+    );
+
+    it.each([
+      ['de', 'auf deinem Rechner'],
+      ['en', 'on your own computer'],
+    ] as const)('says where to renew the revocation list (%s)', async (language, computer) => {
+      const page = await open({ language, gateways: [{ ...flur, warnings: ['crlExpiring'] }] });
+      const text = pageText(page.element);
+      expect(text).toContain(computer);
+      expect(text).not.toMatch(/auf dem Server|on the server/);
+    });
+
     it('does not show the empty state while the list is loading', async () => {
       let release!: () => void;
       const gate = new Promise<void>((resolve) => (release = resolve));
@@ -306,6 +333,42 @@ describe('gateways page', () => {
       expect(pageText(page.element)).not.toContain('Bitte gib einen Namen');
       expect(certificateField(page).getAttribute('aria-invalid')).toBe('true');
     });
+
+    it('keeps the browser from checking, capitalizing or correcting the certificate', async () => {
+      const page = await open({ admin: true });
+      const field = certificateField(page);
+      expect(field.getAttribute('spellcheck')).toBe('false');
+      expect(field.getAttribute('autocomplete')).toBe('off');
+      expect(field.getAttribute('autocapitalize')).toBe('off');
+    });
+
+    it.each([
+      ['de', 'Gateway registrieren', 'Das sieht nach einem privaten Schlüssel aus'],
+      ['en', 'Register gateway', 'This looks like a private key'],
+    ] as const)(
+      'does not send text with a private key (%s) and says what belongs in the field',
+      async (language, button, message) => {
+        const page = await open({ admin: true, language });
+        for (const key of [
+          keyBlock('PRIVATE KEY'),
+          keyBlock('RSA PRIVATE KEY'),
+          keyBlock('encrypted private key'),
+          `${PEM}${keyBlock('EC PRIVATE KEY')}`,
+        ]) {
+          fill(page, 'Terrasse', key);
+          await press(page, button);
+          expect(requests(page, 'POST')).toHaveLength(0);
+          expect(pageText(page.element)).toContain(message);
+          expect(certificateField(page).getAttribute('aria-invalid')).toBe('true');
+          expect(page.snackbar.show).not.toHaveBeenCalled();
+        }
+        // Removing the key clears the message again; the certificate alone is sent.
+        fill(page, 'Terrasse', PEM);
+        expect(pageText(page.element)).not.toContain(message);
+        await press(page, button);
+        expect(requests(page, 'POST')).toHaveLength(1);
+      },
+    );
 
     it.each([
       [
