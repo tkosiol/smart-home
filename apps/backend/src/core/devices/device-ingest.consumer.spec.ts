@@ -7,7 +7,11 @@ import {
   GatewayEvents,
   type GatewaysService,
 } from '../gateways/index.js';
-import type { MqttConnection, MqttMessageHandler } from '../../platform/mqtt/index.js';
+import type {
+  MqttConnection,
+  MqttMessageHandler,
+  SubscribeOptions,
+} from '../../platform/mqtt/index.js';
 import type { NameMap } from './name-map.js';
 import type { DeviceMessageHandler } from './device-message-handler.js';
 import { DeviceIngestConsumer } from './device-ingest.consumer.js';
@@ -28,11 +32,13 @@ const fixtureDevices = JSON.parse(fixture) as Record<string, unknown>[];
 /** Like a broker: delivers a message to the handlers whose filter matches. */
 class FakeMqtt {
   readonly handlers: { filter: string; handler: MqttMessageHandler }[] = [];
+  readonly options: (SubscribeOptions | undefined)[] = [];
   readonly unsubscribed: string[] = [];
 
-  subscribe(filter: string, handler: MqttMessageHandler): () => void {
+  subscribe(filter: string, handler: MqttMessageHandler, options?: SubscribeOptions): () => void {
     const entry = { filter, handler };
     this.handlers.push(entry);
+    this.options.push(options);
     return () => {
       this.handlers.splice(this.handlers.indexOf(entry), 1);
       this.unsubscribed.push(filter);
@@ -44,7 +50,13 @@ class FakeMqtt {
   }
 
   publish(topic: string, payload: string | Buffer, retained = false): void {
+    void this.deliver(topic, payload, retained);
+  }
+
+  /** Like `publish`; resolves when the handlers are done, as the acknowledgement would be sent. */
+  async deliver(topic: string, payload: string | Buffer, retained = false): Promise<void> {
     const levels = topic.split('/');
+    const results: Promise<void>[] = [];
     for (const { filter, handler } of [...this.handlers]) {
       const pattern = filter.split('/');
       const hash = pattern.at(-1) === '#';
@@ -52,8 +64,9 @@ class FakeMqtt {
       const matches =
         (hash ? levels.length >= fixed.length : levels.length === fixed.length) &&
         fixed.every((level, index) => level === '+' || level === levels[index]);
-      if (matches) handler(topic, Buffer.from(payload), retained);
+      if (matches) results.push(Promise.resolve(handler(topic, Buffer.from(payload), retained)));
     }
+    await Promise.all(results);
   }
 }
 
@@ -147,8 +160,8 @@ describe('DeviceIngestConsumer', () => {
     );
   });
 
-  afterEach(() => {
-    consumer.onModuleDestroy();
+  afterEach(async () => {
+    await consumer.onModuleDestroy();
   });
 
   describe('subscriptions', () => {
@@ -215,7 +228,7 @@ describe('DeviceIngestConsumer', () => {
         );
         consumer.onModuleInit();
         await consumer.idle();
-        consumer.onModuleDestroy();
+        await consumer.onModuleDestroy();
         await vi.advanceTimersByTimeAsync(60_000);
         expect(listActive).toHaveBeenCalledTimes(1);
       } finally {
@@ -259,9 +272,9 @@ describe('DeviceIngestConsumer', () => {
       listNames.mockReturnValueOnce(new Promise((resolve) => (release = resolve)));
       events.emit(GATEWAY_REGISTERED, { gatewayId: OTHER, topicPrefix: prefix(OTHER) });
       await vi.waitFor(() => expect(listNames).toHaveBeenCalledTimes(2));
-      consumer.onModuleDestroy();
+      const destroying = consumer.onModuleDestroy();
       release([]);
-      await consumer.idle();
+      await destroying;
       expect(mqtt.filters).toEqual([]);
     });
 
@@ -322,6 +335,43 @@ describe('DeviceIngestConsumer', () => {
           capabilities: [],
         },
       ]);
+    });
+
+    it('keeps the valid entries when one is malformed, and drops only that one', async () => {
+      await start();
+      const [, first, second] = fixtureDevices;
+      await send(`${prefix(GW)}/bridge/devices`, [
+        first,
+        { ...second, friendly_name: 'x'.repeat(256) },
+        { ...second, ieee_address: 'not-an-address' },
+        { ...second, friendly_name: 42 },
+        null,
+        'text',
+        {
+          ieee_address: '0x00000000000000b1',
+          friendly_name: 'failed interview',
+          type: 'EndDevice',
+          interview_state: 'FAILED',
+          supported: false,
+          definition: null,
+        },
+        second,
+      ]);
+      expect(upsertFromBridge).toHaveBeenCalledTimes(1);
+      expect(upsertFromBridge.mock.calls[0]?.[1].map((device) => device.friendlyName)).toEqual([
+        first?.friendly_name,
+        'failed interview',
+        second?.friendly_name,
+      ]);
+      expect(consumer.discarded.invalid).toBe(5);
+    });
+
+    it('still discards a list that is no array', async () => {
+      await start();
+      await send(`${prefix(GW)}/bridge/devices`, { devices: [] });
+      await send(`${prefix(GW)}/bridge/devices`, 'garbage');
+      expect(upsertFromBridge).not.toHaveBeenCalled();
+      expect(consumer.discarded.invalid).toBe(2);
     });
 
     it('maps a name to the hardware after the list was stored', async () => {
@@ -435,7 +485,7 @@ describe('DeviceIngestConsumer', () => {
       await send(`${prefix(GW)}/bridge/request/permit_join`, '{}');
       await send(`${prefix(GW)}/bridge/state`, 'online');
       expect(handle).not.toHaveBeenCalled();
-      expect(consumer.discarded).toEqual({ unknownName: 0, invalid: 0 });
+      expect(consumer.discarded).toEqual({ unknownName: 0, invalid: 0, overflow: 0 });
     });
 
     it('counts a message under an unknown name and logs it once an hour per name', async () => {
@@ -467,6 +517,109 @@ describe('DeviceIngestConsumer', () => {
       await send(`${prefix(GW)}/Lampe`, { state: 'OFF' });
       expect(handle).toHaveBeenCalledTimes(2);
       expect(logged()).not.toContain('payload-value');
+    });
+  });
+
+  describe('backpressure', () => {
+    beforeEach(async () => {
+      await start();
+      await send(`${prefix(GW)}/bridge/devices`, JSON.parse(fixture));
+    });
+
+    /** Makes the handler wait until `release()`. */
+    const hold = (): { release: () => void } => {
+      let release: () => void = () => undefined;
+      const gate = new Promise<void>((resolve) => (release = resolve));
+      handle.mockImplementation(() => gate);
+      return { release };
+    };
+
+    it('subscribes at QoS 1 and holds the acknowledgement back until the message is processed', () => {
+      expect(mqtt.options).toEqual([{ qos: 1, ackAfterHandler: true }]);
+    });
+
+    it('settles what it hands to the subscription only when the message is processed', async () => {
+      const { release } = hold();
+      const settled = vi.fn();
+      void mqtt.deliver(`${prefix(GW)}/Pflanze 1`, '{"soil_moisture":41}').then(settled);
+      await vi.waitFor(() => expect(handle).toHaveBeenCalledTimes(1));
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(settled).not.toHaveBeenCalled();
+
+      release();
+      await vi.waitFor(() => expect(settled).toHaveBeenCalledTimes(1));
+    });
+
+    it('settles also when the message could not be processed', async () => {
+      handle.mockRejectedValueOnce(new Error('payload-value'));
+      await mqtt.deliver(`${prefix(GW)}/Pflanze 1`, '{"soil_moisture":41}');
+      await mqtt.deliver(`${prefix(GW)}/Pflanze 1`, 'garbage');
+      await mqtt.deliver(`${prefix(GW)}/Lampe/set`, '{}');
+      await mqtt.deliver(`${prefix(GW)}/ghost`, '{}');
+      await mqtt.deliver(`${prefix(GW)}/bridge/request/x`, '{}');
+      expect(logged()).not.toContain('payload-value');
+    });
+
+    it('does not drop messages however many are waiting, as long as they are not too big', async () => {
+      const { release } = hold();
+      for (let n = 0; n < 5000; n += 1) mqtt.publish(`${prefix(GW)}/Pflanze 1`, '{"battery":90}');
+      release();
+      await consumer.idle();
+      expect(handle).toHaveBeenCalledTimes(5000);
+      expect(consumer.discarded.overflow).toBe(0);
+    });
+
+    it('bounds the waiting messages by their size and reports the drops once a minute', async () => {
+      const { release } = hold();
+      const big = JSON.stringify({ text: 'x'.repeat(60_000) });
+      // 64 MiB are about 1090 of these.
+      for (let n = 0; n < 1200; n += 1) mqtt.publish(`${prefix(GW)}/Pflanze 1`, big);
+      expect(consumer.discarded.overflow).toBeGreaterThan(50);
+      expect(consumer.discarded.overflow).toBeLessThan(150);
+      const drops = (): string[] =>
+        warn.mock.calls.map(String).filter((line) => line.includes('Dropped'));
+      expect(drops()).toHaveLength(1);
+      expect(drops()[0]).not.toContain('xxxx');
+
+      now = new Date(T0.getTime() + 61_000);
+      mqtt.publish(`${prefix(GW)}/Pflanze 1`, big);
+      expect(drops()).toHaveLength(2);
+      release();
+      await consumer.idle();
+      // What was in the queue is handled; the space is free again.
+      const before = handle.mock.calls.length;
+      await send(`${prefix(GW)}/Pflanze 1`, '{"battery":1}');
+      expect(handle).toHaveBeenCalledTimes(before + 1);
+    });
+  });
+
+  describe('shutdown', () => {
+    it('processes what it has received before onModuleDestroy returns', async () => {
+      await start();
+      await send(`${prefix(GW)}/bridge/devices`, JSON.parse(fixture));
+      let release: () => void = () => undefined;
+      const gate = new Promise<void>((resolve) => (release = resolve));
+      handle.mockImplementation(() => gate);
+      for (let n = 0; n < 3; n += 1) mqtt.publish(`${prefix(GW)}/Pflanze 1`, '{"battery":90}');
+      await vi.waitFor(() => expect(handle).toHaveBeenCalledTimes(1));
+
+      const destroyed = vi.fn();
+      const destroying = consumer.onModuleDestroy().then(destroyed);
+      expect(mqtt.filters).toEqual([]);
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(destroyed).not.toHaveBeenCalled();
+
+      release();
+      await destroying;
+      expect(handle).toHaveBeenCalledTimes(3);
+    });
+
+    it('does not take messages any more once it is destroyed', async () => {
+      await start();
+      await send(`${prefix(GW)}/bridge/devices`, JSON.parse(fixture));
+      await consumer.onModuleDestroy();
+      await send(`${prefix(GW)}/Pflanze 1`, '{"battery":90}');
+      expect(handle).not.toHaveBeenCalled();
     });
   });
 

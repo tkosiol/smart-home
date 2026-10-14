@@ -15,6 +15,8 @@ import {
   GatewayEvents,
   GatewaysService,
   Throttle,
+  isBridgeTopic,
+  isCommandTopic,
   type GatewayRegistered,
   type GatewayRevoked,
 } from '../gateways/index.js';
@@ -29,8 +31,12 @@ const RETRY_MS = 5000;
 const HOUR_MS = 3_600_000;
 /** Bounds for everything kept per name or per message: the oldest entries are forgotten. */
 const MEMORY_LIMIT = 1000;
-/** Messages waiting to be handled; beyond this the database is not keeping up and new ones go. */
-const MAX_QUEUED = 1000;
+/**
+ * Bytes of the messages waiting to be handled. The acknowledgement of a message is held back until
+ * it is handled, so the broker delivers no faster than the database takes them and the queue holds
+ * a few messages; this is only a safety net. Beyond it new messages are dropped.
+ */
+const MAX_QUEUED_BYTES = 64 * 1024 * 1024;
 /** A gateway with a hundred devices lists about a megabyte. */
 const MAX_DEVICES_BYTES = 4 * 1024 * 1024;
 const MAX_MESSAGE_BYTES = 64 * 1024;
@@ -38,8 +44,6 @@ const MAX_AVAILABILITY_BYTES = 1024;
 const MAX_NAME_LOG = 80;
 
 const IEEE_ADDRESS = /^0x[0-9a-f]{16}$/i;
-/** `<name>/set`, `<name>/set/<attribute>` and the same with `get`: commands, not device messages. */
-const COMMAND_TOPIC = /\/(?:set|get)(?:\/[^/]+)?$/;
 const AVAILABILITY_SUFFIX = '/availability';
 
 const bridgeDeviceSchema = z.object({
@@ -51,7 +55,8 @@ const bridgeDeviceSchema = z.object({
   model_id: z.string().optional().catch(undefined),
   definition: z.unknown().optional(),
 });
-const bridgeDevicesSchema = z.array(bridgeDeviceSchema);
+/** The entries are parsed one by one: a malformed one must not cost the others. */
+const bridgeDevicesSchema = z.array(z.unknown());
 const definitionInfoSchema = z.object({
   vendor: z.string().optional().catch(undefined),
   model: z.string().optional().catch(undefined),
@@ -118,7 +123,7 @@ type Route = 'devices' | 'event' | 'message';
 function routeOf(rest: string): Route | undefined {
   if (rest === 'bridge/devices') return 'devices';
   if (rest === 'bridge/event') return 'event';
-  return rest.startsWith('bridge/') ? undefined : 'message';
+  return isBridgeTopic(rest) ? undefined : 'message';
 }
 
 /**
@@ -133,7 +138,7 @@ export class DeviceIngestConsumer implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(DeviceIngestConsumer.name);
   private readonly names = new NameMap();
   private readonly notices = new Throttle(HOUR_MS, MEMORY_LIMIT);
-  private readonly failures = new Throttle(MINUTE_MS, 2);
+  private readonly failures = new Throttle(MINUTE_MS, 3);
   private readonly subscriptions = new Map<string, () => void>();
   /** A revoked gateway stays revoked; this keeps a `follow` that is still loading from undoing it. */
   private readonly revoked = new Set<string>();
@@ -141,7 +146,8 @@ export class DeviceIngestConsumer implements OnModuleInit, OnModuleDestroy {
   private readonly pendingAvailability = new Map<string, Availability>();
   private controlTail: Promise<void> = Promise.resolve();
   private workTail: Promise<void> = Promise.resolve();
-  private queued = 0;
+  private queuedBytes = 0;
+  private dropped = 0;
   private destroyed = false;
   private retry: NodeJS.Timeout | undefined;
   private readonly onRegistered = (event: GatewayRegistered): void => {
@@ -154,7 +160,7 @@ export class DeviceIngestConsumer implements OnModuleInit, OnModuleDestroy {
   };
 
   /** Messages thrown away since start, by reason. */
-  readonly discarded = { unknownName: 0, invalid: 0 };
+  readonly discarded = { unknownName: 0, invalid: 0, overflow: 0 };
 
   constructor(
     private readonly gateways: GatewaysService,
@@ -171,12 +177,19 @@ export class DeviceIngestConsumer implements OnModuleInit, OnModuleDestroy {
     this.subscribeToActiveGateways();
   }
 
-  onModuleDestroy(): void {
+  /**
+   * Stops taking messages and returns when those already taken are handled, so that nothing is
+   * written after the modules this depends on (the measurement writer, the database) are closed.
+   */
+  async onModuleDestroy(): Promise<void> {
     this.destroyed = true;
     clearTimeout(this.retry);
     this.events.off(GATEWAY_REGISTERED, this.onRegistered);
     this.events.off(GATEWAY_REVOKED, this.onRevoked);
+    // The gateways stay followed until the queue is empty: messages waiting for a gateway whose
+    // subscription is gone are skipped as those of a revoked one.
     for (const unsubscribe of this.subscriptions.values()) unsubscribe();
+    await this.idle();
     this.subscriptions.clear();
   }
 
@@ -220,9 +233,12 @@ export class DeviceIngestConsumer implements OnModuleInit, OnModuleDestroy {
     this.names.replace(gatewayId, names);
     this.subscriptions.set(
       gatewayId,
-      this.mqtt.subscribe(`${topicPrefix}/#`, (topic, payload, retained) => {
-        this.accept(gatewayId, topicPrefix, topic, payload, retained);
-      }),
+      this.mqtt.subscribe(
+        `${topicPrefix}/#`,
+        (topic, payload, retained) => this.accept(gatewayId, topicPrefix, topic, payload, retained),
+        // Acknowledged once handled: the broker's delivery follows the pace of the database.
+        { qos: 1, ackAfterHandler: true },
+      ),
     );
   }
 
@@ -236,13 +252,14 @@ export class DeviceIngestConsumer implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  /** Settles when the message is handled (at once if it is of no use), to acknowledge it then. */
   private accept(
     gatewayId: string,
     topicPrefix: string,
     topic: string,
     payload: Buffer,
     retained: boolean,
-  ): void {
+  ): Promise<void> | undefined {
     const rest = topic.slice(topicPrefix.length + 1);
     if (!topic.startsWith(`${topicPrefix}/`) || rest === '') return;
     const route = routeOf(rest);
@@ -257,11 +274,11 @@ export class DeviceIngestConsumer implements OnModuleInit, OnModuleDestroy {
       this.discard('invalid', gatewayId, 'oversized');
       return;
     }
-    if (this.queued >= MAX_QUEUED) {
-      this.notice(`queue:${gatewayId}`, `Dropping messages of ${gatewayId}: too many are waiting`);
+    if (this.queuedBytes + payload.length > MAX_QUEUED_BYTES) {
+      this.drop();
       return;
     }
-    this.queued += 1;
+    this.queuedBytes += payload.length;
     this.workTail = this.workTail
       .then(() => this.process(gatewayId, route, rest, payload, retained))
       .catch((error: unknown) => {
@@ -271,8 +288,18 @@ export class DeviceIngestConsumer implements OnModuleInit, OnModuleDestroy {
         }
       })
       .finally(() => {
-        this.queued -= 1;
+        this.queuedBytes -= payload.length;
       });
+    return this.workTail;
+  }
+
+  /** Counts a message thrown away for lack of room; says so at most once a minute. */
+  private drop(): void {
+    this.discarded.overflow += 1;
+    this.dropped += 1;
+    if (!this.failures.allow('drop', this.clock())) return;
+    this.logger.warn(`Dropped ${this.dropped} messages: too many bytes are waiting`);
+    this.dropped = 0;
   }
 
   private async process(
@@ -293,7 +320,7 @@ export class DeviceIngestConsumer implements OnModuleInit, OnModuleDestroy {
     if (rest.endsWith(AVAILABILITY_SUFFIX)) {
       return this.onAvailability(gatewayId, rest.slice(0, -AVAILABILITY_SUFFIX.length), payload);
     }
-    if (COMMAND_TOPIC.test(rest)) return;
+    if (isCommandTopic(rest)) return;
     this.discard(
       'unknownName',
       gatewayId,
@@ -304,7 +331,19 @@ export class DeviceIngestConsumer implements OnModuleInit, OnModuleDestroy {
   private async onDevices(gatewayId: string, payload: Buffer): Promise<void> {
     const parsed = bridgeDevicesSchema.safeParse(parseJson(payload));
     if (!parsed.success) return this.discard('invalid', gatewayId, 'bridge/devices');
-    const devices = parsed.data.filter((entry) => entry.type !== 'Coordinator').map(toZ2mDevice);
+    const devices: Z2mDevice[] = [];
+    let valid = 0;
+    for (const raw of parsed.data) {
+      const entry = bridgeDeviceSchema.safeParse(raw);
+      if (!entry.success) {
+        this.discard('invalid', gatewayId, 'bridge/devices entry');
+        continue;
+      }
+      valid += 1;
+      if (entry.data.type !== 'Coordinator') devices.push(toZ2mDevice(entry.data));
+    }
+    // A list of nothing but garbage is no list: it must not mark all hardware as removed.
+    if (valid === 0 && parsed.data.length > 0) return;
     await this.hardware.upsertFromBridge(gatewayId, devices, this.clock());
     const names = await this.hardware.listNames(gatewayId);
     if (!this.subscriptions.has(gatewayId)) return;

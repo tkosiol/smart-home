@@ -112,8 +112,12 @@ describe('MqttConnection', () => {
         const base = topic();
         const first: string[] = [];
         const second: string[] = [];
-        reader.subscribe(`${base}/#`, (_topic, payload) => first.push(payload.toString()));
-        reader.subscribe(`${base}/#`, (_topic, payload) => second.push(payload.toString()));
+        reader.subscribe(`${base}/#`, (_topic, payload) => {
+          first.push(payload.toString());
+        });
+        reader.subscribe(`${base}/#`, (_topic, payload) => {
+          second.push(payload.toString());
+        });
         await vi.waitFor(async () => {
           await source.publishAsync(`${base}/probe`, 'probe', { qos: 1 });
           expect(second).toContain('probe');
@@ -124,6 +128,42 @@ describe('MqttConnection', () => {
         await new Promise((resolve) => setTimeout(resolve, 200));
         expect(first.filter((payload) => payload === 'one')).toHaveLength(1);
         expect(second.filter((payload) => payload === 'one')).toHaveLength(1);
+      } finally {
+        await reader.close();
+        await source.endAsync(true);
+      }
+    });
+
+    it('delivers every message of a burst to a slow handler that gates the acknowledgement', async () => {
+      const reader = connect(env.MQTT_PASSWORD);
+      const source = writer();
+      try {
+        await reader.waitUntilConnected(5000);
+        const base = topic();
+        const seen: number[] = [];
+        reader.subscribe(
+          `${base}/#`,
+          async (_topic, payload) => {
+            await new Promise((resolve) => setTimeout(resolve, 2));
+            seen.push(Number(payload.toString()));
+            if (payload.toString() === '7') throw new Error('one bad message');
+          },
+          { qos: 1, ackAfterHandler: true },
+        );
+        await vi.waitFor(async () => {
+          await source.publishAsync(`${base}/probe`, '-1', { qos: 1 });
+          expect(seen).toContain(-1);
+        });
+        const total = 1500;
+        await Promise.all(
+          Array.from({ length: total }, (_, index) =>
+            source.publishAsync(`${base}/a`, String(index), { qos: 1 }),
+          ),
+        );
+        const bursts = (): number[] => seen.filter((value) => value >= 0);
+        await vi.waitFor(() => expect(bursts()).toHaveLength(total), { timeout: 20_000 });
+        expect(bursts()).toEqual(Array.from({ length: total }, (_, index) => index));
+        expect(reader.isConnected()).toBe(true);
       } finally {
         await reader.close();
         await source.endAsync(true);
