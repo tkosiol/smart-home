@@ -3,10 +3,12 @@ import { stateFile } from '../helpers/accounts';
 import { testGateway } from '../helpers/gateways';
 
 // `owner` is a platform admin and the owner of "Haus owner" (see `global-setup.ts`), so it sees the
-// list and the form. The gateways are the ones `stack-test.sh` started: the Pi's Mosquitto bridged
-// over mTLS, and the simulator on the internal listener. The steps build on each other (the Pi's
-// gateway is registered once, then refused as taken), so they run one after the other. No test
-// signs in: the saved state of `owner` is used (the budget of code requests is used up).
+// list and the form. The gateway is the one `stack-test.sh` started: the Pi's Mosquitto bridged
+// over mTLS. The simulator's gateway can be registered only once, so `devices.spec.ts` takes it
+// (in its own household) and this spec leaves it alone. The steps build on each other (the Pi's
+// gateway is registered once, then refused as taken, then revoked), so they run one after the
+// other. No test signs in: the saved state of `owner` is used (the budget of code requests is used
+// up).
 test.use({ storageState: stateFile('owner') });
 
 const heading = (page: Page, name: string) => page.getByRole('heading', { level: 1, name });
@@ -64,16 +66,6 @@ test.describe.serial('registering gateways', () => {
     await expect(page.getByRole('textbox', { name: 'Zertifikat', exact: true })).toHaveValue('');
   });
 
-  test("the simulator's gateway registers and Zigbee2MQTT is online", async ({ page }) => {
-    await page.goto('/mehr/gateways');
-    await register(page, 'Simulator', testGateway('simulator').certificate);
-    const block = gatewayBlock(page, 'Simulator');
-    await expect(block).toBeVisible();
-    await expect(block).toContainText('Zigbee2MQTT: Online');
-    await expect(block).toContainText('Bridge: Online');
-    await expect(block).toContainText(/Letzte Nachricht|Noch keine Nachricht empfangen/);
-  });
-
   test('a gateway that is already registered is refused with a message', async ({ page }) => {
     await page.goto('/mehr/gateways');
     await register(page, 'Noch einmal', testGateway('pi').certificate);
@@ -81,23 +73,21 @@ test.describe.serial('registering gateways', () => {
     await expect(page.getByRole('heading', { name: 'Noch einmal' })).toHaveCount(0);
   });
 
-  test('the list survives a reload with both gateways and their status', async ({ page }) => {
+  test('the list survives a reload with the gateway and its status', async ({ page }) => {
     await page.goto('/mehr/gateways');
     await expect(gatewayBlock(page, 'Pi Wohnzimmer')).toContainText('Bridge: Online');
-    await expect(gatewayBlock(page, 'Simulator')).toContainText('Zigbee2MQTT: Online');
+    await expect(gatewayBlock(page, 'Pi Wohnzimmer')).toContainText('Zertifikat gültig bis');
   });
 
   test('revoking asks twice, then marks the gateway and reminds of the broker', async ({
     page,
   }) => {
     await page.goto('/mehr/gateways');
-    const block = gatewayBlock(page, 'Simulator');
+    const block = gatewayBlock(page, 'Pi Wohnzimmer');
     await block.getByRole('button', { name: 'Sperren' }).click();
     await expect(block.getByRole('button', { name: 'Wirklich sperren?' })).toBeVisible();
     await block.getByRole('button', { name: 'Wirklich sperren?' }).click();
     await expect(block).toContainText('Gesperrt am');
     await expect(page.getByText(/Sperre jetzt auch sein Zertifikat/)).toBeVisible();
-    // The Pi's gateway is untouched.
-    await expect(gatewayBlock(page, 'Pi Wohnzimmer')).toContainText('Bridge: Online');
   });
 });
