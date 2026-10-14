@@ -39,7 +39,7 @@ infra/pki/pki.sh status
 
 `status` zeigt für CA, Server und jedes Gateway das Ablaufdatum (Tage übrig oder `EXPIRED`), den Sperrstatus und die nächste Aktualisierung der CRL. Das Server-Zertifikat gilt 2 Jahre. Die App überwacht es nicht (nur Gateway-Zertifikate und die CRL): Kalendereintrag für `pki.sh status` in 22 Monaten anlegen.
 
-Staging und Produktion nutzen dieselbe CA und dasselbe Server-Zertifikat; Staging veröffentlicht den Port nicht (nur `127.0.0.1:18883`), braucht die Dateien aber, weil die API die CA zum Prüfen der Registrierung liest.
+Staging und Produktion nutzen dieselbe CA und dasselbe Server-Zertifikat; Staging veröffentlicht den Port nicht (nur auf `127.0.0.1`, mit zufälligem Host-Port), braucht die Dateien aber, weil die API die CA zum Prüfen der Registrierung liest.
 
 ## 3. Sicherung von `~/.smart-pki`
 
@@ -118,7 +118,8 @@ Jail `/etc/fail2ban/jail.d/smart-mosquitto-tls.local`:
 enabled  = true
 filter   = smart-mosquitto-tls
 port     = 8883
-# Docker schreibt das Log des Brokers als JSON; der Container wird bei Deploys neu erzeugt, daher das Muster.
+# Docker schreibt das Log des Brokers als JSON. Fail2ban löst das Muster nur beim Start des Jails auf; jeder Deploy
+# erzeugt den Broker-Container neu (neue ID, neue Logdatei), daher nach jedem Deploy neu laden (siehe unten).
 logpath  = /var/lib/docker/containers/*/*-json.log
 # Veröffentlichte Docker-Ports erreicht nur die Kette DOCKER-USER, nicht INPUT.
 chain    = DOCKER-USER
@@ -134,6 +135,14 @@ sudo fail2ban-regex /var/lib/docker/containers/<Container-ID>/<Container-ID>-jso
 sudo systemctl reload fail2ban
 sudo fail2ban-client status smart-mosquitto-tls
 ```
+
+**Nach jedem Deploy und nach jedem Lauf von `broker-certs.sh` das Jail neu laden:** Beide erzeugen den Broker-Container neu, das Jail beobachtet danach noch die alte, tote Logdatei und sperrt nichts mehr (ohne Fehlermeldung). Neu laden löst das Muster erneut auf:
+
+```bash
+sudo fail2ban-client reload smart-mosquitto-tls
+```
+
+Wird das vergessen, fällt nur die zusätzliche Sperre aus; der Schutz des Ports bleibt das Client-Zertifikat (mTLS). Ein stabiler Log-Pfad (Docker-Log-Treiber `journald` oder `syslog` mit festem Tag) würde das Nachladen ersparen, braucht aber eine Änderung am Stack und wird erst mit dem Dauerbetrieb des ersten Gateways entschieden.
 
 Ein Gateway mit abgelaufenem oder gesperrtem Zertifikat versucht immer wieder, sich zu verbinden, und wird nach 5 Versuchen gesperrt. Ist das Heimnetz irrtümlich gesperrt: `sudo fail2ban-client set smart-mosquitto-tls unbanip <Adresse>`.
 

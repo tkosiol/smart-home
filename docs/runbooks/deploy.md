@@ -36,6 +36,18 @@ Der erste Deploy-Lauf auf `main`, der das Image `smart-home-simulator` baut, leg
 
 Ein Fehler `pull access denied` für `smart-home-simulator` heißt, dass Schritt 1 fehlt.
 
+## Umstieg auf Etappe 5a (einmalig, Till)
+
+Etappe 5a bringt Broker-TLS, Gateways und den Simulator. Die bestehenden Umgebungen kennen die neuen `.env`-Werte noch nicht; ohne diese Schritte scheitert der erste Deploy oder bleibt ohne Wirkung. Reihenfolge einhalten:
+
+1. **Vor dem ersten Produktions-Deploy:** `SMART_VPS=<DEPLOY_USER>@<VPS_HOST> infra/deploy/provision.sh production --force` (schreibt `MQTT_TLS=off` und `MQTT_PUBLIC_PORT=8883` und legt `certs/` an; vorhandene Passwörter bleiben). Ohne `MQTT_PUBLIC_PORT` veröffentlicht Produktion den Broker-Port nicht, der Deploy läuft aber durch. Danach die Freigabe für Produktion erteilen.
+2. Nach dem ersten erfolgreichen Deploy-Lauf auf `main` das GHCR-Paket `smart-home-simulator` auf **Public** stellen (Abschnitt „Neues GHCR-Paket: Simulator“, Schritt 1).
+3. `provision.sh staging --force` (ergänzt Simulator-Profil, `MQTT_SIMULATOR_*` und `certs/`), danach den Staging-Deploy erneut starten (Abschnitt „Neues GHCR-Paket: Simulator“, Schritt 2 und 3).
+4. PKI auf deinem Rechner anlegen (`pki.sh init-ca`, `pki.sh issue-server`), falls noch nicht geschehen: `docs/runbooks/gateway.md`, Abschnitt 2. Der CA-Schlüssel verlässt deinen Rechner nie.
+5. Zertifikate auf den VPS bringen: `infra/deploy/broker-certs.sh staging`, dann `infra/deploy/broker-certs.sh production` (Abschnitt 4 des Gateway-Runbooks). Das Skript schaltet `MQTT_TLS` auf `on` und startet den Broker neu.
+6. UFW und Fail2ban für Port 8883 einrichten (Abschnitt 5 des Gateway-Runbooks).
+7. Den Simulator auf Staging in der App registrieren (Abschnitt 7 des Gateway-Runbooks).
+
 ## Fehlerbilder
 
 | Symptom                                  | Ursache / Abhilfe                                                                                                                                  |
