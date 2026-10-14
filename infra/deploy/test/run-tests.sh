@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for the deploy wrapper, deploy.sh, provision.sh and admin.sh using stubbed docker, curl and ssh.
+# Tests for the deploy wrapper, deploy.sh, provision.sh, admin.sh and broker-certs.sh using stubbed docker, curl and ssh.
 # shellcheck disable=SC2016 # check() expressions are evaluated later on purpose
 set -u
 cd "$(dirname "$0")/.." || exit 1
@@ -19,6 +19,7 @@ setup() {
   unset STUB_FAIL_INFRA STUB_FAIL_MIGRATE STUB_FAIL_UP STUB_READY_FAILURES STUB_COMPARE_STATUS STUB_ENV_EXISTS STUB_SSH_DOWN STUB_EXISTING_ENV STUB_SSH_EXEC STUB_REMOTE_HOME STUB_ARGV_LOG SSH_ORIGINAL_COMMAND
 }
 teardown() { rm -rf "$WORK"; }
+mode_of() { stat -c %a "$1" 2> /dev/null || stat -f %Lp "$1"; }
 check() {
   if eval "$2"; then passed=$((passed + 1)); else echo "FAIL: $1"; failures=$((failures + 1)); fi
 }
@@ -63,6 +64,18 @@ check "deploy runs pull, migrate, up and readiness in order" '[ "$(grep -oE "pul
 check "deploy records the new sha" 'grep -qx "IMAGE_TAG=$SHA" "$SMART_STACKS_DIR/smart-prod/deploy.env"'
 check "deploy promotes the commit compose file after success" 'grep -qx "name: next" "$SMART_STACKS_DIR/smart-prod/compose.yaml" && [ ! -e "$SMART_STACKS_DIR/smart-prod/compose.next.yaml" ]'
 check "deploy runs the new version with the new compose file" 'grep -q "compose -f compose.next.yaml --env-file .env --env-file deploy.env.next up -d --wait --remove-orphans" "$STUB_CALLS"'; teardown
+# Docker would create missing ./certs/public and ./certs/private bind mounts as root; the stack directory must own
+# them before any compose command runs (the stub docker notes at every call whether both exist).
+setup; prepare_stack smart-prod "$OLD_SHA"
+check "deploy creates certs/public (755) and certs/private (700)" '[ "$(run_deploy production)" = 0 ] && [ "$(mode_of "$SMART_STACKS_DIR/smart-prod/certs/public")" = 755 ] && [ "$(mode_of "$SMART_STACKS_DIR/smart-prod/certs/private")" = 700 ]'
+check "deploy has both certs directories before every compose call" '[ -s "$STUB_CALLS.certs" ] && ! grep -q missing "$STUB_CALLS.certs"'; teardown
+setup; prepare_stack smart-prod "$OLD_SHA"
+check "deploy sets the certs modes even under a restrictive umask" '[ "$(umask 077 && run_deploy production)" = 0 ] && [ "$(mode_of "$SMART_STACKS_DIR/smart-prod/certs")" = 755 ] && [ "$(mode_of "$SMART_STACKS_DIR/smart-prod/certs/public")" = 755 ] && [ "$(mode_of "$SMART_STACKS_DIR/smart-prod/certs/private")" = 700 ]'; teardown
+setup; prepare_stack smart-prod "$OLD_SHA"; mkdir -p "$SMART_STACKS_DIR/smart-prod/certs/public"; echo keep > "$SMART_STACKS_DIR/smart-prod/certs/public/ca.crt"
+check "deploy leaves existing certificates alone" '[ "$(run_deploy production)" = 0 ] && [ "$(cat "$SMART_STACKS_DIR/smart-prod/certs/public/ca.crt")" = keep ]'; teardown
+setup; prepare_stack smart-prod "$OLD_SHA"; export STUB_FAIL_INFRA=1
+check "deploy has created the certs directories even when the broker does not start" '[ "$(run_deploy production)" = 1 ] && [ -d "$SMART_STACKS_DIR/smart-prod/certs/public" ] && [ -d "$SMART_STACKS_DIR/smart-prod/certs/private" ]'; teardown
+
 setup; prepare_stack smart-prod "$OLD_SHA"; export STUB_READY_FAILURES=2
 check "deploy retries readiness while the new version warms up" '[ "$(run_deploy production)" = 0 ]'
 check "deploy does not roll back a version that becomes ready" '! grep -q "env-file deploy.env up" "$STUB_CALLS"'; teardown
@@ -114,6 +127,22 @@ setup; STUB_EXISTING_ENV=$(printf "STACK_NAME=smart-staging\nDB_PASSWORD=keep-db
 export SMART_VPS=deploy@vps STUB_ENV_EXISTS=1 STUB_EXISTING_ENV
 check "provision --force keeps the existing database and broker passwords" 'provision_staging --force && grep -qx "DB_PASSWORD=keep-db" "$STUB_REMOTE_FILE" && grep -qx "MQTT_API_PASSWORD=keep-mqtt" "$STUB_REMOTE_FILE"'; teardown
 
+# The simulator (staging only): profile, password and gateway ID.
+setup; export SMART_VPS=deploy@vps
+check "provision enables the simulator profile for staging" 'provision_staging && grep -qx "COMPOSE_PROFILES=simulator" "$STUB_REMOTE_FILE"'
+check "provision generates a long simulator password and a gateway ID of the pattern" 'grep -Eq "^MQTT_SIMULATOR_PASSWORD=[0-9a-f]{64}$" "$STUB_REMOTE_FILE" && grep -Eq "^MQTT_SIMULATOR_GATEWAY_ID=gw-[a-z0-9]{8}$" "$STUB_REMOTE_FILE"'
+check "provision writes each simulator setting once" '[ "$(grep -cE "^(COMPOSE_PROFILES|MQTT_SIMULATOR_PASSWORD|MQTT_SIMULATOR_GATEWAY_ID)=" "$STUB_REMOTE_FILE")" = 3 ]'
+check "provision never prints the simulator password" '! staging_answers | bash "$DEPLOY_DIR/provision.sh" staging 2>&1 | grep -Eq "[0-9a-f]{64}"'
+check "provision gives the simulator a password that differs from the api's" '[ "$(sed -n "s/^MQTT_SIMULATOR_PASSWORD=//p" "$STUB_REMOTE_FILE")" != "$(sed -n "s/^MQTT_API_PASSWORD=//p" "$STUB_REMOTE_FILE")" ]'
+check "provision gives production no simulator" 'answers | bash "$DEPLOY_DIR/provision.sh" production > /dev/null 2>&1 && grep -qx "COMPOSE_PROFILES=backup" "$STUB_REMOTE_FILE" && ! grep -q "SIMULATOR" "$STUB_REMOTE_FILE" && ! grep -q "simulator" "$STUB_REMOTE_FILE"'; teardown
+setup; STUB_EXISTING_ENV=$(printf "STACK_NAME=smart-staging\nMQTT_SIMULATOR_PASSWORD=keep-sim\nMQTT_SIMULATOR_GATEWAY_ID=gw-keep0001\nCOMPOSE_PROFILES=simulator")
+export SMART_VPS=deploy@vps STUB_ENV_EXISTS=1 STUB_EXISTING_ENV
+check "provision --force keeps the simulator password and gateway ID" 'provision_staging --force && grep -qx "MQTT_SIMULATOR_PASSWORD=keep-sim" "$STUB_REMOTE_FILE" && grep -qx "MQTT_SIMULATOR_GATEWAY_ID=gw-keep0001" "$STUB_REMOTE_FILE" && [ "$(grep -c "^COMPOSE_PROFILES=" "$STUB_REMOTE_FILE")" = 1 ] && grep -qx "COMPOSE_PROFILES=simulator" "$STUB_REMOTE_FILE"'; teardown
+setup; STUB_EXISTING_ENV=$(printf "STACK_NAME=smart-staging\nMQTT_SIMULATOR_GATEWAY_ID=not-an-id\nCOMPOSE_PROFILES=backup")
+export SMART_VPS=deploy@vps STUB_ENV_EXISTS=1 STUB_EXISTING_ENV
+check "provision --force replaces a stored gateway ID that does not match the pattern" 'provision_staging --force && grep -Eq "^MQTT_SIMULATOR_GATEWAY_ID=gw-[a-z0-9]{8}$" "$STUB_REMOTE_FILE"'
+check "provision --force adds the simulator to the stored profiles" 'grep -qx "COMPOSE_PROFILES=backup,simulator" "$STUB_REMOTE_FILE"'; teardown
+
 setup; export SMART_VPS=deploy@vps
 check "provision writes no editor switch for staging" 'provision_staging && grep -qx "STACK_NAME=smart-staging" "$STUB_REMOTE_FILE" && ! grep -q "SMART_INSTANCE_APPEARANCE_EDITOR" "$STUB_REMOTE_FILE"'; teardown
 setup; export SMART_VPS=deploy@vps
@@ -124,6 +153,33 @@ check "provision --force keeps existing runtime settings verbatim" 'provision_st
 setup; STUB_EXISTING_ENV=$(printf 'STACK_NAME=smart-staging\nDB_PASSWORD=keep-db\nSMART_INSTANCE_APPEARANCE_EDITOR=true')
 export SMART_VPS=deploy@vps STUB_ENV_EXISTS=1 STUB_EXISTING_ENV
 check "provision --force tolerates the retired editor switch of an existing file" 'provision_staging --force && grep -qx "DB_PASSWORD=keep-db" "$STUB_REMOTE_FILE"'; teardown
+
+# MQTT settings and the certs directory. The stub ssh runs the remote commands for real in a fake home.
+exec_provision_setup() {
+  setup
+  export SMART_VPS=deploy@vps STUB_SSH_EXEC=1 STUB_REMOTE_HOME="$WORK/home"
+  mkdir -p "$STUB_REMOTE_HOME"
+}
+exec_provision_setup
+STAGING_STACK="$STUB_REMOTE_HOME/docker/apps/smart-staging"
+check "provision writes MQTT_TLS=off and no public port for staging" 'provision_staging && grep -qx "MQTT_TLS=off" "$STAGING_STACK/.env" && [ "$(grep -c "^MQTT_TLS=" "$STAGING_STACK/.env")" = 1 ] && ! grep -q "MQTT_PUBLIC_PORT" "$STAGING_STACK/.env"'
+check "provision creates certs/public readable for the containers and certs/private for the owner only" '[ "$(mode_of "$STAGING_STACK/certs")" = 755 ] && [ "$(mode_of "$STAGING_STACK/certs/public")" = 755 ] && [ "$(mode_of "$STAGING_STACK/certs/private")" = 700 ] && [ "$(mode_of "$STAGING_STACK/.env")" = 600 ]'
+check "provision keeps the stack directory private" '[ "$(mode_of "$STAGING_STACK")" = 700 ]'
+teardown
+exec_provision_setup
+# shellcheck disable=SC2034 # used by the check() expression below
+PROD_STACK="$STUB_REMOTE_HOME/docker/apps/smart-prod"
+check "provision publishes the MQTT port of production" 'answers | bash "$DEPLOY_DIR/provision.sh" production > /dev/null 2>&1 && grep -qx "MQTT_TLS=off" "$PROD_STACK/.env" && grep -qx "MQTT_PUBLIC_PORT=8883" "$PROD_STACK/.env" && [ "$(mode_of "$PROD_STACK/certs/public")" = 755 ] && [ "$(mode_of "$PROD_STACK/certs/private")" = 700 ]'
+teardown
+exec_provision_setup
+STAGING_STACK="$STUB_REMOTE_HOME/docker/apps/smart-staging"
+mkdir -p "$STAGING_STACK/certs/public" "$STAGING_STACK/certs/private" && printf 'ca\n' > "$STAGING_STACK/certs/public/ca.crt"
+printf 'STACK_NAME=smart-staging\nDB_PASSWORD=keep-db\nMQTT_API_PASSWORD=keep-mqtt\nMQTT_TLS=on\n' > "$STAGING_STACK/.env"
+check "provision --force keeps MQTT_TLS=on set by broker-certs and the certificates" 'provision_staging --force && grep -qx "MQTT_TLS=on" "$STAGING_STACK/.env" && [ "$(grep -c "^MQTT_TLS=" "$STAGING_STACK/.env")" = 1 ] && [ "$(cat "$STAGING_STACK/certs/public/ca.crt")" = ca ]'
+teardown
+setup; STUB_EXISTING_ENV=$(printf 'STACK_NAME=smart-staging\nDB_PASSWORD=keep-db\nMQTT_TLS=on')
+export SMART_VPS=deploy@vps STUB_ENV_EXISTS=1 STUB_EXISTING_ENV
+check "provision --force writes the stored MQTT_TLS value once" 'provision_staging --force && [ "$(grep -c "^MQTT_TLS=" "$STUB_REMOTE_FILE")" = 1 ] && grep -qx "MQTT_TLS=on" "$STUB_REMOTE_FILE"'; teardown
 
 # Mail, origin and proxy settings.
 setup; export SMART_VPS=deploy@vps
@@ -148,6 +204,32 @@ check "provision --force keeps an existing proxy hop count" 'grep -qx "TRUSTED_P
 check "provision --force replaces mail settings that are answered" 'provision_staging --force && grep -qx "SMTP_URL=smtps://resend:$RESEND_KEY@smtp.resend.com:465" "$STUB_REMOTE_FILE" && grep -qx "MAIL_ALLOWLIST=till@example.org,Friend@Example.org" "$STUB_REMOTE_FILE"'
 check "provision --force never prints the stored key" '! printf "\n\n\n" | bash "$DEPLOY_DIR/provision.sh" staging --force 2>&1 | grep -q "re_old_key"'; teardown
 
+# Backup settings of production: --force keeps the stored ones on Enter, like the mail settings.
+STORED_B2_KEY_ID=0099999999999ab0000000009
+STORED_B2_APP_KEY=Kstoredsecretvalue0123456789abcd
+STORED_PROD_ENV=$(printf 'STACK_NAME=smart-prod\nDB_PASSWORD=keep-db\nSMTP_URL=smtps://resend:re_old_key@smtp.resend.com:465\nMAIL_FROM=Old <old@example.org>\nB2_ENDPOINT=stored-endpoint\nB2_BUCKET=stored-bucket\nB2_KEY_ID=%s\nB2_APP_KEY=%s\nRESTIC_PASSWORD=stored-restic-pw\nHC_BACKUP_URL=https://hc/stored-backup\nHC_RESTORE_URL=https://hc/stored-restore' "$STORED_B2_KEY_ID" "$STORED_B2_APP_KEY")
+empty_lines() { local i; for ((i = 0; i < $1; i++)); do printf '\n'; done; }
+# Two mail prompts and seven backup prompts, all answered with Enter.
+force_production_empty() { empty_lines 9 | bash "$DEPLOY_DIR/provision.sh" production --force; }
+setup; export SMART_VPS=deploy@vps STUB_ENV_EXISTS=1 STUB_EXISTING_ENV="$STORED_PROD_ENV"
+check "provision --force keeps every stored backup setting when the answers are empty" 'force_production_empty > /dev/null 2>&1 && grep -qx "B2_ENDPOINT=stored-endpoint" "$STUB_REMOTE_FILE" && grep -qx "B2_BUCKET=stored-bucket" "$STUB_REMOTE_FILE" && grep -qx "B2_KEY_ID=$STORED_B2_KEY_ID" "$STUB_REMOTE_FILE" && grep -qx "B2_APP_KEY=$STORED_B2_APP_KEY" "$STUB_REMOTE_FILE" && grep -qx "RESTIC_PASSWORD=stored-restic-pw" "$STUB_REMOTE_FILE" && grep -qx "HC_BACKUP_URL=https://hc/stored-backup" "$STUB_REMOTE_FILE" && grep -qx "HC_RESTORE_URL=https://hc/stored-restore" "$STUB_REMOTE_FILE" && grep -qx "COMPOSE_PROFILES=backup" "$STUB_REMOTE_FILE"'
+check "provision --force writes each backup setting once" '[ "$(grep -cE "^(B2_|RESTIC_PASSWORD=|HC_)" "$STUB_REMOTE_FILE")" = 7 ]'
+check "provision --force never prints stored backup secrets" '! force_production_empty 2>&1 | grep -qE "$STORED_B2_APP_KEY|stored-restic-pw|re_old_key"'
+check "provision --force replaces backup settings that are answered" 'printf "\n\n" | cat - <(b2_answers) | bash "$DEPLOY_DIR/provision.sh" production --force > /dev/null 2>&1 && grep -qx "B2_ENDPOINT=b2-endpoint" "$STUB_REMOTE_FILE" && grep -qx "B2_BUCKET=b2-bucket" "$STUB_REMOTE_FILE" && grep -qx "B2_KEY_ID=$KEY_ID" "$STUB_REMOTE_FILE" && grep -qx "B2_APP_KEY=$APP_KEY" "$STUB_REMOTE_FILE" && grep -qx "RESTIC_PASSWORD=restic-pw" "$STUB_REMOTE_FILE" && grep -qx "HC_BACKUP_URL=https://hc/backup" "$STUB_REMOTE_FILE" && grep -qx "HC_RESTORE_URL=https://hc/restore" "$STUB_REMOTE_FILE"'
+check "provision --force replaces only the backup settings that are answered" 'printf "\n\n\nnew-bucket\n\n\n\n\n\n" | bash "$DEPLOY_DIR/provision.sh" production --force > /dev/null 2>&1 && grep -qx "B2_ENDPOINT=stored-endpoint" "$STUB_REMOTE_FILE" && grep -qx "B2_BUCKET=new-bucket" "$STUB_REMOTE_FILE" && grep -qx "B2_APP_KEY=$STORED_B2_APP_KEY" "$STUB_REMOTE_FILE"'
+check "provision --force still checks a newly typed B2 keyID and never echoes it" '[ "$(printf "\n\n\n\n%s\n\n\n\n\n" "$APP_KEY" | bash "$DEPLOY_DIR/provision.sh" production --force > /dev/null 2>&1; echo $?)" != 0 ] && ! printf "\n\n\n\n%s\n\n\n\n\n" "$APP_KEY" | bash "$DEPLOY_DIR/provision.sh" production --force 2>&1 | grep -q "$APP_KEY"'
+check "provision --force still checks a newly typed B2 application key" '! printf "\n\n\n\n\n%s\n\n\n\n" "$KEY_ID" | bash "$DEPLOY_DIR/provision.sh" production --force > /dev/null 2>&1'; teardown
+# Without a stored value the backup prompts stay required.
+setup; export SMART_VPS=deploy@vps
+check "provision refuses empty backup answers on a first run" '[ "$(empty_lines 7 | { mail_answers; cat; } | bash "$DEPLOY_DIR/provision.sh" production > /dev/null 2>&1; echo $?)" != 0 ] && [ ! -e "$STUB_REMOTE_FILE" ]'
+for skipped in 1 2 3 4 5 6 7; do
+  check "provision refuses an empty backup answer number $skipped on a first run" '[ "$(b2_answers | sed "${skipped}s/.*//" | { mail_answers; cat; } | bash "$DEPLOY_DIR/provision.sh" production > /dev/null 2>&1; echo $?)" != 0 ] && [ ! -e "$STUB_REMOTE_FILE" ]'
+done
+teardown
+setup; STUB_EXISTING_ENV=$(printf 'STACK_NAME=smart-prod\nSMTP_URL=smtps://resend:re_old_key@smtp.resend.com:465\nMAIL_FROM=Old <old@example.org>')
+export SMART_VPS=deploy@vps STUB_ENV_EXISTS=1 STUB_EXISTING_ENV
+check "provision --force refuses empty backup answers when the stored file has none" '[ "$(force_production_empty > /dev/null 2>&1; echo $?)" != 0 ] && [ ! -e "$STUB_REMOTE_FILE" ]'; teardown
+
 # --- admin.sh ---
 run_admin() { (bash "$DEPLOY_DIR/admin.sh" "$@" < /dev/null > "$WORK/out" 2>&1); echo $?; }
 setup; export SMART_VPS=deploy@vps
@@ -170,6 +252,89 @@ check "admin hands every argument to the remote command as one word" 'run_admin 
 check "admin lets no argument run on the VPS" '[ ! -e "$WORK/pwned" ]'
 check "admin runs revoke-sessions and hands its arguments over as one word each" 'run_admin staging revoke-sessions --email "a b@example.org" > /dev/null && [ "$(tail -n 1 "$STUB_ARGV_LOG")" = "docker <compose> <-f> <compose.yaml> <--env-file> <.env> <--env-file> <deploy.env> <exec> <-T> <api> <node> <dist/cli.js> <revoke-sessions> <--email> <a b@example.org>" ]'
 check "admin keeps empty arguments" 'run_admin staging create-admin --name "" > /dev/null && tail -n 1 "$STUB_ARGV_LOG" | grep -q "<--name> <>$"'; teardown
+
+# --- broker-certs.sh ---
+# The stub ssh runs the remote command for real (STUB_SSH_EXEC=1) in a fake home, the stub docker records the call.
+KEY_MARKER=key-content-that-must-never-be-printed
+fake_pki() {
+  mkdir -p "$WORK/pki"
+  printf 'ca-content\n' > "$WORK/pki/ca.crt"
+  printf 'server-content\n' > "$WORK/pki/server.crt"
+  printf '%s\n' "$KEY_MARKER" > "$WORK/pki/server.key"
+  printf 'crl-content\n' > "$WORK/pki/crl.pem"
+  iso_at $(($(date +%s) + 200 * 86400)) > "$WORK/pki/crl-next-update"
+}
+iso_at() { { date -u -d "@$1" +%Y-%m-%dT%H:%M:%SZ 2> /dev/null || date -u -r "$1" +%Y-%m-%dT%H:%M:%SZ; }; }
+remote_stack() {
+  mkdir -p "$STUB_REMOTE_HOME/docker/apps/$1"
+  printf 'STACK_NAME=%s\nDB_PASSWORD=keep-db\nMQTT_TLS=off\nSMTP_URL=smtps://resend:re_keep@smtp.resend.com:465' "$1" > "$STUB_REMOTE_HOME/docker/apps/$1/.env"
+  chmod 600 "$STUB_REMOTE_HOME/docker/apps/$1/.env"
+}
+run_certs() { (bash "$DEPLOY_DIR/broker-certs.sh" "$@" < /dev/null > "$WORK/out" 2>&1); echo $?; }
+certs_setup() {
+  setup; fake_pki
+  export SMART_VPS=deploy@vps SMART_PKI_DIR="$WORK/pki" STUB_SSH_EXEC=1 STUB_REMOTE_HOME="$WORK/home"
+  remote_stack smart-staging
+}
+certs_setup
+check "broker-certs refuses an unknown environment" '[ "$(run_certs prod)" = 2 ] && [ "$(run_certs)" = 2 ] && [ ! -s "$STUB_CALLS" ]'
+check "broker-certs refuses an environment with a shell command" '[ "$(run_certs "staging; id")" = 2 ] && [ ! -s "$STUB_CALLS" ]'
+unset SMART_VPS
+check "broker-certs requires SMART_VPS" '[ "$(run_certs staging)" != 0 ] && [ ! -s "$STUB_CALLS" ]'
+export SMART_VPS=deploy@vps
+rm "$WORK/pki/crl-next-update"
+check "broker-certs refuses to run with a missing file and contacts nothing" '[ "$(run_certs staging)" = 1 ] && grep -q "crl-next-update" "$WORK/out" && [ ! -s "$STUB_CALLS" ]'
+fake_pki
+check "broker-certs refuses a stack without a provisioned .env" '[ "$(run_certs production)" = 1 ] && [ ! -e "$STUB_REMOTE_HOME/docker/apps/smart-prod/certs" ] && ! grep -q "^compose" "$STUB_CALLS"'
+check "broker-certs succeeds for staging" '[ "$(run_certs staging)" = 0 ]'
+# shellcheck disable=SC2034 # used by the check() expressions below
+STACK_DIR="$STUB_REMOTE_HOME/docker/apps/smart-staging"
+check "broker-certs copies all five files unchanged, the key only into certs/private" '(for f in ca.crt server.crt crl.pem crl-next-update; do cmp -s "$WORK/pki/$f" "$STACK_DIR/certs/public/$f" || exit 1; done) && cmp -s "$WORK/pki/server.key" "$STACK_DIR/certs/private/server.key" && [ ! -e "$STACK_DIR/certs/public/server.key" ]'
+check "broker-certs keeps the key private and the public files readable" '[ "$(mode_of "$STACK_DIR/certs/private/server.key")" = 600 ] && [ "$(mode_of "$STACK_DIR/certs/private")" = 700 ] && [ "$(mode_of "$STACK_DIR/certs/public/ca.crt")" = 644 ] && [ "$(mode_of "$STACK_DIR/certs/public/server.crt")" = 644 ] && [ "$(mode_of "$STACK_DIR/certs/public/crl.pem")" = 644 ] && [ "$(mode_of "$STACK_DIR/certs/public/crl-next-update")" = 644 ] && [ "$(mode_of "$STACK_DIR/certs/public")" = 755 ] && [ "$(mode_of "$STACK_DIR/certs")" = 755 ]'
+check "broker-certs leaves no temporary files" '[ -z "$(find "$STACK_DIR" -name "*.new")" ]'
+check "broker-certs sets MQTT_TLS=on exactly once" '[ "$(grep -c "^MQTT_TLS=" "$STACK_DIR/.env")" = 1 ] && grep -qx "MQTT_TLS=on" "$STACK_DIR/.env"'
+check "broker-certs changes no other line of the .env" '[ "$(grep -v "^MQTT_TLS=" "$STACK_DIR/.env")" = "$(printf "STACK_NAME=smart-staging\nDB_PASSWORD=keep-db\nSMTP_URL=smtps://resend:re_keep@smtp.resend.com:465")" ]'
+check "broker-certs keeps the .env at mode 600" '[ "$(mode_of "$STACK_DIR/.env")" = 600 ]'
+check "broker-certs recreates the broker of the stack" 'grep -qx "compose -f compose.yaml --env-file .env --env-file deploy.env up -d --no-deps --force-recreate broker" "$STUB_CALLS"'
+check "broker-certs sends all files in one ssh session on stdin with umask 077" '[ "$(grep -c "^ssh deploy@vps umask 077 && cd docker/apps/smart-staging && mkdir -p certs/public certs/private" "$STUB_CALLS")" = 1 ] && grep -q "tar -xf - -C certs/.new" "$STUB_CALLS"'
+check "broker-certs leaves no .new directory and no ._ files" '[ ! -e "$STACK_DIR/certs/.new" ] && [ -z "$(find "$STACK_DIR/certs" -name "._*")" ] && [ "$(ls "$STACK_DIR/certs/public" | wc -l | tr -d " ")" = 4 ] && [ "$(ls "$STACK_DIR/certs/private" | wc -l | tr -d " ")" = 1 ]'
+check "broker-certs never puts key content on a command line or in the output" '! grep -q "$KEY_MARKER" "$STUB_CALLS" && ! grep -q "$KEY_MARKER" "$WORK/out"'
+check "broker-certs works a second time and keeps one MQTT_TLS line" '[ "$(run_certs staging)" = 0 ] && [ "$(grep -c "^MQTT_TLS=" "$STACK_DIR/.env")" = 1 ] && grep -qx "MQTT_TLS=on" "$STACK_DIR/.env"'
+teardown
+certs_setup
+printf 'STACK_NAME=smart-staging' > "$STUB_REMOTE_HOME/docker/apps/smart-staging/.env"
+check "broker-certs appends MQTT_TLS to an .env without trailing newline and without the line" '[ "$(run_certs staging)" = 0 ] && [ "$(cat "$STUB_REMOTE_HOME/docker/apps/smart-staging/.env")" = "$(printf "STACK_NAME=smart-staging\nMQTT_TLS=on")" ]'
+teardown
+certs_setup; remote_stack smart-prod
+check "broker-certs uses the production stack for production" '[ "$(run_certs production)" = 0 ] && [ -f "$STUB_REMOTE_HOME/docker/apps/smart-prod/certs/private/server.key" ] && [ ! -e "$STUB_REMOTE_HOME/docker/apps/smart-staging/certs" ]'
+teardown
+certs_setup
+printf 'STACK_NAME=smart-staging\nMQTT_TLS=off\n' > "$STUB_REMOTE_HOME/docker/apps/smart-staging/.env"; chmod 000 "$STUB_REMOTE_HOME/docker/apps/smart-staging/.env"
+check "broker-certs fails on an unreadable .env and changes nothing" '[ "$(run_certs staging)" = 1 ] && chmod 600 "$STUB_REMOTE_HOME/docker/apps/smart-staging/.env" && [ "$(cat "$STUB_REMOTE_HOME/docker/apps/smart-staging/.env")" = "$(printf "STACK_NAME=smart-staging\nMQTT_TLS=off")" ] && [ ! -e "$STUB_REMOTE_HOME/docker/apps/smart-staging/certs" ] && ! grep -q "^compose" "$STUB_CALLS"'
+teardown
+certs_setup; export STUB_SSH_DOWN=1
+check "broker-certs aborts when the VPS is unreachable" '[ "$(run_certs staging)" != 0 ] && ! grep -q "^compose" "$STUB_CALLS"'
+teardown
+certs_setup; iso_at $(($(date +%s) - 86400)) > "$WORK/pki/crl-next-update"
+check "broker-certs refuses an expired CRL and contacts nothing" '[ "$(run_certs staging)" = 1 ] && grep -q "CRL" "$WORK/out" && [ ! -s "$STUB_CALLS" ]'
+iso_at $(($(date +%s) + 3 * 86400)) > "$WORK/pki/crl-next-update"
+check "broker-certs refuses a CRL that expires within 7 days" '[ "$(run_certs staging)" = 1 ] && [ ! -s "$STUB_CALLS" ]'
+printf 'garbage\n' > "$WORK/pki/crl-next-update"
+check "broker-certs refuses a malformed crl-next-update" '[ "$(run_certs staging)" = 1 ] && [ ! -s "$STUB_CALLS" ]'
+fake_pki; chmod 000 "$WORK/pki/server.key"
+check "broker-certs refuses an unreadable key before contacting the VPS" '[ "$(run_certs staging)" = 1 ] && grep -q "server.key" "$WORK/out" && [ ! -s "$STUB_CALLS" ]'
+chmod 600 "$WORK/pki/server.key"; teardown
+certs_setup; mkdir -p "$STUB_REMOTE_HOME/docker/apps/smart-staging/certs/public" "$STUB_REMOTE_HOME/docker/apps/smart-staging/certs/private"
+printf 'old-ca\n' > "$STUB_REMOTE_HOME/docker/apps/smart-staging/certs/public/ca.crt"; printf 'old-key\n' > "$STUB_REMOTE_HOME/docker/apps/smart-staging/certs/private/server.key"
+# A tar that works for creating the archive but fails when the VPS side unpacks it halfway.
+mkdir "$WORK/badtar"
+printf '#!/bin/sh\ncase "$1" in -x*) head -c 10 > /dev/null; exit 1 ;; esac\nexec %s "$@"\n' "$(command -v tar)" > "$WORK/badtar/tar"
+chmod +x "$WORK/badtar/tar"
+SAVED_PATH=$PATH
+export PATH="$WORK/badtar:$PATH"
+check "broker-certs leaves the previous certs untouched when the transfer fails" '[ "$(run_certs staging)" != 0 ] && [ "$(cat "$STUB_REMOTE_HOME/docker/apps/smart-staging/certs/public/ca.crt")" = old-ca ] && [ "$(cat "$STUB_REMOTE_HOME/docker/apps/smart-staging/certs/private/server.key")" = old-key ] && grep -qx "MQTT_TLS=off" "$STUB_REMOTE_HOME/docker/apps/smart-staging/.env" && ! grep -q "^compose" "$STUB_CALLS"'
+PATH=$SAVED_PATH
+teardown
 
 echo "deploy tests: $passed passed, $failures failed"
 [ "$failures" -eq 0 ]

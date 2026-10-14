@@ -409,6 +409,25 @@ importers:
         specifier: 9.1.0
         version: 9.1.0(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0)
 
+  apps/gateway-simulator:
+    dependencies:
+      '@smart/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      mqtt:
+        specifier: 5.16.0
+        version: 5.16.0(supports-color@10.2.2)
+    devDependencies:
+      '@types/node':
+        specifier: 24.19.2
+        version: 24.19.2
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: 5.0.3
+        version: 5.0.3(@types/node@24.19.2)(jsdom@30.1.2(@noble/hashes@1.8.0))(vite@8.3.0(@types/node@24.19.2)(esbuild@0.28.2)(jiti@2.6.1)(less@4.9.1(supports-color@10.2.2))(sass-embedded@1.104.1)(sass@1.104.1)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
+
   packages/contracts:
     dependencies:
       zod:
@@ -17655,6 +17674,14 @@ snapshots:
 
   mkdirp@3.0.1: {}
 
+  mqtt-packet@9.0.2(supports-color@10.2.2):
+    dependencies:
+      bl: 6.1.6
+      debug: 4.4.3(supports-color@10.2.2)
+      process-nextick-args: 2.0.1
+    transitivePeerDependencies:
+      - supports-color
+
   mqtt-packet@9.0.2(supports-color@7.2.0):
     dependencies:
       bl: 6.1.6
@@ -17662,6 +17689,28 @@ snapshots:
       process-nextick-args: 2.0.1
     transitivePeerDependencies:
       - supports-color
+
+  mqtt@5.16.0(supports-color@10.2.2):
+    dependencies:
+      '@types/readable-stream': 4.0.25
+      '@types/ws': 8.18.2
+      commist: 3.2.0
+      concat-stream: 2.0.0
+      debug: 4.4.3(supports-color@10.2.2)
+      help-me: 5.0.0
+      lru-cache: 10.4.3
+      minimist: 1.2.8
+      mqtt-packet: 9.0.2(supports-color@10.2.2)
+      readable-stream: 4.8.0
+      rfdc: 1.4.1
+      socks: 2.8.10
+      split2: 4.2.0
+      worker-timers: 8.0.34
+      ws: 8.22.0
+    transitivePeerDependencies:
+      - bufferutil
+      - supports-color
+      - utf-8-validate
 
   mqtt@5.16.0(supports-color@7.2.0):
     dependencies:

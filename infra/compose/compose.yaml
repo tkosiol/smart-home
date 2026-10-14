@@ -46,6 +46,12 @@ services:
       SMTP_URL: ${SMTP_URL:-}
       MAIL_FROM: ${MAIL_FROM:-}
       MAIL_ALLOWLIST: ${MAIL_ALLOWLIST:-}
+      # Trust anchor and CRL expiry of the gateway certificates (copied by infra/deploy/broker-certs.sh).
+      GATEWAY_CA_FILE: /smart/certs/ca.crt
+      GATEWAY_CRL_NEXT_UPDATE_FILE: /smart/certs/crl-next-update
+    volumes:
+      # Public files only (CA, CRL expiry): the api must never see the broker's server key.
+      - ./certs/public:/smart/certs:ro
     depends_on:
       db:
         condition: service_healthy
@@ -80,13 +86,53 @@ services:
     <<: *defaults
     image: ${IMAGE_REGISTRY:-ghcr.io/tkosiol}/smart-home-broker:${IMAGE_TAG:?IMAGE_TAG is required}
     read_only: true
-    tmpfs: [/tmp]
+    # /mosquitto/run holds the rendered configuration, ACL, password file and certificate copies.
+    tmpfs: [/tmp, /mosquitto/run]
     environment:
       MQTT_USER: smart-api
       MQTT_PASSWORD: ${MQTT_API_PASSWORD:?MQTT_API_PASSWORD is required}
+      # off until infra/deploy/broker-certs.sh has copied the certificates and switched it on; the
+      # entrypoint aborts when it is on and a file is missing, and on any value other than on or off.
+      MQTT_TLS: ${MQTT_TLS:-off}
+      # Optional simulator user for one gateway ID (gw-xxxxxxxx); empty = no simulator.
+      MQTT_SIMULATOR_PASSWORD: ${MQTT_SIMULATOR_PASSWORD:-}
+      MQTT_SIMULATOR_GATEWAY_ID: ${MQTT_SIMULATOR_GATEWAY_ID:-}
       TZ: UTC
     volumes:
       - broker-data:/mosquitto/data
+      - ./certs/public:/mosquitto/certs:ro
+      # The server key lives apart from the files the api can read.
+      - ./certs/private:/mosquitto/certs-private:ro
+    # Gateways connect here with a client certificate. Production publishes 8883 to the internet
+    # (MQTT_PUBLIC_PORT=8883); without it the port is bound to 127.0.0.1 on an ephemeral host port. The default
+    # must not be a fixed port: staging and production run side by side on one host, and a production .env
+    # that predates MQTT_PUBLIC_PORT would otherwise collide with staging. The expression yields
+    # "8883:8883" when the variable is set and "127.0.0.1::8883" when it is not.
+    ports:
+      - '${MQTT_PUBLIC_PORT:-127.0.0.1::8883}${MQTT_PUBLIC_PORT:+:8883}'
+    networks: [internal]
+
+  # Staging only (profile `simulator`, set by provision.sh): behaves like the Raspberry Pi's gateway with six
+  # soil sensors and a lamp. It connects as the broker's smart-simulator user, which may only use its own
+  # gateway prefix. The variables stay optional because compose reads them even while the profile is off.
+  simulator:
+    <<: *defaults
+    profiles: [simulator]
+    image: ${IMAGE_REGISTRY:-ghcr.io/tkosiol}/smart-home-simulator:${IMAGE_TAG:?IMAGE_TAG is required}
+    # The image runs as the unprivileged node user.
+    read_only: true
+    tmpfs: [/tmp]
+    environment:
+      TZ: UTC
+      MQTT_URL: mqtt://broker:1883
+      MQTT_USERNAME: smart-simulator
+      MQTT_PASSWORD: ${MQTT_SIMULATOR_PASSWORD:-}
+      GATEWAY_ID: ${MQTT_SIMULATOR_GATEWAY_ID:-}
+      INTERVAL_SECONDS: ${SIMULATOR_INTERVAL_SECONDS:-300}
+      SEED: ${SIMULATOR_SEED:-}
+    depends_on:
+      broker:
+        condition: service_healthy
     networks: [internal]
 
   backup:

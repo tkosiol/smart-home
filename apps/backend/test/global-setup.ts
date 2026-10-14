@@ -1,13 +1,7 @@
-import { fileURLToPath } from 'node:url';
 import { PostgreSqlContainer } from '@testcontainers/postgresql';
-import { GenericContainer, Wait } from 'testcontainers';
 import type { TestProject } from 'vitest/node';
+import { startTestBroker, TEST_MQTT_PASSWORD, TEST_MQTT_USER } from './helpers/test-broker.js';
 
-const brokerFile = (name: string): string =>
-  fileURLToPath(new URL(`../../../infra/broker/${name}`, import.meta.url));
-
-export const TEST_MQTT_USER = 'smart-api';
-export const TEST_MQTT_PASSWORD = 'smart-test';
 export const TEST_APP_ORIGIN = 'http://localhost:4200';
 
 export default async function setup(project: TestProject): Promise<() => Promise<void>> {
@@ -19,16 +13,7 @@ export default async function setup(project: TestProject): Promise<() => Promise
       // A non-UTC server default proves that our client forces UTC per session.
       .withCommand(['postgres', '-c', 'timezone=Europe/Berlin'])
       .start(),
-    new GenericContainer('eclipse-mosquitto:2.1.2-alpine')
-      .withCopyFilesToContainer([
-        { source: brokerFile('mosquitto.conf'), target: '/mosquitto/config/mosquitto.conf' },
-        { source: brokerFile('entrypoint.sh'), target: '/smart/entrypoint.sh' },
-      ])
-      .withEntrypoint(['/bin/sh', '/smart/entrypoint.sh'])
-      .withEnvironment({ MQTT_USER: TEST_MQTT_USER, MQTT_PASSWORD: TEST_MQTT_PASSWORD })
-      .withExposedPorts(1883)
-      .withWaitStrategy(Wait.forLogMessage(/running/))
-      .start(),
+    startTestBroker(),
   ]);
 
   project.provide('testEnv', {

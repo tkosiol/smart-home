@@ -47,13 +47,7 @@ describe('more page', () => {
       }),
     );
     const headlines = items.map((item) => item.querySelector('.headline')?.textContent?.trim());
-    expect(headlines).toEqual([
-      'Räume',
-      'Module',
-      'Benachrichtigungen',
-      'Gateways',
-      'Einstellungen',
-    ]);
+    expect(headlines).toEqual(['Räume', 'Module', 'Benachrichtigungen', 'Einstellungen']);
   });
 
   it('links the settings entry', async () => {
@@ -62,14 +56,13 @@ describe('more page', () => {
     expect(settings.querySelector('a')?.getAttribute('href')).toBe('/mehr/einstellungen');
   });
 
-  it('shows the three coming-soon entries as readable, non-interactive rows', async () => {
+  it('shows the two coming-soon entries as readable, non-interactive rows', async () => {
     const { items } = await open('de');
     const comingSoon = items.filter((item) => item.textContent?.includes('Kommt bald'));
 
     expect(comingSoon.map((item) => item.querySelector('.headline')?.textContent?.trim())).toEqual([
       'Module',
       'Benachrichtigungen',
-      'Gateways',
     ]);
     for (const item of comingSoon) {
       expect(item.querySelector('a, button, [tabindex], [href]')).toBeNull();
@@ -82,7 +75,6 @@ describe('more page', () => {
     expect(items.map((item) => item.textContent?.replace(/\s+/g, ' ').trim())).toEqual([
       expect.stringContaining('Modules'),
       expect.stringContaining('Notifications'),
-      expect.stringContaining('Gateways'),
       expect.stringContaining('Settings'),
     ]);
     expect(items[0].textContent).toContain('Coming soon');

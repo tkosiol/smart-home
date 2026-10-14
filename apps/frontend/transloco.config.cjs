@@ -14,6 +14,7 @@ module.exports = {
     auth: 'src/app/features/auth/i18n',
     households: 'src/app/features/households/i18n',
     invitation: 'src/app/features/invitation/i18n',
+    gateways: 'src/app/features/gateways/i18n',
   },
   keysManager: { input: ['src/app'], unflat: true, emitErrorOnExtraKeys: true },
 };

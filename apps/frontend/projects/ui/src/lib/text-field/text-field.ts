@@ -4,7 +4,7 @@ import { MatError, MatFormField, MatHint, MatLabel } from '@angular/material/for
 import { MatInput } from '@angular/material/input';
 import { UiFieldStateSync } from '../form-field/field-state-sync';
 
-/** Outlined text field; the caller decides about errors (`error` set ⇒ invalid). Bind `[(value)]`. */
+/** Outlined text field (single line, or `multiline`); the caller decides about errors (`error` set ⇒ invalid). Bind `[(value)]`. */
 @Component({
   selector: 'ui-text-field',
   imports: [MatFormField, MatLabel, MatHint, MatError, MatInput, UiFieldStateSync],
@@ -24,10 +24,19 @@ export class UiTextField {
   /** Keyboard hint on touch devices, e.g. `numeric` for a code of digits. */
   readonly inputmode = input<'text' | 'numeric' | 'decimal' | 'email' | 'tel' | 'search' | 'url'>();
   readonly name = input<string>();
+  /** A textarea instead of a single-line input, for text with line breaks (e.g. a pasted PEM). */
+  readonly multiline = input(false, { transform: booleanAttribute });
+  /**
+   * Text that is not prose (a certificate, an ID): no spell check (a browser may send the text to a
+   * cloud service), no automatic capitalization or correction.
+   */
+  readonly verbatim = input(false, { transform: booleanAttribute });
+  /** Visible lines of a multiline field. */
+  readonly rows = input(4);
 
   protected readonly errorMatcher: ErrorStateMatcher = { isErrorState: () => !!this.error() };
 
   protected onInput(event: Event): void {
-    this.value.set((event.target as HTMLInputElement).value);
+    this.value.set((event.target as HTMLInputElement | HTMLTextAreaElement).value);
   }
 }

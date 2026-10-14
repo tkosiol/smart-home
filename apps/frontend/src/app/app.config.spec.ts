@@ -76,12 +76,18 @@ describe('createAppConfig', () => {
     expect(handle).toHaveBeenCalledOnce();
   });
 
-  it('registers the household, members and settings entries for the More page', () => {
+  it('registers the household, members, gateways and settings entries for the More page', () => {
     setup({ instanceAppearance: plum });
     const entries = TestBed.runInInjectionContext(() => injectMoreEntries());
     expect(entries).toEqual([
       expect.objectContaining({ id: 'household', route: '/mehr/haushalt', minRole: 'owner' }),
       expect.objectContaining({ id: 'members', route: '/mehr/mitglieder', minRole: 'viewer' }),
+      expect.objectContaining({
+        id: 'gateways',
+        labelKey: 'app.more.gateways',
+        route: '/mehr/gateways',
+        minRole: 'owner',
+      }),
       expect.objectContaining({
         id: 'settings',
         labelKey: 'app.more.settings',

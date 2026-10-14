@@ -23,12 +23,18 @@ services:
     image: eclipse-mosquitto:2.1.2-alpine
     entrypoint: ['/bin/sh', '/smart/entrypoint.sh']
     environment:
-      MQTT_USER: ${LOCAL_MQTT_USER:-smart-dev}
+      # The ACL grants the backend's rights to this exact name; MQTT_TLS stays off locally (the default).
+      MQTT_USER: smart-api
       MQTT_PASSWORD: ${LOCAL_MQTT_PASSWORD:-smart-dev-only}
+      # The simulator below connects as smart-simulator, restricted to its own gateway ID.
+      MQTT_SIMULATOR_PASSWORD: ${LOCAL_SIMULATOR_PASSWORD:-smart-simulator-dev-only}
+      MQTT_SIMULATOR_GATEWAY_ID: ${LOCAL_SIMULATOR_GATEWAY_ID:-gw-sim00001}
     ports:
       - '127.0.0.1:1884:1883'
     volumes:
       - ../broker/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ../broker/tls.conf:/mosquitto/config/tls.conf:ro
+      - ../broker/acl:/mosquitto/config/acl:ro
       - ../broker/entrypoint.sh:/smart/entrypoint.sh:ro
       - broker-data:/mosquitto/data
     healthcheck:
@@ -38,6 +44,27 @@ services:
       interval: 5s
       timeout: 5s
       retries: 20
+
+  # A gateway like the Raspberry Pi's, with six soil sensors and a lamp, for the backend and the app to talk to.
+  # It reports every 300 seconds; for quick feedback while developing start the stack with
+  #   LOCAL_SIMULATOR_INTERVAL_SECONDS=10 pnpm infra:up
+  # (a fixed course of the values: LOCAL_SIMULATOR_SEED=1). The image is built from this repository.
+  simulator:
+    build:
+      context: ../..
+      dockerfile: apps/gateway-simulator/Dockerfile
+    image: smart-local-simulator
+    restart: unless-stopped
+    environment:
+      MQTT_URL: mqtt://broker:1883
+      MQTT_USERNAME: smart-simulator
+      MQTT_PASSWORD: ${LOCAL_SIMULATOR_PASSWORD:-smart-simulator-dev-only}
+      GATEWAY_ID: ${LOCAL_SIMULATOR_GATEWAY_ID:-gw-sim00001}
+      INTERVAL_SECONDS: ${LOCAL_SIMULATOR_INTERVAL_SECONDS:-300}
+      SEED: ${LOCAL_SIMULATOR_SEED:-}
+    depends_on:
+      broker:
+        condition: service_healthy
 
   mail:
     image: axllent/mailpit:v1.31.5

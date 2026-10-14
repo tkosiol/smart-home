@@ -1,5 +1,5 @@
 FROM eclipse-mosquitto:2.1.2-alpine
-COPY mosquitto.conf /mosquitto/config/mosquitto.conf
+COPY mosquitto.conf tls.conf acl /mosquitto/config/
 COPY entrypoint.sh /smart/entrypoint.sh
 ENTRYPOINT ["/bin/sh", "/smart/entrypoint.sh"]
 HEALTHCHECK --interval=10s --timeout=5s --retries=10 \

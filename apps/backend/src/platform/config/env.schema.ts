@@ -41,6 +41,10 @@ export const envSchema = z
         return addresses.length > 0 ? addresses : undefined;
       }),
     ),
+    /** The CA certificate (PEM, public) gateway certificates must be signed by; unset = no registration. */
+    GATEWAY_CA_FILE: optional(z.string().min(1)),
+    /** A file with the ISO 8601 time the broker's CRL needs renewing (written by `pki.sh`). */
+    GATEWAY_CRL_NEXT_UPDATE_FILE: optional(z.string().min(1)),
   })
   .refine((env) => env.SMTP_URL === undefined || env.MAIL_FROM !== undefined, {
     path: ['MAIL_FROM'],

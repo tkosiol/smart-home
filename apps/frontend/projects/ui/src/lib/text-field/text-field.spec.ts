@@ -29,6 +29,34 @@ class RequiredHost {
   readonly error = signal<string | null>(null);
 }
 
+@Component({
+  imports: [UiTextField],
+  template: `<ui-text-field
+    label="Zertifikat"
+    multiline
+    [verbatim]="verbatim()"
+    [rows]="rows()"
+    hint="PEM einfügen"
+    [error]="error()"
+    required
+    [(value)]="text"
+  />`,
+})
+class MultilineHost {
+  readonly text = signal('');
+  readonly rows = signal(6);
+  readonly verbatim = signal(false);
+  readonly error = signal<string | null>(null);
+}
+
+@Component({
+  imports: [UiTextField],
+  template: `<ui-text-field label="Kennung" verbatim [(value)]="text" />`,
+})
+class VerbatimHost {
+  readonly text = signal('');
+}
+
 function render() {
   const fixture = TestBed.createComponent(Host);
   fixture.detectChanges();
@@ -105,5 +133,75 @@ describe('UiTextField', () => {
     fixture.componentInstance.error.set(null);
     fixture.detectChanges();
     expect(input.getAttribute('aria-invalid')).not.toBe('true');
+  });
+
+  it('turns spell check, capitalization and correction off for a verbatim single-line input', () => {
+    const fixture = TestBed.createComponent(VerbatimHost);
+    fixture.detectChanges();
+    const input = fixture.nativeElement.querySelector('input') as HTMLInputElement;
+    expect(input.getAttribute('spellcheck')).toBe('false');
+    expect(input.getAttribute('autocapitalize')).toBe('off');
+    expect(input.getAttribute('autocorrect')).toBe('off');
+  });
+
+  describe('multiline', () => {
+    function renderMultiline() {
+      const fixture = TestBed.createComponent(MultilineHost);
+      fixture.detectChanges();
+      const area = fixture.nativeElement.querySelector('textarea') as HTMLTextAreaElement;
+      return { fixture, area, host: fixture.componentInstance };
+    }
+
+    it('renders a labelled textarea instead of an input', () => {
+      const { fixture, area } = renderMultiline();
+      expect(fixture.nativeElement.querySelector('input')).toBeNull();
+      const label = fixture.nativeElement.querySelector('label') as HTMLLabelElement;
+      expect(label.htmlFor).toBe(area.id);
+      expect(area.rows).toBe(6);
+      expect(fixture.nativeElement.textContent).toContain('PEM einfügen');
+    });
+
+    it('keeps line breaks when writing back to the binding and follows the row count', () => {
+      const { fixture, area, host } = renderMultiline();
+      area.value = 'a\nb\nc';
+      area.dispatchEvent(new Event('input'));
+      fixture.detectChanges();
+      expect(host.text()).toBe('a\nb\nc');
+      host.rows.set(3);
+      fixture.detectChanges();
+      expect(area.rows).toBe(3);
+    });
+
+    it('marks the textarea invalid while an error is shown', () => {
+      const { fixture, area, host } = renderMultiline();
+      host.error.set('Pflichtfeld');
+      fixture.detectChanges();
+      expect(area.getAttribute('aria-invalid')).toBe('true');
+      expect(fixture.nativeElement.textContent).toContain('Pflichtfeld');
+      host.error.set(null);
+      fixture.detectChanges();
+      expect(area.getAttribute('aria-invalid')).not.toBe('true');
+    });
+
+    it('leaves spell check, capitalization and correction alone by default', () => {
+      const { area } = renderMultiline();
+      expect(area.hasAttribute('spellcheck')).toBe(false);
+      expect(area.hasAttribute('autocapitalize')).toBe(false);
+      expect(area.hasAttribute('autocorrect')).toBe(false);
+    });
+
+    it('turns spell check, capitalization and correction off for verbatim text', () => {
+      const { fixture, area, host } = renderMultiline();
+      host.verbatim.set(true);
+      fixture.detectChanges();
+      expect(area.getAttribute('spellcheck')).toBe('false');
+      expect(area.getAttribute('autocapitalize')).toBe('off');
+      expect(area.getAttribute('autocorrect')).toBe('off');
+    });
+
+    it('stays a single-line input by default', () => {
+      const { fixture } = render();
+      expect(fixture.nativeElement.querySelector('textarea')).toBeNull();
+    });
   });
 });

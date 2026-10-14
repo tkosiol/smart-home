@@ -34,7 +34,7 @@ export function smartConfig({ rootDir, typeChecked = true }) {
     ...(typeChecked
       ? [
           {
-            files: ['apps/backend/**/*.ts', 'packages/**/*.ts'],
+            files: ['apps/backend/**/*.ts', 'apps/gateway-simulator/**/*.ts', 'packages/**/*.ts'],
             extends: [tseslint.configs.recommendedTypeChecked],
             languageOptions: { parserOptions: { projectService: true, tsconfigRootDir: rootDir } },
           },

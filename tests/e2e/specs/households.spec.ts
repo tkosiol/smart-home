@@ -69,6 +69,8 @@ test.describe.serial('households, invitations and roles', () => {
       .click();
     await expect(newcomer.getByRole('link', { name: /Mitglieder/ })).toBeVisible();
     await expect(newcomer.getByRole('link', { name: /Haushalt/ })).toHaveCount(0);
+    // The gateways are for owners.
+    await expect(newcomer.getByRole('link', { name: /Gateways/ })).toHaveCount(0);
 
     await newcomer.getByRole('link', { name: /Mitglieder/ }).click();
     await expect(heading(newcomer, 'Mitglieder')).toBeVisible();
@@ -118,6 +120,18 @@ test.describe.serial('households, invitations and roles', () => {
     await expect(heading(page, 'Übersicht')).toBeVisible();
     await expect(topBar(page)).toContainText(OWNER_HOUSEHOLD);
     await expect(topBar(page)).not.toContainText('Haus guest');
+
+    // A member (even a platform admin, as all people of the stack test are) does not see the gateways
+    // of the household under "Mehr", and the address leads back to the overview.
+    await page
+      .getByRole('navigation', { name: 'Hauptnavigation' })
+      .getByRole('link', { name: 'Mehr' })
+      .click();
+    await expect(page.getByRole('link', { name: /Mitglieder/ })).toBeVisible();
+    await expect(page.getByRole('link', { name: /Gateways/ })).toHaveCount(0);
+    await page.goto('/mehr/gateways');
+    await expect(heading(page, 'Übersicht')).toBeVisible();
+    await expect(page).not.toHaveURL(/gateways/);
   });
 
   test('a removed member is sent to the set-up page on the next load', async ({ browser }) => {

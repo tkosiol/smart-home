@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { RequestMethod, type INestApplication, type Type } from '@nestjs/common';
 import { GUARDS_METADATA, METHOD_METADATA, PATH_METADATA } from '@nestjs/common/constants.js';
 import { ModulesContainer } from '@nestjs/core';
@@ -25,6 +26,7 @@ interface Ids {
   householdId: string;
   userId: string;
   invitationId: string;
+  gatewayId: string;
 }
 type Method = 'get' | 'post' | 'patch' | 'delete';
 
@@ -54,6 +56,12 @@ const ENDPOINTS: { route: string; body?: object; crossIds?: true }[] = [
     route: 'DELETE /v1/households/:householdId/invitations/:invitationId',
     crossIds: true,
   },
+  { route: 'GET /v1/households/:householdId/gateways' },
+  {
+    route: 'POST /v1/households/:householdId/gateways',
+    body: { name: 'Hijacked', certificate: 'not a certificate' },
+  },
+  { route: 'POST /v1/households/:householdId/gateways/:gatewayId/revoke', crossIds: true },
 ];
 
 const METHOD_NAMES: Partial<Record<RequestMethod, string>> = {
@@ -77,9 +85,10 @@ describe('household tenancy', () => {
   const originalUrl = inject('testEnv').DATABASE_URL;
   const origin = inject('testEnv').APP_ORIGIN;
 
-  const signedIn = async (): Promise<{ id: string; cookie: string }> => {
+  const signedIn = async (platformAdmin = false): Promise<{ id: string; cookie: string }> => {
     const email = `tenant${(counter += 1)}@example.org`;
     const user = await app.get(UsersRepository).create({ email, displayName: `Tenant ${counter}` });
+    if (platformAdmin) await app.get(UsersRepository).setPlatformAdmin(user.id);
     const { token } = await app.get(SessionService).create(user.id, 'email_code', 'Browser/1');
     return { id: user.id, cookie: `${SESSION_COOKIE}=${token}` };
   };
@@ -103,7 +112,8 @@ describe('household tenancy', () => {
     `/api${(route.split(' ')[1] ?? '')
       .replace(':householdId', ids.householdId)
       .replace(':userId', ids.userId)
-      .replace(':invitationId', ids.invitationId)}`;
+      .replace(':invitationId', ids.invitationId)
+      .replace(':gatewayId', ids.gatewayId)}`;
   const methodOf = (route: string): Method => route.split(' ')[0]?.toLowerCase() as Method;
 
   /** Everything stored about one household, to prove that a foreign request changed nothing. */
@@ -119,6 +129,9 @@ describe('household tenancy', () => {
           union all
           select 'invitation', to_jsonb(i)::text from invitations i
           where i.household_id = ${householdId}
+          union all
+          select 'gateway', to_jsonb(g)::text from gateways g
+          where g.household_id = ${householdId}
         ) rows order by kind, row`,
     );
 
@@ -127,9 +140,12 @@ describe('household tenancy', () => {
     owner: { id: string; cookie: string };
     member: { id: string; cookie: string };
     invitationId: string;
+    gatewayId: string;
   }
   const tenant = async (): Promise<Tenant> => {
-    const owner = await signedIn();
+    // Owners are platform admins, so that the ids of a foreign household reach the handler of
+    // the gateway routes (which also demand the admin flag) instead of stopping at that check.
+    const owner = await signedIn(true);
     const member = await signedIn();
     const created = await send('post', HOUSEHOLDS, owner.cookie, {
       name: 'Home',
@@ -149,11 +165,17 @@ describe('household tenancy', () => {
         role: 'viewer',
       },
     ).expect(201);
+    const gatewayId = `gw-${randomBytes(4).toString('hex')}`;
+    await connection.sql`
+      insert into gateways (id, household_id, name, topic_prefix, cert_fingerprint, cert_expires_at)
+      values (${gatewayId}, ${householdId}, 'Pi', ${`gw/${gatewayId}/z2m`}, 'fingerprint',
+        now() + interval '1 year')`;
     return {
       householdId,
       owner,
       member,
       invitationId: invitationCreatedSchema.parse(invitation.body).invitation.id,
+      gatewayId,
     };
   };
 
@@ -212,7 +234,7 @@ describe('household tenancy', () => {
           return [`${METHOD_NAMES[method] ?? String(method)} ${joinPath(path, sub)}`];
         }),
       );
-      expect(routes.length).toBeGreaterThanOrEqual(8);
+      expect(routes.length).toBeGreaterThanOrEqual(11);
       expect(routes.sort()).toEqual(ENDPOINTS.map(({ route }) => route).sort());
     });
   });
@@ -222,6 +244,7 @@ describe('household tenancy', () => {
       householdId: other.householdId,
       userId: own.member.id,
       invitationId: own.invitationId,
+      gatewayId: own.gatewayId,
     });
 
     it('answers a signed-in user of household A with 404 for the householdId of B', async () => {
@@ -267,6 +290,7 @@ describe('household tenancy', () => {
         householdId: a.householdId,
         userId: b.member.id,
         invitationId: b.invitationId,
+        gatewayId: b.gatewayId,
       };
       const response = await send(methodOf(route), pathOf(route, ids), a.owner.cookie, body).expect(
         404,

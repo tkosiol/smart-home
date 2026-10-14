@@ -1,18 +1,39 @@
 <mat-form-field appearance="outline">
   <mat-label>{{ label() }}</mat-label>
-  <input
-    matInput
-    uiFieldStateSync
-    [type]="type()"
-    [value]="value()"
-    [required]="required()"
-    [disabled]="disabled()"
-    [errorStateMatcher]="errorMatcher"
-    [attr.autocomplete]="autocomplete() ?? null"
-    [attr.inputmode]="inputmode() ?? null"
-    [attr.name]="name() ?? null"
-    (input)="onInput($event)"
-  />
+  @if (multiline()) {
+    <textarea
+      matInput
+      uiFieldStateSync
+      [rows]="rows()"
+      [value]="value()"
+      [required]="required()"
+      [disabled]="disabled()"
+      [errorStateMatcher]="errorMatcher"
+      [attr.autocomplete]="autocomplete() ?? null"
+      [attr.spellcheck]="verbatim() ? 'false' : null"
+      [attr.autocapitalize]="verbatim() ? 'off' : null"
+      [attr.autocorrect]="verbatim() ? 'off' : null"
+      [attr.name]="name() ?? null"
+      (input)="onInput($event)"
+    ></textarea>
+  } @else {
+    <input
+      matInput
+      uiFieldStateSync
+      [type]="type()"
+      [value]="value()"
+      [required]="required()"
+      [disabled]="disabled()"
+      [errorStateMatcher]="errorMatcher"
+      [attr.autocomplete]="autocomplete() ?? null"
+      [attr.spellcheck]="verbatim() ? 'false' : null"
+      [attr.autocapitalize]="verbatim() ? 'off' : null"
+      [attr.autocorrect]="verbatim() ? 'off' : null"
+      [attr.inputmode]="inputmode() ?? null"
+      [attr.name]="name() ?? null"
+      (input)="onInput($event)"
+    />
+  }
   @if (error(); as error) {
     <mat-error>{{ error }}</mat-error>
   } @else if (hint(); as hint) {

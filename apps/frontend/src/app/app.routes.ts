@@ -69,6 +69,12 @@ export const routes: Routes = [
         loadChildren: () => import('./features/households').then((m) => m.memberRoutes),
       },
       {
+        path: 'mehr/gateways',
+        title: marker('app.title.gateways'),
+        canMatch: [minRole('owner')],
+        loadChildren: () => import('./features/gateways').then((m) => m.gatewaysRoutes),
+      },
+      {
         path: 'mehr/einstellungen',
         title: marker('app.title.settings'),
         loadChildren: () => import('./features/settings').then((m) => m.settingsRoutes),

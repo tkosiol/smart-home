@@ -15,54 +15,13 @@ import type { HouseholdRole, Invitation, InvitationCreated, Member } from '@smar
 import { UiButton, UiDateTimePipe, UiPage, UiSection, UiStack } from '@smart/ui';
 import { ApiError } from '../../core/api';
 import { AuthService } from '../../core/auth';
-import { HouseholdContext } from '../../core/household';
-import { injectHouseholdErrorHandler } from './household-errors';
+import { HouseholdContext, injectHouseholdErrorHandler, LoadedList } from '../../core/household';
 import { InviteForm } from './invite-form';
 import { MembersApi } from './members.api';
 import { RoleSelect } from './role-select';
 
 /** How long a "really?" question stays open. */
 const CONFIRM_MS = 5000;
-
-/**
- * A list loaded for a household id; a slower answer to an older request never replaces a newer one.
- * (Not Angular's `resource`: using it from a lazy page enlarges the initial bundle.)
- */
-class LoadedList<T> {
-  readonly items = signal<readonly T[]>([]);
-  /** Whether `items` is the server's answer (not the empty list of a load that has not ended). */
-  readonly loaded = signal(false);
-  private requests = 0;
-
-  constructor(
-    private readonly fetch: (householdId: string) => Promise<T[]>,
-    private readonly onError: (error: unknown) => void,
-  ) {}
-
-  /** Ends the list's life: answers still on their way are ignored. */
-  dispose(): void {
-    this.requests++;
-  }
-
-  /** Loads the list of `householdId` (none: empties it); `keep` leaves the old rows while loading. */
-  async load(householdId: string | undefined, keep = false): Promise<void> {
-    const request = ++this.requests;
-    if (!keep) {
-      this.items.set([]);
-      this.loaded.set(false);
-    }
-    if (!householdId) return;
-    try {
-      const items = await this.fetch(householdId);
-      if (request === this.requests) {
-        this.items.set(items);
-        this.loaded.set(true);
-      }
-    } catch (error) {
-      if (request === this.requests) this.onError(error);
-    }
-  }
-}
 
 /**
  * Members of the current household with their roles; owners also manage the open invitations and
