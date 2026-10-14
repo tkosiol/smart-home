@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   CAPABILITY_KINDS,
   LOW_BATTERY_PERCENT,
+  isLowBattery,
   capabilitySchema,
   deviceCreateSchema,
   deviceRenameSchema,
@@ -98,6 +99,18 @@ describe('hardwareSchema', () => {
     expect(hardwareSchema.safeParse(hardware).success).toBe(true);
   });
 
+  it('accepts nested objects and null inside the last state', () => {
+    const parsed = hardwareSchema.safeParse({
+      ...hardware,
+      lastState: { color: { x: 0.45, y: 0.41 }, linkquality: null, update: { state: 'idle' } },
+    });
+    expect(parsed.success && parsed.data.lastState).toEqual({
+      color: { x: 0.45, y: 0.41 },
+      linkquality: null,
+      update: { state: 'idle' },
+    });
+  });
+
   it('accepts hardware that was never seen and has no description', () => {
     const parsed = hardwareSchema.safeParse({
       ...hardware,
@@ -135,6 +148,18 @@ describe('deviceSchema', () => {
 
   it('accepts a lamp with an icon', () => {
     expect(deviceSchema.safeParse({ ...device, icon: 'lightbulb' }).success).toBe(true);
+  });
+
+  it('accepts nested objects and null inside the state', () => {
+    const parsed = deviceSchema.safeParse({
+      ...device,
+      state: { state: 'ON', color: { x: 0.45, y: 0.41 }, color_temp: null },
+    });
+    expect(parsed.success && parsed.data.state).toEqual({
+      state: 'ON',
+      color: { x: 0.45, y: 0.41 },
+      color_temp: null,
+    });
   });
 
   it('accepts a device without icon, state and last contact', () => {
@@ -192,6 +217,22 @@ describe('primaryCapability', () => {
     expect(primaryCapability([dry, battery, lux])?.key).toBe('battery');
   });
 
+  it('ignores settings in the numeric fallback', () => {
+    expect(primaryCapability([temperatureCalibration, battery])?.key).toBe('battery');
+  });
+
+  it('skips capabilities that cannot be read', () => {
+    const writeOnly = capability({ key: 'soil_moisture', kind: 'numeric', readable: false });
+    expect(primaryCapability([writeOnly, battery])?.key).toBe('battery');
+    expect(primaryCapability([writeOnly])).toBeUndefined();
+  });
+
+  it('skips a setting that is named like a known key', () => {
+    const setting = capability({ key: 'temperature', kind: 'numeric', isSetting: true });
+    expect(primaryCapability([setting, humidity])?.key).toBe('humidity');
+    expect(primaryCapability([setting])).toBeUndefined();
+  });
+
   it('returns undefined without capabilities or without a numeric one', () => {
     expect(primaryCapability([])).toBeUndefined();
     expect(primaryCapability([dry, temperatureUnit])).toBeUndefined();
@@ -199,8 +240,19 @@ describe('primaryCapability', () => {
 });
 
 describe('constants', () => {
-  it('flags a battery at or below 20 percent as low', () => {
+  it('flags a battery below 20 percent as low', () => {
     expect(LOW_BATTERY_PERCENT).toBe(20);
+    expect(isLowBattery(19)).toBe(true);
+    expect(isLowBattery(0)).toBe(true);
+    expect(isLowBattery(20)).toBe(false);
+    expect(isLowBattery(21)).toBe(false);
+  });
+
+  it('does not flag a missing or malformed battery value', () => {
+    expect(isLowBattery(undefined)).toBe(false);
+    expect(isLowBattery(null)).toBe(false);
+    expect(isLowBattery(Number.NaN)).toBe(false);
+    expect(isLowBattery('15')).toBe(false);
   });
 
   it('lists the hardware-bound error code', () => {

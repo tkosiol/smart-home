@@ -75,14 +75,25 @@ export type DeviceRename = z.infer<typeof deviceRenameSchema>;
 /** Keys shown first, in this order. */
 const PRIMARY_KEYS = ['soil_moisture', 'temperature', 'humidity', 'state'] as const;
 
-/** The value shown first: soil_moisture, temperature, humidity, state, else the first numeric one. */
+/**
+ * The value shown first: soil_moisture, temperature, humidity, state, else the first numeric one.
+ * Only readings count: capabilities that are not readable or are settings are skipped.
+ */
 export function primaryCapability(capabilities: readonly Capability[]): Capability | undefined {
+  const readings = capabilities.filter(
+    (capability) => capability.readable && !capability.isSetting,
+  );
   for (const key of PRIMARY_KEYS) {
-    const found = capabilities.find((capability) => capability.key === key);
+    const found = readings.find((capability) => capability.key === key);
     if (found) return found;
   }
-  return capabilities.find((capability) => capability.kind === 'numeric');
+  return readings.find((capability) => capability.kind === 'numeric');
 }
 
-/** A battery at or below this percentage counts as low. */
+/** A battery below this percentage counts as low. */
 export const LOW_BATTERY_PERCENT = 20;
+
+/** True for a finite battery percentage below {@link LOW_BATTERY_PERCENT}; anything else is not low. */
+export function isLowBattery(percent: unknown): boolean {
+  return typeof percent === 'number' && Number.isFinite(percent) && percent < LOW_BATTERY_PERCENT;
+}
