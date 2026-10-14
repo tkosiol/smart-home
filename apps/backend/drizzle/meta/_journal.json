@@ -43,6 +43,13 @@
       "when": 1791991735609,
       "tag": "0005_gateways",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791996612150,
+      "tag": "0006_devices_telemetry",
+      "breakpoints": true
     }
   ]
 }
