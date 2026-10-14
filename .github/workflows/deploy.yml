@@ -39,6 +39,7 @@ jobs:
           - { image: web, context: ., file: apps/frontend/Dockerfile }
           - { image: broker, context: infra/broker, file: infra/broker/Dockerfile }
           - { image: backup, context: infra/backup, file: infra/backup/Dockerfile }
+          - { image: simulator, context: ., file: apps/gateway-simulator/Dockerfile }
     env:
       IMAGE: ghcr.io/tkosiol/smart-home-${{ matrix.image }}:${{ github.event.workflow_run.head_sha }}
     steps:

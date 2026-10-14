@@ -2,6 +2,7 @@
 # Creates a stack's .env on the VPS. Run it yourself in a terminal – secrets never pass through chat or CI.
 # Usage: SMART_VPS=<user@host> infra/deploy/provision.sh <staging|production> [--force]
 # --force rewrites the file but keeps the generated DB and broker passwords (the data volumes depend on them),
+# the generated simulator password and gateway ID (staging),
 # the existing SMART_* runtime settings, MQTT_TLS (broker-certs.sh sets it to on) and, when a prompt is answered with
 # Enter, the stored mail settings and (production) backup settings. Without a stored value a prompt stays required.
 set -euo pipefail
@@ -98,6 +99,14 @@ if [ "$environment" = staging ]; then
   mail_allowlist=${mail_allowlist//[[:space:]]/}
 fi
 
+# The gateway ID of the simulator (staging): gw- and 8 characters of [a-z0-9] (hex digits qualify), kept as long as
+# the stored one still matches the pattern, because the e2e registration and the broker ACL refer to it.
+simulator_gateway_id() {
+  local value
+  value=$(existing_value MQTT_SIMULATOR_GATEWAY_ID)
+  if [[ "$value" =~ ^gw-[a-z0-9]{8}$ ]]; then printf '%s' "$value"; else printf 'gw-%s' "$(openssl rand -hex 4)"; fi
+}
+
 existing_hops=$(existing_value TRUSTED_PROXY_HOPS)
 # MQTT_TLS stays off until broker-certs.sh has copied the certificates and switched it on; --force keeps that.
 existing_tls=$(existing_value MQTT_TLS)
@@ -114,6 +123,21 @@ lines=(
   "MAIL_FROM=$mail_from"
 )
 if [ -n "$mail_allowlist" ]; then lines+=("MAIL_ALLOWLIST=$mail_allowlist"); fi
+
+if [ "$environment" = staging ]; then
+  # Staging has no real gateway: the simulator (compose profile "simulator") stands in for one. Other profiles of
+  # an existing file stay; production never gets a simulator.
+  profiles=$(existing_value COMPOSE_PROFILES)
+  case ",$profiles," in
+    *,simulator,*) ;;
+    *) profiles="${profiles:+$profiles,}simulator" ;;
+  esac
+  lines+=(
+    "COMPOSE_PROFILES=$profiles"
+    "MQTT_SIMULATOR_PASSWORD=$(keep_or_generate MQTT_SIMULATOR_PASSWORD)"
+    "MQTT_SIMULATOR_GATEWAY_ID=$(simulator_gateway_id)"
+  )
+fi
 
 # Runtime settings (SMART_*) of an existing .env are carried over verbatim, also on --force.
 while IFS= read -r smart_line; do

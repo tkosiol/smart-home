@@ -20,7 +20,7 @@
     "test": "pnpm -r --if-present test",
     "test:tz": "TZ=Pacific/Chatham pnpm -r --if-present test",
     "build": "pnpm -r --if-present build",
-    "infra:up": "docker compose -f infra/local/compose.yaml up -d --wait",
+    "infra:up": "docker compose -f infra/local/compose.yaml up -d --wait --build",
     "infra:down": "docker compose -f infra/local/compose.yaml down",
     "infra:test": "sh infra/local/smoke-test.sh",
     "licenses:check": "pnpm licenses list --json -r | node tools/lint-config/licenses/check-licenses.mjs"

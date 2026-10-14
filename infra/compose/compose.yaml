@@ -109,6 +109,29 @@ services:
       - '${MQTT_PUBLIC_PORT:-127.0.0.1:18883}:8883'
     networks: [internal]
 
+  # Staging only (profile `simulator`, set by provision.sh): behaves like the Raspberry Pi's gateway with six
+  # soil sensors and a lamp. It connects as the broker's smart-simulator user, which may only use its own
+  # gateway prefix. The variables stay optional because compose reads them even while the profile is off.
+  simulator:
+    <<: *defaults
+    profiles: [simulator]
+    image: ${IMAGE_REGISTRY:-ghcr.io/tkosiol}/smart-home-simulator:${IMAGE_TAG:?IMAGE_TAG is required}
+    # The image runs as the unprivileged node user.
+    read_only: true
+    tmpfs: [/tmp]
+    environment:
+      TZ: UTC
+      MQTT_URL: mqtt://broker:1883
+      MQTT_USERNAME: smart-simulator
+      MQTT_PASSWORD: ${MQTT_SIMULATOR_PASSWORD:-}
+      GATEWAY_ID: ${MQTT_SIMULATOR_GATEWAY_ID:-}
+      INTERVAL_SECONDS: ${SIMULATOR_INTERVAL_SECONDS:-300}
+      SEED: ${SIMULATOR_SEED:-}
+    depends_on:
+      broker:
+        condition: service_healthy
+    networks: [internal]
+
   backup:
     <<: *defaults
     profiles: [backup]

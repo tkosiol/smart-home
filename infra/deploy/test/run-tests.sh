@@ -127,6 +127,22 @@ setup; STUB_EXISTING_ENV=$(printf "STACK_NAME=smart-staging\nDB_PASSWORD=keep-db
 export SMART_VPS=deploy@vps STUB_ENV_EXISTS=1 STUB_EXISTING_ENV
 check "provision --force keeps the existing database and broker passwords" 'provision_staging --force && grep -qx "DB_PASSWORD=keep-db" "$STUB_REMOTE_FILE" && grep -qx "MQTT_API_PASSWORD=keep-mqtt" "$STUB_REMOTE_FILE"'; teardown
 
+# The simulator (staging only): profile, password and gateway ID.
+setup; export SMART_VPS=deploy@vps
+check "provision enables the simulator profile for staging" 'provision_staging && grep -qx "COMPOSE_PROFILES=simulator" "$STUB_REMOTE_FILE"'
+check "provision generates a long simulator password and a gateway ID of the pattern" 'grep -Eq "^MQTT_SIMULATOR_PASSWORD=[0-9a-f]{64}$" "$STUB_REMOTE_FILE" && grep -Eq "^MQTT_SIMULATOR_GATEWAY_ID=gw-[a-z0-9]{8}$" "$STUB_REMOTE_FILE"'
+check "provision writes each simulator setting once" '[ "$(grep -cE "^(COMPOSE_PROFILES|MQTT_SIMULATOR_PASSWORD|MQTT_SIMULATOR_GATEWAY_ID)=" "$STUB_REMOTE_FILE")" = 3 ]'
+check "provision never prints the simulator password" '! staging_answers | bash "$DEPLOY_DIR/provision.sh" staging 2>&1 | grep -Eq "[0-9a-f]{64}"'
+check "provision gives the simulator a password that differs from the api's" '[ "$(sed -n "s/^MQTT_SIMULATOR_PASSWORD=//p" "$STUB_REMOTE_FILE")" != "$(sed -n "s/^MQTT_API_PASSWORD=//p" "$STUB_REMOTE_FILE")" ]'
+check "provision gives production no simulator" 'answers | bash "$DEPLOY_DIR/provision.sh" production > /dev/null 2>&1 && grep -qx "COMPOSE_PROFILES=backup" "$STUB_REMOTE_FILE" && ! grep -q "SIMULATOR" "$STUB_REMOTE_FILE" && ! grep -q "simulator" "$STUB_REMOTE_FILE"'; teardown
+setup; STUB_EXISTING_ENV=$(printf "STACK_NAME=smart-staging\nMQTT_SIMULATOR_PASSWORD=keep-sim\nMQTT_SIMULATOR_GATEWAY_ID=gw-keep0001\nCOMPOSE_PROFILES=simulator")
+export SMART_VPS=deploy@vps STUB_ENV_EXISTS=1 STUB_EXISTING_ENV
+check "provision --force keeps the simulator password and gateway ID" 'provision_staging --force && grep -qx "MQTT_SIMULATOR_PASSWORD=keep-sim" "$STUB_REMOTE_FILE" && grep -qx "MQTT_SIMULATOR_GATEWAY_ID=gw-keep0001" "$STUB_REMOTE_FILE" && [ "$(grep -c "^COMPOSE_PROFILES=" "$STUB_REMOTE_FILE")" = 1 ] && grep -qx "COMPOSE_PROFILES=simulator" "$STUB_REMOTE_FILE"'; teardown
+setup; STUB_EXISTING_ENV=$(printf "STACK_NAME=smart-staging\nMQTT_SIMULATOR_GATEWAY_ID=not-an-id\nCOMPOSE_PROFILES=backup")
+export SMART_VPS=deploy@vps STUB_ENV_EXISTS=1 STUB_EXISTING_ENV
+check "provision --force replaces a stored gateway ID that does not match the pattern" 'provision_staging --force && grep -Eq "^MQTT_SIMULATOR_GATEWAY_ID=gw-[a-z0-9]{8}$" "$STUB_REMOTE_FILE"'
+check "provision --force adds the simulator to the stored profiles" 'grep -qx "COMPOSE_PROFILES=backup,simulator" "$STUB_REMOTE_FILE"'; teardown
+
 setup; export SMART_VPS=deploy@vps
 check "provision writes no editor switch for staging" 'provision_staging && grep -qx "STACK_NAME=smart-staging" "$STUB_REMOTE_FILE" && ! grep -q "SMART_INSTANCE_APPEARANCE_EDITOR" "$STUB_REMOTE_FILE"'; teardown
 setup; export SMART_VPS=deploy@vps

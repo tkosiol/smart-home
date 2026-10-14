@@ -7,6 +7,8 @@ PROJECT=smart-stacktest
 TAG=stacktest
 NETWORK=smart-stacktest-proxy
 GATEWAY_ID=gw-testpi01
+# The simulator's gateway: the broker ACL of the user smart-simulator and the certificate issued below belong to it.
+SIM_ID=gw-simtest1
 ENV_FILE=$(mktemp)
 WORK=$(mktemp -d)
 
@@ -15,11 +17,13 @@ STACK_NAME=$PROJECT
 IMAGE_REGISTRY=local
 IMAGE_TAG=$TAG
 PROXY_NETWORK=$NETWORK
-COMPOSE_PROFILES=backup
+COMPOSE_PROFILES=backup,simulator
 BACKUP_UID=4242
 BACKUP_GID=4343
 DB_PASSWORD=stack-test-db
 MQTT_API_PASSWORD=stack-test-mqtt
+MQTT_SIMULATOR_PASSWORD=stack-test-simulator
+MQTT_SIMULATOR_GATEWAY_ID=$SIM_ID
 MQTT_TLS=on
 APP_ORIGIN=http://127.0.0.1:18080
 ENV
@@ -41,15 +45,22 @@ docker build -q -f apps/backend/Dockerfile -t "local/smart-home-api:$TAG" .
 docker build -q -f apps/frontend/Dockerfile -t "local/smart-home-web:$TAG" .
 docker build -q -t "local/smart-home-broker:$TAG" infra/broker
 docker build -q -t "local/smart-home-backup:$TAG" infra/backup
+docker build -q -f apps/gateway-simulator/Dockerfile -t "local/smart-home-simulator:$TAG" .
 
 # Throwaway PKI (needs OpenSSL 3 or newer; on macOS install openssl@3, pki.sh finds it, or set SMART_OPENSSL):
-# a CA, the broker's server certificate (host "broker", the name the pi connects to) and the pi's gateway certificate.
+# a CA, the broker's server certificate (host "broker", the name the pi connects to) and the gateway certificates of
+# the pi and of the simulator (the latter is only registered by the end-to-end tests, the simulator does not use it).
 export SMART_PKI_PASSPHRASE_FILE="$WORK/passphrase"
 printf 'stack test passphrase\n' > "$SMART_PKI_PASSPHRASE_FILE"
 pki() { SMART_PKI_DIR="$WORK/pki" bash infra/pki/pki.sh "$@" < /dev/null > /dev/null; }
 pki init-ca
 pki issue-server broker
 pki issue-gateway "$GATEWAY_ID"
+pki issue-gateway "$SIM_ID"
+# For the end-to-end tests (registering the simulator's gateway): the ID and the path of the PEM certificate, which
+# lives in the throwaway PKI directory until this script ends. The private key stays out of reach of the tests.
+export E2E_SIMULATOR_GATEWAY_ID="$SIM_ID"
+export E2E_SIMULATOR_CERTIFICATE_FILE="$WORK/pki/gateways/$SIM_ID.crt"
 
 # Only what the stack needs goes into the volumes, never the CA key. The layout is the one of the stack directory
 # (certs/public for api and broker, certs/private with the server key for the broker only); the volumes
@@ -156,6 +167,52 @@ grep -qx switch "$WORK/command.out" || {
   echo "FAIL: the command for gw/$GATEWAY_ID/z2m/lamp/set did not reach the pi" >&2
   exit 1
 }
+
+# The simulator (profile simulator): it runs as an unprivileged user and, as smart-simulator, announces its gateway
+# like the pi: the connection flag, the bridge state, and the device list with the real Z2M definitions.
+[ "$(compose exec -T simulator id -u | tr -d '\r')" != 0 ] || {
+  echo "FAIL: the simulator runs as root" >&2
+  exit 1
+}
+expect_message "gw/$SIM_ID/bridge/connection" "1 1"
+expect_message "gw/$SIM_ID/z2m/bridge/state" '1 {"state":"online"}'
+attempt=0
+devices=""
+while [ "$attempt" -lt 20 ]; do
+  devices=$(broker_read "gw/$SIM_ID/z2m/bridge/devices")
+  case "$devices" in "1 ["*) break ;; esac
+  attempt=$((attempt + 1))
+  sleep 1
+done
+for expected in '"friendly_name":"Pflanze 1"' '"model":"AY-303Z"' '"friendly_name":"Lampe"' '"model":"LED1624G9"'; do
+  case "$devices" in
+    *"$expected"*) ;;
+    *)
+      echo "FAIL: the retained device list of gw/$SIM_ID/z2m/bridge/devices lacks $expected" >&2
+      exit 1
+      ;;
+  esac
+done
+# A command for the lamp (the simulator reads gw/<id>/z2m/+/set) is answered with the new state (probed until
+# the simulator's subscription is active).
+# shellcheck disable=SC2016 # see broker_read
+compose exec -T broker sh -c 'mosquitto_sub -h localhost -u smart-api -P "$MQTT_PASSWORD" -t "$0" -C 1 -W 20' \
+  "gw/$SIM_ID/z2m/Lampe" > "$WORK/lamp.out" 2> /dev/null &
+lamp_pid=$!
+attempt=0
+while [ ! -s "$WORK/lamp.out" ] && [ "$attempt" -lt 20 ]; do
+  # shellcheck disable=SC2016 # see broker_read
+  compose exec -T broker sh -c 'mosquitto_pub -h localhost -u smart-api -P "$MQTT_PASSWORD" -t "$0" -m "$1"' \
+    "gw/$SIM_ID/z2m/Lampe/set" '{"state":"ON","brightness":77}'
+  attempt=$((attempt + 1))
+  sleep 1
+done
+wait "$lamp_pid" || true
+if ! grep -q '"state":"ON"' "$WORK/lamp.out" || ! grep -q '"brightness":77' "$WORK/lamp.out"; then
+  echo "FAIL: the simulator's lamp did not report the state set by gw/$SIM_ID/z2m/Lampe/set" >&2
+  exit 1
+fi
+
 # Stopping the pi cleanly makes the bridge publish the retained "0".
 compose stop pi
 expect_message "gw/$GATEWAY_ID/bridge/connection" "1 0"
