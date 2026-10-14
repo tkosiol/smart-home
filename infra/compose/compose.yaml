@@ -104,9 +104,12 @@ services:
       # The server key lives apart from the files the api can read.
       - ./certs/private:/mosquitto/certs-private:ro
     # Gateways connect here with a client certificate. Production publishes 8883 to the internet
-    # (MQTT_PUBLIC_PORT=8883); everywhere else it stays on localhost.
+    # (MQTT_PUBLIC_PORT=8883); without it the port is bound to 127.0.0.1 on an ephemeral host port. The default
+    # must not be a fixed port: staging and production run side by side on one host, and a production .env
+    # that predates MQTT_PUBLIC_PORT would otherwise collide with staging. The expression yields
+    # "8883:8883" when the variable is set and "127.0.0.1::8883" when it is not.
     ports:
-      - '${MQTT_PUBLIC_PORT:-127.0.0.1:18883}:8883'
+      - '${MQTT_PUBLIC_PORT:-127.0.0.1::8883}${MQTT_PUBLIC_PORT:+:8883}'
     networks: [internal]
 
   # Staging only (profile `simulator`, set by provision.sh): behaves like the Raspberry Pi's gateway with six

@@ -145,7 +145,7 @@ while IFS= read -r smart_line; do
 done < <(printf '%s\n' "$existing" | grep '^SMART_' || true)
 
 if [ "$environment" = production ]; then
-  # Gateways reach the production broker from the internet; staging publishes 127.0.0.1:18883 only (compose default).
+  # Gateways reach the production broker from the internet; staging binds a random 127.0.0.1 port only (compose default).
   existing_port=$(existing_value MQTT_PUBLIC_PORT)
   lines+=("MQTT_PUBLIC_PORT=${existing_port:-8883}")
   backup_uid=$(ssh -n "$host" "id -u")
