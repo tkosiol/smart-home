@@ -3,7 +3,8 @@
   "nameError": "Please enter a name of at most 60 characters.",
   "empty": {
     "heading": "No devices yet",
-    "description": "Once a discovered device is added, its values show up here."
+    "description": "Add newly discovered devices under “Devices → Newly discovered”. Their values then show up here.",
+    "action": "Go to devices"
   },
   "list": {
     "title": "Devices in the household"

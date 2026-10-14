@@ -70,9 +70,28 @@ describe('devices overview card', () => {
     expect(pageText(cards[1]!)).toContain('Minze');
   });
 
-  it('explains an empty household', async () => {
+  it('explains an empty household and leads to the devices page', async () => {
     const page = await open([]);
     await shown(page, 'Noch keine Geräte');
+    expect(pageText(page.element)).toContain('„Geräte → Neu erkannt“');
+    const link = page.element.querySelector<HTMLAnchorElement>('ui-empty-state a');
+    expect(link?.getAttribute('href')).toBe('/geraete');
+    expect(link?.textContent?.trim()).toBe('Zu den Geräten');
+  });
+
+  it('has no link to the devices page when there are devices', async () => {
+    const page = await open();
+    await shown(page, 'Bodenfeuchte: 41,3 %');
+    expect(page.element.querySelector('ui-empty-state')).toBeNull();
+  });
+
+  it('speaks English in the empty household', async () => {
+    const page = await open([], 'en');
+    await shown(page, 'No devices yet');
+    expect(pageText(page.element)).toContain('“Devices → Newly discovered”');
+    expect(page.element.querySelector('ui-empty-state a')?.textContent?.trim()).toBe(
+      'Go to devices',
+    );
   });
 
   it('speaks English', async () => {

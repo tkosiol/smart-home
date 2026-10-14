@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { TranslocoPipe } from '@jsverse/transloco';
-import { UiEmptyState, UiGrid } from '@smart/ui';
+import { UiButton, UiEmptyState, UiEmptyStateActions, UiGrid } from '@smart/ui';
 import { DeviceCard } from './device-card';
 import { injectDeviceList } from './device-list';
 import { provideDevicesTexts } from './devices-texts';
@@ -8,7 +8,7 @@ import { provideDevicesTexts } from './devices-texts';
 /** The overview's cards of the devices: one per device, kept up to date. Loaded lazily. */
 @Component({
   selector: 'app-devices-overview',
-  imports: [TranslocoPipe, DeviceCard, UiEmptyState, UiGrid],
+  imports: [TranslocoPipe, DeviceCard, UiButton, UiEmptyState, UiEmptyStateActions, UiGrid],
   providers: [provideDevicesTexts()],
   template: `
     @if (devices.items().length > 0) {
@@ -22,7 +22,11 @@ import { provideDevicesTexts } from './devices-texts';
         icon="devices"
         [heading]="'devices.empty.heading' | transloco"
         [description]="'devices.empty.description' | transloco"
-      />
+      >
+        <div uiEmptyStateActions>
+          <ui-button route="/geraete">{{ 'devices.empty.action' | transloco }}</ui-button>
+        </div>
+      </ui-empty-state>
     }
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,

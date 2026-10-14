@@ -3,7 +3,8 @@
   "nameError": "Bitte gib einen Namen mit höchstens 60 Zeichen ein.",
   "empty": {
     "heading": "Noch keine Geräte",
-    "description": "Sobald ein erkanntes Gerät hinzugefügt ist, zeigt es hier seine Werte."
+    "description": "Neu erkannte Geräte fügst du unter „Geräte → Neu erkannt“ hinzu. Danach erscheinen hier ihre Werte.",
+    "action": "Zu den Geräten"
   },
   "list": {
     "title": "Geräte im Haushalt"
