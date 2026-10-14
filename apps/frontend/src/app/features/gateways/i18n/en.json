@@ -1,0 +1,41 @@
+{
+  "title": "Gateways",
+  "list": {
+    "title": "Registered gateways"
+  },
+  "status": {
+    "online": "Online",
+    "offline": "Offline",
+    "unknown": "Unknown"
+  },
+  "entry": {
+    "bridge": "Bridge",
+    "z2m": "Zigbee2MQTT",
+    "lastMessage": "Last message {{ time }}",
+    "noMessage": "No message received yet",
+    "certExpires": "Certificate valid until {{ date }}",
+    "revoked": "Revoked on {{ date }}",
+    "revoke": "Revoke",
+    "revokeConfirm": "Really revoke?"
+  },
+  "warnings": {
+    "certExpiring": "The certificate expires in {{ days }} days.",
+    "certExpiringSoon": "The certificate expires in less than a day.",
+    "certExpired": "The certificate has expired. The gateway can no longer connect.",
+    "crlExpiring": "The revocation list expires soon. Renew it on the server with “pki.sh crl” and distribute it with “broker-certs.sh”."
+  },
+  "revokedHint": "The gateway is revoked in the app. Now revoke its certificate too with “pki.sh revoke” and distribute the revocation list with “broker-certs.sh”; only then will the broker turn it away.",
+  "empty": {
+    "title": "No gateways yet",
+    "description": "You issue a gateway with “pki.sh” on the server; a platform administrator registers it here with its certificate. The steps are in the “Gateway” runbook."
+  },
+  "register": {
+    "title": "Register a gateway",
+    "name": "Name",
+    "nameError": "Please enter a name of at most 60 characters.",
+    "certificate": "Certificate",
+    "certificateHint": "The text of the certificate, including the BEGIN and END lines. Never paste the private key.",
+    "certificateError": "Please paste the certificate (at most 20,000 characters).",
+    "submit": "Register gateway"
+  }
+}

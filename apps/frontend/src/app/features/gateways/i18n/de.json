@@ -1,0 +1,41 @@
+{
+  "title": "Gateways",
+  "list": {
+    "title": "Registrierte Gateways"
+  },
+  "status": {
+    "online": "Online",
+    "offline": "Offline",
+    "unknown": "Unbekannt"
+  },
+  "entry": {
+    "bridge": "Bridge",
+    "z2m": "Zigbee2MQTT",
+    "lastMessage": "Letzte Nachricht {{ time }}",
+    "noMessage": "Noch keine Nachricht empfangen",
+    "certExpires": "Zertifikat gültig bis {{ date }}",
+    "revoked": "Gesperrt am {{ date }}",
+    "revoke": "Sperren",
+    "revokeConfirm": "Wirklich sperren?"
+  },
+  "warnings": {
+    "certExpiring": "Das Zertifikat läuft in {{ days }} Tagen ab.",
+    "certExpiringSoon": "Das Zertifikat läuft in weniger als einem Tag ab.",
+    "certExpired": "Das Zertifikat ist abgelaufen. Das Gateway kann sich nicht mehr verbinden.",
+    "crlExpiring": "Die Sperrliste läuft bald ab. Erneuere sie auf dem Server mit „pki.sh crl“ und verteile sie mit „broker-certs.sh“."
+  },
+  "revokedHint": "Das Gateway ist in der App gesperrt. Sperre jetzt auch sein Zertifikat mit „pki.sh revoke“ und verteile die Sperrliste mit „broker-certs.sh“; erst danach weist der Broker es ab.",
+  "empty": {
+    "title": "Noch keine Gateways",
+    "description": "Ein Gateway stellst du mit „pki.sh“ auf dem Server aus; ein Plattform-Admin registriert es hier mit seinem Zertifikat. Die Schritte stehen im Runbook „Gateway“."
+  },
+  "register": {
+    "title": "Gateway registrieren",
+    "name": "Name",
+    "nameError": "Bitte gib einen Namen mit höchstens 60 Zeichen ein.",
+    "certificate": "Zertifikat",
+    "certificateHint": "Der Text des Zertifikats, auch die Zeilen mit BEGIN und END. Niemals den privaten Schlüssel einfügen.",
+    "certificateError": "Bitte füge das Zertifikat ein (höchstens 20.000 Zeichen).",
+    "submit": "Gateway registrieren"
+  }
+}

@@ -10,5 +10,4 @@ export const COMING_SOON_ENTRIES: readonly MoreEntry[] = [
     icon: 'notifications',
     order: 20,
   },
-  { id: 'gateways', labelKey: marker('app.more.gateways'), icon: 'router', order: 40 },
 ];

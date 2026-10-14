@@ -21,6 +21,7 @@
       "switchHousehold": "Switch household",
       "household": "Household",
       "members": "Members",
+      "gateways": "Gateways",
       "notFound": "Not found"
     },
     "household": {
