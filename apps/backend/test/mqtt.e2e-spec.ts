@@ -1,4 +1,5 @@
-import { inject } from 'vitest';
+import { connect as connectClient, type MqttClient } from 'mqtt';
+import { inject, vi } from 'vitest';
 import { MqttConnection, MqttHealth } from '../src/platform/mqtt/index.js';
 
 const env = inject('testEnv');
@@ -12,6 +13,14 @@ function connect(password: string, errors: Error[] = []): MqttConnection {
     onError: (error) => errors.push(error),
   });
 }
+
+/** A plain client that publishes, as a gateway would. */
+const writer = (): MqttClient =>
+  connectClient(env.MQTT_URL, {
+    username: env.MQTT_USERNAME,
+    password: env.MQTT_PASSWORD,
+    clientId: `test-writer-${Math.random().toString(16).slice(2)}`,
+  });
 
 describe('MqttConnection', () => {
   it('connects with valid credentials and reports up', async () => {
@@ -34,5 +43,63 @@ describe('MqttConnection', () => {
     } finally {
       await connection.close();
     }
+  });
+
+  describe('subscribe', () => {
+    const topic = (): string => `gw/test-${Math.random().toString(16).slice(2)}/x`;
+
+    it('delivers matching messages and stops after unsubscribing', async () => {
+      const reader = connect(env.MQTT_PASSWORD);
+      const source = writer();
+      try {
+        await reader.waitUntilConnected(5000);
+        const base = topic();
+        const seen: string[] = [];
+        const unsubscribe = reader.subscribe(`${base}/#`, (received, payload, retained) => {
+          seen.push(`${received}=${payload.toString()}:${String(retained)}`);
+        });
+        await vi.waitFor(async () => {
+          await source.publishAsync(`${base}/a`, 'one', { qos: 1 });
+          expect(seen).toContain(`${base}/a=one:false`);
+        });
+        unsubscribe();
+        const count = seen.length;
+        await source.publishAsync(`${base}/a`, 'two', { qos: 1 });
+        await source.publishAsync(`${base}/a`, 'three', { qos: 1 });
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        expect(seen.length).toBe(count);
+      } finally {
+        await reader.close();
+        await source.endAsync(true);
+      }
+    });
+
+    it('keeps working when a handler throws, without leaking the reason', async () => {
+      const errors: Error[] = [];
+      const reader = connect(env.MQTT_PASSWORD, errors);
+      const source = writer();
+      try {
+        await reader.waitUntilConnected(5000);
+        const base = topic();
+        const seen: string[] = [];
+        reader.subscribe(`${base}/#`, (_topic, payload) => {
+          seen.push(payload.toString());
+          throw new Error(`secret ${payload.toString()}`);
+        });
+        reader.subscribe(`${base}/#`, (_topic, payload) => {
+          seen.push(`second:${payload.toString()}`);
+        });
+        await vi.waitFor(async () => {
+          await source.publishAsync(`${base}/a`, 'p1', { qos: 1 });
+          expect(seen).toContain('second:p1');
+        });
+        expect(errors.length).toBeGreaterThan(0);
+        expect(errors.map((error) => error.message).join()).not.toContain('secret');
+        expect(reader.isConnected()).toBe(true);
+      } finally {
+        await reader.close();
+        await source.endAsync(true);
+      }
+    });
   });
 });

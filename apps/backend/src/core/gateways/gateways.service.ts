@@ -96,7 +96,7 @@ export class GatewaysService {
   }
 
   /** When the CRL must be renewed (written by `pki.sh`); without the file there is no warning. */
-  private async crlNextUpdate(): Promise<Date | undefined> {
+  async crlNextUpdate(): Promise<Date | undefined> {
     const file = this.env.GATEWAY_CRL_NEXT_UPDATE_FILE;
     if (!file) return undefined;
     try {

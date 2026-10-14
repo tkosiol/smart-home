@@ -1,4 +1,9 @@
 export {
+  GATEWAY_STATUS_CHANGED,
+  GatewayEvents,
+  type GatewayStatusChanged,
+} from './gateway-events.js';
+export {
   GATEWAY_STATUS_MEMORY,
   type GatewayStatusMemory,
   type RecalledStatus,
