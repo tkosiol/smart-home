@@ -4,9 +4,10 @@ import { join } from 'node:path';
 import { Logger } from '@nestjs/common';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { Env } from '../../platform/config/index.js';
-import { noStatusMemory } from './gateway-status-memory.js';
+import { createTestCa } from '../../../test/helpers/test-pki.js';
+import { noStatusMemory, type RecalledStatus } from './gateway-status-memory.js';
 import type { GatewaysRepository } from './gateways.repository.js';
-import type { GatewayRow } from './gateways.schema.js';
+import type { GatewayRow, NewGatewayRow } from './gateways.schema.js';
 import { GatewaysService } from './gateways.service.js';
 
 const NOW = new Date('2026-10-14T12:00:00Z');
@@ -82,5 +83,63 @@ describe('GatewaysService', () => {
       ['certExpiring', 'crlExpiring'],
       ['crlExpiring'],
     ]);
+  });
+
+  describe('registering while a status arrives', () => {
+    it('applies a status that reached the memory between recall and insert', async () => {
+      const ca = createTestCa();
+      try {
+        const issued = ca.issue();
+        let calls = 0;
+        const recall = vi.fn((): RecalledStatus | undefined => {
+          calls += 1;
+          return calls === 1
+            ? { bridge: 'online', at: NOW }
+            : { bridge: 'online', z2m: 'online', at: NOW };
+        });
+        const applyStatus = vi.fn(() => Promise.resolve('changed' as const));
+        const insert = vi.fn((values: NewGatewayRow) =>
+          Promise.resolve({ ...row(), ...values, revokedAt: null } as GatewayRow),
+        );
+        const subject = new GatewaysService(
+          { insert, applyStatus } as unknown as GatewaysRepository,
+          { GATEWAY_CA_FILE: ca.file } as Env,
+          () => NOW,
+          { recall },
+        );
+        const gateway = await subject.register('household', {
+          name: 'Pi',
+          certificate: issued.certificate,
+        });
+        expect(applyStatus.mock.calls).toEqual([[issued.id, 'z2m', 'online', NOW]]);
+        expect(gateway.bridgeStatus).toBe('online');
+        expect(gateway.z2mStatus).toBe('online');
+        expect(gateway.statusChangedAt).toBe(NOW.toISOString());
+      } finally {
+        ca.dispose();
+      }
+    });
+
+    it('writes nothing more when the memory did not change', async () => {
+      const ca = createTestCa();
+      try {
+        const issued = ca.issue();
+        const applyStatus = vi.fn(() => Promise.resolve('changed' as const));
+        const subject = new GatewaysService(
+          {
+            insert: (values: NewGatewayRow) =>
+              Promise.resolve({ ...row(), ...values, revokedAt: null } as GatewayRow),
+            applyStatus,
+          } as unknown as GatewaysRepository,
+          { GATEWAY_CA_FILE: ca.file } as Env,
+          () => NOW,
+          { recall: () => ({ bridge: 'offline', at: NOW }) },
+        );
+        await subject.register('household', { name: 'Pi', certificate: issued.certificate });
+        expect(applyStatus).not.toHaveBeenCalled();
+      } finally {
+        ca.dispose();
+      }
+    });
   });
 });

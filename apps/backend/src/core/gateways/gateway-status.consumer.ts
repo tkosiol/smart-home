@@ -14,13 +14,16 @@ import {
   GatewayEvents,
   type GatewayStatusChanged,
 } from './gateway-events.js';
-import { StatusMemory, type GatewayStatusKind } from './gateway-status-memory.js';
+import {
+  STATUS_MEMORY_LIMIT,
+  StatusMemory,
+  type GatewayStatusKind,
+} from './gateway-status-memory.js';
 import { GatewaysRepository } from './gateways.repository.js';
 import { Throttle } from './throttle.js';
 
 const MINUTE_MS = 60_000;
 const HOUR_MS = 3_600_000;
-const MAX_TRACKED_IDS = 1000;
 /** A status payload is a few bytes; anything bigger is not one. */
 const MAX_STATE_BYTES = 1024;
 
@@ -61,8 +64,8 @@ function gatewayIdOf(topic: string): string | undefined {
 @Injectable()
 export class GatewayStatusConsumer implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(GatewayStatusConsumer.name);
-  private readonly touches = new Throttle(MINUTE_MS, MAX_TRACKED_IDS);
-  private readonly notices = new Throttle(HOUR_MS, MAX_TRACKED_IDS);
+  private readonly touches = new Throttle(MINUTE_MS, STATUS_MEMORY_LIMIT);
+  private readonly notices = new Throttle(HOUR_MS, STATUS_MEMORY_LIMIT);
   private readonly failures = new Throttle(MINUTE_MS, 1);
   private readonly unsubscribes: (() => void)[] = [];
   private tail: Promise<void> = Promise.resolve();

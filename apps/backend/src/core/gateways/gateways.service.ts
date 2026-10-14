@@ -7,7 +7,11 @@ import { describeError } from '../../platform/errors/index.js';
 import { ApiError } from '../../platform/http/index.js';
 import { CLOCK, type Clock } from '../identity/index.js';
 import { readGatewayCertificate } from './gateway-certificate.js';
-import { GATEWAY_STATUS_MEMORY, type GatewayStatusMemory } from './gateway-status-memory.js';
+import {
+  GATEWAY_STATUS_MEMORY,
+  type GatewayStatusMemory,
+  type RecalledStatus,
+} from './gateway-status-memory.js';
 import { gatewayWarnings } from './gateway-warnings.js';
 import { GatewaysRepository } from './gateways.repository.js';
 import type { GatewayRow } from './gateways.schema.js';
@@ -42,7 +46,7 @@ export class GatewaysService {
     const certificate = readGatewayCertificate(input.certificate, ca, now);
     const recalled = this.memory.recall(certificate.id);
     const heard = recalled?.bridge !== undefined || recalled?.z2m !== undefined;
-    const row = await this.gateways.insert({
+    const inserted = await this.gateways.insert({
       id: certificate.id,
       householdId,
       name: input.name,
@@ -55,8 +59,33 @@ export class GatewaysService {
       ...(heard && { statusChangedAt: recalled.at ?? now }),
     });
     // The same message whether the ID is taken in this or another household.
-    if (!row) throw new ApiError(HttpStatus.CONFLICT, 'gateway.exists');
+    if (!inserted) throw new ApiError(HttpStatus.CONFLICT, 'gateway.exists');
+    const row = await this.applyLateStatus(inserted, recalled, now);
     return this.toGateway(row, await this.crlNextUpdate(), now);
+  }
+
+  /**
+   * A status that arrived between the recall and the insert was not applied by the consumer (the
+   * gateway did not exist yet): apply what the memory holds now when it differs from the insert.
+   */
+  private async applyLateStatus(
+    row: GatewayRow,
+    recalled: RecalledStatus | undefined,
+    now: Date,
+  ): Promise<GatewayRow> {
+    const latest = this.memory.recall(row.id);
+    let result = row;
+    for (const kind of ['bridge', 'z2m'] as const) {
+      const status = latest?.[kind];
+      if (status === undefined || status === (recalled?.[kind] ?? 'unknown')) continue;
+      await this.gateways.applyStatus(row.id, kind, status, now);
+      result = {
+        ...result,
+        ...(kind === 'bridge' ? { bridgeStatus: status } : { z2mStatus: status }),
+        statusChangedAt: now,
+      };
+    }
+    return result;
   }
 
   async revoke(householdId: string, id: string): Promise<void> {
