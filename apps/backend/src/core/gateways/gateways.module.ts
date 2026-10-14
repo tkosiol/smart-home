@@ -21,6 +21,6 @@ import { GatewaysService } from './gateways.service.js';
     GatewayStatusConsumer,
     GatewayExpiryJob,
   ],
-  exports: [GatewayEvents],
+  exports: [GatewayEvents, GatewaysService],
 })
 export class GatewaysModule {}

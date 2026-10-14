@@ -5,6 +5,7 @@ import { Logger } from '@nestjs/common';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { Env } from '../../platform/config/index.js';
 import { createTestCa } from '../../../test/helpers/test-pki.js';
+import { GATEWAY_REGISTERED, GATEWAY_REVOKED, GatewayEvents } from './gateway-events.js';
 import { noStatusMemory, type RecalledStatus } from './gateway-status-memory.js';
 import type { GatewaysRepository } from './gateways.repository.js';
 import type { GatewayRow, NewGatewayRow } from './gateways.schema.js';
@@ -38,6 +39,7 @@ describe('GatewaysService', () => {
       { GATEWAY_CRL_NEXT_UPDATE_FILE: file } as Env,
       () => now,
       noStatusMemory,
+      new GatewayEvents(),
     );
 
   beforeAll(() => {
@@ -106,6 +108,7 @@ describe('GatewaysService', () => {
           { GATEWAY_CA_FILE: ca.file } as Env,
           () => NOW,
           { recall },
+          new GatewayEvents(),
         );
         const gateway = await subject.register('household', {
           name: 'Pi',
@@ -134,12 +137,98 @@ describe('GatewaysService', () => {
           { GATEWAY_CA_FILE: ca.file } as Env,
           () => NOW,
           { recall: () => ({ bridge: 'offline', at: NOW }) },
+          new GatewayEvents(),
         );
         await subject.register('household', { name: 'Pi', certificate: issued.certificate });
         expect(applyStatus).not.toHaveBeenCalled();
       } finally {
         ca.dispose();
       }
+    });
+  });
+  describe('lifecycle events', () => {
+    it('lists the active gateways with their topic prefix', async () => {
+      const events = new GatewayEvents();
+      const subject = new GatewaysService(
+        {
+          listActive: () =>
+            Promise.resolve([row(), row({ id: 'gw-bbbbbbbb', topicPrefix: 'gw/gw-bbbbbbbb/z2m' })]),
+        } as unknown as GatewaysRepository,
+        {} as Env,
+        () => NOW,
+        noStatusMemory,
+        events,
+      );
+      expect(await subject.listActive()).toEqual([
+        { id: 'gw-a1b2c3d4', topicPrefix: 'gw/gw-a1b2c3d4/z2m' },
+        { id: 'gw-bbbbbbbb', topicPrefix: 'gw/gw-bbbbbbbb/z2m' },
+      ]);
+    });
+
+    it('announces a registered gateway after storing it', async () => {
+      const ca = createTestCa();
+      try {
+        const issued = ca.issue();
+        const events = new GatewayEvents();
+        const seen: unknown[] = [];
+        events.on(GATEWAY_REGISTERED, (event) => seen.push(event));
+        const subject = new GatewaysService(
+          {
+            insert: (values: NewGatewayRow) =>
+              Promise.resolve({ ...row(), ...values, revokedAt: null } as GatewayRow),
+          } as unknown as GatewaysRepository,
+          { GATEWAY_CA_FILE: ca.file } as Env,
+          () => NOW,
+          noStatusMemory,
+          events,
+        );
+        await subject.register('household', { name: 'Pi', certificate: issued.certificate });
+        expect(seen).toEqual([{ gatewayId: issued.id, topicPrefix: `gw/${issued.id}/z2m` }]);
+      } finally {
+        ca.dispose();
+      }
+    });
+
+    it('announces nothing when the gateway ID is taken', async () => {
+      const ca = createTestCa();
+      try {
+        const events = new GatewayEvents();
+        const seen: unknown[] = [];
+        events.on(GATEWAY_REGISTERED, (event) => seen.push(event));
+        const subject = new GatewaysService(
+          { insert: () => Promise.resolve(undefined) } as unknown as GatewaysRepository,
+          { GATEWAY_CA_FILE: ca.file } as Env,
+          () => NOW,
+          noStatusMemory,
+          events,
+        );
+        await expect(
+          subject.register('household', { name: 'Pi', certificate: ca.issue().certificate }),
+        ).rejects.toThrow();
+        expect(seen).toEqual([]);
+      } finally {
+        ca.dispose();
+      }
+    });
+
+    it('announces a revoked gateway, but not a revocation that found nothing', async () => {
+      const events = new GatewayEvents();
+      const seen: unknown[] = [];
+      events.on(GATEWAY_REVOKED, (event) => seen.push(event));
+      const found = new Map([['gw-a1b2c3d4', true]]);
+      const subject = new GatewaysService(
+        {
+          revoke: (_h: string, id: string) => Promise.resolve(found.has(id)),
+        } as unknown as GatewaysRepository,
+        {} as Env,
+        () => NOW,
+        noStatusMemory,
+        events,
+      );
+      await expect(subject.revoke('household', 'gw-zzzzzzzz')).rejects.toThrow();
+      expect(seen).toEqual([]);
+      await subject.revoke('household', 'gw-a1b2c3d4');
+      expect(seen).toEqual([{ gatewayId: 'gw-a1b2c3d4' }]);
     });
   });
 });

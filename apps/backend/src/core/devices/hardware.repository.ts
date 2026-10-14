@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { Capability } from '@smart/contracts';
+import type { Availability, Capability } from '@smart/contracts';
 import { and, asc, eq, inArray, isNull, notExists, notInArray, sql } from 'drizzle-orm';
 import type { PgColumn } from 'drizzle-orm/pg-core';
 import { DATABASE, type DatabaseConnection } from '../../platform/database/index.js';
@@ -7,6 +7,7 @@ import { gateways } from '../gateways/index.js';
 import {
   capabilities,
   deviceBindings,
+  deviceState,
   hardware,
   type CapabilityRow,
   type HardwareRow,
@@ -139,6 +140,116 @@ export class HardwareRepository {
         .returning({ id: hardware.id });
       return { upserted: listed.length, removed: gone.length };
     });
+  }
+
+  /** The names of the gateway's hardware that its bridge still lists, with their hardware IDs. */
+  async listNames(gatewayId: string): Promise<{ id: string; friendlyName: string }[]> {
+    return this.connection.db
+      .select({ id: hardware.id, friendlyName: hardware.friendlyName })
+      .from(hardware)
+      .where(and(eq(hardware.gatewayId, gatewayId), isNull(hardware.removedAt)));
+  }
+
+  /**
+   * Hardware that just joined (`device_joined`): added with a pending interview, or revived and
+   * renamed if it is known. The bridge's next device list fills in model and capabilities.
+   */
+  async recordJoined(
+    gatewayId: string,
+    ieeeAddress: string,
+    friendlyName: string,
+    now: Date,
+  ): Promise<string> {
+    const [row] = await this.connection.db
+      .insert(hardware)
+      .values({ gatewayId, ieeeAddress, friendlyName, interviewState: 'PENDING', firstSeenAt: now })
+      .onConflictDoUpdate({
+        target: [hardware.gatewayId, hardware.ieeeAddress],
+        set: { friendlyName, removedAt: null },
+      })
+      .returning({ id: hardware.id });
+    if (!row) throw new Error('hardware upsert returned no row');
+    return row.id;
+  }
+
+  /** Stores how far the interview of known hardware is (`device_interview`). */
+  async setInterviewState(
+    gatewayId: string,
+    ieeeAddress: string,
+    interviewState: string,
+  ): Promise<void> {
+    await this.connection.db
+      .update(hardware)
+      .set({ interviewState })
+      .where(and(eq(hardware.gatewayId, gatewayId), eq(hardware.ieeeAddress, ieeeAddress)));
+  }
+
+  /** Marks hardware as removed (`device_leave`); returns its name, `undefined` if it is unknown. */
+  async markLeft(
+    gatewayId: string,
+    ieeeAddress: string,
+    now: Date,
+  ): Promise<{ id: string; friendlyName: string } | undefined> {
+    const [row] = await this.connection.db
+      .update(hardware)
+      .set({ removedAt: now })
+      .where(
+        and(
+          eq(hardware.gatewayId, gatewayId),
+          eq(hardware.ieeeAddress, ieeeAddress),
+          isNull(hardware.removedAt),
+        ),
+      )
+      .returning({ id: hardware.id, friendlyName: hardware.friendlyName });
+    return row;
+  }
+
+  /** Renames the gateway's hardware (`device_renamed`); its ID, `undefined` if there is none. */
+  async rename(gatewayId: string, from: string, to: string): Promise<string | undefined> {
+    const [row] = await this.connection.db
+      .update(hardware)
+      .set({ friendlyName: to })
+      .where(
+        and(
+          eq(hardware.gatewayId, gatewayId),
+          eq(hardware.friendlyName, from),
+          isNull(hardware.removedAt),
+        ),
+      )
+      .returning({ id: hardware.id });
+    return row?.id;
+  }
+
+  /** Stores the availability of the hardware and of the device that sits on it. */
+  async setAvailability(hardwareId: string, availability: Availability): Promise<void> {
+    await this.connection.db.transaction(async (tx) => {
+      await tx.update(hardware).set({ availability }).where(eq(hardware.id, hardwareId));
+      await tx
+        .update(deviceState)
+        .set({ availability })
+        .where(
+          inArray(
+            deviceState.deviceId,
+            tx
+              .select({ id: deviceBindings.deviceId })
+              .from(deviceBindings)
+              .where(
+                and(eq(deviceBindings.hardwareId, hardwareId), isNull(deviceBindings.unboundAt)),
+              ),
+          ),
+        );
+    });
+  }
+
+  /** Merges what the hardware reported into its last state and notes when it was heard. */
+  async recordState(hardwareId: string, state: Record<string, unknown>, at: Date): Promise<void> {
+    await this.connection.db
+      .update(hardware)
+      .set({
+        lastState: sql`${hardware.lastState} || ${JSON.stringify(state)}::jsonb`,
+        lastSeenAt: at,
+      })
+      .where(eq(hardware.id, hardwareId));
   }
 
   /** The gateway's hardware of that name (Z2M keeps names unique per bridge); not removed ones. */

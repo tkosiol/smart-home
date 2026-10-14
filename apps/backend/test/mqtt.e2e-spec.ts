@@ -74,6 +74,36 @@ describe('MqttConnection', () => {
       }
     });
 
+    it('delivers a message once to each handler although the filters overlap', async () => {
+      const reader = connect(env.MQTT_PASSWORD);
+      const source = writer();
+      try {
+        await reader.waitUntilConnected(5000);
+        const base = topic();
+        const wide: string[] = [];
+        const narrow: string[] = [];
+        reader.subscribe(`${base.split('/')[0]}/+/x/#`, (_topic, payload) => {
+          wide.push(payload.toString());
+        });
+        reader.subscribe(`${base}/#`, (_topic, payload) => {
+          narrow.push(payload.toString());
+        });
+        await vi.waitFor(async () => {
+          await source.publishAsync(`${base}/probe`, 'probe', { qos: 1 });
+          expect(narrow).toContain('probe');
+        });
+        await source.publishAsync(`${base}/a`, 'one', { qos: 1 });
+        await source.publishAsync(`${base}/b`, 'sentinel', { qos: 1 });
+        await vi.waitFor(() => expect(narrow).toContain('sentinel'));
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        expect(narrow.filter((payload) => payload === 'one')).toHaveLength(1);
+        expect(wide.filter((payload) => payload === 'one')).toHaveLength(1);
+      } finally {
+        await reader.close();
+        await source.endAsync(true);
+      }
+    });
+
     it('keeps working when a handler throws, without leaking the reason', async () => {
       const errors: Error[] = [];
       const reader = connect(env.MQTT_PASSWORD, errors);

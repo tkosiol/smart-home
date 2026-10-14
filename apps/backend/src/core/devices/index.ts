@@ -21,3 +21,4 @@ export {
   type HardwareWithCapabilities,
   type Z2mDevice,
 } from './hardware.repository.js';
+export { DEVICE_MESSAGE_HANDLER, type DeviceMessageHandler } from './device-message-handler.js';

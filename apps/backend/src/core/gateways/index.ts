@@ -1,6 +1,10 @@
 export {
+  GATEWAY_REGISTERED,
+  GATEWAY_REVOKED,
   GATEWAY_STATUS_CHANGED,
   GatewayEvents,
+  type GatewayRegistered,
+  type GatewayRevoked,
   type GatewayStatusChanged,
 } from './gateway-events.js';
 export {
@@ -9,4 +13,6 @@ export {
   type RecalledStatus,
 } from './gateway-status-memory.js';
 export { GatewaysModule } from './gateways.module.js';
+export { GatewaysService, type ActiveGateway } from './gateways.service.js';
+export { Throttle } from './throttle.js';
 export { gateways, type GatewayRow } from './gateways.schema.js';
