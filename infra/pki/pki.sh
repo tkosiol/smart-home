@@ -12,6 +12,9 @@
 # SMART_OPENSSL           path of an OpenSSL >= 3 binary (macOS ships LibreSSL; use e.g. Homebrew openssl@3)
 set -euo pipefail
 umask 077
+export LC_ALL=C
+# The passphrase lives only in this shell variable (never exported); openssl gets it per call on fd 3.
+unset pki_pw
 
 # Gateway IDs are the certificate CN and the broker user name (use_identity_as_username):
 # only this shape may be issued, so no certificate can ever act as smart-api or smart-simulator.
@@ -62,7 +65,12 @@ find_openssl() {
 }
 
 command_name="${1:-}"
-[ -n "$command_name" ] || usage
+case "$command_name" in
+  init-ca | crl | status) [ "$#" -eq 1 ] || usage ;;
+  issue-server | revoke) [ "$#" -eq 2 ] || usage ;;
+  issue-gateway) [ "$#" -le 2 ] || usage ;;
+  *) usage ;;
+esac
 
 PKI_DIR="${SMART_PKI_DIR:-$HOME/.smart-pki}"
 case "$PKI_DIR" in
@@ -74,10 +82,31 @@ if [[ "$PKI_DIR" == *[\$\#\"\\]* ]]; then
 fi
 
 OPENSSL=$(find_openssl)
-mkdir -p "$PKI_DIR"
-chmod 700 "$PKI_DIR"
+# A new directory is created with mode 700 (umask 077); an existing one is never chmod-ed behind your back.
+if [ -d "$PKI_DIR" ]; then
+  dir_mode=$(stat -c %a "$PKI_DIR" 2> /dev/null || stat -f %Lp "$PKI_DIR")
+  if [ "${dir_mode: -2}" != 00 ]; then
+    die "$PKI_DIR is accessible to other users (mode $dir_mode) – run: chmod 700 '$PKI_DIR'"
+  fi
+elif [ "$command_name" = init-ca ]; then
+  mkdir -p "$PKI_DIR"
+else
+  die "no CA in $PKI_DIR – run init-ca first"
+fi
+
 WORK=$(mktemp -d "$PKI_DIR/tmp.XXXXXX")
-trap 'rm -rf "$WORK"' EXIT
+INIT_IN_PROGRESS=0
+cleanup() {
+  rm -rf "$WORK"
+  if [ "$INIT_IN_PROGRESS" = 1 ]; then
+    # init-ca only starts in a directory without a CA, so these files are all ours: remove them for a clean re-run.
+    rm -f "$PKI_DIR"/ca.key "$PKI_DIR"/ca.crt "$PKI_DIR"/crl.pem "$PKI_DIR"/crl-next-update \
+      "$PKI_DIR"/index.txt "$PKI_DIR"/index.txt.* "$PKI_DIR"/serial "$PKI_DIR"/serial.* \
+      "$PKI_DIR"/crlnumber "$PKI_DIR"/crlnumber.* "$PKI_DIR"/newcerts/* 2> /dev/null || true
+    rmdir "$PKI_DIR/newcerts" "$PKI_DIR/gateways" 2> /dev/null || true
+  fi
+}
+trap cleanup EXIT
 
 CONF="$WORK/openssl.cnf"
 cat > "$CONF" << CONFIG
@@ -115,25 +144,32 @@ CONFIG
 
 # --- helpers ---
 
-# Reads the CA key passphrase once (file or hidden prompt) into SMART_PKI_PW, which openssl reads
-# through -passin env: – the passphrase never appears in a command line.
+# Reads the CA key passphrase once (file or hidden prompt) into the shell variable pki_pw.
 read_passphrase() {
   local confirm="${1:-}" again
   if [ -n "${SMART_PKI_PASSPHRASE_FILE:-}" ]; then
     [ -r "$SMART_PKI_PASSPHRASE_FILE" ] || die "cannot read SMART_PKI_PASSPHRASE_FILE"
-    SMART_PKI_PW=$(head -n 1 "$SMART_PKI_PASSPHRASE_FILE")
+    pki_pw=$(head -n 1 "$SMART_PKI_PASSPHRASE_FILE")
   else
     [ -t 0 ] || die "no terminal to ask for the CA key passphrase (set SMART_PKI_PASSPHRASE_FILE)"
-    read -r -s -p "CA key passphrase: " SMART_PKI_PW
+    read -r -s -p "CA key passphrase: " pki_pw
     echo
     if [ "$confirm" = confirm ]; then
       read -r -s -p "Repeat the passphrase: " again
       echo
-      [ "$SMART_PKI_PW" = "$again" ] || die "the passphrases differ – nothing was written"
+      [ "$pki_pw" = "$again" ] || die "the passphrases differ – nothing was written"
     fi
   fi
-  [ "${#SMART_PKI_PW}" -ge 8 ] || die "the CA key passphrase must have at least 8 characters"
-  export SMART_PKI_PW
+  [ "${#pki_pw}" -ge 8 ] || die "the CA key passphrase must have at least 8 characters"
+}
+
+# Runs openssl with the passphrase on file descriptor 3 (use -passin fd:3 or -passout fd:3): it never
+# appears in a command line or in the environment of any process.
+ossl_pw() { "$OPENSSL" "$@" 3< <(printf '%s\n' "$pki_pw"); }
+
+# Runs a CA operation; on failure its error output is shown.
+ca_run() {
+  ossl_pw ca -config "$CONF" "$@" -passin fd:3 2> "$WORK/ca.log" || { cat "$WORK/ca.log" >&2; die "openssl ca failed"; }
 }
 
 require_ca() {
@@ -142,36 +178,63 @@ require_ca() {
 
 valid_gateway_id() { [[ "$1" =~ $GATEWAY_ID_RE ]]; }
 
-# nextUpdate of the CRL as ISO 8601 UTC. Parsed by hand: BSD and GNU date disagree on options.
-write_next_update() {
-  local line mon day time year month
-  line=$("$OPENSSL" crl -in "$PKI_DIR/crl.pem" -noout -nextupdate)
-  read -r mon day time year _ <<< "${line#nextUpdate=}"
+# "Oct  4 12:00:00 2027 GMT" (OpenSSL) -> 2027-10-04T12:00:00Z. Parsed by hand: BSD and GNU date disagree on options.
+openssl_date_to_iso() {
+  local mon day time year month
+  read -r mon day time year _ <<< "$1"
   case "$mon" in
     Jan) month=01 ;; Feb) month=02 ;; Mar) month=03 ;; Apr) month=04 ;; May) month=05 ;; Jun) month=06 ;;
     Jul) month=07 ;; Aug) month=08 ;; Sep) month=09 ;; Oct) month=10 ;; Nov) month=11 ;; Dec) month=12 ;;
-    *) die "cannot read the CRL's nextUpdate" ;;
+    *) die "cannot read the date '$1'" ;;
   esac
-  printf '%s-%s-%02dT%sZ\n' "$year" "$month" "$((10#$day))" "$time" > "$PKI_DIR/crl-next-update"
+  printf '%s-%s-%02dT%sZ' "$year" "$month" "$((10#$day))" "$time"
+}
+
+iso_to_epoch() { date -u -d "$1" +%s 2> /dev/null || date -u -j -f '%Y-%m-%dT%H:%M:%SZ' "$1" +%s; }
+
+# "(N days left)" or "EXPIRED" for an ISO timestamp.
+days_left() {
+  local left=$(($(iso_to_epoch "$1") - $(date +%s)))
+  if [ "$left" -le 0 ]; then printf 'EXPIRED'; else printf '(%s days left)' $((left / 86400)); fi
+}
+
+write_next_update() {
+  local line
+  line=$("$OPENSSL" crl -in "$PKI_DIR/crl.pem" -noout -nextupdate)
+  printf '%s\n' "$(openssl_date_to_iso "${line#nextUpdate=}")" > "$PKI_DIR/crl-next-update"
 }
 
 generate_crl() {
-  "$OPENSSL" ca -config "$CONF" -gencrl -crldays "$CRL_DAYS" -passin env:SMART_PKI_PW -out "$PKI_DIR/crl.pem" 2> /dev/null
+  ca_run -gencrl -crldays "$CRL_DAYS" -out "$PKI_DIR/crl.pem"
   write_next_update
 }
 
 # Signs the CSR $1 into the certificate $2 with the extensions in the file $3 (no section header).
 sign() {
-  "$OPENSSL" ca -config "$CONF" -batch -notext -days "$LEAF_DAYS" -md sha256 \
-    -in "$1" -out "$2" -extfile "$3" -passin env:SMART_PKI_PW 2> "$WORK/ca.log" \
-    || { cat "$WORK/ca.log" >&2; die "signing failed"; }
+  ca_run -batch -notext -days "$LEAF_DAYS" -md sha256 -in "$1" -out "$2" -extfile "$3"
 }
 
 new_key() {
   "$OPENSSL" genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -pkeyopt ec_param_enc:named_curve -out "$1"
 }
 
+# Moves key $1 and certificate $2 of a new certificate to $3 and $4 under temporary names first, so a failure
+# never leaves a key without its certificate.
+install_pair() {
+  if ! { mv "$1" "$3.new" && mv "$2" "$4.new" && mv "$3.new" "$3" && mv "$4.new" "$4"; }; then
+    rm -f "$3.new" "$4.new" "$3" "$4"
+    die "could not store the new files"
+  fi
+}
+
 cert_end() { "$OPENSSL" x509 -in "$1" -noout -enddate | sed 's/^notAfter=//'; }
+
+# "valid until <date> (N days left)" or "... EXPIRED"
+cert_validity() {
+  local end
+  end=$(cert_end "$1")
+  printf 'valid until %s %s' "$end" "$(days_left "$(openssl_date_to_iso "$end")")"
+}
 
 # --- commands ---
 
@@ -180,23 +243,25 @@ init_ca() {
     die "a CA already exists in $PKI_DIR – refusing to overwrite it"
   fi
   read_passphrase confirm
+  INIT_IN_PROGRESS=1
   mkdir -p "$PKI_DIR/newcerts" "$PKI_DIR/gateways"
   chmod 700 "$PKI_DIR/newcerts" "$PKI_DIR/gateways"
   : > "$PKI_DIR/index.txt"
   printf '00%s\n' "$("$OPENSSL" rand -hex 8)" > "$PKI_DIR/serial"
   echo 01 > "$PKI_DIR/crlnumber"
-  new_key "$WORK/ca-plain.key"
-  "$OPENSSL" pkcs8 -topk8 -v2 aes-256-cbc -in "$WORK/ca-plain.key" -out "$PKI_DIR/ca.key" -passout env:SMART_PKI_PW
-  "$OPENSSL" req -new -x509 -config "$CONF" -key "$PKI_DIR/ca.key" -passin env:SMART_PKI_PW \
+  # The CA key is only ever written encrypted: the plain key travels through a pipe.
+  "$OPENSSL" genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -pkeyopt ec_param_enc:named_curve \
+    | ossl_pw pkcs8 -topk8 -v2 aes-256-cbc -iter 600000 -passout fd:3 -out "$PKI_DIR/ca.key"
+  ossl_pw req -new -x509 -config "$CONF" -key "$PKI_DIR/ca.key" -passin fd:3 \
     -subj "/CN=Smart Home Gateway CA" -days "$CA_DAYS" -sha256 -extensions v3_ca -out "$PKI_DIR/ca.crt"
   generate_crl
-  echo "created the CA in $PKI_DIR (valid until $(cert_end "$PKI_DIR/ca.crt"))"
+  INIT_IN_PROGRESS=0
+  echo "created the CA in $PKI_DIR ($(cert_validity "$PKI_DIR/ca.crt"))"
   echo "keep ca.key and its passphrase safe (password manager, backup); it is never copied to the VPS"
 }
 
 issue_server() {
   local host="${1:-}"
-  [ -n "$host" ] || usage
   [[ "$host" =~ $HOST_RE ]] || die "'$host' is not a valid host name"
   require_ca
   if [ -e "$PKI_DIR/server.crt" ] || [ -e "$PKI_DIR/server.key" ]; then
@@ -214,9 +279,8 @@ subjectKeyIdentifier = hash
 authorityKeyIdentifier = keyid
 EXT
   sign "$WORK/server.csr" "$WORK/server.crt" "$WORK/server.ext"
-  mv "$WORK/server.key" "$PKI_DIR/server.key"
-  mv "$WORK/server.crt" "$PKI_DIR/server.crt"
-  echo "issued the server certificate for $host (valid until $(cert_end "$PKI_DIR/server.crt"))"
+  install_pair "$WORK/server.key" "$WORK/server.crt" "$PKI_DIR/server.key" "$PKI_DIR/server.crt"
+  echo "issued the server certificate for $host ($(cert_validity "$PKI_DIR/server.crt"))"
 }
 
 issue_gateway() {
@@ -242,15 +306,13 @@ subjectKeyIdentifier = hash
 authorityKeyIdentifier = keyid
 EXT
   sign "$WORK/gateway.csr" "$WORK/gateway.crt" "$WORK/gateway.ext"
-  mv "$WORK/gateway.key" "$PKI_DIR/gateways/$id.key"
-  mv "$WORK/gateway.crt" "$PKI_DIR/gateways/$id.crt"
-  echo "issued the gateway certificate $id (valid until $(cert_end "$PKI_DIR/gateways/$id.crt"))"
+  install_pair "$WORK/gateway.key" "$WORK/gateway.crt" "$PKI_DIR/gateways/$id.key" "$PKI_DIR/gateways/$id.crt"
+  echo "issued the gateway certificate $id ($(cert_validity "$PKI_DIR/gateways/$id.crt"))"
   echo "files: $PKI_DIR/gateways/$id.crt and $id.key (the key goes only onto that gateway)"
 }
 
 revoke() {
   local id="${1:-}" serial
-  [ -n "$id" ] || usage
   valid_gateway_id "$id" || die "'$id' is not a valid gateway ID"
   require_ca
   [ -f "$PKI_DIR/gateways/$id.crt" ] || die "no certificate for $id in $PKI_DIR/gateways"
@@ -259,8 +321,7 @@ revoke() {
   if grep -q "^R.*[[:space:]]${serial}[[:space:]]" "$PKI_DIR/index.txt"; then
     echo "$id is already revoked; regenerating the CRL"
   else
-    "$OPENSSL" ca -config "$CONF" -revoke "$PKI_DIR/gateways/$id.crt" -passin env:SMART_PKI_PW 2> "$WORK/ca.log" \
-      || { cat "$WORK/ca.log" >&2; die "revoking failed"; }
+    ca_run -revoke "$PKI_DIR/gateways/$id.crt"
     echo "revoked $id (serial $serial)"
   fi
   generate_crl
@@ -275,11 +336,11 @@ crl() {
 }
 
 status() {
-  local cert id state
+  local cert id state next serial
   require_ca
-  echo "CA: valid until $(cert_end "$PKI_DIR/ca.crt")"
+  echo "CA: $(cert_validity "$PKI_DIR/ca.crt")"
   if [ -f "$PKI_DIR/server.crt" ]; then
-    echo "server: valid until $(cert_end "$PKI_DIR/server.crt")"
+    echo "server: $(cert_validity "$PKI_DIR/server.crt")"
   else
     echo "server: no certificate yet"
   fi
@@ -287,20 +348,24 @@ status() {
     [ -e "$cert" ] || continue
     id=$(basename "$cert" .crt)
     state=valid
-    if grep -q "^R.*[[:space:]]$("$OPENSSL" x509 -in "$cert" -noout -serial | sed 's/^serial=//')[[:space:]]" "$PKI_DIR/index.txt"; then
+    serial=$("$OPENSSL" x509 -in "$cert" -noout -serial | sed 's/^serial=//')
+    if grep -q "^R.*[[:space:]]${serial}[[:space:]]" "$PKI_DIR/index.txt"; then
       state=revoked
     fi
-    echo "gateway $id: $state, valid until $(cert_end "$cert")"
+    echo "gateway $id: $state, $(cert_validity "$cert")"
   done
-  echo "CRL: next update $(cat "$PKI_DIR/crl-next-update" 2> /dev/null || echo unknown)"
+  if next=$(cat "$PKI_DIR/crl-next-update" 2> /dev/null); then
+    echo "CRL: next update $next $(days_left "$next")"
+  else
+    echo "CRL: next update unknown"
+  fi
 }
 
 case "$command_name" in
-  init-ca) [ "$#" -eq 1 ] || usage; init_ca ;;
-  issue-server) [ "$#" -eq 2 ] || usage; issue_server "$2" ;;
-  issue-gateway) [ "$#" -le 2 ] || usage; issue_gateway "${2:-}" ;;
-  revoke) [ "$#" -eq 2 ] || usage; revoke "$2" ;;
-  crl) [ "$#" -eq 1 ] || usage; crl ;;
-  status) [ "$#" -eq 1 ] || usage; status ;;
-  *) usage ;;
+  init-ca) init_ca ;;
+  issue-server) issue_server "$2" ;;
+  issue-gateway) issue_gateway "${2:-}" ;;
+  revoke) revoke "$2" ;;
+  crl) crl ;;
+  status) status ;;
 esac

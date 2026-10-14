@@ -180,8 +180,9 @@ fake_pki() {
   printf 'server-content\n' > "$WORK/pki/server.crt"
   printf '%s\n' "$KEY_MARKER" > "$WORK/pki/server.key"
   printf 'crl-content\n' > "$WORK/pki/crl.pem"
-  printf '2027-10-14T12:00:00Z\n' > "$WORK/pki/crl-next-update"
+  iso_at $(($(date +%s) + 200 * 86400)) > "$WORK/pki/crl-next-update"
 }
+iso_at() { { date -u -d "@$1" +%Y-%m-%dT%H:%M:%SZ 2> /dev/null || date -u -r "$1" +%Y-%m-%dT%H:%M:%SZ; }; }
 remote_stack() {
   mkdir -p "$STUB_REMOTE_HOME/docker/apps/$1"
   printf 'STACK_NAME=%s\nDB_PASSWORD=keep-db\nMQTT_TLS=off\nSMTP_URL=smtps://resend:re_keep@smtp.resend.com:465' "$1" > "$STUB_REMOTE_HOME/docker/apps/$1/.env"
@@ -214,7 +215,8 @@ check "broker-certs sets MQTT_TLS=on exactly once" '[ "$(grep -c "^MQTT_TLS=" "$
 check "broker-certs changes no other line of the .env" '[ "$(grep -v "^MQTT_TLS=" "$STACK_DIR/.env")" = "$(printf "STACK_NAME=smart-staging\nDB_PASSWORD=keep-db\nSMTP_URL=smtps://resend:re_keep@smtp.resend.com:465")" ]'
 check "broker-certs keeps the .env at mode 600" '[ "$(mode_of "$STACK_DIR/.env")" = 600 ]'
 check "broker-certs recreates the broker of the stack" 'grep -qx "compose -f compose.yaml --env-file .env --env-file deploy.env up -d --no-deps --force-recreate broker" "$STUB_CALLS"'
-check "broker-certs sends every file on stdin with umask 077" '[ "$(grep -c "^ssh deploy@vps umask 077 && cd docker/apps/smart-staging && mkdir -p certs" "$STUB_CALLS")" = 5 ]'
+check "broker-certs sends all files in one ssh session on stdin with umask 077" '[ "$(grep -c "^ssh deploy@vps umask 077 && cd docker/apps/smart-staging && mkdir -p certs" "$STUB_CALLS")" = 1 ] && grep -q "tar -xf - -C certs/.new" "$STUB_CALLS"'
+check "broker-certs leaves no .new directory and no ._ files" '[ ! -e "$STACK_DIR/certs/.new" ] && [ -z "$(find "$STACK_DIR/certs" -name "._*")" ] && [ "$(ls "$STACK_DIR/certs" | wc -l | tr -d " ")" = 5 ]'
 check "broker-certs never puts key content on a command line or in the output" '! grep -q "$KEY_MARKER" "$STUB_CALLS" && ! grep -q "$KEY_MARKER" "$WORK/out"'
 check "broker-certs works a second time and keeps one MQTT_TLS line" '[ "$(run_certs staging)" = 0 ] && [ "$(grep -c "^MQTT_TLS=" "$STACK_DIR/.env")" = 1 ] && grep -qx "MQTT_TLS=on" "$STACK_DIR/.env"'
 teardown
@@ -225,8 +227,32 @@ teardown
 certs_setup; remote_stack smart-prod
 check "broker-certs uses the production stack for production" '[ "$(run_certs production)" = 0 ] && [ -f "$STUB_REMOTE_HOME/docker/apps/smart-prod/certs/server.key" ] && [ ! -e "$STUB_REMOTE_HOME/docker/apps/smart-staging/certs" ]'
 teardown
+certs_setup
+printf 'STACK_NAME=smart-staging\nMQTT_TLS=off\n' > "$STUB_REMOTE_HOME/docker/apps/smart-staging/.env"; chmod 000 "$STUB_REMOTE_HOME/docker/apps/smart-staging/.env"
+check "broker-certs fails on an unreadable .env and changes nothing" '[ "$(run_certs staging)" = 1 ] && chmod 600 "$STUB_REMOTE_HOME/docker/apps/smart-staging/.env" && [ "$(cat "$STUB_REMOTE_HOME/docker/apps/smart-staging/.env")" = "$(printf "STACK_NAME=smart-staging\nMQTT_TLS=off")" ] && [ ! -e "$STUB_REMOTE_HOME/docker/apps/smart-staging/certs" ] && ! grep -q "^compose" "$STUB_CALLS"'
+teardown
 certs_setup; export STUB_SSH_DOWN=1
 check "broker-certs aborts when the VPS is unreachable" '[ "$(run_certs staging)" != 0 ] && ! grep -q "^compose" "$STUB_CALLS"'
+teardown
+certs_setup; iso_at $(($(date +%s) - 86400)) > "$WORK/pki/crl-next-update"
+check "broker-certs refuses an expired CRL and contacts nothing" '[ "$(run_certs staging)" = 1 ] && grep -q "CRL" "$WORK/out" && [ ! -s "$STUB_CALLS" ]'
+iso_at $(($(date +%s) + 3 * 86400)) > "$WORK/pki/crl-next-update"
+check "broker-certs refuses a CRL that expires within 7 days" '[ "$(run_certs staging)" = 1 ] && [ ! -s "$STUB_CALLS" ]'
+printf 'garbage\n' > "$WORK/pki/crl-next-update"
+check "broker-certs refuses a malformed crl-next-update" '[ "$(run_certs staging)" = 1 ] && [ ! -s "$STUB_CALLS" ]'
+fake_pki; chmod 000 "$WORK/pki/server.key"
+check "broker-certs refuses an unreadable key before contacting the VPS" '[ "$(run_certs staging)" = 1 ] && grep -q "server.key" "$WORK/out" && [ ! -s "$STUB_CALLS" ]'
+chmod 600 "$WORK/pki/server.key"; teardown
+certs_setup; mkdir -p "$STUB_REMOTE_HOME/docker/apps/smart-staging/certs"
+printf 'old-ca\n' > "$STUB_REMOTE_HOME/docker/apps/smart-staging/certs/ca.crt"; printf 'old-key\n' > "$STUB_REMOTE_HOME/docker/apps/smart-staging/certs/server.key"
+# A tar that works for creating the archive but fails when the VPS side unpacks it halfway.
+mkdir "$WORK/badtar"
+printf '#!/bin/sh\ncase "$1" in -x*) head -c 10 > /dev/null; exit 1 ;; esac\nexec %s "$@"\n' "$(command -v tar)" > "$WORK/badtar/tar"
+chmod +x "$WORK/badtar/tar"
+SAVED_PATH=$PATH
+export PATH="$WORK/badtar:$PATH"
+check "broker-certs leaves the previous certs untouched when the transfer fails" '[ "$(run_certs staging)" != 0 ] && [ "$(cat "$STUB_REMOTE_HOME/docker/apps/smart-staging/certs/ca.crt")" = old-ca ] && [ "$(cat "$STUB_REMOTE_HOME/docker/apps/smart-staging/certs/server.key")" = old-key ] && grep -qx "MQTT_TLS=off" "$STUB_REMOTE_HOME/docker/apps/smart-staging/.env" && ! grep -q "^compose" "$STUB_CALLS"'
+PATH=$SAVED_PATH
 teardown
 
 echo "deploy tests: $passed passed, $failures failed"

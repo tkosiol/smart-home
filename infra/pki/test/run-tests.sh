@@ -60,7 +60,7 @@ check "issue-gateway issues a given valid ID" 'quiet pki issue-gateway gw-abcd12
 # shellcheck disable=SC2034 # used by the check() expressions below
 BEFORE=$(gateway_count)
 for bad in smart-api smart-simulator gw-ABCDEFGH ../x gw-abc gw-abcdefghi "gw-abcd123/" "gw-abcd1234 x"; do
-  check "issue-gateway refuses '$bad' and writes no file" '! quiet pki issue-gateway "$bad" && [ "$(gateway_count)" = "$BEFORE" ] && [ ! -e "$WORK/x.crt" ]'
+  check "issue-gateway refuses '$bad' and writes no file" '! quiet pki issue-gateway "$bad" && [ "$(gateway_count)" = "$BEFORE" ] && [ ! -e "$SMART_PKI_DIR/x.crt" ] && [ ! -e "$SMART_PKI_DIR/x.key" ]'
 done
 check "issue-gateway refuses an existing ID" '! quiet pki issue-gateway gw-abcd1234'
 check "the gateway certificate verifies against the CA" 'quiet "$OSSL" verify -CAfile "$SMART_PKI_DIR/ca.crt" -purpose sslclient "$SMART_PKI_DIR/gateways/gw-abcd1234.crt"'
@@ -82,7 +82,48 @@ check "crl-next-update is ISO 8601 UTC" 'grep -Eq "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[
 check "crl-next-update is about 365 days ahead" 'diff=$(( $(epoch "$(cat "$SMART_PKI_DIR/crl-next-update")") - $(date +%s) )) && [ "$diff" -gt $((3600 * 24 * 364)) ] && [ "$diff" -lt $((3600 * 24 * 366)) ]'
 
 # --- status ---
-check "status lists the expiry dates" 'out=$(pki status) && echo "$out" | grep -Eq "^CA: valid until .* 20[0-9]{2} GMT" && echo "$out" | grep -Eq "^server: valid until" && echo "$out" | grep -Eq "^gateway gw-abcd1234: revoked, valid until" && echo "$out" | grep -Eq "^gateway gw-[a-z0-9]{8}: valid, valid until" && echo "$out" | grep -q "^CRL: next update 20"'
+check "status lists the expiry dates and the days left" 'out=$(pki status) && echo "$out" | grep -Eq "^CA: valid until .* 20[0-9]{2} GMT \\([0-9]+ days left\\)$" && echo "$out" | grep -Eq "^server: valid until .*\\([0-9]+ days left\\)$" && echo "$out" | grep -Eq "^server: valid until" && echo "$out" | grep -Eq "^gateway gw-abcd1234: revoked, valid until" && echo "$out" | grep -Eq "^gateway gw-[a-z0-9]{8}: valid, valid until" && echo "$out" | grep -q "^CRL: next update 20"'
+
+check "status shows an expired CRL" 'saved=$(cat "$SMART_PKI_DIR/crl-next-update") && printf "2020-01-01T00:00:00Z\n" > "$SMART_PKI_DIR/crl-next-update" && pki status | grep -Eq "^CRL: next update 2020-01-01T00:00:00Z EXPIRED$"; rc=$?; printf "%s\n" "$saved" > "$SMART_PKI_DIR/crl-next-update"; [ "$rc" = 0 ] && pki status | grep -Eq "^CRL: next update .* \\([0-9]+ days left\\)$"'
+
+# --- the passphrase and the CA key stay off argv, environment and disk ---
+WRAP_LOG="$WORK/openssl.log"
+cat > "$WORK/openssl-logger" << 'WRAPPER'
+#!/bin/sh
+# Logs argv and environment of every openssl call, then runs the real OpenSSL (fd 3 passes through).
+{
+  printf 'ARGV'
+  for argument; do printf ' <%s>' "$argument"; done
+  printf '\n'
+  env | sed 's/^/ENV /'
+} >> "$WRAP_LOG"
+if [ -n "${WRAP_FAIL_ON:-}" ] && [ "$1" = "$WRAP_FAIL_ON" ]; then exit 1; fi
+exec "$WRAP_REAL" "$@"
+WRAPPER
+chmod +x "$WORK/openssl-logger"
+SECRET=wrapper-secret-phrase-xyz
+printf '%s\n' "$SECRET" > "$WORK/wrapper-pass"
+wrapped() { WRAP_REAL="$OSSL" WRAP_LOG="$WRAP_LOG" SMART_OPENSSL="$WORK/openssl-logger" SMART_PKI_DIR="$WORK/wrapped" SMART_PKI_PASSPHRASE_FILE="$WORK/wrapper-pass" bash "$PKI_SH" "$@" < /dev/null; }
+: > "$WRAP_LOG"
+check "init-ca and issuing work through a logging openssl" 'quiet wrapped init-ca && quiet wrapped issue-server broker.example.org && quiet wrapped issue-gateway && quiet wrapped revoke "$(basename "$(ls "$WORK"/wrapped/gateways/*.crt | head -n 1)" .crt)" && quiet wrapped crl'
+check "the wrapper saw openssl calls with the passphrase on a descriptor" 'grep -q "<-passin> <fd:3>" "$WRAP_LOG" && grep -q "<-passout> <fd:3>" "$WRAP_LOG"'
+check "no openssl argument carries the passphrase as pass: or text" '! grep "^ARGV" "$WRAP_LOG" | grep -q "pass:" && ! grep "^ARGV" "$WRAP_LOG" | grep -q "$SECRET" && ! grep "^ARGV" "$WRAP_LOG" | grep -q "env:" && ! grep "^ARGV" "$WRAP_LOG" | grep -q "file:"'
+check "no openssl child has the passphrase in its environment" '! grep "^ENV" "$WRAP_LOG" | grep -q "$SECRET" && ! grep "^ENV" "$WRAP_LOG" | grep -q "^ENV SMART_PKI_PW="'
+check "the CA key is encrypted with a high PBKDF2 iteration count" 'grep "^ARGV" "$WRAP_LOG" | grep "<pkcs8>" | grep -q "<-iter> <600000>"'
+check "the CA private key is generated to a pipe, never to a file" 'grep "^ARGV <genpkey>" "$WRAP_LOG" | head -n 1 | grep -vq "<-out>"'
+check "a CA key written through the wrapper is encrypted" 'head -n 1 "$WORK/wrapped/ca.key" | grep -q ENCRYPTED'
+check "no plain CA key is left on disk" '! grep -rl "BEGIN PRIVATE" "$WORK/wrapped" 2> /dev/null | grep -q "/ca.key$" && [ -z "$(find "$WORK/wrapped" -name "tmp.*")" ]'
+
+# --- init-ca failure leaves nothing behind ---
+: > "$WRAP_LOG"
+check "init-ca fails cleanly when certificate creation fails" 'rm -rf "$WORK/failinit" && ! WRAP_FAIL_ON=req WRAP_REAL="$OSSL" WRAP_LOG="$WRAP_LOG" SMART_OPENSSL="$WORK/openssl-logger" SMART_PKI_DIR="$WORK/failinit" SMART_PKI_PASSPHRASE_FILE="$WORK/wrapper-pass" quiet bash "$PKI_SH" init-ca < /dev/null && [ -z "$(find "$WORK/failinit" -type f)" ]'
+check "init-ca works again after a failed run in the same directory" 'SMART_PKI_DIR="$WORK/failinit" quiet pki init-ca && [ -f "$WORK/failinit/ca.crt" ]'
+
+# --- the PKI directory ---
+check "an existing group- or world-accessible directory is refused and left alone" 'mkdir -p "$WORK/lax755" && chmod 755 "$WORK/lax755" && ! SMART_PKI_DIR="$WORK/lax755" quiet pki init-ca && [ "$(mode_of "$WORK/lax755")" = 755 ] && [ -z "$(find "$WORK/lax755" -type f)" ]'
+check "the refusal names the directory and the fix" 'SMART_PKI_DIR="$WORK/lax755" pki status 2>&1 | grep -q "chmod 700"'
+check "an invalid command creates no directory" 'rm -rf "$WORK/never" && ! SMART_PKI_DIR="$WORK/never" quiet bash "$PKI_SH" frobnicate < /dev/null && ! SMART_PKI_DIR="$WORK/never" quiet bash "$PKI_SH" revoke < /dev/null && [ ! -e "$WORK/never" ]'
+check "commands other than init-ca create no directory" '! SMART_PKI_DIR="$WORK/never" quiet bash "$PKI_SH" status < /dev/null && [ ! -e "$WORK/never" ]'
 
 # --- permissions ---
 check "the PKI directory has mode 700 and all files 600" '[ "$(mode_of "$SMART_PKI_DIR")" = 700 ] && [ -z "$(find "$SMART_PKI_DIR" -type d ! -perm 700)" ] && [ -z "$(find "$SMART_PKI_DIR" -type f ! -perm 600)" ]'
