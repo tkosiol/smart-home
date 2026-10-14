@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import type { Translation, TranslocoLoader } from '@jsverse/transloco';
 import { DEFAULT_LANGUAGE, languageSchema, type Language } from '@smart/contracts';
-import { loadUiTranslation } from '@smart/ui';
+import { loadUiTranslation } from '@smart/ui/shell';
 
 const APP: Record<Language, () => Promise<Translation>> = {
   de: () => import('../../../i18n/de.json').then((module) => module.default),

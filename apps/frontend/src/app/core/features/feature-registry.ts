@@ -1,6 +1,6 @@
 import { InjectionToken, inject, type Provider, type Type } from '@angular/core';
 import { hasRole, type HouseholdRole } from '@smart/contracts';
-import type { IconName } from '@smart/ui';
+import type { IconName } from '@smart/ui/shell';
 
 /** An entry on the "More" page. */
 export interface MoreEntry {

@@ -21,7 +21,7 @@ import {
   UiTopAppBar,
   UiTopAppBarActions,
   type UiNavDestination,
-} from '@smart/ui';
+} from '@smart/ui/shell';
 import { AuthService } from '../core/auth';
 import { HouseholdContext } from '../core/household';
 import { AppUpdates, OnlineStatus } from '../core/pwa';

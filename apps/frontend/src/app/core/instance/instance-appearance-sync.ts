@@ -1,6 +1,6 @@
 import { DestroyRef, Injectable, inject } from '@angular/core';
 import { instanceAppearanceUpdateSchema, type InstanceAppearance } from '@smart/contracts';
-import { ThemeService } from '@smart/ui';
+import { ThemeService } from '@smart/ui/shell';
 import { API_BASE, ApiClient, injectShowApiError } from '../api';
 
 /** How long the start waits for the server before the copy on the device stays in charge. */

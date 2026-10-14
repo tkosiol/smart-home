@@ -1,6 +1,6 @@
 import { DestroyRef, Injectable, effect, inject, untracked } from '@angular/core';
 import { meSchema, type Me, type PreferencesUpdate } from '@smart/contracts';
-import { ThemeService } from '@smart/ui';
+import { ThemeService } from '@smart/ui/shell';
 import { API_BASE, ApiClient, ApiError, injectShowApiError } from '../api';
 import { LanguageService } from '../i18n';
 import { OnlineStatus } from '../pwa';
