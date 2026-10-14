@@ -11,6 +11,9 @@ export interface GatewayCertificate {
   fingerprint: string;
 }
 
+/** extendedKeyUsage `clientAuth`: what `pki.sh issue-gateway` sets (and the broker expects). */
+const CLIENT_AUTH = '1.3.6.1.5.5.7.3.2';
+
 const invalid = (): ApiError => new ApiError(HttpStatus.BAD_REQUEST, 'gateway.invalidCertificate');
 
 /**
@@ -42,12 +45,21 @@ export function readGatewayCertificate(
     throw invalid();
   }
   const id = commonName(cert.subject);
-  const valid =
-    cert.verify(ca.publicKey) &&
-    cert.checkIssued(ca) &&
-    GATEWAY_ID_PATTERN.test(id) &&
-    new Date(cert.validFrom) <= now &&
-    new Date(cert.validTo) > now;
+  // Only a client certificate counts: a CA or server certificate with a gateway name must not
+  // register (the CA's own certificate in particular is "issued by" itself).
+  let valid: boolean;
+  try {
+    valid =
+      !cert.ca &&
+      cert.keyUsage?.includes(CLIENT_AUTH) === true &&
+      cert.verify(ca.publicKey) &&
+      cert.checkIssued(ca) &&
+      GATEWAY_ID_PATTERN.test(id) &&
+      new Date(cert.validFrom) <= now &&
+      new Date(cert.validTo) > now;
+  } catch {
+    valid = false;
+  }
   if (!valid) throw invalid();
   return { id, expiresAt: new Date(cert.validTo), fingerprint: cert.fingerprint256 };
 }

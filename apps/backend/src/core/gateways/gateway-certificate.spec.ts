@@ -56,6 +56,42 @@ describe('readGatewayCertificate', () => {
     rejects(issued.privateKey);
   });
 
+  describe('rejects a certificate that is not a client certificate', () => {
+    const NO_EKU = 'basicConstraints = CA:false\nkeyUsage = critical, digitalSignature\n';
+    const withEku = (eku: string): string =>
+      `basicConstraints = CA:false\nkeyUsage = critical, digitalSignature\nextendedKeyUsage = ${eku}\n`;
+    const CA_EXT =
+      'basicConstraints = critical, CA:true\nkeyUsage = critical, keyCertSign\nextendedKeyUsage = clientAuth\n';
+
+    it('the CA certificate itself, even under a gateway name', () => {
+      const selfNamed = createTestCa('gw-a1b2c3d4');
+      try {
+        rejects(selfNamed.certificate, new X509Certificate(selfNamed.certificate));
+      } finally {
+        selfNamed.dispose();
+      }
+    });
+
+    it('a CA certificate with a gateway name signed by the CA', () => {
+      rejects(ca.issue({ subject: '/CN=gw-a1b2c3d4', extensions: CA_EXT }).certificate);
+    });
+
+    it('a server certificate with a gateway name', () => {
+      rejects(
+        ca.issue({ subject: '/CN=gw-a1b2c3d4', extensions: withEku('serverAuth') }).certificate,
+      );
+    });
+
+    it('a certificate without an extended key usage', () => {
+      rejects(ca.issue({ subject: '/CN=gw-a1b2c3d4', extensions: NO_EKU }).certificate);
+    });
+
+    it('but accepts a client certificate that also allows server authentication', () => {
+      const issued = ca.issue({ extensions: withEku('clientAuth, serverAuth') });
+      expect(readGatewayCertificate(issued.certificate, caCert, now).id).toBe(issued.id);
+    });
+  });
+
   it('rejects text without a certificate', () => {
     rejects('');
     rejects('hello');

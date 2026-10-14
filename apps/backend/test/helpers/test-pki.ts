@@ -39,6 +39,14 @@ const asn1Time = (date: Date): string =>
 
 const DAY_MS = 86_400_000;
 
+/** What `pki.sh issue-gateway` puts into a gateway certificate. */
+const CLIENT_EXTENSIONS = `basicConstraints = CA:false
+keyUsage = critical, digitalSignature
+extendedKeyUsage = clientAuth
+subjectKeyIdentifier = hash
+authorityKeyIdentifier = keyid
+`;
+
 export const randomGatewayId = (): string => `gw-${randomBytes(6).toString('hex').slice(0, 8)}`;
 
 export interface IssueOptions {
@@ -47,6 +55,8 @@ export interface IssueOptions {
   /** Days relative to now; defaults to a certificate valid for one year that started yesterday. */
   startsInDays?: number;
   endsInDays?: number;
+  /** Replaces the extension lines of a client certificate (`openssl x509` extfile syntax). */
+  extensions?: string;
 }
 
 export interface IssuedCertificate {
@@ -100,15 +110,6 @@ keyUsage = critical, keyCertSign, cRLSign
 subjectKeyIdentifier = hash
 `,
   );
-  writeFileSync(
-    join(dir, 'leaf.ext'),
-    `basicConstraints = CA:false
-keyUsage = critical, digitalSignature
-extendedKeyUsage = clientAuth
-subjectKeyIdentifier = hash
-authorityKeyIdentifier = keyid
-`,
-  );
   const newKey = (path: string): void =>
     run([
       'genpkey',
@@ -147,12 +148,14 @@ authorityKeyIdentifier = keyid
     dispose: () => {
       rmSync(dir, { recursive: true, force: true });
     },
-    issue: ({ subject, startsInDays = -1, endsInDays = 365 } = {}) => {
+    issue: ({ subject, startsInDays = -1, endsInDays = 365, extensions } = {}) => {
       counter += 1;
       const id = randomGatewayId();
       const key = join(dir, `leaf${counter}.key`);
       const csr = join(dir, `leaf${counter}.csr`);
       const out = join(dir, `leaf${counter}.crt`);
+      const extfile = join(dir, `leaf${counter}.ext`);
+      writeFileSync(extfile, extensions ?? CLIENT_EXTENSIONS);
       newKey(key);
       run([
         'req',
@@ -185,7 +188,7 @@ authorityKeyIdentifier = keyid
         '-out',
         out,
         '-extfile',
-        join(dir, 'leaf.ext'),
+        extfile,
       ]);
       return {
         id,

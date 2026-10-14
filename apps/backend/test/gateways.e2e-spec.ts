@@ -2,7 +2,7 @@ import { X509Certificate } from 'node:crypto';
 import fs, { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { INestApplication } from '@nestjs/common';
+import { Logger, type INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { apiErrorSchema, gatewaySchema, meSchema, type Gateway } from '@smart/contracts';
 import request from 'supertest';
@@ -246,6 +246,22 @@ describe('gateways', () => {
         'the common name smart-api': () => ca.issue({ subject: '/CN=smart-api' }).certificate,
         'a common name with capital letters': () =>
           ca.issue({ subject: '/CN=GW-A1B2C3D4' }).certificate,
+        'the CA certificate itself': () => ca.certificate,
+        'a server certificate with a gateway name': () =>
+          ca.issue({
+            subject: '/CN=gw-a1b2c3d4',
+            extensions: 'basicConstraints = CA:false\nextendedKeyUsage = serverAuth\n',
+          }).certificate,
+        'a CA certificate with a gateway name': () =>
+          ca.issue({
+            subject: '/CN=gw-a1b2c3d4',
+            extensions: 'basicConstraints = critical, CA:true\nextendedKeyUsage = clientAuth\n',
+          }).certificate,
+        'a certificate without extended key usage': () =>
+          ca.issue({
+            subject: '/CN=gw-a1b2c3d4',
+            extensions: 'basicConstraints = CA:false\n',
+          }).certificate,
         'text that is no certificate': () => 'hello',
       };
 
@@ -268,6 +284,42 @@ describe('gateways', () => {
       const output = written.join('');
       expect(output).toContain('/gateways'); // the request log was captured
       for (const line of bodyLines) expect(output).not.toContain(line);
+    });
+
+    it('writes nothing of the pasted text to the log when the CA is missing', async () => {
+      const issued = ca.issue();
+      const pasted = `${issued.certificate}\n${issued.privateKey}`;
+      const bodyLines = pasted
+        .split('\n')
+        .filter((line) => line.length > 20 && !line.startsWith('-----'));
+      const configured = env().GATEWAY_CA_FILE;
+      written.length = 0;
+      // The testing module silences Nest's own logger: record what the service would log.
+      const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation((...args: unknown[]) => {
+        written.push(JSON.stringify(args));
+      });
+      try {
+        env().GATEWAY_CA_FILE = join(dir, 'does-not-exist.crt');
+        await register(admin, householdId, pasted).expect(503);
+      } finally {
+        env().GATEWAY_CA_FILE = configured;
+        warn.mockRestore();
+      }
+      const output = written.join('');
+      expect(output).toContain('Cannot read the gateway CA certificate'); // the warning was captured
+      for (const line of bodyLines) expect(output).not.toContain(line);
+    });
+
+    it('registers a gateway ID only once when two requests race', async () => {
+      const issued = ca.issue();
+      const responses = await Promise.all([
+        register(admin, householdId, issued.certificate),
+        register(admin, otherHouseholdId, issued.certificate),
+      ]);
+      expect(responses.map((response) => response.status).sort()).toEqual([201, 409]);
+      const loser = responses.find((response) => response.status === 409);
+      expect(errorCode(loser as request.Response)).toBe('gateway.exists');
+      expect(await connection.sql`select id from gateways where id = ${issued.id}`).toHaveLength(1);
     });
 
     it('answers 409 for a gateway that exists, in the same or another household', async () => {
@@ -373,6 +425,15 @@ describe('gateways', () => {
       });
     });
 
+    it('leaves out the certificate warning of a revoked gateway', async () => {
+      const household = await createHousehold(admin);
+      const issued = ca.issue({ endsInDays: 10 });
+      await register(admin, household, issued.certificate).expect(201);
+      await revoke(admin, household, issued.id).expect(204);
+      const response = await list(admin, household).expect(200);
+      expect((response.body as Gateway[]).map((gateway) => gateway.warnings)).toEqual([[]]);
+    });
+
     it('warns about a CRL that is due within 30 days, and about nothing without the file', async () => {
       const household = await createHousehold(admin);
       const issued = ca.issue({ endsInDays: 100 });
@@ -410,6 +471,16 @@ describe('gateways', () => {
       expect(listed.find((gateway) => gateway.id === issued.id)?.revokedAt).toBe(
         new Date(first ?? '').toISOString(),
       );
+    });
+
+    it('keeps the ID taken: a revoked gateway cannot be registered again', async () => {
+      const issued = ca.issue();
+      await register(admin, householdId, issued.certificate).expect(201);
+      await revoke(admin, householdId, issued.id).expect(204);
+      for (const household of [householdId, otherHouseholdId]) {
+        const again = await register(admin, household, issued.certificate).expect(409);
+        expect(errorCode(again)).toBe('gateway.exists');
+      }
     });
 
     it('needs an owner who is a platform admin', async () => {

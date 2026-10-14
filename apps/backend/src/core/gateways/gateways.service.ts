@@ -12,11 +12,14 @@ import { gatewayWarnings } from './gateway-warnings.js';
 import { GatewaysRepository } from './gateways.repository.js';
 import type { GatewayRow } from './gateways.schema.js';
 
+const HOUR_MS = 3_600_000;
+
 const iso = (date: Date | null): string | null => (date ? date.toISOString() : null);
 
 @Injectable()
 export class GatewaysService {
   private readonly logger = new Logger(GatewaysService.name);
+  private lastCrlWarning = 0;
 
   constructor(
     private readonly gateways: GatewaysRepository,
@@ -73,7 +76,10 @@ export class GatewaysService {
       lastMessageAt: iso(row.lastMessageAt),
       certExpiresAt: row.certExpiresAt.toISOString(),
       revokedAt: iso(row.revokedAt),
-      warnings: gatewayWarnings(row.certExpiresAt, crlNextUpdate, now),
+      // A revoked gateway's certificate is no concern any more; the CRL still is.
+      warnings: gatewayWarnings(row.certExpiresAt, crlNextUpdate, now).filter(
+        (warning) => row.revokedAt === null || warning === 'crlExpiring',
+      ),
     };
   }
 
@@ -95,9 +101,19 @@ export class GatewaysService {
     if (!file) return undefined;
     try {
       const date = new Date((await readFile(file, 'utf8')).trim());
-      return Number.isNaN(date.getTime()) ? undefined : date;
-    } catch {
-      return undefined;
+      if (!Number.isNaN(date.getTime())) return date;
+      this.warnAboutCrl('the content is not a date');
+    } catch (error) {
+      this.warnAboutCrl(describeError(error));
     }
+    return undefined;
+  }
+
+  /** The CRL warning would silently disappear with a broken file: say so, at most once an hour. */
+  private warnAboutCrl(reason: string): void {
+    const now = this.clock().getTime();
+    if (now - this.lastCrlWarning < HOUR_MS) return;
+    this.lastCrlWarning = now;
+    this.logger.warn(`Cannot read the CRL renewal date (GATEWAY_CRL_NEXT_UPDATE_FILE): ${reason}`);
   }
 }
