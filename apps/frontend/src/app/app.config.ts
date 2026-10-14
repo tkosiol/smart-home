@@ -2,7 +2,7 @@ import { ApplicationConfig, isDevMode, provideBrowserGlobalErrorListeners } from
 import { TitleStrategy, provideRouter, withInMemoryScrolling } from '@angular/router';
 import { provideServiceWorker } from '@angular/service-worker';
 import { DEFAULT_RUNTIME_CONFIG, type RuntimeConfig } from '@smart/contracts';
-import { provideTheme } from '@smart/ui';
+import { provideTheme } from '@smart/ui/shell';
 import { routes } from './app.routes';
 import { provideAuth } from './core/auth';
 import { provideRuntimeConfig } from './core/config';

@@ -1,5 +1,5 @@
 import { marker } from '@jsverse/transloco-keys-manager/marker';
-import type { IconName } from '@smart/ui';
+import type { IconName } from '@smart/ui/shell';
 
 export interface MainDestination {
   readonly route: string;

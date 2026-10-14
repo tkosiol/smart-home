@@ -1,7 +1,7 @@
 import { Injectable, computed, effect, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import type { HouseholdSummary } from '@smart/contracts';
-import { UiFormatContext } from '@smart/ui';
+import { UiFormatContext } from '@smart/ui/shell';
 import { API_BASE, ApiClient } from '../api';
 import { AuthService } from '../auth';
 

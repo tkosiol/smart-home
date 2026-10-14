@@ -1,6 +1,8 @@
-// `@smart/ui/forms` is the second entry (form controls, theme editor), kept apart so that their
-// Material code is bundled with the lazy pages that use it, not with the shell.
-const PUBLIC_UI_ONLY = 'Import from the public API "@smart/ui" or "@smart/ui/forms" only.';
+// @smart/ui has three entries: `@smart/ui/shell` (eager part, for startup code), `@smart/ui` (the
+// barrel: shell plus everything else, for lazy pages) and `@smart/ui/forms` (form controls, theme
+// editor). They are kept apart so that code only lazy pages use is bundled with those pages.
+const PUBLIC_UI_ONLY =
+  'Import from the public API "@smart/ui", "@smart/ui/shell" or "@smart/ui/forms" only.';
 
 const PATHS = [
   {
@@ -15,9 +17,19 @@ const PATTERNS = [
     group: ['@angular/material', '@angular/material/*', '@angular/cdk', '@angular/cdk/*'],
     message: 'Angular Material/CDK are internal to @smart/ui. Use or add a ui-* component.',
   },
-  { group: ['@smart/ui/*', '!@smart/ui/forms'], message: PUBLIC_UI_ONLY },
+  { group: ['@smart/ui/*', '!@smart/ui/forms', '!@smart/ui/shell'], message: PUBLIC_UI_ONLY },
   { group: ['**/projects/ui/**'], message: PUBLIC_UI_ONLY },
 ];
+
+// A barrel that startup code imports pulls in every file it re-exports that is used anywhere,
+// lazy pages' components included (esbuild assigns whole files to the chunk main reaches).
+const ONLY_THE_SHELL_ENTRY = {
+  name: '@smart/ui',
+  message:
+    'core/, shell/ and the app root load at startup: import from "@smart/ui/shell" (the eager ' +
+    'part), not from the "@smart/ui" barrel, or components only lazy pages use land in the ' +
+    'initial bundle.',
+};
 
 const NO_FORMS_IN_THE_SHELL = {
   group: ['@smart/ui/forms'],
@@ -39,10 +51,15 @@ export function frontendRestrictedImports() {
         'apps/frontend/src/app/core/**/*.ts',
         'apps/frontend/src/app/shell/**/*.ts',
       ],
+      // Specs are not bundled. shell/not-found.ts is a lazy page that merely lives in shell/.
+      ignores: ['**/*.spec.ts', 'apps/frontend/src/app/shell/not-found.ts'],
       rules: {
         'no-restricted-imports': [
           'error',
-          { paths: PATHS, patterns: [...PATTERNS, NO_FORMS_IN_THE_SHELL] },
+          {
+            paths: [...PATHS, ONLY_THE_SHELL_ENTRY],
+            patterns: [...PATTERNS, NO_FORMS_IN_THE_SHELL],
+          },
         ],
       },
     },

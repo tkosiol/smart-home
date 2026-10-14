@@ -2,7 +2,7 @@ import { inject } from '@angular/core';
 import { TranslocoService } from '@jsverse/transloco';
 import { marker } from '@jsverse/transloco-keys-manager/marker';
 import type { ApiErrorCode } from '@smart/contracts';
-import { UiSnackbar } from '@smart/ui';
+import { UiSnackbar } from '@smart/ui/shell';
 import { ApiError } from './api-error';
 
 /** One text per error code; `marker` keeps the keys for the key check, the lookup below is dynamic. */

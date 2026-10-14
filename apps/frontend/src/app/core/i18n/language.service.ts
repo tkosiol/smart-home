@@ -1,7 +1,7 @@
 import { DOCUMENT, DestroyRef, Injectable, inject, signal } from '@angular/core';
 import { TranslocoService } from '@jsverse/transloco';
 import { languageSchema, matchLanguage, type Language } from '@smart/contracts';
-import { UiFormatContext } from '@smart/ui';
+import { UiFormatContext } from '@smart/ui/shell';
 import { BROWSER_LANGUAGES, LANGUAGE_STORE } from './language-store';
 
 /** Active UI language: stored choice, else the browser's preference, else German (spec 7). */

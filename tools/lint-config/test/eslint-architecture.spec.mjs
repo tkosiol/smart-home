@@ -141,9 +141,57 @@ describe('frontend boundaries and UI rules', () => {
       ['no-restricted-imports'],
     ],
     [
-      'core → @smart/ui public API',
+      'core → @smart/ui/shell entry',
+      'apps/frontend/src/app/core/auth/auth.service.ts',
+      "import { x } from '@smart/ui/shell';\nexport const u = x;",
+      [],
+    ],
+    [
+      "core → @smart/ui barrel (would pull lazy pages' components into the initial bundle)",
       'apps/frontend/src/app/core/auth/auth.service.ts',
       "import { x } from '@smart/ui';\nexport const u = x;",
+      ['no-restricted-imports'],
+    ],
+    [
+      "shell → @smart/ui barrel (would pull lazy pages' components into the initial bundle)",
+      'apps/frontend/src/app/shell/shell.ts',
+      "import { x } from '@smart/ui';\nexport const u = x;",
+      ['no-restricted-imports'],
+    ],
+    [
+      'shell → @smart/ui/shell entry',
+      'apps/frontend/src/app/shell/shell.ts',
+      "import { x } from '@smart/ui/shell';\nexport const u = x;",
+      [],
+    ],
+    [
+      "app root → @smart/ui barrel (would pull lazy pages' components into the initial bundle)",
+      'apps/frontend/src/app/app.config.ts',
+      "import { x } from '@smart/ui';\nexport const u = x;",
+      ['no-restricted-imports'],
+    ],
+    [
+      'app root → @smart/ui/shell entry',
+      'apps/frontend/src/app/app.config.ts',
+      "import { x } from '@smart/ui/shell';\nexport const u = x;",
+      [],
+    ],
+    [
+      'core spec → @smart/ui barrel (specs are not bundled)',
+      'apps/frontend/src/app/core/auth/auth.service.spec.ts',
+      "import { x } from '@smart/ui';\nexport const u = x;",
+      [],
+    ],
+    [
+      'shell/not-found (a lazy page) → @smart/ui barrel',
+      'apps/frontend/src/app/shell/not-found.ts',
+      "import { x } from '@smart/ui';\nexport const u = x;",
+      [],
+    ],
+    [
+      'feature → @smart/ui/shell entry',
+      'apps/frontend/src/app/features/devices/devices.page.ts',
+      page("import { x } from '@smart/ui/shell';\nexport const u = x;"),
       [],
     ],
     [
