@@ -251,3 +251,33 @@ subscribe(filter: string, handler: (topic: string, payload: Buffer, retained: bo
 **Runbook (Deutsch):** PKI einrichten (`init-ca`, Passphrase in den Passwortmanager, Sicherung von `~/.smart-pki`), Server-Zertifikat, `broker-certs.sh` für Staging und Produktion, UFW-Regel 8883 und Fail2ban-Filter (Till, Root), Gateway ausstellen und registrieren, Simulator auf Staging registrieren, Sperren, Erneuern (Zertifikate 2 Jahre, CRL jährlich), Prüfung nach Inbetriebnahme (Schreib-/Lesetest der ACL).
 
 Commit(s) `test(infra): cover gateways in the stack` und `docs: describe the gateway PKI and broker`.
+
+## Ergebnis und Übertrag
+
+Umgesetzt subagent-gestützt (Sonnet für Umsetzung und Reviews, Haiku für kleine Nachprüfungen, Opus für das Gesamt-Review mit einer Nachbesserungsrunde). Task 7 und 8 liefen parallel in getrennten Arbeitskopien; Task 8 und 9 hatten auf Tills Wunsch kein eigenes Review, nur das Gesamt-Review. Dieser Abschnitt hält fest, wo die Umsetzung vom Plan abweicht und was 5b und 6 übernehmen müssen.
+
+### Abweichungen vom Plan (Entscheidungen)
+
+- **Zertifikate auf dem VPS in zwei Ordnern:** `certs/public/` (CA, Server-Zertifikat, CRL, `crl-next-update`; API und Broker) und `certs/private/` (nur `server.key`; nur der Broker). Sonst hätte die API den Broker-Schlüssel lesen können, wenn der Deploy-User die UID 1000 hat.
+- **PKI:** CA-Schlüssel entsteht direkt verschlüsselt (PBKDF2 600 000 Runden), die Passphrase geht nur über einen Dateideskriptor an OpenSSL; `broker-certs.sh` überträgt alles in einer SSH-Sitzung und prüft vorher, dass die CRL nicht abgelaufen ist.
+- **Gateway-Zertifikate:** Das Backend nimmt nur Client-Zertifikate an (kein `CA:true`, EKU `clientAuth` Pflicht), genau ein Zertifikat, nie einen privaten Schlüssel; die Oberfläche lehnt eingefügte Schlüssel schon im Browser ab.
+- **Broker-Benutzer fest `smart-api`** (kein konfigurierbarer Name, keine Kollision mit `gw-…`).
+- **Port:** Produktion veröffentlicht 8883; sonst ein zufälliger Port auf `127.0.0.1`. `MQTT_TLS` bleibt `off`, bis `broker-certs.sh` es einschaltet.
+- **Status:** Retained `bridge/connection` und `bridge/state`; der Status unbekannter Gateways wird gemerkt und bei der Registrierung übernommen (auch wenn er während der Registrierung eintrifft).
+- **Simulator:** sechs Bodensensoren und eine Lampe aus echten Z2M-Definitionen mit erfundenen Adressen und Namen; auf Staging über das Compose-Profil `simulator`.
+- **Gemeinsame Bausteine:** `LoadedList` und die Fehlerbehandlung für Haushaltspfade liegen in `core/household`.
+- **`provision.sh --force`** behält auch die Backup-Angaben (Enter).
+
+### Übertrag
+
+- **Till, vor dem nächsten Deploy:** Umstiegsliste in `docs/runbooks/deploy.md` („Umstieg auf Etappe 5a“) abarbeiten: `provision.sh production --force`, Simulator-Paket auf GHCR öffentlich, `provision.sh staging --force`, `broker-certs.sh`, ufw/fail2ban, Simulator auf Staging registrieren.
+- **5b:** Verhalten von retained `bridge/connection` nach einem sauberen Broker-Neustart am echten Aufbau prüfen; QoS-Option des echten Z2M; gemischte Queue über 24 h auf 2.1.x.
+- **6:** `last_message_at` muss `…/set` und `…/bridge/request/#` ignorieren, sobald Befehle gesendet werden; Erneuern eines Gateway-Zertifikats mit gleicher ID fehlt (vor Ablauf in 2 Jahren lösen).
+- **Bundle:** initial rund 471 kB von 480 kB.
+
+### Bewusst zurückgestellt (klein)
+
+- PKI/Skripte: `mv`-Reihenfolge beim Tausch (Zertifikat vor Schlüssel), `tar` ohne `-h`, Ausgaben auf Englisch, kein Broker-Test für abgelaufenes Zertifikat und abgelaufene CRL, Stack-Test prüft die Mount-Fixtures statt `compose.yaml`.
+- Backend: Statusereignis bei spät übernommenem Status fehlt; überlappende Abos liefern doppelt (idempotent); Cron-Registrierung ungetestet; täglicher Hinweis bei fehlendem CRL-Datum.
+- Simulator: schwacher Test der Austrocknungsrate, Offline-Fenster hängt vom Intervall ab, `infra:up --build` baut oft neu, kein Healthcheck.
+- Fail2ban-Filter am VPS ungetestet; mögliche Instabilität eines Offline-Banner-E2E unter Last; Mandanten-Tabelle prüft nur Plattform-Admins als owner.
