@@ -43,6 +43,12 @@ describe('routes', () => {
     expect(frame?.canMatch).toEqual([signedIn, hasHousehold]);
   });
 
+  it('puts the device detail page before the device list, inside the shell', () => {
+    const paths = routes.find((route) => route.component === Shell)?.children?.map((r) => r.path);
+    expect(paths).toContain('geraete/:id');
+    expect(paths!.indexOf('geraete/:id')).toBeLessThan(paths!.indexOf('geraete'));
+  });
+
   afterEach(() => document.documentElement.setAttribute('lang', 'de'));
 
   it.each([

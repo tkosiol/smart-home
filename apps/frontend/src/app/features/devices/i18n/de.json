@@ -1,7 +1,59 @@
 {
   "title": "Geräte",
+  "nameError": "Bitte gib einen Namen mit höchstens 60 Zeichen ein.",
   "empty": {
     "heading": "Noch keine Geräte",
-    "description": "Hier erscheinen später alle Geräte des Haushalts, die sich steuern oder ablesen lassen."
+    "description": "Sobald ein erkanntes Gerät hinzugefügt ist, zeigt es hier seine Werte."
+  },
+  "list": {
+    "title": "Geräte im Haushalt"
+  },
+  "discovered": {
+    "title": "Neu erkannt",
+    "description": "Diese Geräte hat ein Gateway gemeldet. Gib ihnen einen Namen und füge sie hinzu.",
+    "name": "Name",
+    "add": "Hinzufügen"
+  },
+  "card": {
+    "lastSeen": "Zuletzt gemeldet {{ time }}",
+    "neverSeen": "Noch nichts gemeldet",
+    "offline": "Offline – angezeigt wird der letzte bekannte Stand.",
+    "lowBattery": "Die Batterie ist fast leer. Bitte bald wechseln.",
+    "details": "Details"
+  },
+  "reading": {
+    "none": "noch keine Werte",
+    "yes": "ja",
+    "no": "nein",
+    "dry": "trocken",
+    "notDry": "nicht trocken",
+    "on": "an",
+    "off": "aus"
+  },
+  "capability": {
+    "soil_moisture": "Bodenfeuchte",
+    "temperature": "Temperatur",
+    "humidity": "Luftfeuchte",
+    "battery": "Batterie",
+    "dry": "Trocken",
+    "linkquality": "Signalqualität",
+    "state": "Zustand",
+    "brightness": "Helligkeit",
+    "color_temp": "Farbtemperatur"
+  },
+  "detail": {
+    "back": "Alle Geräte",
+    "readings": "Messwerte",
+    "noReadings": "Dieses Gerät meldet keine Messwerte.",
+    "hardware": "Hardware",
+    "notFound": {
+      "heading": "Gerät nicht gefunden",
+      "description": "Dieses Gerät gibt es in diesem Haushalt nicht (mehr)."
+    },
+    "rename": {
+      "title": "Umbenennen",
+      "name": "Name",
+      "submit": "Speichern"
+    }
   }
 }

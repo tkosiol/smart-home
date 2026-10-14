@@ -1,19 +1,23 @@
-import { provideTranslocoScope } from '@jsverse/transloco';
 import type { Routes } from '@angular/router';
-import { DevicesPage } from './devices-page';
+import { provideDevicesTexts } from './devices-texts';
 
+// The pages load lazily (loadComponent): the app config imports this folder's index at startup
+// for provideDevicesFeature(), and must not pull the pages into the initial bundle with it.
+
+/** `/geraete`. */
 export const devicesRoutes: Routes = [
   {
     path: '',
-    component: DevicesPage,
-    providers: [
-      provideTranslocoScope({
-        scope: 'devices',
-        loader: {
-          de: () => import('./i18n/de.json').then((m) => m.default),
-          en: () => import('./i18n/en.json').then((m) => m.default),
-        },
-      }),
-    ],
+    providers: [provideDevicesTexts()],
+    loadComponent: () => import('./devices-page').then((m) => m.DevicesPage),
+  },
+];
+
+/** `/geraete/:id`. */
+export const deviceRoutes: Routes = [
+  {
+    path: '',
+    providers: [provideDevicesTexts()],
+    loadComponent: () => import('./device-page').then((m) => m.DevicePage),
   },
 ];

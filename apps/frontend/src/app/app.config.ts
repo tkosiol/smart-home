@@ -9,6 +9,7 @@ import { provideRuntimeConfig } from './core/config';
 import { provideI18n } from './core/i18n';
 import { provideInstanceAppearance } from './core/instance';
 import { PageTitleStrategy } from './core/routing';
+import { provideDevicesFeature } from './features/devices';
 import { provideGatewaysFeature } from './features/gateways';
 import { provideHouseholdsFeature } from './features/households';
 import { provideSettingsFeature } from './features/settings';
@@ -24,6 +25,7 @@ export function createAppConfig(config: RuntimeConfig = DEFAULT_RUNTIME_CONFIG):
       provideInstanceAppearance(),
       provideI18n(),
       provideHouseholdsFeature(),
+      provideDevicesFeature(),
       provideGatewaysFeature(),
       provideSettingsFeature(),
       provideServiceWorker('ngsw-worker.js', {

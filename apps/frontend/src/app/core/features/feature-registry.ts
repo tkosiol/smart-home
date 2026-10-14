@@ -1,4 +1,10 @@
-import { InjectionToken, inject, type Provider, type Type } from '@angular/core';
+import {
+  InjectionToken,
+  inject,
+  reflectComponentType,
+  type Provider,
+  type Type,
+} from '@angular/core';
 import { hasRole, type HouseholdRole } from '@smart/contracts';
 import type { IconName } from '@smart/ui/shell';
 
@@ -17,10 +23,16 @@ export interface MoreEntry {
   readonly platformAdminOnly?: boolean;
 }
 
+/**
+ * A card on the overview: a component, or a function that loads it (`() => import(...)`), so a
+ * feature's card code stays out of the initial bundle.
+ */
+export type OverviewCard = Type<unknown> | (() => Promise<Type<unknown>>);
+
 /** What a feature contributes to the shared pages, so the shell never imports a feature. */
 export interface FeatureDefinition {
   readonly moreEntries?: readonly MoreEntry[];
-  readonly overviewCards?: readonly Type<unknown>[];
+  readonly overviewCards?: readonly OverviewCard[];
 }
 
 export const FEATURES = new InjectionToken<readonly FeatureDefinition[]>('FEATURES');
@@ -48,7 +60,25 @@ export function visibleMoreEntries(
   );
 }
 
-export function injectOverviewCards(): Type<unknown>[] {
+export function injectOverviewCards(): OverviewCard[] {
   const features = inject(FEATURES, { optional: true }) ?? [];
   return features.flatMap((f) => f.overviewCards ?? []);
+}
+
+/** Whether `card` is a loader function: anything that is not a component class. */
+export function isCardLoader(card: OverviewCard): card is () => Promise<Type<unknown>> {
+  return reflectComponentType(card as Type<unknown>) === null;
+}
+
+/**
+ * The card components in registration order. Loaders run once; a loader that fails (a lost chunk,
+ * say) drops only its own card.
+ */
+export async function resolveOverviewCards(
+  cards: readonly OverviewCard[],
+): Promise<Type<unknown>[]> {
+  const settled = await Promise.allSettled(
+    cards.map((card) => (isCardLoader(card) ? card() : Promise.resolve(card))),
+  );
+  return settled.flatMap((result) => (result.status === 'fulfilled' ? [result.value] : []));
 }

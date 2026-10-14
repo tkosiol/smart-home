@@ -1,7 +1,59 @@
 {
   "title": "Devices",
+  "nameError": "Please enter a name of at most 60 characters.",
   "empty": {
     "heading": "No devices yet",
-    "description": "All devices of the household that can be controlled or read will appear here later."
+    "description": "Once a discovered device is added, its values show up here."
+  },
+  "list": {
+    "title": "Devices in the household"
+  },
+  "discovered": {
+    "title": "Newly discovered",
+    "description": "A gateway reported these devices. Give them a name and add them.",
+    "name": "Name",
+    "add": "Add"
+  },
+  "card": {
+    "lastSeen": "Last reported {{ time }}",
+    "neverSeen": "Nothing reported yet",
+    "offline": "Offline – the last known values are shown.",
+    "lowBattery": "The battery is almost empty. Please replace it soon.",
+    "details": "Details"
+  },
+  "reading": {
+    "none": "no values yet",
+    "yes": "yes",
+    "no": "no",
+    "dry": "dry",
+    "notDry": "not dry",
+    "on": "on",
+    "off": "off"
+  },
+  "capability": {
+    "soil_moisture": "Soil moisture",
+    "temperature": "Temperature",
+    "humidity": "Humidity",
+    "battery": "Battery",
+    "dry": "Dry",
+    "linkquality": "Signal quality",
+    "state": "State",
+    "brightness": "Brightness",
+    "color_temp": "Color temperature"
+  },
+  "detail": {
+    "back": "All devices",
+    "readings": "Readings",
+    "noReadings": "This device reports no readings.",
+    "hardware": "Hardware",
+    "notFound": {
+      "heading": "Device not found",
+      "description": "This device does not exist (any more) in this household."
+    },
+    "rename": {
+      "title": "Rename",
+      "name": "Name",
+      "submit": "Save"
+    }
   }
 }
