@@ -34,6 +34,7 @@ class RequiredHost {
   template: `<ui-text-field
     label="Zertifikat"
     multiline
+    [verbatim]="verbatim()"
     [rows]="rows()"
     hint="PEM einfügen"
     [error]="error()"
@@ -44,7 +45,16 @@ class RequiredHost {
 class MultilineHost {
   readonly text = signal('');
   readonly rows = signal(6);
+  readonly verbatim = signal(false);
   readonly error = signal<string | null>(null);
+}
+
+@Component({
+  imports: [UiTextField],
+  template: `<ui-text-field label="Kennung" verbatim [(value)]="text" />`,
+})
+class VerbatimHost {
+  readonly text = signal('');
 }
 
 function render() {
@@ -125,6 +135,15 @@ describe('UiTextField', () => {
     expect(input.getAttribute('aria-invalid')).not.toBe('true');
   });
 
+  it('turns spell check, capitalization and correction off for a verbatim single-line input', () => {
+    const fixture = TestBed.createComponent(VerbatimHost);
+    fixture.detectChanges();
+    const input = fixture.nativeElement.querySelector('input') as HTMLInputElement;
+    expect(input.getAttribute('spellcheck')).toBe('false');
+    expect(input.getAttribute('autocapitalize')).toBe('off');
+    expect(input.getAttribute('autocorrect')).toBe('off');
+  });
+
   describe('multiline', () => {
     function renderMultiline() {
       const fixture = TestBed.createComponent(MultilineHost);
@@ -162,6 +181,22 @@ describe('UiTextField', () => {
       host.error.set(null);
       fixture.detectChanges();
       expect(area.getAttribute('aria-invalid')).not.toBe('true');
+    });
+
+    it('leaves spell check, capitalization and correction alone by default', () => {
+      const { area } = renderMultiline();
+      expect(area.hasAttribute('spellcheck')).toBe(false);
+      expect(area.hasAttribute('autocapitalize')).toBe(false);
+      expect(area.hasAttribute('autocorrect')).toBe(false);
+    });
+
+    it('turns spell check, capitalization and correction off for verbatim text', () => {
+      const { fixture, area, host } = renderMultiline();
+      host.verbatim.set(true);
+      fixture.detectChanges();
+      expect(area.getAttribute('spellcheck')).toBe('false');
+      expect(area.getAttribute('autocapitalize')).toBe('off');
+      expect(area.getAttribute('autocorrect')).toBe('off');
     });
 
     it('stays a single-line input by default', () => {

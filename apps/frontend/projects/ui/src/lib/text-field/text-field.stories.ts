@@ -17,6 +17,7 @@ const meta: Meta<UiTextField> = {
       [inputmode]="inputmode"
       [autocomplete]="autocomplete"
       [multiline]="multiline"
+      [verbatim]="verbatim"
       [rows]="rows"
       [(value)]="value"
     />`,
@@ -73,12 +74,15 @@ export const Mehrzeilig: StoryObj<UiTextField> = {
     label: 'Zertifikat',
     hint: 'Den kompletten Text einfügen, auch die BEGIN- und END-Zeilen.',
     multiline: true,
+    verbatim: true,
     rows: 5,
   },
   play: async ({ canvas }) => {
     const area = canvas.getByRole('textbox', { name: 'Zertifikat' });
     await expect(area.tagName).toBe('TEXTAREA');
     await expect(area).toHaveAttribute('rows', '5');
+    await expect(area).toHaveAttribute('spellcheck', 'false');
+    await expect(area).toHaveAttribute('autocapitalize', 'off');
     await userEvent.type(area, 'erste Zeile{enter}zweite Zeile');
     await expect(area).toHaveValue('erste Zeile\nzweite Zeile');
   },

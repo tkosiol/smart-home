@@ -26,6 +26,11 @@ export class UiTextField {
   readonly name = input<string>();
   /** A textarea instead of a single-line input, for text with line breaks (e.g. a pasted PEM). */
   readonly multiline = input(false, { transform: booleanAttribute });
+  /**
+   * Text that is not prose (a certificate, an ID): no spell check (a browser may send the text to a
+   * cloud service), no automatic capitalization or correction.
+   */
+  readonly verbatim = input(false, { transform: booleanAttribute });
   /** Visible lines of a multiline field. */
   readonly rows = input(4);
 
