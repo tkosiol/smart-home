@@ -20,6 +20,13 @@ export interface Expose {
  * not cost the device its other capabilities. Only an entry that is no object (or has no `type`)
  * is rejected.
  */
+/** A feature that is malformed drops itself, not the features next to it. */
+const keepWellFormed = (list: unknown[] | undefined): Expose[] | undefined =>
+  list?.flatMap((entry) => {
+    const parsed = exposeSchema.safeParse(entry);
+    return parsed.success ? [parsed.data] : [];
+  });
+
 const exposeSchema: z.ZodType<Expose> = z.lazy(() =>
   z.looseObject({
     type: z.string(),
@@ -30,7 +37,7 @@ const exposeSchema: z.ZodType<Expose> = z.lazy(() =>
     value_max: z.number().optional().catch(undefined),
     value_step: z.number().optional().catch(undefined),
     values: z.array(z.string()).optional().catch(undefined),
-    features: z.array(exposeSchema).optional().catch(undefined),
+    features: z.array(z.unknown()).optional().transform(keepWellFormed).catch(undefined),
   }),
 );
 

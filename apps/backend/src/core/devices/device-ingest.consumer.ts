@@ -214,14 +214,14 @@ export class DeviceIngestConsumer implements OnModuleInit, OnModuleDestroy {
 
   /** Subscribes to the gateway's prefix, with its names loaded first. */
   private async follow(gatewayId: string, topicPrefix: string): Promise<void> {
-    if (this.subscriptions.has(gatewayId) || this.revoked.has(gatewayId)) return;
+    if (this.subscriptions.has(gatewayId) || this.revoked.has(gatewayId) || this.destroyed) return;
     const names = await this.hardware.listNames(gatewayId);
-    if (this.subscriptions.has(gatewayId) || this.revoked.has(gatewayId)) return;
+    if (this.subscriptions.has(gatewayId) || this.revoked.has(gatewayId) || this.destroyed) return;
     this.names.replace(gatewayId, names);
     this.subscriptions.set(
       gatewayId,
-      this.mqtt.subscribe(`${topicPrefix}/#`, (topic, payload) => {
-        this.accept(gatewayId, topicPrefix, topic, payload);
+      this.mqtt.subscribe(`${topicPrefix}/#`, (topic, payload, retained) => {
+        this.accept(gatewayId, topicPrefix, topic, payload, retained);
       }),
     );
   }
@@ -230,9 +230,19 @@ export class DeviceIngestConsumer implements OnModuleInit, OnModuleDestroy {
     this.subscriptions.get(gatewayId)?.();
     this.subscriptions.delete(gatewayId);
     this.names.forget(gatewayId);
+    const keyPrefix = this.pendingKey(gatewayId, '');
+    for (const key of this.pendingAvailability.keys()) {
+      if (key.startsWith(keyPrefix)) this.pendingAvailability.delete(key);
+    }
   }
 
-  private accept(gatewayId: string, topicPrefix: string, topic: string, payload: Buffer): void {
+  private accept(
+    gatewayId: string,
+    topicPrefix: string,
+    topic: string,
+    payload: Buffer,
+    retained: boolean,
+  ): void {
     const rest = topic.slice(topicPrefix.length + 1);
     if (!topic.startsWith(`${topicPrefix}/`) || rest === '') return;
     const route = routeOf(rest);
@@ -253,7 +263,7 @@ export class DeviceIngestConsumer implements OnModuleInit, OnModuleDestroy {
     }
     this.queued += 1;
     this.workTail = this.workTail
-      .then(() => this.process(gatewayId, route, rest, payload))
+      .then(() => this.process(gatewayId, route, rest, payload, retained))
       .catch((error: unknown) => {
         // Neither the reason nor the message is logged: both could quote the payload.
         if (this.failures.allow('failure', this.clock())) {
@@ -270,13 +280,16 @@ export class DeviceIngestConsumer implements OnModuleInit, OnModuleDestroy {
     route: Route,
     rest: string,
     payload: Buffer,
+    retained: boolean,
   ): Promise<void> {
     // The gateway may have been revoked while the message waited.
     if (!this.subscriptions.has(gatewayId)) return;
     if (route === 'devices') return this.onDevices(gatewayId, payload);
     if (route === 'event') return this.onEvent(gatewayId, payload);
     const hardwareId = this.names.lookup(gatewayId, rest);
-    if (hardwareId !== undefined) return this.onMessage(gatewayId, hardwareId, payload);
+    if (hardwareId !== undefined) {
+      return this.onMessage(gatewayId, hardwareId, payload, retained);
+    }
     if (rest.endsWith(AVAILABILITY_SUFFIX)) {
       return this.onAvailability(gatewayId, rest.slice(0, -AVAILABILITY_SUFFIX.length), payload);
     }
@@ -320,7 +333,10 @@ export class DeviceIngestConsumer implements OnModuleInit, OnModuleDestroy {
           joined.data.friendly_name,
           now,
         );
-        this.names.set(gatewayId, joined.data.friendly_name, id);
+        // The gateway may have been revoked while the row was written.
+        if (this.subscriptions.has(gatewayId)) {
+          this.names.set(gatewayId, joined.data.friendly_name, id);
+        }
         return;
       }
       case 'device_interview': {
@@ -345,7 +361,9 @@ export class DeviceIngestConsumer implements OnModuleInit, OnModuleDestroy {
         if (!renamed.success) return this.discard('invalid', gatewayId, type);
         const { from, to } = renamed.data;
         const id = await this.hardware.rename(gatewayId, from, to);
-        if (id !== undefined) this.names.rename(gatewayId, from, to, id);
+        if (id !== undefined && this.subscriptions.has(gatewayId)) {
+          this.names.rename(gatewayId, from, to, id);
+        }
         return;
       }
       default:
@@ -368,10 +386,15 @@ export class DeviceIngestConsumer implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private async onMessage(gatewayId: string, hardwareId: string, payload: Buffer): Promise<void> {
+  private async onMessage(
+    gatewayId: string,
+    hardwareId: string,
+    payload: Buffer,
+    retained: boolean,
+  ): Promise<void> {
     const message = parseJson(payload);
     if (!isObject(message)) return this.discard('invalid', gatewayId, 'device message');
-    await this.handler.handle(gatewayId, hardwareId, message, this.clock());
+    await this.handler.handle(gatewayId, hardwareId, message, this.clock(), retained);
   }
 
   private pendingKey(gatewayId: string, name: string): string {

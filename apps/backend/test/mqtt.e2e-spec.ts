@@ -104,6 +104,32 @@ describe('MqttConnection', () => {
       }
     });
 
+    it('calls two handlers of the same filter once each', async () => {
+      const reader = connect(env.MQTT_PASSWORD);
+      const source = writer();
+      try {
+        await reader.waitUntilConnected(5000);
+        const base = topic();
+        const first: string[] = [];
+        const second: string[] = [];
+        reader.subscribe(`${base}/#`, (_topic, payload) => first.push(payload.toString()));
+        reader.subscribe(`${base}/#`, (_topic, payload) => second.push(payload.toString()));
+        await vi.waitFor(async () => {
+          await source.publishAsync(`${base}/probe`, 'probe', { qos: 1 });
+          expect(second).toContain('probe');
+        });
+        await source.publishAsync(`${base}/a`, 'one', { qos: 1 });
+        await source.publishAsync(`${base}/b`, 'sentinel', { qos: 1 });
+        await vi.waitFor(() => expect(second).toContain('sentinel'));
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        expect(first.filter((payload) => payload === 'one')).toHaveLength(1);
+        expect(second.filter((payload) => payload === 'one')).toHaveLength(1);
+      } finally {
+        await reader.close();
+        await source.endAsync(true);
+      }
+    });
+
     it('keeps working when a handler throws, without leaking the reason', async () => {
       const errors: Error[] = [];
       const reader = connect(env.MQTT_PASSWORD, errors);

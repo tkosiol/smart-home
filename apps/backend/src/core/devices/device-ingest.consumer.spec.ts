@@ -8,6 +8,7 @@ import {
   type GatewaysService,
 } from '../gateways/index.js';
 import type { MqttConnection, MqttMessageHandler } from '../../platform/mqtt/index.js';
+import type { NameMap } from './name-map.js';
 import type { DeviceMessageHandler } from './device-message-handler.js';
 import { DeviceIngestConsumer } from './device-ingest.consumer.js';
 import type { HardwareRepository, Z2mDevice } from './hardware.repository.js';
@@ -251,11 +252,24 @@ describe('DeviceIngestConsumer', () => {
       expect(mqtt.filters).toEqual([`${prefix(GW)}/#`]);
     });
 
+    it('does not subscribe when the consumer was destroyed while the names were loading', async () => {
+      consumer.onModuleInit();
+      await consumer.idle();
+      let release: (names: { id: string; friendlyName: string }[]) => void = () => undefined;
+      listNames.mockReturnValueOnce(new Promise((resolve) => (release = resolve)));
+      events.emit(GATEWAY_REGISTERED, { gatewayId: OTHER, topicPrefix: prefix(OTHER) });
+      await vi.waitFor(() => expect(listNames).toHaveBeenCalledTimes(2));
+      consumer.onModuleDestroy();
+      release([]);
+      await consumer.idle();
+      expect(mqtt.filters).toEqual([]);
+    });
+
     it('takes the names from the database on start', async () => {
       stored.set(GW, [{ id: 'h-lamp', friendlyName: 'Lampe' }]);
       await start();
       await send(`${prefix(GW)}/Lampe`, { state: 'ON' });
-      expect(handle).toHaveBeenCalledWith(GW, 'h-lamp', { state: 'ON' }, T0);
+      expect(handle).toHaveBeenCalledWith(GW, 'h-lamp', { state: 'ON' }, T0, false);
     });
   });
 
@@ -319,7 +333,23 @@ describe('DeviceIngestConsumer', () => {
         `${GW}:0x00000000000000a1`,
         { soil_moisture: 41 },
         T0,
+        false,
       );
+    });
+
+    it('follows a rename that a new retained device list brings', async () => {
+      await start();
+      await send(`${prefix(GW)}/bridge/devices`, JSON.parse(fixture));
+      const renamed = fixtureDevices.map((device) =>
+        device.friendly_name === 'Lampe' ? { ...device, friendly_name: 'Stehlampe' } : device,
+      );
+      await send(`${prefix(GW)}/bridge/devices`, renamed, true);
+      await send(`${prefix(GW)}/Lampe`, { state: 'OFF' });
+      await send(`${prefix(GW)}/Stehlampe`, { state: 'ON' });
+      expect(handle.mock.calls.map((call) => [call[1], call[2]])).toEqual([
+        [`${GW}:0x00000000000000a7`, { state: 'ON' }],
+      ]);
+      expect(consumer.discarded.unknownName).toBe(1);
     });
 
     it('drops names that the bridge no longer lists', async () => {
@@ -380,7 +410,14 @@ describe('DeviceIngestConsumer', () => {
         `${GW}:0x00000000000000a2`,
         { soil_moisture: 12, battery: 90 },
         now,
+        false,
       );
+    });
+
+    it('passes the retain flag on, so that a replay can be told from a fresh report', async () => {
+      await send(`${prefix(GW)}/Pflanze 2`, { battery: 90 }, true);
+      await send(`${prefix(GW)}/Pflanze 2`, { battery: 89 }, false);
+      expect(handle.mock.calls.map((call) => call[4])).toEqual([true, false]);
     });
 
     it('finds hardware whose name contains slashes', async () => {
@@ -447,7 +484,13 @@ describe('DeviceIngestConsumer', () => {
       });
       expect(rename).toHaveBeenCalledWith(GW, 'Lampe', 'Stehlampe');
       await send(`${prefix(GW)}/Stehlampe`, { state: 'ON' });
-      expect(handle).toHaveBeenCalledWith(GW, `${GW}:0x00000000000000a7`, { state: 'ON' }, T0);
+      expect(handle).toHaveBeenCalledWith(
+        GW,
+        `${GW}:0x00000000000000a7`,
+        { state: 'ON' },
+        T0,
+        false,
+      );
       await send(`${prefix(GW)}/Lampe`, { state: 'OFF' });
       expect(handle).toHaveBeenCalledTimes(1);
       expect(consumer.discarded.unknownName).toBe(1);
@@ -460,7 +503,7 @@ describe('DeviceIngestConsumer', () => {
       });
       expect(recordJoined).toHaveBeenCalledWith(GW, '0x00000000000000c1', '0x00000000000000c1', T0);
       await send(`${prefix(GW)}/0x00000000000000c1`, { battery: 80 });
-      expect(handle).toHaveBeenCalledWith(GW, 'h-joined', { battery: 80 }, T0);
+      expect(handle).toHaveBeenCalledWith(GW, 'h-joined', { battery: 80 }, T0, false);
     });
 
     it.each([
@@ -485,6 +528,43 @@ describe('DeviceIngestConsumer', () => {
       await send(`${prefix(GW)}/Lampe`, { state: 'ON' });
       expect(handle).not.toHaveBeenCalled();
     });
+
+    it.each([
+      [
+        'joined',
+        {
+          type: 'device_joined',
+          data: { friendly_name: 'new', ieee_address: '0x00000000000000c1' },
+        },
+        recordJoined,
+        'h-new',
+      ],
+      [
+        'renamed',
+        { type: 'device_renamed', data: { from: 'Lampe', to: 'Stehlampe' } },
+        rename,
+        `${GW}:0x00000000000000a7`,
+      ],
+    ])(
+      'does not bring back the names of a gateway that was revoked while a %s event was stored',
+      async (_label, event, repository, result) => {
+        let release: (id: string) => void = () => undefined;
+        (repository as ReturnType<typeof vi.fn>).mockReturnValueOnce(
+          new Promise<string>((resolve) => (release = resolve)),
+        );
+        mqtt.publish(`${prefix(GW)}/bridge/event`, JSON.stringify(event));
+        await vi.waitFor(() => expect(repository).toHaveBeenCalled());
+        events.emit(GATEWAY_REVOKED, { gatewayId: GW });
+        release(result);
+        await consumer.idle();
+        const names = (consumer as unknown as { names: NameMap }).names;
+        expect(['new', 'Stehlampe', 'Lampe'].map((name) => names.lookup(GW, name))).toEqual([
+          undefined,
+          undefined,
+          undefined,
+        ]);
+      },
+    );
 
     it('ignores other events and events that are malformed', async () => {
       await send(`${prefix(GW)}/bridge/event`, { type: 'device_announce', data: {} });
@@ -516,6 +596,15 @@ describe('DeviceIngestConsumer', () => {
       await send(`${prefix(GW)}/Pflanze 3/availability`, '{"state":"sleeping"}');
       await send(`${prefix(GW)}/Pflanze 3/availability`, 'maybe');
       expect(setAvailability).not.toHaveBeenCalled();
+    });
+
+    it('forgets the availability heard for a gateway that is revoked', async () => {
+      await send(`${prefix(GW)}/ghost/availability`, 'online');
+      const pending = (consumer as unknown as { pendingAvailability: Map<string, string> })
+        .pendingAvailability;
+      expect(pending.size).toBe(1);
+      events.emit(GATEWAY_REVOKED, { gatewayId: GW });
+      expect(pending.size).toBe(0);
     });
 
     it('applies an availability that arrived before the device list', async () => {

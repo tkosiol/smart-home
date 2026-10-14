@@ -158,6 +158,24 @@ describe('exposesSchema', () => {
     });
   });
 
+  it('drops a malformed feature and keeps the ones next to it', () => {
+    const parsed = exposesSchema.parse([
+      {
+        type: 'light',
+        features: [
+          { type: 'binary', property: 'state', access: 7 },
+          'broken',
+          { property: 'no-type' },
+          { type: 'numeric', property: 'brightness', access: 7 },
+        ],
+      },
+    ]);
+    expect(capabilitiesFromExposes(parsed).map((capability) => capability.key)).toEqual([
+      'state',
+      'brightness',
+    ]);
+  });
+
   it('rejects entries that are no objects', () => {
     expect(exposesSchema.safeParse(['x']).success).toBe(false);
   });
