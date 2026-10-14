@@ -75,13 +75,13 @@ test.describe('on a desktop', () => {
 
     const list = page.getByRole('list');
     await expect(list.getByRole('link', { name: /Einstellungen/ })).toBeVisible();
-    await expect(list.getByText('Kommt bald')).toHaveCount(3);
-    for (const name of ['Module', 'Benachrichtigungen', 'Gateways']) {
+    await expect(list.getByText('Kommt bald')).toHaveCount(2);
+    for (const name of ['Module', 'Benachrichtigungen']) {
       await expect(list.getByText(name, { exact: true })).toBeVisible();
       await expect(list.getByRole('link', { name: new RegExp(name) })).toHaveCount(0);
     }
     // The account owns its household, so the household entries are real links.
-    for (const name of ['Haushalt', 'Mitglieder']) {
+    for (const name of ['Haushalt', 'Mitglieder', 'Gateways']) {
       await expect(list.getByRole('link', { name: new RegExp(name) })).toBeVisible();
     }
   });

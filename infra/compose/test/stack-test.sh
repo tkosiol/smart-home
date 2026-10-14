@@ -57,8 +57,10 @@ pki init-ca
 pki issue-server broker
 pki issue-gateway "$GATEWAY_ID"
 pki issue-gateway "$SIM_ID"
-# For the end-to-end tests (registering the simulator's gateway): the ID and the path of the PEM certificate, which
-# lives in the throwaway PKI directory until this script ends. The private key stays out of reach of the tests.
+# For the end-to-end tests (registering both gateways in the app): the IDs and the paths of the PEM certificates,
+# which live in the throwaway PKI directory until this script ends. The private keys stay out of reach of the tests.
+export E2E_PI_GATEWAY_ID="$GATEWAY_ID"
+export E2E_PI_CERTIFICATE_FILE="$WORK/pki/gateways/$GATEWAY_ID.crt"
 export E2E_SIMULATOR_GATEWAY_ID="$SIM_ID"
 export E2E_SIMULATOR_CERTIFICATE_FILE="$WORK/pki/gateways/$SIM_ID.crt"
 
@@ -213,10 +215,6 @@ if ! grep -q '"state":"ON"' "$WORK/lamp.out" || ! grep -q '"brightness":77' "$WO
   exit 1
 fi
 
-# Stopping the pi cleanly makes the bridge publish the retained "0".
-compose stop pi
-expect_message "gw/$GATEWAY_ID/bridge/connection" "1 0"
-
 compose exec -T backup backup.sh
 compose exec -T backup restore-test.sh
 compose exec -T backup restic snapshots --tag config --json | grep -q '"paths":\["/stack-config"\]' || {
@@ -224,6 +222,16 @@ compose exec -T backup restic snapshots --tag config --json | grep -q '"paths":\
   exit 1
 }
 
+# The end-to-end tests register the pi's and the simulator's gateway in the app and expect both to be online,
+# so they run before the two are stopped.
 E2E_BASE_URL=http://127.0.0.1:18080 E2E_MAILPIT_URL=http://127.0.0.1:18025 pnpm --filter @smart/e2e e2e
+
+# Stopping the pi cleanly makes the bridge publish the retained "0"; the simulator does the same for its own
+# gateway and also says that Zigbee2MQTT is gone.
+compose stop pi
+expect_message "gw/$GATEWAY_ID/bridge/connection" "1 0"
+compose stop simulator
+expect_message "gw/$SIM_ID/bridge/connection" "1 0"
+expect_message "gw/$SIM_ID/z2m/bridge/state" '1 {"state":"offline"}'
 
 echo "OK: stack test passed"
