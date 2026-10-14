@@ -3,7 +3,7 @@
 # Usage: SMART_VPS=<user@host> infra/deploy/provision.sh <staging|production> [--force]
 # --force rewrites the file but keeps the generated DB and broker passwords (the data volumes depend on them),
 # the existing SMART_* runtime settings, MQTT_TLS (broker-certs.sh sets it to on) and, when a prompt is answered with
-# Enter, the stored mail settings.
+# Enter, the stored mail settings and (production) backup settings. Without a stored value a prompt stays required.
 set -euo pipefail
 
 environment="${1:-}"
@@ -57,6 +57,27 @@ prompt_or_keep() {
   printf '%s' "$value"
 }
 
+# Reads a line into the variable named $1; Enter keeps the stored value of the variable named $2, and without one the
+# run stops. $typed tells whether the value was typed (yes) or kept (no), so that checks apply to typed values only.
+# With "secret" as $4 the input is hidden; the value is never printed.
+typed=no
+ask_or_keep() {
+  local var=$1 name=$2 text=$3 mode=${4:-} value
+  if [ "$mode" = secret ]; then
+    read -r -s -p "$text" value
+    echo >&2
+  else
+    read -r -p "$text" value
+  fi
+  typed=yes
+  if [ -z "$value" ]; then
+    typed=no
+    value=$(existing_value "$name")
+  fi
+  if [ -z "$value" ]; then echo "$name is required – nothing was written" >&2; exit 1; fi
+  printf -v "$var" '%s' "$value"
+}
+
 # Mail (Resend over SMTP). The key is read hidden and ends up only in the file on the VPS.
 read -r -s -p "Resend API key (starts with re_; Enter keeps the stored one): " resend_key; echo
 if [ -z "$resend_key" ]; then
@@ -105,22 +126,24 @@ if [ "$environment" = production ]; then
   lines+=("MQTT_PUBLIC_PORT=${existing_port:-8883}")
   backup_uid=$(ssh -n "$host" "id -u")
   backup_gid=$(ssh -n "$host" "id -g")
-  read -r -p "B2 S3 endpoint (e.g. s3.eu-central-003.backblazeb2.com): " b2_endpoint
-  read -r -p "B2 bucket for VPS backups: " b2_bucket
-  read -r -p "B2 keyID of the key smart-vps-restic (25 characters, starts with 00): " b2_key_id
-  read -r -s -p "B2 application key (secret, starts with K): " b2_app_key; echo
-  # Guard against swapping the two: never echo the rejected value, it may be the secret.
-  if ! [[ "$b2_key_id" =~ ^00[0-9a-f]{23}$ ]]; then
+  b2_endpoint='' b2_bucket='' b2_key_id='' b2_app_key='' restic_password='' hc_backup='' hc_restore='' # set by ask_or_keep
+  # Backup settings: like the mail prompts, Enter keeps the stored value; without one the run stops.
+  ask_or_keep b2_endpoint B2_ENDPOINT "B2 S3 endpoint, e.g. s3.eu-central-003.backblazeb2.com (Enter keeps the stored one): "
+  ask_or_keep b2_bucket B2_BUCKET "B2 bucket for VPS backups (Enter keeps the stored one): "
+  ask_or_keep b2_key_id B2_KEY_ID "B2 keyID of the key smart-vps-restic, 25 characters starting with 00 (Enter keeps the stored one): "
+  # Guard against swapping the two: never echo the rejected value, it may be the secret. A stored value was checked when typed.
+  if [ "$typed" = yes ] && ! [[ "$b2_key_id" =~ ^00[0-9a-f]{23}$ ]]; then
     echo "that is not a B2 keyID (expected 25 hex characters starting with 00) – nothing was written" >&2
     exit 1
   fi
-  if ! [[ "$b2_app_key" =~ ^K[0-9A-Za-z+/]{30}$ ]]; then
+  ask_or_keep b2_app_key B2_APP_KEY "B2 application key, secret, starts with K (Enter keeps the stored one): " secret
+  if [ "$typed" = yes ] && ! [[ "$b2_app_key" =~ ^K[0-9A-Za-z+/]{30}$ ]]; then
     echo "that is not a B2 application key (expected 31 characters starting with K) – nothing was written" >&2
     exit 1
   fi
-  read -r -s -p "restic repository password (from your password manager): " restic_password; echo
-  read -r -p "healthchecks.io ping URL for the nightly backup: " hc_backup
-  read -r -p "healthchecks.io ping URL for the restore test: " hc_restore
+  ask_or_keep restic_password RESTIC_PASSWORD "restic repository password, from your password manager (Enter keeps the stored one): " secret
+  ask_or_keep hc_backup HC_BACKUP_URL "healthchecks.io ping URL for the nightly backup (Enter keeps the stored one): "
+  ask_or_keep hc_restore HC_RESTORE_URL "healthchecks.io ping URL for the restore test (Enter keeps the stored one): "
   lines+=(
     "COMPOSE_PROFILES=backup"
     "BACKUP_UID=$backup_uid"

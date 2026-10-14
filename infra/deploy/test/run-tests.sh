@@ -188,6 +188,32 @@ check "provision --force keeps an existing proxy hop count" 'grep -qx "TRUSTED_P
 check "provision --force replaces mail settings that are answered" 'provision_staging --force && grep -qx "SMTP_URL=smtps://resend:$RESEND_KEY@smtp.resend.com:465" "$STUB_REMOTE_FILE" && grep -qx "MAIL_ALLOWLIST=till@example.org,Friend@Example.org" "$STUB_REMOTE_FILE"'
 check "provision --force never prints the stored key" '! printf "\n\n\n" | bash "$DEPLOY_DIR/provision.sh" staging --force 2>&1 | grep -q "re_old_key"'; teardown
 
+# Backup settings of production: --force keeps the stored ones on Enter, like the mail settings.
+STORED_B2_KEY_ID=0099999999999ab0000000009
+STORED_B2_APP_KEY=Kstoredsecretvalue0123456789abcd
+STORED_PROD_ENV=$(printf 'STACK_NAME=smart-prod\nDB_PASSWORD=keep-db\nSMTP_URL=smtps://resend:re_old_key@smtp.resend.com:465\nMAIL_FROM=Old <old@example.org>\nB2_ENDPOINT=stored-endpoint\nB2_BUCKET=stored-bucket\nB2_KEY_ID=%s\nB2_APP_KEY=%s\nRESTIC_PASSWORD=stored-restic-pw\nHC_BACKUP_URL=https://hc/stored-backup\nHC_RESTORE_URL=https://hc/stored-restore' "$STORED_B2_KEY_ID" "$STORED_B2_APP_KEY")
+empty_lines() { local i; for ((i = 0; i < $1; i++)); do printf '\n'; done; }
+# Two mail prompts and seven backup prompts, all answered with Enter.
+force_production_empty() { empty_lines 9 | bash "$DEPLOY_DIR/provision.sh" production --force; }
+setup; export SMART_VPS=deploy@vps STUB_ENV_EXISTS=1 STUB_EXISTING_ENV="$STORED_PROD_ENV"
+check "provision --force keeps every stored backup setting when the answers are empty" 'force_production_empty > /dev/null 2>&1 && grep -qx "B2_ENDPOINT=stored-endpoint" "$STUB_REMOTE_FILE" && grep -qx "B2_BUCKET=stored-bucket" "$STUB_REMOTE_FILE" && grep -qx "B2_KEY_ID=$STORED_B2_KEY_ID" "$STUB_REMOTE_FILE" && grep -qx "B2_APP_KEY=$STORED_B2_APP_KEY" "$STUB_REMOTE_FILE" && grep -qx "RESTIC_PASSWORD=stored-restic-pw" "$STUB_REMOTE_FILE" && grep -qx "HC_BACKUP_URL=https://hc/stored-backup" "$STUB_REMOTE_FILE" && grep -qx "HC_RESTORE_URL=https://hc/stored-restore" "$STUB_REMOTE_FILE" && grep -qx "COMPOSE_PROFILES=backup" "$STUB_REMOTE_FILE"'
+check "provision --force writes each backup setting once" '[ "$(grep -cE "^(B2_|RESTIC_PASSWORD=|HC_)" "$STUB_REMOTE_FILE")" = 7 ]'
+check "provision --force never prints stored backup secrets" '! force_production_empty 2>&1 | grep -qE "$STORED_B2_APP_KEY|stored-restic-pw|re_old_key"'
+check "provision --force replaces backup settings that are answered" 'printf "\n\n" | cat - <(b2_answers) | bash "$DEPLOY_DIR/provision.sh" production --force > /dev/null 2>&1 && grep -qx "B2_ENDPOINT=b2-endpoint" "$STUB_REMOTE_FILE" && grep -qx "B2_BUCKET=b2-bucket" "$STUB_REMOTE_FILE" && grep -qx "B2_KEY_ID=$KEY_ID" "$STUB_REMOTE_FILE" && grep -qx "B2_APP_KEY=$APP_KEY" "$STUB_REMOTE_FILE" && grep -qx "RESTIC_PASSWORD=restic-pw" "$STUB_REMOTE_FILE" && grep -qx "HC_BACKUP_URL=https://hc/backup" "$STUB_REMOTE_FILE" && grep -qx "HC_RESTORE_URL=https://hc/restore" "$STUB_REMOTE_FILE"'
+check "provision --force replaces only the backup settings that are answered" 'printf "\n\n\nnew-bucket\n\n\n\n\n\n" | bash "$DEPLOY_DIR/provision.sh" production --force > /dev/null 2>&1 && grep -qx "B2_ENDPOINT=stored-endpoint" "$STUB_REMOTE_FILE" && grep -qx "B2_BUCKET=new-bucket" "$STUB_REMOTE_FILE" && grep -qx "B2_APP_KEY=$STORED_B2_APP_KEY" "$STUB_REMOTE_FILE"'
+check "provision --force still checks a newly typed B2 keyID and never echoes it" '[ "$(printf "\n\n\n\n%s\n\n\n\n\n" "$APP_KEY" | bash "$DEPLOY_DIR/provision.sh" production --force > /dev/null 2>&1; echo $?)" != 0 ] && ! printf "\n\n\n\n%s\n\n\n\n\n" "$APP_KEY" | bash "$DEPLOY_DIR/provision.sh" production --force 2>&1 | grep -q "$APP_KEY"'
+check "provision --force still checks a newly typed B2 application key" '! printf "\n\n\n\n\n%s\n\n\n\n" "$KEY_ID" | bash "$DEPLOY_DIR/provision.sh" production --force > /dev/null 2>&1'; teardown
+# Without a stored value the backup prompts stay required.
+setup; export SMART_VPS=deploy@vps
+check "provision refuses empty backup answers on a first run" '[ "$(empty_lines 7 | { mail_answers; cat; } | bash "$DEPLOY_DIR/provision.sh" production > /dev/null 2>&1; echo $?)" != 0 ] && [ ! -e "$STUB_REMOTE_FILE" ]'
+for skipped in 1 2 3 4 5 6 7; do
+  check "provision refuses an empty backup answer number $skipped on a first run" '[ "$(b2_answers | sed "${skipped}s/.*//" | { mail_answers; cat; } | bash "$DEPLOY_DIR/provision.sh" production > /dev/null 2>&1; echo $?)" != 0 ] && [ ! -e "$STUB_REMOTE_FILE" ]'
+done
+teardown
+setup; STUB_EXISTING_ENV=$(printf 'STACK_NAME=smart-prod\nSMTP_URL=smtps://resend:re_old_key@smtp.resend.com:465\nMAIL_FROM=Old <old@example.org>')
+export SMART_VPS=deploy@vps STUB_ENV_EXISTS=1 STUB_EXISTING_ENV
+check "provision --force refuses empty backup answers when the stored file has none" '[ "$(force_production_empty > /dev/null 2>&1; echo $?)" != 0 ] && [ ! -e "$STUB_REMOTE_FILE" ]'; teardown
+
 # --- admin.sh ---
 run_admin() { (bash "$DEPLOY_DIR/admin.sh" "$@" < /dev/null > "$WORK/out" 2>&1); echo $?; }
 setup; export SMART_VPS=deploy@vps
