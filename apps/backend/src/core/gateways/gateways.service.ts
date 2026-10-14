@@ -1,0 +1,103 @@
+import { X509Certificate } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+import { HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
+import type { Gateway, GatewayRegister } from '@smart/contracts';
+import { ENV, type Env } from '../../platform/config/index.js';
+import { describeError } from '../../platform/errors/index.js';
+import { ApiError } from '../../platform/http/index.js';
+import { CLOCK, type Clock } from '../identity/index.js';
+import { readGatewayCertificate } from './gateway-certificate.js';
+import { GATEWAY_STATUS_MEMORY, type GatewayStatusMemory } from './gateway-status-memory.js';
+import { gatewayWarnings } from './gateway-warnings.js';
+import { GatewaysRepository } from './gateways.repository.js';
+import type { GatewayRow } from './gateways.schema.js';
+
+const iso = (date: Date | null): string | null => (date ? date.toISOString() : null);
+
+@Injectable()
+export class GatewaysService {
+  private readonly logger = new Logger(GatewaysService.name);
+
+  constructor(
+    private readonly gateways: GatewaysRepository,
+    @Inject(ENV) private readonly env: Env,
+    @Inject(CLOCK) private readonly clock: Clock,
+    @Inject(GATEWAY_STATUS_MEMORY) private readonly memory: GatewayStatusMemory,
+  ) {}
+
+  async list(householdId: string): Promise<Gateway[]> {
+    const rows = await this.gateways.listByHousehold(householdId);
+    const now = this.clock();
+    const crlNextUpdate = rows.length > 0 ? await this.crlNextUpdate() : undefined;
+    return rows.map((row) => this.toGateway(row, crlNextUpdate, now));
+  }
+
+  /** Registers the gateway whose public certificate was pasted; the CA decides whether it counts. */
+  async register(householdId: string, input: GatewayRegister): Promise<Gateway> {
+    const ca = await this.loadCa();
+    const now = this.clock();
+    const certificate = readGatewayCertificate(input.certificate, ca, now);
+    const recalled = this.memory.recall(certificate.id);
+    const heard = recalled?.bridge !== undefined || recalled?.z2m !== undefined;
+    const row = await this.gateways.insert({
+      id: certificate.id,
+      householdId,
+      name: input.name,
+      topicPrefix: `gw/${certificate.id}/z2m`,
+      certFingerprint: certificate.fingerprint,
+      certExpiresAt: certificate.expiresAt,
+      createdAt: now,
+      ...(recalled?.bridge && { bridgeStatus: recalled.bridge }),
+      ...(recalled?.z2m && { z2mStatus: recalled.z2m }),
+      ...(heard && { statusChangedAt: recalled.at ?? now }),
+    });
+    // The same message whether the ID is taken in this or another household.
+    if (!row) throw new ApiError(HttpStatus.CONFLICT, 'gateway.exists');
+    return this.toGateway(row, await this.crlNextUpdate(), now);
+  }
+
+  async revoke(householdId: string, id: string): Promise<void> {
+    const revoked = await this.gateways.revoke(householdId, id, this.clock());
+    if (!revoked) throw new ApiError(HttpStatus.NOT_FOUND, 'household.notFound');
+  }
+
+  private toGateway(row: GatewayRow, crlNextUpdate: Date | undefined, now: Date): Gateway {
+    return {
+      id: row.id,
+      name: row.name,
+      kind: row.kind,
+      topicPrefix: row.topicPrefix,
+      bridgeStatus: row.bridgeStatus,
+      z2mStatus: row.z2mStatus,
+      statusChangedAt: iso(row.statusChangedAt),
+      lastMessageAt: iso(row.lastMessageAt),
+      certExpiresAt: row.certExpiresAt.toISOString(),
+      revokedAt: iso(row.revokedAt),
+      warnings: gatewayWarnings(row.certExpiresAt, crlNextUpdate, now),
+    };
+  }
+
+  /** The mounted CA certificate, read on every use so that a renewed CA needs no restart. */
+  private async loadCa(): Promise<X509Certificate> {
+    const file = this.env.GATEWAY_CA_FILE;
+    if (!file) throw new ApiError(HttpStatus.SERVICE_UNAVAILABLE, 'gateway.caMissing');
+    try {
+      return new X509Certificate(await readFile(file));
+    } catch (error) {
+      this.logger.warn(`Cannot read the gateway CA certificate: ${describeError(error)}`);
+      throw new ApiError(HttpStatus.SERVICE_UNAVAILABLE, 'gateway.caMissing');
+    }
+  }
+
+  /** When the CRL must be renewed (written by `pki.sh`); without the file there is no warning. */
+  private async crlNextUpdate(): Promise<Date | undefined> {
+    const file = this.env.GATEWAY_CRL_NEXT_UPDATE_FILE;
+    if (!file) return undefined;
+    try {
+      const date = new Date((await readFile(file, 'utf8')).trim());
+      return Number.isNaN(date.getTime()) ? undefined : date;
+    } catch {
+      return undefined;
+    }
+  }
+}

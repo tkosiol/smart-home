@@ -20,6 +20,17 @@ describe('loadEnv', () => {
     });
   });
 
+  it('reads the optional gateway files and treats empty values as unset', () => {
+    expect(loadEnv(valid).GATEWAY_CA_FILE).toBeUndefined();
+    const env = loadEnv({
+      ...valid,
+      GATEWAY_CA_FILE: '/smart/certs/ca.crt',
+      GATEWAY_CRL_NEXT_UPDATE_FILE: '',
+    });
+    expect(env.GATEWAY_CA_FILE).toBe('/smart/certs/ca.crt');
+    expect(env.GATEWAY_CRL_NEXT_UPDATE_FILE).toBeUndefined();
+  });
+
   it('coerces PORT to a number', () => {
     expect(loadEnv({ ...valid, PORT: '8080' }).PORT).toBe(8080);
   });
