@@ -2,13 +2,13 @@
 
 |        |                                                                                                                                                     |
 | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Status | Entwurf zur Freigabe                                                                                                                                |
+| Status | Freigegeben (Till, 2026-10-14)                                                                                                                      |
 | Datum  | 2026-10-14                                                                                                                                          |
 | Bezug  | Architektur-Spec Abschnitte 3, 4, 8.4, 8.5, 9, 11.3; ADR-0002, ADR-0003, ADR-0004, ADR-0017, ADR-0018, ADR-0020 (Ergebnis Spike 2b); `.local/pi.md` |
 
 ## 0. Zu prüfen (Entscheidungen, die Till bestätigen soll)
 
-1. **Z2M-Namen bleiben Pflanzennamen.** Die Regel „`friendly_name` bleibt immer die IEEE-Adresse“ (Architektur-Spec 4.5) entfällt. Das Backend ordnet Nachrichten über `bridge/devices` (`friendly_name` ↔ IEEE) zu und folgt Umbenennungen. Grund: Die sechs Sensoren sind schon nach Pflanzen benannt; Self-Hosting-Nutzer benennen in Z2M ebenso.
+1. **Z2M-Namen bleiben Pflanzennamen.** Die Regel „`friendly_name` bleibt immer die IEEE-Adresse“ (Architektur-Spec 4.5) entfällt. Das Backend ordnet Nachrichten über `bridge/devices` (`friendly_name` ↔ IEEE) zu und folgt Umbenennungen. Grund: Die sechs Sensoren sind schon nach Pflanzen benannt; Self-Hosting-Nutzer benennen in Z2M ebenso. In Etappe 6 übernimmt die App den Z2M-Namen als Vorschlag, wenn aus neu erkannter Hardware ein Gerät wird; danach gilt der Name in der App (Bestätigt von Till, 2026-10-14).
 2. **Z2M-Frontend bleibt im Heimnetz** unter Port 8080, aber mit `auth_token` (statt nur per SSH-Tunnel).
 3. **Gateway registrieren:** Der Plattform-Admin fügt in der App das Gateway-Zertifikat (öffentlicher Teil) ein und wählt einen seiner Haushalte; das Backend liest Kennung und Ablaufdatum aus dem Zertifikat.
 4. **Puffer für 72 h** statt 24 h (ein Wochenende ohne Internet); Kosten auf dem Pi: höchstens rund 60 MB RAM und 35 MB auf der SD-Karte, nur während eines Ausfalls.
