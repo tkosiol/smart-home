@@ -41,7 +41,9 @@ Die Backend-Tests der Gateway-Registrierung erzeugen eine Wegwerf-PKI mit OpenSS
 
 Lokale Ports (nur 127.0.0.1): DB 5433, MQTT 1884, Mailpit SMTP 1026 / UI 8026. `ng serve` (4200) leitet `/api` per `apps/frontend/proxy.conf.json` an das Backend auf 127.0.0.1:3000 weiter (ohne `changeOrigin`, damit die Origin-Prüfung mit `APP_ORIGIN=http://localhost:4200` besteht).
 
-Der lokale Stack startet auch den Gateway-Simulator (`apps/gateway-simulator`, Gateway-ID `gw-sim00001`: sechs Bodenfeuchte-Sensoren und eine Lampe, Meldungen unter `gw/gw-sim00001/z2m/…`). Standard-Intervall 300 s; für schnelles Feedback `LOCAL_SIMULATOR_INTERVAL_SECONDS=10 pnpm infra:up` (feste Werteverläufe mit `LOCAL_SIMULATOR_SEED=1`). `pnpm infra:up` baut das Simulator-Image mit.
+Der lokale Stack startet auch den Gateway-Simulator (`apps/gateway-simulator`, Gateway-ID `gw-sim00001`: sechs Bodenfeuchte-Sensoren und eine Lampe, Meldungen unter `gw/gw-sim00001/z2m/…`). Standard-Intervall 300 s; für schnelles Feedback `LOCAL_SIMULATOR_INTERVAL_SECONDS=10 pnpm infra:up` (feste Werteverläufe mit `LOCAL_SIMULATOR_SEED=1`). `pnpm infra:up` baut das Simulator-Image mit. Nach dem Registrieren des Gateways (`docs/runbooks/gateway.md`) erscheinen die Geräte unter „Geräte → Neu erkannt“; erst nach „Hinzufügen“ werden Messwerte gespeichert, und die App zeigt nur Messwerte, keine Einstellungen der Sensoren.
+
+Der Stack-Test (`sh infra/compose/test/stack-test.sh`) startet den Simulator mit `SIMULATOR_INTERVAL_SECONDS=5` und führt die E2E-Specs aus `tests/e2e` aus. Sie melden sich nie selbst per Code an (pro IP sind nur 10 Code-Anfragen in 15 Minuten erlaubt, ein Lauf braucht alle): Anmeldungen kommen aus `global-setup.ts`, parallel laufende Specs verändern nie denselben Haushalt (Konten und Haushalte: `tests/e2e/helpers/accounts.ts`), und ein Gateway lässt sich nur einmal registrieren (Pi: `gateways.spec.ts`, Simulator: `devices.spec.ts`).
 
 Anmeldung per E-Mail-Code: lokal fängt Mailpit die Mails ab; Betrieb (Resend, `APP_ORIGIN`, Admin anlegen) in `docs/runbooks/provisioning.md`.
 

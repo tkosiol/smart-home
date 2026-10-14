@@ -365,15 +365,17 @@ apps/backend/src/
 
 **Gateways, Hardware und Geräte**
 
-| Tabelle           | Wesentliche Felder                                                                                                                                                                                                                                                          |
-| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `gateways`        | `id` (= Zertifikats-CN), `household_id`, `name`, `kind` (`z2m`), `topic_prefix` (`gw/<id>/z2m`), `bridge_status`, `z2m_status` (je `online`/`offline`/`unknown`), `status_changed_at`, `last_message_at`, `cert_fingerprint`, `cert_expires_at`, `created_at`, `revoked_at` |
-| `hardware`        | `id`, `gateway_id`, `ieee_address`, `vendor`, `model`, `definition` (JSON, Z2M-Definition inkl. _exposes_), `interview_state`, `availability`, `last_state` (JSON), `first_seen_at`, `last_seen_at`, `removed_at`                                                           |
-| `capabilities`    | `hardware_id`, `key` (Property-Pfad, z. B. `soil_moisture`), `kind` (`numeric`/`binary`/`enum`/`text`/`composite`), `unit`, `min`, `max`, `step`, `enum_values`, `readable`, `writable`                                                                                     |
-| `devices`         | **logisches Gerät:** `id`, `household_id`, `room_id`, `name`, `icon`, `created_at`, `archived_at`                                                                                                                                                                           |
-| `device_bindings` | `device_id`, `hardware_id`, `bound_at`, `unbound_at`; partielle Unique-Indizes: höchstens eine aktive Bindung pro Gerät und pro Hardware                                                                                                                                    |
+| Tabelle           | Wesentliche Felder                                                                                                                                                                                                                                                                          |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `gateways`        | `id` (= Zertifikats-CN), `household_id`, `name`, `kind` (`z2m`), `topic_prefix` (`gw/<id>/z2m`), `bridge_status`, `z2m_status` (je `online`/`offline`/`unknown`), `status_changed_at`, `last_message_at`, `cert_fingerprint`, `cert_expires_at`, `created_at`, `revoked_at`                 |
+| `hardware`        | `id`, `gateway_id`, `ieee_address`, `friendly_name`, `vendor`, `model`, `description`, `definition` (JSON, Z2M-Definition inkl. _exposes_), `interview_state`, `availability`, `last_state` (JSON), `first_seen_at`, `last_seen_at`, `removed_at`; eindeutig (`gateway_id`, `ieee_address`) |
+| `capabilities`    | `hardware_id`, `key` (Property-Pfad, z. B. `soil_moisture`), `kind` (`numeric`/`binary`/`enum`/`text`/`composite`), `unit`, `min`, `max`, `step`, `enum_values`, `readable`, `writable`, `is_setting`                                                                                       |
+| `devices`         | **logisches Gerät:** `id`, `household_id`, `room_id`, `name`, `icon`, `created_at`, `archived_at`                                                                                                                                                                                           |
+| `device_bindings` | `device_id`, `hardware_id`, `bound_at`, `unbound_at`; partielle Unique-Indizes: höchstens eine aktive Bindung pro Gerät und pro Hardware                                                                                                                                                    |
 
-Neu entdeckte Hardware ist „nicht zugeordnet“ und kann einem bestehenden logischen Gerät zugewiesen werden (Sensor-Tausch: Verlauf läuft nahtlos weiter) oder ein neues logisches Gerät erzeugen. Nicht zugeordnete Hardware zeigt nur `last_state` als Vorschau und schreibt keine Historie.
+Neu entdeckte Hardware ist „nicht zugeordnet“ und kann einem bestehenden logischen Gerät zugewiesen werden (Sensor-Tausch: Verlauf läuft nahtlos weiter) oder ein neues logisches Gerät erzeugen. Nicht zugeordnete Hardware zeigt nur `last_state` als Vorschau und schreibt keine Historie. Aus Hardware ein Gerät zu machen darf nur ein `owner`; der Name des Geräts ist mit dem `friendly_name` aus Z2M vorbelegt.
+
+`is_setting` markiert Fähigkeiten, die der Nutzer einstellt statt misst: schreibbar (`access` enthält „set“) und keine reine Aktion, z. B. Kalibrierung, Messintervall oder Warnschwelle des Bodensensors. Lesbare Messwerte ohne Schreibrecht sind nie Einstellungen. Einstellungen werden weder angezeigt (Vorschau, Gerät, Übersicht) noch als Messwerte gespeichert; es zählen nur lesbare Fähigkeiten, die keine Einstellung sind (_readings only_).
 
 **Telemetrie**
 
@@ -381,12 +383,12 @@ Neu entdeckte Hardware ist „nicht zugeordnet“ und kann einem bestehenden log
 | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `device_state`        | `device_id` (PK), `state` (JSON, letzter Gesamtstand), `last_seen_at`, `availability`                                                                                |
 | `measurements`        | Hypertable: `time`, `device_id`, `capability`, `value_num` (double), `value_text`, `flags` (z. B. „Zeitstempel ersetzt“); Unique (`device_id`, `capability`, `time`) |
-| `measurements_hourly` | Continuous Aggregate (UTC-Stunden): `avg`, `min`, `max`, `last`, `sum`, `count` für numerische Werte                                                                 |
+| `measurements_hourly` | Continuous Aggregate (UTC-Stunden): `avg`, `min`, `max`, `last`, `sum`, `count` für numerische Werte (**ab Etappe 6b**; 6a speichert nur `measurements`)             |
 
 - Chunk-Intervall 7 Tage; Kompression nach 7 Tagen (`segmentby device_id, capability`); Rohdaten-Retention 1 Jahr; Stundenaggregat unbegrenzt.
 - Refresh-Policy des Aggregats mit `start_offset` von 7 Tagen, damit nachgelieferte Pufferdaten berücksichtigt werden.
 - **Tageswerte** werden zur Abfragezeit aus `measurements_hourly` berechnet: `time_bucket('1 day', bucket, <household.timezone>)`, Durchschnitt als `sum(sum)/sum(count)`. Dadurch korrekt bei 23-/25-Stunden-Tagen.
-- `binary` wird als 0/1 in `value_num` gespeichert, `enum` in `value_text`. `composite` und `text` landen nur in `device_state`.
+- `binary` wird als 0/1 in `value_num` gespeichert, `enum` in `value_text`. `composite` und `text` landen nur in `device_state`. Einstellungen (`is_setting`) werden gar nicht gespeichert.
 
 **Befehle und Benachrichtigungen**
 
@@ -400,25 +402,28 @@ Neu entdeckte Hardware ist „nicht zugeordnet“ und kann einem bestehenden log
 
 ### 8.5 Datenfluss: Messwerte (Ingest)
 
-Der MQTT-Konsument abonniert `gw/+/z2m/#` und `gw/+/bridge/connection`.
+Der MQTT-Konsument abonniert die Präfixe aller registrierten, nicht gesperrten Gateways (`gw/<id>/z2m/#`, aus `gateways.topic_prefix`); neu registrierte Gateways kommen ohne Neustart dazu, gesperrte hören sofort auf. Z2M benennt die Topics nach dem `friendly_name`, nicht nach der IEEE-Adresse; der Konsument hält je Gateway die Zuordnung `friendly_name` → Hardware (aus `bridge/devices`, `bridge/event` und der Datenbank). Eine Umbenennung in Z2M ändert die Zuordnung, die Hardware bleibt dieselbe.
 
-| Topic-Suffix                    | Verarbeitung                                                                |
-| ------------------------------- | --------------------------------------------------------------------------- |
-| `bridge/connection`             | Gateway-Status setzen, Event `gateway.status-changed`                       |
-| `z2m/bridge/devices` (retained) | Hardware und Capabilities anlegen/aktualisieren; entfernte Geräte markieren |
-| `z2m/bridge/event`              | Kopplung, Interview-Status, Entfernen → Hardware aktualisieren, Live-Event  |
-| `z2m/<ieee>/availability`       | Verfügbarkeit von Hardware/Gerät aktualisieren                              |
-| `z2m/<ieee>`                    | Gerätenachricht (siehe unten)                                               |
+| Topic-Suffix                                              | Verarbeitung                                                                                                                                                               |
+| --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bridge/connection` (`gw/<id>/…`)                         | Gateway-Status setzen (5a)                                                                                                                                                 |
+| `z2m/bridge/devices` (retained)                           | Hardware und Capabilities anlegen/aktualisieren (inkl. `is_setting`), Namenszuordnung erneuern; nicht mehr gelistete Hardware `removed_at`; der Koordinator wird ignoriert |
+| `z2m/bridge/event`                                        | Kopplung, Interview, Umbenennen, Entfernen → Hardware und Namenszuordnung aktualisieren                                                                                    |
+| `z2m/<friendly_name>/availability`                        | Verfügbarkeit von Hardware und gebundenem Gerät (kommt sie vor der Geräteliste an, wird sie gemerkt)                                                                       |
+| `z2m/<friendly_name>`                                     | Gerätenachricht (siehe unten)                                                                                                                                              |
+| `…/set`, `…/get`, `bridge/request/#`, sonstige `bridge/*` | ignoriert (zählt auch nicht als `last_message_at`)                                                                                                                         |
 
 **Gerätenachricht:**
 
-1. Hardware über (`gatewayId`, IEEE) finden; unbekannt → loggen, verwerfen.
-2. Payload gegen ein aus den Capabilities generiertes Zod-Schema validieren; ungültige Felder verwerfen und loggen.
-3. Zeitstempel aus `last_seen` übernehmen und plausibilisieren (Abschnitt 9).
-4. `hardware.last_state` aktualisieren.
-5. Bei aktiver Bindung: `device_state` upserten, Messwerte gepuffert schreiben (Batch alle 1 s oder 500 Zeilen, `ON CONFLICT DO NOTHING` gegen Duplikate), Event `telemetry.recorded`.
+1. Hardware über (`gatewayId`, `friendly_name`) finden; unbekannt → verwerfen und höchstens einmal pro Stunde protokollieren.
+2. Jedes Feld gegen die Capability prüfen (Art, Zahl, Enum-Wert); unbekannte oder ungültige Felder verwerfen und zählen, nie die ganze Nachricht.
+3. Zeitstempel aus `last_seen` übernehmen, wenn er ISO 8601 mit Zone hat und plausibel ist (Abschnitt 9: nicht mehr als 2 min in der Zukunft, nicht älter als 7 Tage); sonst Empfangszeit mit Flag `time_replaced`.
+4. `hardware.last_state` und `last_seen_at` aktualisieren; der Zustand rückt nur in der Zeit vor, eine verspätete Nachricht überschreibt keinen neueren Stand.
+5. Bei aktiver Bindung: `device_state` upserten und Messwerte (nur lesbare Fähigkeiten, die keine Einstellung sind, nur `numeric`, `binary`, `enum`) gepuffert schreiben (Batch alle 1 s oder 500 Zeilen, `ON CONFLICT DO NOTHING` gegen Duplikate).
 
-Fehler einer Nachricht beenden nie den Konsumenten. Beim Herunterfahren wird der Batch-Puffer geleert.
+**Retained-Nachrichten:** Der Broker spielt beim Abonnieren die zuletzt gehaltene Nachricht je Topic ab; sie ist keine frische Meldung. Eine retained Gerätenachricht ohne eigenen plausiblen Zeitstempel wird ignoriert, eine mit Zeitstempel zählt nur, wenn sie neuer ist als der gespeicherte Stand. Die retained Geräteliste (`bridge/devices`) wird dagegen immer ausgewertet, so entsteht die erkannte Hardware auch für Geräte, die gerade nichts melden.
+
+Fehler einer Nachricht beenden nie den Konsumenten; Nutzdaten werden nie protokolliert. Nachrichten werden nacheinander verarbeitet, damit keine der Geräteliste oder Umbenennung vorauseilt. Beim Herunterfahren wird der Batch-Puffer geleert. Das Stundenaggregat (`measurements_hourly`) entsteht erst in 6b und rechnet die Historie dann nach.
 
 ### 8.6 Datenfluss: Befehle
 

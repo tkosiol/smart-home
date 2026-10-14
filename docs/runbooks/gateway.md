@@ -174,6 +174,8 @@ infra/pki/pki.sh issue-gateway <die ID aus der Zeile>
 
 Danach wie in Abschnitt 6 in der Staging-App registrieren (Name z. B. „Simulator“). Erwartet: „Bridge: Online“ und „Zigbee2MQTT: Online“, die Zeit der letzten Nachricht wandert mit dem Intervall (`SIMULATOR_INTERVAL_SECONDS`, Standard 300 s). Auf Produktion gibt es keinen Simulator.
 
+Danach erscheinen unter „Geräte → Neu erkannt“ (nur Eigentümer) die sechs Bodensensoren („Pflanze 1“ … „Pflanze 6“) und die Lampe mit einer Vorschau ihrer Messwerte; der Name aus Zigbee2MQTT ist vorbelegt. „Hinzufügen“ macht aus der Hardware ein Gerät und speichert ab dann seine Messwerte. Einstellungen des Sensors (Kalibrierung, Intervalle, Warnschwellen) zeigt die App nicht. Ein Gerät ohne Werte nach einigen Minuten: Gateway unter „Mehr → Gateways“ prüfen („Zigbee2MQTT: Online“, Zeit der letzten Nachricht).
+
 ## 8. Sperren
 
 Ein Gateway ist verloren, gestohlen oder wird nicht mehr gebraucht:

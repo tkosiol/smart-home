@@ -61,7 +61,7 @@ Alle Pfade haushaltsbezogen (`HouseholdGuard`), fremd/unbekannt → `404`:
 
 ## 5. Oberfläche
 
-- **Geräte (`/geraete`):** Liste der Geräte mit Name, Hauptwert, Batterie, „zuletzt gemeldet“ und Verfügbarkeit. Für owner oben der Abschnitt „Neu erkannt“: nicht zugeordnete Hardware mit Vorschau und „Als Gerät hinzufügen“ (Name aus Z2M vorbelegt, änderbar).
+- **Geräte (`/geraete`):** Liste der Geräte mit Name, Hauptwert, Batterie, „zuletzt gemeldet“ und Verfügbarkeit. Für owner oben der Abschnitt „Neu erkannt“: nicht zugeordnete Hardware mit Vorschau und „Hinzufügen“ (Name aus Z2M vorbelegt, änderbar).
 - **Gerät (`/geraete/:id`):** alle Messwerte mit Einheit und Zeitpunkt der letzten Meldung, Verfügbarkeit, Modell/Hersteller; Umbenennen (member).
 - **Übersicht:** eine Karte je Gerät mit Hauptwert und Batterie; ohne Geräte ein Hinweis mit Weg zu „Geräte“.
 - **Hauptwert:** erster vorhandener Wert aus `soil_moisture`, `temperature`, `humidity`, `state`, sonst der erste numerische Messwert.
