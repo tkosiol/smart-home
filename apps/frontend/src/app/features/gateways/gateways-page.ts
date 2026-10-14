@@ -24,11 +24,9 @@ import {
 } from '@smart/ui';
 import { ApiError } from '../../core/api';
 import { AuthService } from '../../core/auth';
-import { HouseholdContext } from '../../core/household';
+import { HouseholdContext, injectHouseholdErrorHandler, LoadedList } from '../../core/household';
 import { GatewayStatusText } from './gateway-status';
 import { GatewaysApi } from './gateways.api';
-import { injectHouseholdErrorHandler } from './household-errors';
-import { LoadedList } from './loaded-list';
 import { GatewayRegisterForm } from './register-form';
 
 /** How long a "really?" question stays open. */

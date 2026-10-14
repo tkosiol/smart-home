@@ -13,9 +13,8 @@ import { gatewayRegisterSchema } from '@smart/contracts';
 import { UiButton, UiStack } from '@smart/ui';
 import { UiTextField } from '@smart/ui/forms';
 import { ApiError } from '../../core/api';
-import { HouseholdContext } from '../../core/household';
+import { HouseholdContext, injectHouseholdErrorHandler } from '../../core/household';
 import { GatewaysApi } from './gateways.api';
-import { injectHouseholdErrorHandler } from './household-errors';
 
 /** In the root translation: the keys are looked up in code, where the scope's keys are not found. */
 const CERTIFICATE_ERROR_KEYS = {

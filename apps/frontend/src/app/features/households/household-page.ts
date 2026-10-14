@@ -15,8 +15,7 @@ import { UiBanner, UiButton, UiPage, UiSection, UiSnackbar, UiStack } from '@sma
 import { UiSelect, UiTextField } from '@smart/ui/forms';
 import { API_BASE, ApiClient, ApiError } from '../../core/api';
 import { AuthService } from '../../core/auth';
-import { HouseholdContext } from '../../core/household';
-import { injectHouseholdErrorHandler } from './household-errors';
+import { HouseholdContext, injectHouseholdErrorHandler } from '../../core/household';
 import { timeZoneOptions } from './time-zones';
 
 /** In the root translation: the key is looked up in code, where the scope's keys are not found. */

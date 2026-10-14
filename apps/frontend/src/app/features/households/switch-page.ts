@@ -2,8 +2,7 @@ import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/cor
 import { Router } from '@angular/router';
 import { TranslocoPipe } from '@jsverse/transloco';
 import { UiButton, UiList, UiListItem, UiPage, UiSection, UiStack } from '@smart/ui';
-import { HouseholdContext } from '../../core/household';
-import { injectHouseholdErrorHandler } from './household-errors';
+import { HouseholdContext, injectHouseholdErrorHandler } from '../../core/household';
 
 /** The user's households with their role; choosing one switches to it. */
 @Component({

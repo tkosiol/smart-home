@@ -15,8 +15,7 @@ import { emailSchema, type HouseholdRole, type InvitationCreated } from '@smart/
 import { UiBanner, UiButton, UiSnackbar, UiStack } from '@smart/ui';
 import { UiTextField } from '@smart/ui/forms';
 import { ApiError, injectShowApiError } from '../../core/api';
-import { HouseholdContext } from '../../core/household';
-import { injectHouseholdErrorHandler } from './household-errors';
+import { HouseholdContext, injectHouseholdErrorHandler } from '../../core/household';
 import { MembersApi } from './members.api';
 import { RoleSelect } from './role-select';
 
