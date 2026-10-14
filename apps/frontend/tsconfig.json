@@ -16,7 +16,8 @@
     "module": "preserve",
     "paths": {
       "@smart/ui": ["./projects/ui/src/public-api.ts"],
-      "@smart/ui/forms": ["./projects/ui/src/forms.ts"]
+      "@smart/ui/forms": ["./projects/ui/src/forms.ts"],
+      "@smart/ui/shell": ["./projects/ui/src/shell.ts"]
     }
   },
   "angularCompilerOptions": {
