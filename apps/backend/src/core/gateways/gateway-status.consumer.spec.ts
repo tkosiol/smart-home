@@ -39,7 +39,7 @@ class FakeMqtt {
       const matches =
         (hash ? levels.length >= fixed.length : levels.length === fixed.length) &&
         fixed.every((level, index) => level === '+' || level === levels[index]);
-      if (matches) handler(topic, Buffer.from(payload), retained);
+      if (matches) void handler(topic, Buffer.from(payload), retained);
     }
   }
 }
@@ -196,7 +196,7 @@ describe('GatewayStatusConsumer', () => {
       mqtt.publish(`gw/${ID}/z2m/living_room_lamp`, '{"state":"ON"}');
       now = new Date(T0.getTime() + 30_000);
       mqtt.publish(`gw/${ID}/z2m/living_room_lamp`, '{"state":"OFF"}');
-      mqtt.publish(`gw/${OTHER}/z2m/bridge/devices`, '[]');
+      mqtt.publish(`gw/${OTHER}/z2m/living_room_lamp/availability`, 'online');
       now = new Date(T0.getTime() + 60_000);
       mqtt.publish(`gw/${ID}/z2m/living_room_lamp`, '{"state":"ON"}');
       await settle();
@@ -214,10 +214,39 @@ describe('GatewayStatusConsumer', () => {
       expect(touch).not.toHaveBeenCalled();
     });
 
-    it('counts a live status message of the bridge', async () => {
-      mqtt.publish(`gw/${ID}/z2m/bridge/state`, 'online');
+    it('counts a device message and its availability', async () => {
+      mqtt.publish(`gw/${ID}/z2m/Pflanze 1`, '{"soil_moisture":30}');
       await settle();
       expect(touch).toHaveBeenCalledWith(ID, T0);
+      touch.mockClear();
+      now = new Date(T0.getTime() + 61_000);
+      mqtt.publish(`gw/${ID}/z2m/Pflanze 1/availability`, 'online');
+      await settle();
+      expect(touch).toHaveBeenCalledWith(ID, now);
+    });
+
+    it.each([
+      'Lampe/set',
+      'Lampe/set/brightness',
+      'Lampe/get',
+      'bridge/request/permit_join',
+      'bridge/request/device/rename',
+      'bridge/devices',
+      'bridge/event',
+      'bridge/info',
+      'bridge/logging',
+      'bridge/state',
+    ])('is not written for %s: no sign that Zigbee2MQTT is working', async (rest) => {
+      mqtt.publish(`gw/${ID}/z2m/${rest}`, '{}');
+      await settle();
+      expect(touch).not.toHaveBeenCalled();
+    });
+
+    it('still takes the status from a live bridge/state message', async () => {
+      mqtt.publish(`gw/${ID}/z2m/bridge/state`, 'online');
+      await settle();
+      expect(applyStatus).toHaveBeenCalledWith(ID, 'z2m', 'online', T0);
+      expect(touch).not.toHaveBeenCalled();
     });
 
     it('is not written for the bridge connection topic outside of z2m', async () => {

@@ -46,6 +46,11 @@ export const routes: Routes = [
         loadChildren: () => import('./features/rooms').then((m) => m.roomsRoutes),
       },
       {
+        path: 'geraete/:id',
+        title: marker('app.title.device'),
+        loadChildren: () => import('./features/devices').then((m) => m.deviceRoutes),
+      },
+      {
         path: 'geraete',
         title: marker('app.title.devices'),
         loadChildren: () => import('./features/devices').then((m) => m.devicesRoutes),

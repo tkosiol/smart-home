@@ -3,7 +3,7 @@ import { RequestMethod, type INestApplication, type Type } from '@nestjs/common'
 import { GUARDS_METADATA, METHOD_METADATA, PATH_METADATA } from '@nestjs/common/constants.js';
 import { ModulesContainer } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
-import { apiErrorSchema, invitationCreatedSchema, meSchema } from '@smart/contracts';
+import { apiErrorSchema, deviceSchema, invitationCreatedSchema, meSchema } from '@smart/contracts';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
 import { inject } from 'vitest';
@@ -27,6 +27,8 @@ interface Ids {
   userId: string;
   invitationId: string;
   gatewayId: string;
+  hardwareId: string;
+  deviceId: string;
 }
 type Method = 'get' | 'post' | 'patch' | 'delete';
 
@@ -34,7 +36,14 @@ type Method = 'get' | 'post' | 'patch' | 'delete';
  * Every endpoint below `v1/households/:householdId`. Adding a route without a row fails the
  * "table covers every route" test; the HTTP checks then run for each row.
  */
-const ENDPOINTS: { route: string; body?: object; crossIds?: true }[] = [
+const ENDPOINTS: {
+  route: string;
+  query?: string;
+  body?: object;
+  /** A body that depends on the IDs of the request. */
+  bodyFrom?: (ids: Ids) => object;
+  crossIds?: true;
+}[] = [
   { route: 'PATCH /v1/households/:householdId', body: { name: 'Hijacked' } },
   { route: 'GET /v1/households/:householdId/members' },
   {
@@ -62,6 +71,19 @@ const ENDPOINTS: { route: string; body?: object; crossIds?: true }[] = [
     body: { name: 'Hijacked', certificate: 'not a certificate' },
   },
   { route: 'POST /v1/households/:householdId/gateways/:gatewayId/revoke', crossIds: true },
+  { route: 'GET /v1/households/:householdId/hardware', query: '?state=unassigned' },
+  {
+    route: 'POST /v1/households/:householdId/devices',
+    bodyFrom: ({ hardwareId }) => ({ hardwareId, name: 'Hijacked' }),
+    crossIds: true,
+  },
+  { route: 'GET /v1/households/:householdId/devices' },
+  { route: 'GET /v1/households/:householdId/devices/:deviceId', crossIds: true },
+  {
+    route: 'PATCH /v1/households/:householdId/devices/:deviceId',
+    body: { name: 'Hijacked' },
+    crossIds: true,
+  },
 ];
 
 const METHOD_NAMES: Partial<Record<RequestMethod, string>> = {
@@ -108,12 +130,17 @@ describe('household tenancy', () => {
   };
   const errorCode = (response: request.Response): string =>
     apiErrorSchema.parse(response.body).code;
-  const pathOf = (route: string, ids: Ids): string =>
+  const pathOf = (route: string, ids: Ids, query = ''): string =>
     `/api${(route.split(' ')[1] ?? '')
       .replace(':householdId', ids.householdId)
       .replace(':userId', ids.userId)
       .replace(':invitationId', ids.invitationId)
-      .replace(':gatewayId', ids.gatewayId)}`;
+      .replace(':gatewayId', ids.gatewayId)
+      .replace(':deviceId', ids.deviceId)}${query}`;
+  const bodyOf = (
+    endpoint: { body?: object; bodyFrom?: (ids: Ids) => object },
+    ids: Ids,
+  ): object | undefined => endpoint.bodyFrom?.(ids) ?? endpoint.body;
   const methodOf = (route: string): Method => route.split(' ')[0]?.toLowerCase() as Method;
 
   /** Everything stored about one household, to prove that a foreign request changed nothing. */
@@ -132,6 +159,17 @@ describe('household tenancy', () => {
           union all
           select 'gateway', to_jsonb(g)::text from gateways g
           where g.household_id = ${householdId}
+          union all
+          select 'hardware', to_jsonb(w)::text from hardware w
+          join gateways g on g.id = w.gateway_id where g.household_id = ${householdId}
+          union all
+          select 'device', to_jsonb(d)::text from devices d where d.household_id = ${householdId}
+          union all
+          select 'binding', to_jsonb(b)::text from device_bindings b
+          join devices d on d.id = b.device_id where d.household_id = ${householdId}
+          union all
+          select 'state', to_jsonb(s)::text from device_state s
+          join devices d on d.id = s.device_id where d.household_id = ${householdId}
         ) rows order by kind, row`,
     );
 
@@ -141,6 +179,8 @@ describe('household tenancy', () => {
     member: { id: string; cookie: string };
     invitationId: string;
     gatewayId: string;
+    hardwareId: string;
+    deviceId: string;
   }
   const tenant = async (): Promise<Tenant> => {
     // Owners are platform admins, so that the ids of a foreign household reach the handler of
@@ -170,12 +210,27 @@ describe('household tenancy', () => {
       insert into gateways (id, household_id, name, topic_prefix, cert_fingerprint, cert_expires_at)
       values (${gatewayId}, ${householdId}, 'Pi', ${`gw/${gatewayId}/z2m`}, 'fingerprint',
         now() + interval '1 year')`;
+    // One piece of hardware that is a device and one that is still unassigned.
+    const hardwareRows = await connection.sql<{ id: string; friendly_name: string }[]>`
+      insert into hardware (gateway_id, ieee_address, friendly_name, first_seen_at)
+      values (${gatewayId}, ${`0x${gatewayId}1`}, 'bound', now()),
+        (${gatewayId}, ${`0x${gatewayId}2`}, 'free', now())
+      returning id, friendly_name`;
+    const bound = hardwareRows.find((row) => row.friendly_name === 'bound');
+    const free = hardwareRows.find((row) => row.friendly_name === 'free');
+    if (!bound || !free) throw new Error('no hardware');
+    const device = await send('post', `${HOUSEHOLDS}/${householdId}/devices`, owner.cookie, {
+      hardwareId: bound.id,
+      name: 'Bed',
+    }).expect(201);
     return {
       householdId,
       owner,
       member,
       invitationId: invitationCreatedSchema.parse(invitation.body).invitation.id,
       gatewayId,
+      hardwareId: free.id,
+      deviceId: deviceSchema.parse(device.body).id,
     };
   };
 
@@ -234,26 +289,29 @@ describe('household tenancy', () => {
           return [`${METHOD_NAMES[method] ?? String(method)} ${joinPath(path, sub)}`];
         }),
       );
-      expect(routes.length).toBeGreaterThanOrEqual(11);
+      expect(routes.length).toBeGreaterThanOrEqual(16);
       expect(routes.sort()).toEqual(ENDPOINTS.map(({ route }) => route).sort());
     });
   });
 
-  describe.each(ENDPOINTS)('$route', ({ route, body }) => {
+  describe.each(ENDPOINTS)('$route', (endpoint) => {
+    const { route, query } = endpoint;
     const idsOf = (own: Tenant, other: Tenant): Ids => ({
       householdId: other.householdId,
       userId: own.member.id,
       invitationId: own.invitationId,
       gatewayId: own.gatewayId,
+      hardwareId: own.hardwareId,
+      deviceId: own.deviceId,
     });
 
     it('answers a signed-in user of household A with 404 for the householdId of B', async () => {
       const before = await snapshot(b.householdId);
       const response = await send(
         methodOf(route),
-        pathOf(route, idsOf(b, b)),
+        pathOf(route, idsOf(b, b), query),
         a.owner.cookie,
-        body,
+        bodyOf(endpoint, idsOf(b, b)),
       ).expect(404);
       expect(errorCode(response)).toBe('household.notFound');
       expect(await snapshot(b.householdId)).toBe(before);
@@ -263,9 +321,9 @@ describe('household tenancy', () => {
       for (const householdId of ['not-a-uuid', UNKNOWN_ID]) {
         const response = await send(
           methodOf(route),
-          pathOf(route, { ...idsOf(a, a), householdId }),
+          pathOf(route, { ...idsOf(a, a), householdId }, query),
           a.owner.cookie,
-          body,
+          bodyOf(endpoint, idsOf(a, a)),
         ).expect(404);
         expect(errorCode(response)).toBe('household.notFound');
       }
@@ -274,15 +332,16 @@ describe('household tenancy', () => {
     it('answers a request without a session with 401', async () => {
       const response = await send(
         methodOf(route),
-        pathOf(route, idsOf(b, b)),
+        pathOf(route, idsOf(b, b), query),
         undefined,
-        body,
+        bodyOf(endpoint, idsOf(b, b)),
       ).expect(401);
       expect(errorCode(response)).toBe('auth.required');
     });
   });
 
-  describe.each(ENDPOINTS.filter(({ crossIds }) => crossIds))('$route', ({ route, body }) => {
+  describe.each(ENDPOINTS.filter(({ crossIds }) => crossIds))('$route', (endpoint) => {
+    const { route, query } = endpoint;
     it('answers ids of B inside the path of A with 404 and leaves B alone', async () => {
       const before = await snapshot(b.householdId);
       const beforeA = await snapshot(a.householdId);
@@ -291,10 +350,15 @@ describe('household tenancy', () => {
         userId: b.member.id,
         invitationId: b.invitationId,
         gatewayId: b.gatewayId,
+        hardwareId: b.hardwareId,
+        deviceId: b.deviceId,
       };
-      const response = await send(methodOf(route), pathOf(route, ids), a.owner.cookie, body).expect(
-        404,
-      );
+      const response = await send(
+        methodOf(route),
+        pathOf(route, ids, query),
+        a.owner.cookie,
+        bodyOf(endpoint, ids),
+      ).expect(404);
       expect(errorCode(response)).toBe('household.notFound');
       expect(await snapshot(b.householdId)).toBe(before);
       expect(await snapshot(a.householdId)).toBe(beforeA);

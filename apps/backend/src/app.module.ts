@@ -1,8 +1,10 @@
 import { Module } from '@nestjs/common';
 import { ScheduleModule } from '@nestjs/schedule';
+import { DevicesModule } from './core/devices/index.js';
 import { GatewaysModule } from './core/gateways/index.js';
 import { HouseholdsModule } from './core/households/index.js';
 import { IdentityModule } from './core/identity/index.js';
+import { TelemetryModule } from './core/telemetry/index.js';
 import { ConfigModule } from './platform/config/index.js';
 import { DatabaseModule } from './platform/database/index.js';
 import { HttpModule } from './platform/http/index.js';
@@ -21,6 +23,8 @@ import { ObservabilityModule } from './platform/observability/index.js';
     IdentityModule,
     HouseholdsModule,
     GatewaysModule,
+    DevicesModule,
+    TelemetryModule,
     MailModule,
     MqttModule,
     ObservabilityModule,

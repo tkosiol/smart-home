@@ -11,6 +11,7 @@ export const ACCOUNTS = {
   shell: { email: 'e2e-shell@example.org' },
   smoke: { email: 'e2e-smoke@example.org' },
   auth: { email: 'e2e-auth@example.org' },
+  /** Also the owner of the household in which `devices.spec.ts` registers the simulator. */
   theme: { email: 'e2e-theme@example.org' },
   /** Has no household: signs in on the sign-in page and has to set one up. */
   setup: { email: 'e2e-setup@example.org' },

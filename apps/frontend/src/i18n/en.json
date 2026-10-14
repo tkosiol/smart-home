@@ -11,6 +11,7 @@
       "overview": "Overview",
       "rooms": "Rooms",
       "devices": "Devices",
+      "device": "Device",
       "more": "More",
       "settings": "Settings",
       "appearance": "Appearance",
@@ -75,6 +76,9 @@
         "invalidCertificate": "The certificate is invalid, expired or was not issued by this instance.",
         "exists": "This gateway is already registered.",
         "caMissing": "No certificate authority is set up on this instance."
+      },
+      "device": {
+        "hardwareBound": "This hardware is already assigned to a device."
       },
       "validation": {
         "failed": "The input is not valid."

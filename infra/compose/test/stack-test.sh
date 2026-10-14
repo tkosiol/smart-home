@@ -24,6 +24,8 @@ DB_PASSWORD=stack-test-db
 MQTT_API_PASSWORD=stack-test-mqtt
 MQTT_SIMULATOR_PASSWORD=stack-test-simulator
 MQTT_SIMULATOR_GATEWAY_ID=$SIM_ID
+# Short, so that the end-to-end tests see readings within seconds (the default is 300).
+SIMULATOR_INTERVAL_SECONDS=5
 MQTT_TLS=on
 APP_ORIGIN=http://127.0.0.1:18080
 ENV
@@ -49,7 +51,7 @@ docker build -q -f apps/gateway-simulator/Dockerfile -t "local/smart-home-simula
 
 # Throwaway PKI (needs OpenSSL 3 or newer; on macOS install openssl@3, pki.sh finds it, or set SMART_OPENSSL):
 # a CA, the broker's server certificate (host "broker", the name the pi connects to) and the gateway certificates of
-# the pi and of the simulator (the latter is only registered by the end-to-end tests, the simulator does not use it).
+# the pi and of the simulator (they are only registered by the end-to-end tests, the containers do not use them).
 export SMART_PKI_PASSPHRASE_FILE="$WORK/passphrase"
 printf 'stack test passphrase\n' > "$SMART_PKI_PASSPHRASE_FILE"
 pki() { SMART_PKI_DIR="$WORK/pki" bash infra/pki/pki.sh "$@" < /dev/null > /dev/null; }
@@ -222,8 +224,8 @@ compose exec -T backup restic snapshots --tag config --json | grep -q '"paths":\
   exit 1
 }
 
-# The end-to-end tests register the pi's and the simulator's gateway in the app and expect both to be online,
-# so they run before the two are stopped.
+# The end-to-end tests register the pi's and the simulator's gateway in the app (two specs, one gateway each),
+# expect them to be online and read the simulator's devices, so they run before the two are stopped.
 E2E_BASE_URL=http://127.0.0.1:18080 E2E_MAILPIT_URL=http://127.0.0.1:18025 pnpm --filter @smart/e2e e2e
 
 # Stopping the pi cleanly makes the bridge publish the retained "0"; the simulator does the same for its own

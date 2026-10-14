@@ -21,9 +21,12 @@ import {
 } from './gateway-status-memory.js';
 import { GatewaysRepository } from './gateways.repository.js';
 import { Throttle } from './throttle.js';
+import { isDeviceTraffic } from './z2m-topics.js';
 
 const MINUTE_MS = 60_000;
 const HOUR_MS = 3_600_000;
+/** `gw/<id>/z2m/` precedes what Zigbee2MQTT publishes. */
+const Z2M_LEVELS = 3;
 /** A status payload is a few bytes; anything bigger is not one. */
 const MAX_STATE_BYTES = 1024;
 
@@ -58,8 +61,9 @@ function gatewayIdOf(topic: string): string | undefined {
 
 /**
  * Keeps the status of the gateways up to date from what they publish: the bridge's connection
- * topic, Zigbee2MQTT's `bridge/state` and any message below the gateway's z2m prefix (sign of
- * life). Messages are handled one after the other; a failure never ends the consumer.
+ * topic, Zigbee2MQTT's `bridge/state` and the device messages below the gateway's z2m prefix
+ * (sign of life; commands and the other topics of the bridge are not). Messages are handled one
+ * after the other; a failure never ends the consumer.
  */
 @Injectable()
 export class GatewayStatusConsumer implements OnModuleInit, OnModuleDestroy {
@@ -120,6 +124,8 @@ export class GatewayStatusConsumer implements OnModuleInit, OnModuleDestroy {
 
   private onActivity(topic: string): void {
     const id = gatewayIdOf(topic);
+    // Commands and requests come from the backend or the user, not from the gateway.
+    if (!isDeviceTraffic(topic.split('/').slice(Z2M_LEVELS).join('/'))) return;
     const now = this.clock();
     if (id === undefined || !this.touches.allow(id, now)) return;
     this.enqueue(async () => {

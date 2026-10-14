@@ -3,7 +3,9 @@ import { TestBed } from '@angular/core/testing';
 import {
   injectMoreEntries,
   injectOverviewCards,
+  isCardLoader,
   provideFeature,
+  resolveOverviewCards,
   visibleMoreEntries,
   type MoreEntry,
   type FeatureDefinition,
@@ -45,6 +47,21 @@ describe('feature registry', () => {
   it('collects the overview cards of all features', () => {
     const { cards } = setup({ overviewCards: [CardA] }, { overviewCards: [CardB] });
     expect(cards).toEqual([CardA, CardB]);
+  });
+
+  it('keeps loader functions next to components', async () => {
+    const loader = () => Promise.resolve(CardB);
+    const { cards } = setup({ overviewCards: [CardA, loader] });
+    expect(cards).toEqual([CardA, loader]);
+    expect(isCardLoader(CardA)).toBe(false);
+    expect(isCardLoader(loader)).toBe(true);
+    expect(isCardLoader(async () => CardB)).toBe(true);
+    expect(await resolveOverviewCards([CardA, loader])).toEqual([CardA, CardB]);
+  });
+
+  it('drops only the card whose loader fails', async () => {
+    const failing = () => Promise.reject(new Error('chunk lost'));
+    expect(await resolveOverviewCards([failing, CardA, failing, CardB])).toEqual([CardA, CardB]);
   });
 
   it('is empty without features and ignores features without entries', () => {

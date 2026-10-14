@@ -8,6 +8,13 @@ import { ApiError } from '../../platform/http/index.js';
 import { CLOCK, type Clock } from '../identity/index.js';
 import { readGatewayCertificate } from './gateway-certificate.js';
 import {
+  GATEWAY_REGISTERED,
+  GATEWAY_REVOKED,
+  GatewayEvents,
+  type GatewayRegistered,
+  type GatewayRevoked,
+} from './gateway-events.js';
+import {
   GATEWAY_STATUS_MEMORY,
   type GatewayStatusMemory,
   type RecalledStatus,
@@ -17,6 +24,11 @@ import { GatewaysRepository } from './gateways.repository.js';
 import type { GatewayRow } from './gateways.schema.js';
 
 const HOUR_MS = 3_600_000;
+
+export interface ActiveGateway {
+  id: string;
+  topicPrefix: string;
+}
 
 const iso = (date: Date | null): string | null => (date ? date.toISOString() : null);
 
@@ -30,6 +42,7 @@ export class GatewaysService {
     @Inject(ENV) private readonly env: Env,
     @Inject(CLOCK) private readonly clock: Clock,
     @Inject(GATEWAY_STATUS_MEMORY) private readonly memory: GatewayStatusMemory,
+    private readonly events: GatewayEvents,
   ) {}
 
   async list(householdId: string): Promise<Gateway[]> {
@@ -61,6 +74,8 @@ export class GatewaysService {
     // The same message whether the ID is taken in this or another household.
     if (!inserted) throw new ApiError(HttpStatus.CONFLICT, 'gateway.exists');
     const row = await this.applyLateStatus(inserted, recalled, now);
+    const registered: GatewayRegistered = { gatewayId: row.id, topicPrefix: row.topicPrefix };
+    this.events.emit(GATEWAY_REGISTERED, registered);
     return this.toGateway(row, await this.crlNextUpdate(), now);
   }
 
@@ -91,6 +106,14 @@ export class GatewaysService {
   async revoke(householdId: string, id: string): Promise<void> {
     const revoked = await this.gateways.revoke(householdId, id, this.clock());
     if (!revoked) throw new ApiError(HttpStatus.NOT_FOUND, 'household.notFound');
+    const event: GatewayRevoked = { gatewayId: id };
+    this.events.emit(GATEWAY_REVOKED, event);
+  }
+
+  /** The gateways that are registered and not revoked, with the topic prefix they publish under. */
+  async listActive(): Promise<ActiveGateway[]> {
+    const rows = await this.gateways.listActive();
+    return rows.map((row) => ({ id: row.id, topicPrefix: row.topicPrefix }));
   }
 
   private toGateway(row: GatewayRow, crlNextUpdate: Date | undefined, now: Date): Gateway {

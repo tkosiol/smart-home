@@ -11,6 +11,7 @@
       "overview": "Übersicht",
       "rooms": "Räume",
       "devices": "Geräte",
+      "device": "Gerät",
       "more": "Mehr",
       "settings": "Einstellungen",
       "appearance": "Darstellung",
@@ -75,6 +76,9 @@
         "invalidCertificate": "Das Zertifikat ist ungültig, abgelaufen oder nicht von dieser Instanz ausgestellt.",
         "exists": "Dieses Gateway ist schon registriert.",
         "caMissing": "Auf dieser Instanz ist keine Zertifizierungsstelle eingerichtet."
+      },
+      "device": {
+        "hardwareBound": "Diese Hardware ist bereits einem Gerät zugeordnet."
       },
       "validation": {
         "failed": "Die Eingabe ist ungültig."
