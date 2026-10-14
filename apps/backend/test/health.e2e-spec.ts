@@ -40,6 +40,11 @@ describe('health endpoints with all dependencies up', () => {
     });
   });
 
+  it('answers /api responses with no-store', async () => {
+    const response = await request(app.getHttpServer()).get('/api/health/live').expect(200);
+    expect(response.headers['cache-control']).toBe('no-store');
+  });
+
   it('serves nothing outside the /api prefix', async () => {
     await request(app.getHttpServer()).get('/health/live').expect(404);
   });

@@ -4,10 +4,15 @@
   "license": "AGPL-3.0-only",
   "private": true,
   "type": "module",
+  "sideEffects": false,
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./resolve": {
+      "types": "./dist/resolve.d.ts",
+      "default": "./dist/resolve.js"
     }
   },
   "files": [

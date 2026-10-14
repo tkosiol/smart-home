@@ -1,0 +1,27 @@
+{
+  "title": "Anmelden",
+  "noConnection": "Keine Verbindung. Zum Anmelden braucht dein Gerät eine Verbindung zum Server.",
+  "mailDisabled": "Die Anmeldung per E-Mail-Code ist auf diesem Server nicht eingerichtet. Bitte wende dich an die Person, die ihn betreibt.",
+  "email": {
+    "description": "Wir schicken dir einen Code per E-Mail.",
+    "label": "E-Mail-Adresse",
+    "submit": "Code senden"
+  },
+  "code": {
+    "description": "Wenn zu {{ email }} ein Konto gehört, haben wir einen Code geschickt. Er gilt 10 Minuten.",
+    "label": "Code (6 Ziffern)",
+    "submit": "Anmelden",
+    "resend": "Neuen Code senden",
+    "resendWait": "Einen neuen Code kannst du nach einer Minute anfordern.",
+    "resent": "Wir haben einen neuen Code geschickt, falls zu dieser Adresse ein Konto gehört.",
+    "otherEmail": "Andere E-Mail-Adresse"
+  },
+  "errors": {
+    "email": "Bitte gib eine gültige E-Mail-Adresse ein.",
+    "code": "Bitte gib die 6 Ziffern aus der E-Mail ein.",
+    "invalidCode": "Code falsch oder abgelaufen.",
+    "tooManyAttempts": "Zu viele Versuche. Bitte fordere einen neuen Code an.",
+    "rateLimited": "Zu viele Anfragen. Bitte versuche es in {{ seconds }} Sekunden noch einmal.",
+    "rateLimitedLater": "Zu viele Anfragen. Bitte versuche es später noch einmal."
+  }
+}

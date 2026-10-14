@@ -14,7 +14,9 @@ function setup(language: 'de' | 'en' = 'de') {
   return { snackbar: TestBed.inject(UiSnackbar), material: TestBed.inject(MatSnackBar) };
 }
 
+/** Waits for the lazily loaded snack bar to open, then for its content to render. */
 async function settle(): Promise<void> {
+  await vi.waitFor(() => expect(document.querySelector('mat-snack-bar-container')).not.toBeNull());
   TestBed.tick();
   await new Promise((resolve) => setTimeout(resolve));
   TestBed.tick();
@@ -29,17 +31,27 @@ const buttonNamed = (name: string) =>
   );
 
 describe('UiSnackbar', () => {
-  it('closes plain messages after four seconds, politely', () => {
+  it('closes plain messages after four seconds, politely', async () => {
     const { snackbar, material } = setup();
     const open = vi.spyOn(material, 'openFromComponent');
     void snackbar.show('Gespeichert');
+    await vi.waitFor(() => expect(open).toHaveBeenCalled());
     expect(open.mock.calls[0]![1]).toMatchObject({ duration: 4000, politeness: 'polite' });
   });
 
-  it('keeps messages with an action open and can be assertive', () => {
+  it('sets the panel class that keeps it clear of the compact bottom bar', async () => {
+    const { snackbar, material } = setup();
+    const open = vi.spyOn(material, 'openFromComponent');
+    void snackbar.show('Gespeichert');
+    await vi.waitFor(() => expect(open).toHaveBeenCalled());
+    expect(open.mock.calls[0]![1]!.panelClass).toBe('ui-snackbar');
+  });
+
+  it('keeps messages with an action open and can be assertive', async () => {
     const { snackbar, material } = setup();
     const open = vi.spyOn(material, 'openFromComponent');
     void snackbar.show('Raum gelöscht', { action: 'Rückgängig', politeness: 'assertive' });
+    await vi.waitFor(() => expect(open).toHaveBeenCalled());
     expect(open.mock.calls[0]![1]!.duration).toBeUndefined();
     expect(open.mock.calls[0]![1]!.politeness).toBe('assertive');
   });

@@ -8,6 +8,7 @@ const brokerFile = (name: string): string =>
 
 export const TEST_MQTT_USER = 'smart-api';
 export const TEST_MQTT_PASSWORD = 'smart-test';
+export const TEST_APP_ORIGIN = 'http://localhost:4200';
 
 export default async function setup(project: TestProject): Promise<() => Promise<void>> {
   const [database, broker] = await Promise.all([
@@ -35,6 +36,7 @@ export default async function setup(project: TestProject): Promise<() => Promise
     MQTT_URL: `mqtt://${broker.getHost()}:${broker.getMappedPort(1883)}`,
     MQTT_USERNAME: TEST_MQTT_USER,
     MQTT_PASSWORD: TEST_MQTT_PASSWORD,
+    APP_ORIGIN: TEST_APP_ORIGIN,
   });
 
   return async () => {
@@ -44,6 +46,9 @@ export default async function setup(project: TestProject): Promise<() => Promise
 
 declare module 'vitest' {
   export interface ProvidedContext {
-    testEnv: Record<'DATABASE_URL' | 'MQTT_URL' | 'MQTT_USERNAME' | 'MQTT_PASSWORD', string>;
+    testEnv: Record<
+      'DATABASE_URL' | 'MQTT_URL' | 'MQTT_USERNAME' | 'MQTT_PASSWORD' | 'APP_ORIGIN',
+      string
+    >;
   }
 }

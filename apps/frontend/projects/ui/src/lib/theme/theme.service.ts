@@ -6,16 +6,13 @@ import {
   type InstanceAppearance,
   type PersonalAppearance,
 } from '@smart/contracts';
-import {
-  computeThemeVars,
-  resolveAppearance,
-  type ResolvedContrast,
-  type ResolvedMode,
-} from '@smart/theme';
+import { resolveAppearance } from '@smart/theme/resolve';
+import type { ResolvedContrast, ResolvedMode } from '@smart/theme';
 import { APPEARANCE_STORE, BOOT_CACHE_VERSION } from './appearance-store';
 import { applyThemeVars } from './apply-theme';
 import { INSTANCE_APPEARANCE, STORED_INSTANCE_ALLOWED } from './instance-appearance.token';
 import { MEDIA_QUERIES } from './media-queries';
+import { THEME_ENGINE_LOADER, type ThemeEngine } from './theme-engine';
 
 const DARK = '(prefers-color-scheme: dark)';
 const MORE_CONTRAST = '(prefers-contrast: more)';
@@ -27,6 +24,8 @@ export class ThemeService {
   private readonly media = inject(MEDIA_QUERIES);
   private readonly defaultInstance = inject(INSTANCE_APPEARANCE);
   private readonly storedInstanceAllowed = inject(STORED_INSTANCE_ALLOWED);
+  private readonly engine = signal<ThemeEngine | null>(null);
+  private readonly personalListeners = new Set<(value: PersonalAppearance) => void>();
 
   private readonly instanceState = signal<InstanceAppearance>(this.loadInstance());
   private readonly personalState = signal<PersonalAppearance>(this.loadPersonal());
@@ -34,6 +33,12 @@ export class ThemeService {
   readonly personal = this.personalState.asReadonly();
   private readonly prefersDark = signal(this.media.matches(DARK));
   private readonly prefersMoreContrast = signal(this.media.matches(MORE_CONTRAST));
+
+  /**
+   * Settles once the color engine is loaded (or failed to load). Until then the theme from
+   * `theme-boot.js` and the default CSS stays; `resolved` works without the engine.
+   */
+  readonly ready: Promise<void>;
 
   readonly resolved = computed(() =>
     resolveAppearance(this.instance(), this.personal(), {
@@ -58,19 +63,40 @@ export class ThemeService {
       stopContrast();
       stopWatching();
     });
+    this.ready = inject(THEME_ENGINE_LOADER)()
+      .then((engine) => this.engine.set(engine))
+      .catch((error: unknown) =>
+        console.warn('Theme engine could not be loaded, keeping the default theme', error),
+      );
     effect(() => this.apply());
   }
 
+  /** The user changed their appearance (editor, reset): applies, stores and tells the listeners. */
   setPersonal(value: PersonalAppearance): void {
     const parsed = personalAppearanceSchema.parse(value);
     this.personalState.set(parsed);
     this.store.savePersonal(parsed);
+    this.notifyPersonal(parsed);
   }
 
   /** Back to the defaults: instance colors, system mode and contrast. */
   resetPersonal(): void {
     this.personalState.set(DEFAULT_PERSONAL_APPEARANCE);
     this.store.clearPersonal();
+    this.notifyPersonal(DEFAULT_PERSONAL_APPEARANCE);
+  }
+
+  /** Takes over an appearance that did not come from the user (the account on the server): no listener hears of it. */
+  adoptPersonal(value: PersonalAppearance): void {
+    const parsed = personalAppearanceSchema.parse(value);
+    this.personalState.set(parsed);
+    this.store.savePersonal(parsed);
+  }
+
+  /** Calls back after every change the user makes, never for `adoptPersonal` or another tab; returns the unsubscribe function. */
+  onPersonalChange(listener: (value: PersonalAppearance) => void): () => void {
+    this.personalListeners.add(listener);
+    return () => void this.personalListeners.delete(listener);
   }
 
   resetPersonalColors(): void {
@@ -95,14 +121,20 @@ export class ThemeService {
     return (this.storedInstanceAllowed ? this.store.loadInstance() : null) ?? this.defaultInstance;
   }
 
+  private notifyPersonal(value: PersonalAppearance): void {
+    for (const listener of this.personalListeners) listener(value);
+  }
+
   private loadPersonal(): PersonalAppearance {
     return this.store.loadPersonal() ?? DEFAULT_PERSONAL_APPEARANCE;
   }
 
   private apply(): void {
+    const engine = this.engine();
     const resolved = this.resolved();
+    if (!engine) return;
     const vars = (mode: ResolvedMode, contrast: ResolvedContrast) =>
-      computeThemeVars({ ...resolved, mode, contrast });
+      engine.computeThemeVars({ ...resolved, mode, contrast });
     applyThemeVars(
       this.document.documentElement,
       vars(resolved.mode, resolved.contrast),

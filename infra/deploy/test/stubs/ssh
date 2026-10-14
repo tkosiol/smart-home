@@ -3,9 +3,15 @@
 #   "test -e …": answers from STUB_ENV_EXISTS (1 = exists); STUB_SSH_DOWN=1 simulates a connection failure (255)
 #   "id -u" / "id -g": answers 4242 / 4343
 #   "cat …/.env": prints STUB_EXISTING_ENV
+#   STUB_SSH_EXEC=1: runs the remote command (last argument) like sshd does, with a shell, in the
+#     directory STUB_REMOTE_HOME
 #   anything else: stores stdin in STUB_REMOTE_FILE
 printf 'ssh %s\n' "$*" >> "$STUB_CALLS"
 [ "${STUB_SSH_DOWN:-0}" = 1 ] && exit 255
+if [ "${STUB_SSH_EXEC:-0}" = 1 ]; then
+  for remote_command; do :; done
+  cd "$STUB_REMOTE_HOME" && exec sh -c "$remote_command"
+fi
 case "$*" in
   *"test -e"*)
     if [ "${STUB_ENV_EXISTS:-0}" = 1 ]; then echo yes; else echo no; fi ;;

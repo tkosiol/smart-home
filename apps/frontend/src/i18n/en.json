@@ -15,6 +15,7 @@
       "settings": "Settings",
       "appearance": "Appearance",
       "installation": "Appearance of the installation",
+      "signIn": "Sign in",
       "notFound": "Not found"
     },
     "household": {
@@ -40,6 +41,20 @@
     "update": {
       "text": "New version available",
       "reload": "Reload"
+    },
+    "errors": {
+      "auth": {
+        "required": "Please sign in.",
+        "badOrigin": "The request came from an address that is not allowed.",
+        "invalidCode": "The code is wrong or has expired.",
+        "tooManyAttempts": "Too many attempts. Please wait a moment and request a new code.",
+        "rateLimited": "Too many requests. Please try again in a moment.",
+        "mailDisabled": "Sending e-mail is not set up."
+      },
+      "validation": {
+        "failed": "The input is not valid."
+      },
+      "internal": "Something went wrong. Please try again later."
     }
   }
 }

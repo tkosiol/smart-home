@@ -11,6 +11,7 @@ module.exports = {
     devices: 'src/app/features/devices/i18n',
     more: 'src/app/features/more/i18n',
     settings: 'src/app/features/settings/i18n',
+    auth: 'src/app/features/auth/i18n',
   },
   keysManager: { input: ['src/app'], unflat: true, emitErrorOnExtraKeys: true },
 };

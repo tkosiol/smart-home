@@ -1,6 +1,6 @@
 import { DOCUMENT, DestroyRef, Injectable, Injector, afterNextRender, inject } from '@angular/core';
 import { Title } from '@angular/platform-browser';
-import { Router, RouterStateSnapshot, TitleStrategy } from '@angular/router';
+import { RouterStateSnapshot, TitleStrategy } from '@angular/router';
 import { TranslocoService } from '@jsverse/transloco';
 import type { Subscription } from 'rxjs';
 
@@ -9,13 +9,9 @@ const HEADING_WAIT_MS = 3000;
 
 /**
  * The document title names the page ("Räume – Smart Home") in the active language, and after a
- * navigation the view starts at the top and the focus moves to the page heading: together they tell
- * a screen reader user that the page changed (WCAG 2.4.2). A route's `title` is a root translation
- * key.
- *
- * The router's own scroll handling (`withInMemoryScrolling`) would cost about 4 kB of the initial
- * bundle, so this does the part that matters: forward navigations scroll to the top, back and
- * forward are left to the browser's scroll restoration.
+ * navigation the focus moves to the page heading: together with the router's scroll handling
+ * (`withInMemoryScrolling`, new pages start at the top) they tell a screen reader user that the
+ * page changed (WCAG 2.4.2). A route's `title` is a root translation key.
  */
 @Injectable({ providedIn: 'root' })
 export class PageTitleStrategy extends TitleStrategy {
@@ -46,14 +42,8 @@ export class PageTitleStrategy extends TitleStrategy {
     } else {
       this.title.setTitle(PRODUCT_NAME);
     }
-    // The first page keeps scroll and focus where the browser put them.
-    if (!this.firstPage) {
-      // The router needs this strategy, so it is only asked for once a navigation runs.
-      if (this.injector.get(Router).getCurrentNavigation()?.trigger !== 'popstate') {
-        this.document.defaultView?.scrollTo(0, 0);
-      }
-      this.focusHeading();
-    }
+    // The first page keeps the focus where the browser put it.
+    if (!this.firstPage) this.focusHeading();
     this.firstPage = false;
   }
 

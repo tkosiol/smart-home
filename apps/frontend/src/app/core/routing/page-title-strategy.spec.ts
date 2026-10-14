@@ -1,8 +1,7 @@
-import { Location } from '@angular/common';
 import { ChangeDetectionStrategy, Component, importProvidersFrom, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Title } from '@angular/platform-browser';
-import { Router, TitleStrategy, provideRouter, type Routes } from '@angular/router';
+import { TitleStrategy, provideRouter, type Routes } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { TranslocoService, TranslocoTestingModule } from '@jsverse/transloco';
 import de from '../../../i18n/de.json';
@@ -99,31 +98,6 @@ describe('PageTitleStrategy', () => {
     await harness.navigateByUrl('/ohne-titel');
     transloco.setActiveLang('en');
     expect(title.getTitle()).toBe('Smart Home');
-  });
-
-  describe('scroll', () => {
-    it('starts a new page at the top, but not the first page', async () => {
-      setup();
-      const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => undefined);
-      const harness = await RouterTestingHarness.create('/raeume');
-      expect(scrollTo).not.toHaveBeenCalled();
-      await harness.navigateByUrl('/');
-      expect(scrollTo).toHaveBeenCalledExactlyOnceWith(0, 0);
-    });
-
-    it('leaves the position of a page to the browser when going back', async () => {
-      setup();
-      const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => undefined);
-      // Starts the router's listener for the browser's back and forward buttons.
-      TestBed.inject(Router).initialNavigation();
-      const harness = await RouterTestingHarness.create('/raeume');
-      await harness.navigateByUrl('/');
-      scrollTo.mockClear();
-      TestBed.inject(Location).back();
-      await vi.waitFor(() => expect(TestBed.inject(Title).getTitle()).toBe('Räume – Smart Home'));
-      expect(scrollTo).not.toHaveBeenCalled();
-      await harness.fixture.whenStable();
-    });
   });
 
   describe('focus', () => {

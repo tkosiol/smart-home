@@ -31,6 +31,7 @@ import { UiFormatContext } from '../time/format-context';
 import { APPEARANCE_STORE } from '../theme/appearance-store';
 import { MemoryAppearanceStore } from '../theme/memory-appearance-store';
 import { provideTheme } from '../theme/provide-theme';
+import { THEME_ENGINE_LOADER, loadThemeEngine } from '../theme/theme-engine';
 import { ThemeService } from '../theme/theme.service';
 
 /** The toolbar selection (`globalTypes` in .storybook/preview.ts). */
@@ -49,7 +50,7 @@ const toolbar = signal<ToolbarGlobals | null>(null);
 let translationsReady: Promise<unknown> = Promise.resolve();
 
 /**
- * Resolves once the toolbar's language is loaded and rendered. Transloco renders empty strings
+ * Resolves once the toolbar's language and the theme engine are loaded and rendered. Transloco renders empty strings
  * until the lazy translation arrives, so a play function that inspects text, layout or sizes must
  * await this first, or it checks an untranslated DOM.
  */
@@ -69,10 +70,14 @@ class StorybookTranslationLoader implements TranslocoLoader {
   }
 }
 
+/** Started when the preview loads, so a story's theme is there as soon as it renders. */
+const themeEngine = loadThemeEngine();
+
 /** The app's theme and language machinery for stories, driven by the toolbar instead of storage. */
 export function provideStorybookEnvironment(): EnvironmentProviders {
   return makeEnvironmentProviders([
     provideTheme(),
+    { provide: THEME_ENGINE_LOADER, useValue: () => themeEngine },
     { provide: APPEARANCE_STORE, useFactory: () => new MemoryAppearanceStore() },
     ...provideTransloco({
       config: {
@@ -105,9 +110,10 @@ export function provideStorybookEnvironment(): EnvironmentProviders {
         theme.setPersonal({ mode: globals.mode, contrast: globals.contrast });
         transloco.setActiveLang(globals.locale);
         formatContext.locale.set(globals.locale);
-        translationsReady = firstValueFrom(transloco.load(globals.locale)).then(() =>
-          appRef.whenStable(),
-        );
+        translationsReady = Promise.all([
+          firstValueFrom(transloco.load(globals.locale)),
+          theme.ready,
+        ]).then(() => appRef.whenStable());
         html.lang = globals.locale;
       });
     }),

@@ -38,7 +38,7 @@ Neues Symbol: Namen in `src/lib/icon/icons.json` eintragen, dann `pnpm icons:bui
 
 ## Bundle-Größe
 
-Das initiale Bundle der App lag mit Etappe 3d bei rund 498 kB; die Grenze sind 500 kB (Build-Fehler, `angular.json`). Neuer Code, der beim Start geladen wird, braucht deshalb zuerst Platz: lazy laden (z. B. die Theme-Engine `@material/material-color-utilities`). Nutzen nur lazy Seiten einen Baustein, gehört er in `@smart/ui/forms`; `core/`, `shell/` und die App-Wurzel dürfen es per Lint nicht importieren.
+Das initiale Bundle der App lag mit Etappe 3d bei rund 498 kB; die Grenze sind 500 kB (Build-Fehler, `angular.json`). Seit Etappe 4a lädt der `ThemeService` die Theme-Engine (`@smart/theme` mit `@material/material-color-utilities`, rund 50 kB) erst nach dem ersten Rendern als eigenen Chunk (`loadThemeEngine()`, `ThemeService.ready`); bis dahin bleibt das Theme aus `theme-boot.js` und dem Default-CSS stehen. Der Stand liegt jetzt bei rund 448 kB. Nur die engine-freie Auflösung (`resolveAppearance` aus `@smart/theme/resolve`) ist statisch importiert; `@smart/theme` selbst darf im Startpfad nur per `import()` vorkommen. Neuer Code, der beim Start geladen wird, braucht trotzdem zuerst Platz: lazy laden. Nutzen nur lazy Seiten einen Baustein, gehört er in `@smart/ui/forms`; `core/`, `shell/` und die App-Wurzel dürfen es per Lint nicht importieren.
 
 ## Texte und Sprache
 

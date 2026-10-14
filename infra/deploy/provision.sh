@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Creates a stack's .env on the VPS. Run it yourself in a terminal – secrets never pass through chat or CI.
 # Usage: SMART_VPS=<user@host> infra/deploy/provision.sh <staging|production> [--force]
-# --force rewrites the file but keeps the generated DB and broker passwords (the data volumes depend on them)
-# and the existing SMART_* runtime settings.
+# --force rewrites the file but keeps the generated DB and broker passwords (the data volumes depend on them),
+# the existing SMART_* runtime settings and, when a prompt is answered with Enter, the stored mail settings.
 set -euo pipefail
 
 environment="${1:-}"
@@ -33,18 +33,62 @@ if [ "$exists" = yes ]; then
   existing=$(ssh -n "$host" "cat $remote_dir/.env")
 fi
 
+existing_value() { printf '%s\n' "$existing" | sed -n "s/^$1=//p" | head -n 1; }
+
 keep_or_generate() {
   local value
-  value=$(printf '%s\n' "$existing" | sed -n "s/^$1=//p" | head -n 1)
+  value=$(existing_value "$1")
   if [ -n "$value" ]; then printf '%s' "$value"; else openssl rand -hex 32; fi
 }
 
+# Characters that an env file would read differently (comment, expansion, quoting).
+env_unsafe='[$#"'\''\\`]'
+# Reads a line; Enter keeps the stored value of the variable named $1, and without one the run stops.
+prompt_or_keep() {
+  local name=$1 text=$2 value
+  read -r -p "$text" value
+  if [ -z "$value" ]; then value=$(existing_value "$name"); fi
+  if [ -z "$value" ]; then echo "$name is required – nothing was written" >&2; exit 1; fi
+  if [[ "$value" =~ $env_unsafe ]]; then
+    echo "$name must not contain \$ # quotes, backslashes or backticks – nothing was written" >&2
+    exit 1
+  fi
+  printf '%s' "$value"
+}
+
+# Mail (Resend over SMTP). The key is read hidden and ends up only in the file on the VPS.
+read -r -s -p "Resend API key (starts with re_; Enter keeps the stored one): " resend_key; echo
+if [ -z "$resend_key" ]; then
+  smtp_url=$(existing_value SMTP_URL)
+  if [ -z "$smtp_url" ]; then echo "a Resend API key is required – nothing was written" >&2; exit 1; fi
+elif [[ "$resend_key" =~ ^re_[A-Za-z0-9_]+$ ]]; then
+  smtp_url="smtps://resend:$resend_key@smtp.resend.com:465"
+else
+  # Never echo the rejected value, it may be a secret of another kind.
+  echo "that is not a Resend API key (expected re_ followed by letters, digits and underscores) – nothing was written" >&2
+  exit 1
+fi
+unset resend_key
+mail_from=$(prompt_or_keep MAIL_FROM "Sender of the mails, e.g. Smart Home <noreply@your-domain> (Enter keeps the stored one): ")
+mail_allowlist=""
+if [ "$environment" = staging ]; then
+  mail_allowlist=$(prompt_or_keep MAIL_ALLOWLIST "Staging only: recipients that may receive mail, comma separated (Enter keeps the stored list): ")
+  mail_allowlist=${mail_allowlist//[[:space:]]/}
+fi
+
+existing_hops=$(existing_value TRUSTED_PROXY_HOPS)
 lines=(
   "STACK_NAME=$stack"
   "APP_DOMAIN=$domain"
+  "APP_ORIGIN=https://$domain"
+  # web nginx and Nginx Proxy Manager sit in front of the api.
+  "TRUSTED_PROXY_HOPS=${existing_hops:-2}"
   "DB_PASSWORD=$(keep_or_generate DB_PASSWORD)"
   "MQTT_API_PASSWORD=$(keep_or_generate MQTT_API_PASSWORD)"
+  "SMTP_URL=$smtp_url"
+  "MAIL_FROM=$mail_from"
 )
+if [ -n "$mail_allowlist" ]; then lines+=("MAIL_ALLOWLIST=$mail_allowlist"); fi
 
 # Runtime settings (SMART_*) of an existing .env are carried over verbatim, also on --force.
 while IFS= read -r smart_line; do

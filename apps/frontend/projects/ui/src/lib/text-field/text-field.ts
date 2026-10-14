@@ -21,6 +21,8 @@ export class UiTextField {
   readonly required = input(false, { transform: booleanAttribute });
   readonly disabled = input(false, { transform: booleanAttribute });
   readonly autocomplete = input<string>();
+  /** Keyboard hint on touch devices, e.g. `numeric` for a code of digits. */
+  readonly inputmode = input<'text' | 'numeric' | 'decimal' | 'email' | 'tel' | 'search' | 'url'>();
   readonly name = input<string>();
 
   protected readonly errorMatcher: ErrorStateMatcher = { isErrorState: () => !!this.error() };

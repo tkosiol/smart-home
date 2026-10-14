@@ -30,3 +30,4 @@ CLAUDE.local.md
 .idea/
 .vscode/*
 !.vscode/extensions.json
+tests/e2e/.auth/
