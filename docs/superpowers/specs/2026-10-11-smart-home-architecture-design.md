@@ -116,16 +116,16 @@ Der Pi baut **ausgehend** eine MQTT-Bridge-Verbindung zum VPS-Broker auf (Mosqui
 - **Server-Zertifikat** für `mqtt.smart.tillkosiol.de` von dieser CA (Laufzeit 2 Jahre). Gateways vertrauen nur dieser CA. Kein Let's Encrypt für den Broker nötig, da sich nur eigene Clients verbinden.
 - **Client-Zertifikat pro Gateway** (Laufzeit 2 Jahre), CN = `gatewayId`.
 - **Sperrung** über eine CRL, die der Broker lädt.
-- **Ablaufüberwachung:** Ein täglicher Job warnt 30 Tage vor Ablauf eines Server- oder Gateway-Zertifikats (Benachrichtigung an Plattform-Admins).
+- **Ablaufüberwachung:** Ein täglicher Job des Backends protokolliert 30 Tage vor Ablauf eines Gateway-Zertifikats und der CRL eine Warnung; die Gateway-Liste unter „Mehr → Gateways“ markiert sie (Benachrichtigungen folgen mit Etappe 7). Das Server-Zertifikat prüft das Backend nicht; dafür gibt `pki.sh status` die Restlaufzeit aus (Runbook `docs/runbooks/gateway.md`).
 - **Restrisiko:** öffentlich erreichbarer Port 8883. Ohne gültiges Client-Zertifikat scheitert bereits der TLS-Handshake, bevor Mosquitto MQTT-Pakete verarbeitet. WireGuard kann später als zusätzliche Schicht davorgeschaltet werden, ohne die Architektur zu ändern.
 
 ### 4.3 VPS-Broker
 
-- `per_listener_settings true`, `allow_anonymous false`.
-- **Listener 8883 (öffentlich):** `require_certificate true`, `use_identity_as_username true`, `cafile`, `certfile`, `keyfile`, `crlfile`, `tls_version tlsv1.2` (Minimum), `max_connections` begrenzt.
-- **Listener 1883 (nur internes Docker-Netz):** Passwort-Authentifizierung für `api` und `gateway-simulator`.
-- `persistence true`; **`queue_qos0_messages false`**, damit Befehle (QoS 0) für offline Gateways nicht aufgestaut werden.
-- Fail2ban-Filter auf fehlgeschlagene TLS-/Auth-Versuche im Broker-Log.
+- **Mosquitto 2.1.x** (Version gepinnt, ADR-0020); dasselbe Image für alle Umgebungen. `per_listener_settings true`, `allow_anonymous false`.
+- **Listener 8883 (öffentlich):** `require_certificate true`, `use_identity_as_username true`, `cafile`, `certfile`, `keyfile`, `crlfile`, `tls_version tlsv1.2` (Minimum), `max_connections 20`. Der Listener entsteht nur, wenn `MQTT_TLS=on` gesetzt ist und alle Zertifikatsdateien vorhanden sind; nur der Produktions-Stack veröffentlicht den Port. Eine abgelaufene CRL sperrt alle Gateways aus, deshalb wird sie jährlich erneuert (Runbook).
+- **Listener 1883 (nur internes Docker-Netz):** Passwort-Authentifizierung für `smart-api` (das Backend) und, nur lokal, im Stack-Test und auf Staging, `smart-simulator`. Zertifikate können diese Namen nie tragen (Gateway-IDs folgen dem festen Muster `gw-` plus 8 Zeichen `[a-z0-9]`).
+- `persistence true`; **`queue_qos0_messages false`**, damit Befehle (QoS 0) für offline Gateways nicht aufgestaut werden; `max_queued_messages 10000` (Nachliefer-Spitze nach einem Ausfall).
+- Fail2ban-Filter auf fehlgeschlagene TLS-/Auth-Versuche im Broker-Log (Betriebsschritt von Till, Runbook `docs/runbooks/gateway.md`). Docker-Port-Publishing umgeht UFW (Abschnitt 3.2); der Schutz des Ports sind mTLS und `max_connections`.
 
 **ACL** (eine generische Regel für alle Gateways, `%u` = Zertifikats-CN):
 
@@ -137,9 +137,15 @@ pattern read  gw/%u/z2m/bridge/request/#
 
 user smart-api
 topic readwrite gw/#
+
+user smart-simulator            # nur wenn der Simulator konfiguriert ist; <id> = seine Gateway-ID
+topic write gw/<id>/z2m/#
+topic write gw/<id>/bridge/connection
+topic read  gw/<id>/z2m/+/set
+topic read  gw/<id>/z2m/bridge/request/#
 ```
 
-Ein neues Gateway erfordert damit nur: Zertifikat ausstellen, im Backend registrieren. Keine Broker-Konfigurationsänderung.
+Unerlaubte Zugriffe verwirft der Broker still. Ein neues Gateway erfordert damit nur: Zertifikat ausstellen, im Backend registrieren (Plattform-Admin, „Mehr → Gateways“). Keine Broker-Konfigurationsänderung. Das Backend leitet Status (`bridge/connection`, `bridge/state`) aus den retained Nachrichten ab; unbekannte und gesperrte Gateways ignoriert es.
 
 ### 4.4 Topic-Schema
 
@@ -150,20 +156,20 @@ Ein neues Gateway erfordert damit nur: Zertifikat ausstellen, im Backend registr
 | `zigbee2mqtt/bridge/request/#` | `gw/<gatewayId>/z2m/bridge/request/#` | VPS → Pi                                 | 0   |
 | –                              | `gw/<gatewayId>/bridge/connection`    | Bridge-Status (`1`/`0`, inkl. Last Will) | 1   |
 
-Schleifenvermeidung zwischen ein- und ausgehenden Topics wird im Spike (Etappe 2b) verifiziert.
+Schleifen zwischen ein- und ausgehenden Topics verhindert `try_private true` an der Bridge (im Spike 2b verifiziert, ADR-0020).
 
 > **Self-Hosting-Leitplanke 1 (ADR-0018):** `gw/<gatewayId>/z2m` ist das Präfix des zentralen Betriebs. Ein Gateway wird allgemein als Broker-Verbindung + Topic-Präfix modelliert; Ingest, Befehle und Live-Updates dürfen kein bestimmtes Präfix voraussetzen (z. B. `zigbee2mqtt` beim Broker eines Nutzers).
 
 ### 4.5 Pi-Konfiguration (Ordner `gateway/`)
 
 - Compose-Datei und Konfigurations-Vorlagen für Mosquitto und Zigbee2MQTT; Image-Versionen gepinnt.
-- **Mosquitto lokal:** nicht mehr im LAN veröffentlicht; nur über das Docker-Netz für Z2M erreichbar; Passwort-Authentifizierung; `persistence true`, `queue_qos0_messages true` (Z2M publiziert QoS 0), `max_queued_messages` so bemessen, dass mindestens 24 h Ausfall gepuffert werden (Wert wird im Spike ermittelt); Bridge mit `cleansession false`, `notifications true`, `notification_topic gw/<gatewayId>/bridge/connection`.
+- **Mosquitto lokal:** nicht mehr im LAN veröffentlicht; nur über das Docker-Netz für Z2M erreichbar; Passwort-Authentifizierung; `persistence true`, `autosave_interval 300`, `queue_qos0_messages true` (Z2M publiziert QoS 0), **Puffer für 72 h** (`max_queued_messages 75000`, `max_queued_bytes 75497472`; Speicherlimit des Containers als Schutz, weil die Limits die QoS-0-Queue nicht begrenzen); Bridge mit `cleansession false`, `try_private true`, `keepalive_interval 20`, `notification_topic gw/<gatewayId>/bridge/connection` (ADR-0020).
 - **Zigbee2MQTT:**
   - `advanced.last_seen: ISO_8601` (Messzeitpunkt in jeder Nachricht)
   - `availability.enabled: true` (Online-/Offline-Status pro Gerät)
   - eigener, generierter `network_key`, `pan_id`, `ext_pan_id` (Neukopplung der vorhandenen Geräte nötig)
-  - Frontend mit `auth_token`, nur per SSH-Tunnel erreichbar
-  - **Konvention:** `friendly_name` bleibt immer die IEEE-Adresse; Benennung erfolgt ausschließlich in der App.
+  - Frontend im Heimnetz (Port 8080), geschützt durch `auth_token`; nicht aus dem Internet erreichbar
+  - **Namen:** Die Regel „`friendly_name` ist immer die IEEE-Adresse“ entfällt (Entscheidung 2026-10-14): Die Sensoren heißen in Z2M schon nach ihren Pflanzen. Das Backend ordnet Nachrichten über `bridge/devices` (`friendly_name` ↔ IEEE-Adresse) zu und folgt Umbenennungen; stabil ist die IEEE-Adresse. In Etappe 6 schlägt die App den Z2M-Namen vor, wenn aus neu erkannter Hardware ein Gerät wird; danach gilt der Name in der App.
 - **Zertifikate** auf dem Pi in einem Verzeichnis mit Rechten `600/700`.
 - **Deploy:** `pnpm gateway:deploy` vom Mac aus im Heimnetz (rsync + `docker compose up -d` per SSH). Nicht über GitHub Actions, da der Pi von außen nicht erreichbar ist.
 - **Zeit:** `systemd-timesyncd` aktiv. Der Pi hat keine RTC; siehe Abschnitt 9.
@@ -359,13 +365,13 @@ apps/backend/src/
 
 **Gateways, Hardware und Geräte**
 
-| Tabelle           | Wesentliche Felder                                                                                                                                                                                                |
-| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `gateways`        | `id` (= Zertifikats-CN), `household_id`, `name`, `kind` (`z2m`), `status` (`online`/`offline`), `last_seen_at`, `cert_expires_at`                                                                                 |
-| `hardware`        | `id`, `gateway_id`, `ieee_address`, `vendor`, `model`, `definition` (JSON, Z2M-Definition inkl. _exposes_), `interview_state`, `availability`, `last_state` (JSON), `first_seen_at`, `last_seen_at`, `removed_at` |
-| `capabilities`    | `hardware_id`, `key` (Property-Pfad, z. B. `soil_moisture`), `kind` (`numeric`/`binary`/`enum`/`text`/`composite`), `unit`, `min`, `max`, `step`, `enum_values`, `readable`, `writable`                           |
-| `devices`         | **logisches Gerät:** `id`, `household_id`, `room_id`, `name`, `icon`, `created_at`, `archived_at`                                                                                                                 |
-| `device_bindings` | `device_id`, `hardware_id`, `bound_at`, `unbound_at`; partielle Unique-Indizes: höchstens eine aktive Bindung pro Gerät und pro Hardware                                                                          |
+| Tabelle           | Wesentliche Felder                                                                                                                                                                                                                                                          |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `gateways`        | `id` (= Zertifikats-CN), `household_id`, `name`, `kind` (`z2m`), `topic_prefix` (`gw/<id>/z2m`), `bridge_status`, `z2m_status` (je `online`/`offline`/`unknown`), `status_changed_at`, `last_message_at`, `cert_fingerprint`, `cert_expires_at`, `created_at`, `revoked_at` |
+| `hardware`        | `id`, `gateway_id`, `ieee_address`, `vendor`, `model`, `definition` (JSON, Z2M-Definition inkl. _exposes_), `interview_state`, `availability`, `last_state` (JSON), `first_seen_at`, `last_seen_at`, `removed_at`                                                           |
+| `capabilities`    | `hardware_id`, `key` (Property-Pfad, z. B. `soil_moisture`), `kind` (`numeric`/`binary`/`enum`/`text`/`composite`), `unit`, `min`, `max`, `step`, `enum_values`, `readable`, `writable`                                                                                     |
+| `devices`         | **logisches Gerät:** `id`, `household_id`, `room_id`, `name`, `icon`, `created_at`, `archived_at`                                                                                                                                                                           |
+| `device_bindings` | `device_id`, `hardware_id`, `bound_at`, `unbound_at`; partielle Unique-Indizes: höchstens eine aktive Bindung pro Gerät und pro Hardware                                                                                                                                    |
 
 Neu entdeckte Hardware ist „nicht zugeordnet“ und kann einem bestehenden logischen Gerät zugewiesen werden (Sensor-Tausch: Verlauf läuft nahtlos weiter) oder ein neues logisches Gerät erzeugen. Nicht zugeordnete Hardware zeigt nur `last_state` als Vorschau und schreibt keine Historie.
 
@@ -645,6 +651,9 @@ Reihenfolge ab Etappe 4 (Entscheidung 2026-10-13): 4a → 4c → 5 → 6 → 7 �
 | 0015 | Staging + Produktion mit Image-Promotion und manueller Freigabe                            |
 | 0016 | Deploy per Forced-Command-SSH-Key                                                          |
 | 0017 | Backups mit restic nach Backblaze B2 (EU)                                                  |
+| 0018 | Self-Hosting-Leitplanken                                                                   |
+| 0019 | Lizenz AGPL-3.0-only                                                                       |
+| 0020 | Bridge-Puffer (72 h) und Topic-Konfiguration, Mosquitto 2.1.x (Ergebnis Spike 2b)          |
 
 ---
 

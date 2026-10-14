@@ -30,8 +30,12 @@ Smart-Home-Plattform. Verbindliche Architektur: `docs/superpowers/specs/2026-10-
 | Backend-Integrationstests (Docker nötig)         | `pnpm --filter @smart/backend test`                                             |
 | Produktions-Stack lokal testen                   | `sh infra/compose/test/stack-test.sh`                                           |
 | Deploy-Skripte testen                            | `bash infra/deploy/test/run-tests.sh`                                           |
+| PKI-Skripte testen (OpenSSL ≥ 3)                 | `bash infra/pki/test/run-tests.sh`                                              |
+| Broker-Image testen (Docker, OpenSSL ≥ 3)        | `bash infra/broker/test/broker-test.sh`                                         |
 | Symbol-Schrift neu erzeugen                      | `pnpm icons:build`                                                              |
 | App-Icon (PNGs, Favicon) neu erzeugen            | `pnpm app-icon:build`                                                           |
+
+Die Backend-Tests der Gateway-Registrierung erzeugen eine Wegwerf-PKI mit OpenSSL und brauchen **OpenSSL ≥ 3**; macOS liefert LibreSSL mit, dort `brew install openssl@3` (Homebrew-Pfade werden gefunden, sonst `SMART_OPENSSL=/pfad/zu/openssl`). Dasselbe gilt für die PKI- und Broker-Tests und für `infra/compose/test/stack-test.sh`. Gateways, PKI und Broker-Zertifikate im Betrieb: `docs/runbooks/gateway.md`.
 
 `pnpm install` baut `@smart/contracts` und `@smart/theme` nur bei einer echten Installation (pnpm überspringt Lifecycle-Skripte, wenn `node_modules` aktuell ist). Nach Änderungen an den Contracts oder Theme-Paketen daher `pnpm packages:build` (baut `@smart/contracts` und `@smart/theme` in Abhängigkeitsreihenfolge).
 
