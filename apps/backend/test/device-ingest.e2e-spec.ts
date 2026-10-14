@@ -98,9 +98,9 @@ describe('device ingest from the broker', () => {
   /** A message after the ones under test: once it arrives, everything before it was handled. */
   const sentinel = async (gatewayId: string, name: string): Promise<void> => {
     const marker = Math.random();
-    await publish(`${prefixOf(gatewayId)}/${name}`, { marker });
+    await publish(`${prefixOf(gatewayId)}/${name}`, { soil_moisture: marker });
     await eventually(async () => {
-      expect((await named(gatewayId, name)).last_state.marker).toBe(marker);
+      expect((await named(gatewayId, name)).last_state.soil_moisture).toBe(marker);
     });
   };
   const publishFixture = (gatewayId: string): Promise<void> =>

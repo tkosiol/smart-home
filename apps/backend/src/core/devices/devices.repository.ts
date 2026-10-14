@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { Availability, Capability } from '@smart/contracts';
-import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { DATABASE, type DatabaseConnection } from '../../platform/database/index.js';
 import { gateways } from '../gateways/index.js';
 import {
@@ -133,6 +133,28 @@ export class DevicesRepository {
       .from(deviceBindings)
       .where(and(eq(deviceBindings.hardwareId, hardwareId), isNull(deviceBindings.unboundAt)));
     return row;
+  }
+
+  /**
+   * Merges what the hardware reported into the device's state and moves its time to `at`, unless
+   * the stored state is newer: a late delivery never overwrites a newer state. Returns whether the
+   * state was updated.
+   */
+  async recordState(deviceId: string, state: Record<string, unknown>, at: Date): Promise<boolean> {
+    const updated = await this.connection.db
+      .update(deviceState)
+      .set({
+        state: sql`${deviceState.state} || ${JSON.stringify(state)}::jsonb`,
+        lastSeenAt: at,
+      })
+      .where(
+        and(
+          eq(deviceState.deviceId, deviceId),
+          or(isNull(deviceState.lastSeenAt), lte(deviceState.lastSeenAt, at)),
+        ),
+      )
+      .returning({ deviceId: deviceState.deviceId });
+    return updated.length > 0;
   }
 
   /** Devices on their active binding; a device without one has nothing to show and is skipped. */

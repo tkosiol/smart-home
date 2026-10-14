@@ -1,6 +1,18 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { Availability, Capability } from '@smart/contracts';
-import { and, asc, eq, inArray, isNull, notExists, notInArray, sql } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  eq,
+  inArray,
+  isNull,
+  lt,
+  lte,
+  notExists,
+  notInArray,
+  or,
+  sql,
+} from 'drizzle-orm';
 import type { PgColumn } from 'drizzle-orm/pg-core';
 import { DATABASE, type DatabaseConnection } from '../../platform/database/index.js';
 import { gateways } from '../gateways/index.js';
@@ -241,15 +253,40 @@ export class HardwareRepository {
     });
   }
 
-  /** Merges what the hardware reported into its last state and notes when it was heard. */
-  async recordState(hardwareId: string, state: Record<string, unknown>, at: Date): Promise<void> {
-    await this.connection.db
+  /**
+   * Merges what the hardware reported into its last state and notes when it was reported (`at`).
+   * A report older than the time already stored is left out, so that a late delivery does not
+   * overwrite a newer state; with `strictlyNewer` an equal time is left out too (a retained copy
+   * of what was seen already). Returns whether the state was updated.
+   */
+  async recordState(
+    hardwareId: string,
+    state: Record<string, unknown>,
+    at: Date,
+    options: { strictlyNewer?: boolean } = {},
+  ): Promise<boolean> {
+    const newer = options.strictlyNewer
+      ? lt(hardware.lastSeenAt, at)
+      : lte(hardware.lastSeenAt, at);
+    const updated = await this.connection.db
       .update(hardware)
       .set({
         lastState: sql`${hardware.lastState} || ${JSON.stringify(state)}::jsonb`,
         lastSeenAt: at,
       })
-      .where(eq(hardware.id, hardwareId));
+      .where(and(eq(hardware.id, hardwareId), or(isNull(hardware.lastSeenAt), newer)))
+      .returning({ id: hardware.id });
+    return updated.length > 0;
+  }
+
+  /** What the hardware reports and accepts. */
+  async capabilitiesOf(hardwareId: string): Promise<Capability[]> {
+    const rows = await this.connection.db
+      .select()
+      .from(capabilities)
+      .where(eq(capabilities.hardwareId, hardwareId))
+      .orderBy(asc(capabilities.key));
+    return rows.map(toCapability);
   }
 
   /** The gateway's hardware of that name (Z2M keeps names unique per bridge); not removed ones. */
