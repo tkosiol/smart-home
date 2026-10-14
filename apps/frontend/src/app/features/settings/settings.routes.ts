@@ -1,13 +1,7 @@
-import { inject } from '@angular/core';
-import { Router, type CanMatchFn, type Routes } from '@angular/router';
+import type { Routes } from '@angular/router';
 import { provideTranslocoScope } from '@jsverse/transloco';
 import { marker } from '@jsverse/transloco-keys-manager/marker';
-import { RUNTIME_CONFIG } from '../../core/config';
-
-/** The installation appearance is only reachable while the hoster enabled its editor (also by URL). */
-const instanceEditorEnabled: CanMatchFn = () =>
-  inject(RUNTIME_CONFIG).features.instanceAppearanceEditor ||
-  inject(Router).parseUrl('/mehr/einstellungen');
+import { platformAdmin } from '../../core/household';
 
 // Pages load lazily (loadComponent): the app config imports this folder's index at startup for
 // provideSettingsFeature(), and must not pull the pages into the initial bundle with it.
@@ -36,7 +30,7 @@ export const settingsRoutes: Routes = [
       {
         path: 'installation',
         title: marker('app.title.installation'),
-        canMatch: [instanceEditorEnabled],
+        canMatch: [platformAdmin],
         loadComponent: () => import('./installation-page').then((m) => m.InstallationPage),
       },
     ],

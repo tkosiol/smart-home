@@ -55,4 +55,14 @@ export class UsersRepository {
       .returning();
     return row;
   }
+
+  /** Remembers the household the user selected last; the caller has checked the membership. */
+  async setLastHousehold(id: string, householdId: string): Promise<User | undefined> {
+    const [row] = await this.connection.db
+      .update(users)
+      .set({ lastHouseholdId: householdId, updatedAt: sql`now()` })
+      .where(eq(users.id, id))
+      .returning();
+    return row;
+  }
 }

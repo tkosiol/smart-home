@@ -4,6 +4,8 @@ import {
   injectMoreEntries,
   injectOverviewCards,
   provideFeature,
+  visibleMoreEntries,
+  type MoreEntry,
   type FeatureDefinition,
 } from './feature-registry';
 
@@ -49,5 +51,39 @@ describe('feature registry', () => {
     expect(setup()).toEqual({ entries: [], cards: [] });
     TestBed.resetTestingModule();
     expect(setup({})).toEqual({ entries: [], cards: [] });
+  });
+});
+
+describe('visibleMoreEntries', () => {
+  const entry = (id: string, rights: Partial<MoreEntry> = {}): MoreEntry => ({
+    id,
+    labelKey: id,
+    icon: 'settings',
+    order: 1,
+    ...rights,
+  });
+  const entries = [
+    entry('open'),
+    entry('members', { minRole: 'owner' }),
+    entry('devices', { minRole: 'member' }),
+    entry('instance', { platformAdminOnly: true }),
+  ];
+  const ids = (role: Parameters<typeof visibleMoreEntries>[1]['role'], platformAdmin = false) =>
+    visibleMoreEntries(entries, { role, platformAdmin }).map((e) => e.id);
+
+  it('hides entries whose minimum role the user lacks', () => {
+    expect(ids('member')).toEqual(['open', 'devices']);
+    expect(ids('viewer')).toEqual(['open']);
+    expect(ids('owner')).toEqual(['open', 'members', 'devices']);
+  });
+
+  it('shows platform admin entries to the platform admin only', () => {
+    expect(ids('owner', true)).toEqual(['open', 'members', 'devices', 'instance']);
+    expect(ids('owner', false)).not.toContain('instance');
+  });
+
+  it('hides entries that need a role when there is no household', () => {
+    expect(ids(null)).toEqual(['open']);
+    expect(ids(null, true)).toEqual(['open', 'instance']);
   });
 });

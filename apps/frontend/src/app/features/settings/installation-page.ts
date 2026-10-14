@@ -3,7 +3,7 @@ import { TranslocoPipe } from '@jsverse/transloco';
 import { ThemeService, UiPage } from '@smart/ui';
 import { UiThemeEditor } from '@smart/ui/forms';
 
-/** Appearance of the whole installation (colors, shapes, font); reachable only when enabled. */
+/** Appearance of the whole installation (colors, shapes, font); reachable only for the platform admin. */
 @Component({
   selector: 'app-installation-page',
   imports: [TranslocoPipe, UiPage, UiThemeEditor],

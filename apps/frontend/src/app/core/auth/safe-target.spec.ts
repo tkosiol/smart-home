@@ -1,12 +1,16 @@
 import { safeTarget } from './safe-target';
 
 describe('safeTarget', () => {
-  it.each(['/', '/raeume', '/mehr/einstellungen?tab=1#top', '/geraete/42'])(
-    'lets the app path %s through',
-    (path) => {
-      expect(safeTarget(path)).toBe(path);
-    },
-  );
+  it.each([
+    '/',
+    '/raeume',
+    '/mehr/einstellungen?tab=1#top',
+    '/geraete/42',
+    '/einladung',
+    '/einladung/tok-3fA9_x',
+  ])('lets the app path %s through', (path) => {
+    expect(safeTarget(path)).toBe(path);
+  });
 
   it.each([
     ['nothing', null],

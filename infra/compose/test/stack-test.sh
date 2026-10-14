@@ -59,7 +59,7 @@ compose up -d --wait
 
 # The people of the end-to-end tests (tests/e2e/helpers/accounts.ts), created like the first admin on
 # the VPS; running the command again changes nothing.
-for person in shell smoke auth theme; do
+for person in shell smoke auth theme setup owner guest; do
   compose exec -T api node dist/cli.js create-admin --email "e2e-$person@example.org" --name "E2E $person"
 done
 

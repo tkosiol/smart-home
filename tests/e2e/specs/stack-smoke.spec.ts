@@ -37,6 +37,7 @@ test('every page renders without console errors or CSP violations', async ({ pag
   await page.getByRole('link', { name: /Darstellung/ }).click();
   await expect(page.getByRole('heading', { level: 1, name: 'Darstellung' })).toBeVisible();
   await page.goBack();
+  // The stack's accounts are created like the first admin, so they are platform admins.
   await page.getByRole('link', { name: /Erscheinungsbild der Installation/ }).click();
   await expect(
     page.getByRole('heading', { level: 1, name: 'Erscheinungsbild der Installation' }),
@@ -232,10 +233,7 @@ test('config.json comes from the container environment and is never cached', asy
   expect(response.headers()['content-type']).toContain('application/json');
   expect(response.headers()['cache-control']).toBe('no-store');
   expect(response.headers()['content-security-policy']).toContain("default-src 'self'");
-  expect(await response.json()).toEqual({
-    features: { instanceAppearanceEditor: true },
-    instanceAppearance: STACK_TEST_INSTANCE,
-  });
+  expect(await response.json()).toEqual({ instanceAppearance: STACK_TEST_INSTANCE });
 });
 
 test('the instance default from config.json replaces the build default', async ({

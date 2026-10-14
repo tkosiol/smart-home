@@ -5,3 +5,4 @@ export * from './language.js';
 export * from './runtime-config.js';
 export * from './api-error.js';
 export * from './auth.js';
+export * from './households.js';

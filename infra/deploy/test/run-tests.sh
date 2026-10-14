@@ -115,12 +115,15 @@ export SMART_VPS=deploy@vps STUB_ENV_EXISTS=1 STUB_EXISTING_ENV
 check "provision --force keeps the existing database and broker passwords" 'provision_staging --force && grep -qx "DB_PASSWORD=keep-db" "$STUB_REMOTE_FILE" && grep -qx "MQTT_API_PASSWORD=keep-mqtt" "$STUB_REMOTE_FILE"'; teardown
 
 setup; export SMART_VPS=deploy@vps
-check "provision writes the editor switch for staging" 'provision_staging && grep -qx "SMART_INSTANCE_APPEARANCE_EDITOR=true" "$STUB_REMOTE_FILE"'; teardown
+check "provision writes no editor switch for staging" 'provision_staging && grep -qx "STACK_NAME=smart-staging" "$STUB_REMOTE_FILE" && ! grep -q "SMART_INSTANCE_APPEARANCE_EDITOR" "$STUB_REMOTE_FILE"'; teardown
 setup; export SMART_VPS=deploy@vps
 check "provision writes no editor switch for production" 'answers | bash "$DEPLOY_DIR/provision.sh" production > /dev/null 2>&1 && grep -qx "COMPOSE_PROFILES=backup" "$STUB_REMOTE_FILE" && ! grep -q "SMART_INSTANCE_APPEARANCE_EDITOR" "$STUB_REMOTE_FILE"'; teardown
 setup; STUB_EXISTING_ENV=$(printf 'STACK_NAME=smart-staging\nDB_PASSWORD=keep-db\nSMART_INSTANCE_APPEARANCE={"name":"kept"}')
 export SMART_VPS=deploy@vps STUB_ENV_EXISTS=1 STUB_EXISTING_ENV
 check "provision --force keeps existing runtime settings verbatim" 'provision_staging --force && grep -qxF "SMART_INSTANCE_APPEARANCE={\"name\":\"kept\"}" "$STUB_REMOTE_FILE"'; teardown
+setup; STUB_EXISTING_ENV=$(printf 'STACK_NAME=smart-staging\nDB_PASSWORD=keep-db\nSMART_INSTANCE_APPEARANCE_EDITOR=true')
+export SMART_VPS=deploy@vps STUB_ENV_EXISTS=1 STUB_EXISTING_ENV
+check "provision --force tolerates the retired editor switch of an existing file" 'provision_staging --force && grep -qx "DB_PASSWORD=keep-db" "$STUB_REMOTE_FILE"'; teardown
 
 # Mail, origin and proxy settings.
 setup; export SMART_VPS=deploy@vps
@@ -151,6 +154,7 @@ setup; export SMART_VPS=deploy@vps
 check "admin refuses an unknown command" '[ "$(run_admin staging recovery-link --email a@example.org)" = 2 ]'
 check "admin refuses a shell command as the command" '[ "$(run_admin staging "create-admin; id")" = 2 ]'
 check "admin refuses an unknown environment" '[ "$(run_admin prod create-admin --email a@example.org --name A)" = 2 ]'
+check "admin refuses a shell command after revoke-sessions" '[ "$(run_admin staging "revoke-sessions; id")" = 2 ]'
 check "admin refuses a missing command" '[ "$(run_admin staging)" = 2 ]'
 check "admin contacts the VPS only for allowed commands" '[ ! -s "$STUB_CALLS" ]'; teardown
 setup; unset SMART_VPS
@@ -164,6 +168,7 @@ mkdir -p "$STUB_REMOTE_HOME/docker/apps/smart-staging"
 NASTY_NAME="O'Neil \"\$(touch $WORK/pwned)\" \`touch $WORK/pwned\`; touch $WORK/pwned #"
 check "admin hands every argument to the remote command as one word" 'run_admin staging create-admin --email "a b@example.org" --name "$NASTY_NAME" > /dev/null && [ "$(tail -n 1 "$STUB_ARGV_LOG")" = "docker <compose> <-f> <compose.yaml> <--env-file> <.env> <--env-file> <deploy.env> <exec> <-T> <api> <node> <dist/cli.js> <create-admin> <--email> <a b@example.org> <--name> <$NASTY_NAME>" ]'
 check "admin lets no argument run on the VPS" '[ ! -e "$WORK/pwned" ]'
+check "admin runs revoke-sessions and hands its arguments over as one word each" 'run_admin staging revoke-sessions --email "a b@example.org" > /dev/null && [ "$(tail -n 1 "$STUB_ARGV_LOG")" = "docker <compose> <-f> <compose.yaml> <--env-file> <.env> <--env-file> <deploy.env> <exec> <-T> <api> <node> <dist/cli.js> <revoke-sessions> <--email> <a b@example.org>" ]'
 check "admin keeps empty arguments" 'run_admin staging create-admin --name "" > /dev/null && tail -n 1 "$STUB_ARGV_LOG" | grep -q "<--name> <>$"'; teardown
 
 echo "deploy tests: $passed passed, $failures failed"

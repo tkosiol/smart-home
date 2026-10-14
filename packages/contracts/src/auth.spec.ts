@@ -54,10 +54,25 @@ describe('meSchema', () => {
     locale: 'de',
     appearance: DEFAULT_PERSONAL_APPEARANCE,
     isPlatformAdmin: false,
+    households: [{ id: 'h1', name: 'Home', timezone: 'Europe/Berlin', role: 'owner' }],
+    currentHouseholdId: 'h1',
   };
 
   it('accepts a complete profile', () => {
     expect(meSchema.safeParse(me).success).toBe(true);
+  });
+
+  it('accepts no households and no current household', () => {
+    expect(meSchema.safeParse({ ...me, households: [], currentHouseholdId: null }).success).toBe(
+      true,
+    );
+  });
+
+  it('rejects a profile without households or current household', () => {
+    const without = (key: string) =>
+      Object.fromEntries(Object.entries(me).filter(([k]) => k !== key));
+    expect(meSchema.safeParse(without('households')).success).toBe(false);
+    expect(meSchema.safeParse(without('currentHouseholdId')).success).toBe(false);
   });
 
   it('rejects an unknown locale', () => {

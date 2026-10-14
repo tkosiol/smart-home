@@ -7,7 +7,9 @@ import { routes } from './app.routes';
 import { provideAuth } from './core/auth';
 import { provideRuntimeConfig } from './core/config';
 import { provideI18n } from './core/i18n';
+import { provideInstanceAppearance } from './core/instance';
 import { PageTitleStrategy } from './core/routing';
+import { provideHouseholdsFeature } from './features/households';
 import { provideSettingsFeature } from './features/settings';
 
 export function createAppConfig(config: RuntimeConfig = DEFAULT_RUNTIME_CONFIG): ApplicationConfig {
@@ -18,16 +20,15 @@ export function createAppConfig(config: RuntimeConfig = DEFAULT_RUNTIME_CONFIG):
       { provide: TitleStrategy, useExisting: PageTitleStrategy },
       provideRuntimeConfig(config),
       provideAuth(),
+      provideInstanceAppearance(),
       provideI18n(),
+      provideHouseholdsFeature(),
       provideSettingsFeature(),
       provideServiceWorker('ngsw-worker.js', {
         enabled: !isDevMode(),
         registrationStrategy: 'registerWhenStable:30000',
       }),
-      provideTheme({
-        instance: config.instanceAppearance,
-        allowStoredInstance: config.features.instanceAppearanceEditor,
-      }),
+      provideTheme({ instance: config.instanceAppearance }),
     ],
   };
 }

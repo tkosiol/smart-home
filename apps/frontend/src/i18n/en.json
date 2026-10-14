@@ -16,10 +16,16 @@
       "appearance": "Appearance",
       "installation": "Appearance of the installation",
       "signIn": "Sign in",
+      "setup": "Set up a household",
+      "invitation": "Invitation",
+      "switchHousehold": "Switch household",
+      "household": "Household",
+      "members": "Members",
       "notFound": "Not found"
     },
     "household": {
-      "placeholder": "My home"
+      "switch": "Switch household",
+      "saved": "Saved."
     },
     "notifications": {
       "none": "Notifications, none new"
@@ -34,6 +40,7 @@
       "modules": "Modules",
       "notifications": "Notifications",
       "household": "Household",
+      "members": "Members",
       "gateways": "Gateways",
       "settings": "Settings"
     },
@@ -49,12 +56,27 @@
         "invalidCode": "The code is wrong or has expired.",
         "tooManyAttempts": "Too many attempts. Please wait a moment and request a new code.",
         "rateLimited": "Too many requests. Please try again in a moment.",
-        "mailDisabled": "Sending e-mail is not set up."
+        "mailDisabled": "Sending e-mail is not set up.",
+        "forbidden": "You do not have permission to do that."
+      },
+      "household": {
+        "notFound": "This household was not found.",
+        "forbidden": "You do not have permission to do that in this household.",
+        "lastOwner": "A household needs at least one person with the owner role."
+      },
+      "invitation": {
+        "invalid": "This invitation is invalid or has expired.",
+        "emailMismatch": "This invitation belongs to a different e-mail address.",
+        "accountExists": "An account already exists for this e-mail address. Please sign in.",
+        "alreadyMember": "This person is already a member of the household."
       },
       "validation": {
         "failed": "The input is not valid."
       },
       "internal": "Something went wrong. Please try again later."
+    },
+    "members": {
+      "linkCopied": "Link copied"
     }
   }
 }

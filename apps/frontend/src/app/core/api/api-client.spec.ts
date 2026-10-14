@@ -42,6 +42,22 @@ describe('ApiClient', () => {
     );
   });
 
+  it('passes a referrer policy on to fetch only when asked to', async () => {
+    const { api, fetchFn } = setup(() => json({}));
+    await api.post('/api/v1/a', { x: 1 }, { referrerPolicy: 'no-referrer' });
+    await api.get('/api/v1/b');
+    expect(fetchFn).toHaveBeenNthCalledWith(
+      1,
+      '/api/v1/a',
+      expect.objectContaining({ referrerPolicy: 'no-referrer' }),
+    );
+    expect(fetchFn).toHaveBeenNthCalledWith(
+      2,
+      '/api/v1/b',
+      expect.objectContaining({ referrerPolicy: undefined }),
+    );
+  });
+
   it('sends POST and PUT bodies as JSON', async () => {
     const { api, fetchFn } = setup(() => json({ ok: true }));
     await api.post('/api/v1/a', { x: 1 });
@@ -59,6 +75,26 @@ describe('ApiClient', () => {
       2,
       '/api/v1/b',
       expect.objectContaining({ method: 'PUT', body: '{"y":2}' }),
+    );
+  });
+
+  it('sends PATCH with a JSON body and DELETE without one', async () => {
+    const { api, fetchFn } = setup(() => new Response(null, { status: 204 }));
+    await api.patch('/api/v1/c', { z: 3 });
+    expect(await api.delete('/api/v1/d')).toBe(undefined);
+    expect(fetchFn).toHaveBeenNthCalledWith(
+      1,
+      '/api/v1/c',
+      expect.objectContaining({ method: 'PATCH', body: '{"z":3}' }),
+    );
+    expect(fetchFn).toHaveBeenNthCalledWith(
+      2,
+      '/api/v1/d',
+      expect.objectContaining({
+        method: 'DELETE',
+        body: undefined,
+        headers: { Accept: 'application/json' },
+      }),
     );
   });
 

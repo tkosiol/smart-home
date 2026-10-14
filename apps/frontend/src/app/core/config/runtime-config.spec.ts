@@ -16,7 +16,6 @@ describe('loadRuntimeConfig', () => {
       }),
     );
     await expect(loadRuntimeConfig(fetchFn)).resolves.toEqual({
-      features: { instanceAppearanceEditor: true },
       instanceAppearance: DEFAULT_INSTANCE_APPEARANCE,
     });
     expect(fetchFn).toHaveBeenCalledWith(

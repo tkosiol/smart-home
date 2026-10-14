@@ -1,14 +1,11 @@
 import * as z from 'zod/mini';
 import { personalAppearanceSchema } from './appearance.js';
+import { emailSchema, normalizeEmail } from './email.js';
+import { householdSummarySchema } from './household-summary.js';
 import { languageSchema } from './language.js';
 
-/** Canonical form of an e-mail address for lookups and comparisons. */
-export function normalizeEmail(raw: string): string {
-  return raw.trim().toLowerCase();
-}
-
-/** Normalizes first, then validates the address. */
-export const emailSchema = z.pipe(z.pipe(z.string(), z.transform(normalizeEmail)), z.email());
+// Lives in email.ts so households.ts can use it without an import cycle through this file.
+export { emailSchema, normalizeEmail };
 
 export const emailCodeRequestSchema = z.object({ email: emailSchema });
 export type EmailCodeRequest = z.infer<typeof emailCodeRequestSchema>;
@@ -26,6 +23,8 @@ export const meSchema = z.object({
   locale: languageSchema,
   appearance: personalAppearanceSchema,
   isPlatformAdmin: z.boolean(),
+  households: z.array(householdSummarySchema),
+  currentHouseholdId: z.nullable(z.string()),
 });
 export type Me = z.infer<typeof meSchema>;
 

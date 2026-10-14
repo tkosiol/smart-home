@@ -20,10 +20,10 @@ export async function mailsTo(address: string): Promise<string[]> {
 }
 
 /**
- * The six-digit code of the first mail to `address` that is not in `seen` (take `mailsTo` before
- * requesting the code). Polls, because the mail arrives a moment after the request is answered.
+ * The plain-text body of the first mail to `address` that is not in `seen` (take `mailsTo` before
+ * causing the mail). Polls, because the mail arrives a moment after the request is answered.
  */
-export async function codeFromNewMail(
+export async function textOfNewMail(
   address: string,
   seen: readonly string[],
   timeoutMs = 15_000,
@@ -31,14 +31,20 @@ export async function codeFromNewMail(
   const deadline = Date.now() + timeoutMs;
   for (;;) {
     const fresh = (await mailsTo(address)).find((id) => !seen.includes(id));
-    if (fresh) {
-      const { Text } = await getJson<{ Text: string }>(`/api/v1/message/${fresh}`);
-      const code = /\b(\d{6})\b/.exec(Text)?.[1];
-      if (!code) throw new Error('the sign-in mail has no six-digit code');
-      return code;
-    }
+    if (fresh) return (await getJson<{ Text: string }>(`/api/v1/message/${fresh}`)).Text;
     if (Date.now() > deadline)
       throw new Error(`no mail to ${address} arrived within ${timeoutMs} ms`);
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
+}
+
+/** The six-digit code of the first new sign-in mail to `address` (see `textOfNewMail`). */
+export async function codeFromNewMail(
+  address: string,
+  seen: readonly string[],
+  timeoutMs = 15_000,
+): Promise<string> {
+  const code = /\b(\d{6})\b/.exec(await textOfNewMail(address, seen, timeoutMs))?.[1];
+  if (!code) throw new Error('the sign-in mail has no six-digit code');
+  return code;
 }

@@ -16,10 +16,16 @@
       "appearance": "Darstellung",
       "installation": "Erscheinungsbild der Installation",
       "signIn": "Anmelden",
+      "setup": "Haushalt einrichten",
+      "invitation": "Einladung",
+      "switchHousehold": "Haushalt wechseln",
+      "household": "Haushalt",
+      "members": "Mitglieder",
       "notFound": "Nicht gefunden"
     },
     "household": {
-      "placeholder": "Mein Zuhause"
+      "switch": "Haushalt wechseln",
+      "saved": "Gespeichert."
     },
     "notifications": {
       "none": "Benachrichtigungen, keine neuen"
@@ -34,6 +40,7 @@
       "modules": "Module",
       "notifications": "Benachrichtigungen",
       "household": "Haushalt",
+      "members": "Mitglieder",
       "gateways": "Gateways",
       "settings": "Einstellungen"
     },
@@ -49,12 +56,27 @@
         "invalidCode": "Der Code stimmt nicht oder ist abgelaufen.",
         "tooManyAttempts": "Zu viele Versuche. Bitte warte kurz und fordere einen neuen Code an.",
         "rateLimited": "Zu viele Anfragen. Bitte versuche es gleich noch einmal.",
-        "mailDisabled": "Der E-Mail-Versand ist nicht eingerichtet."
+        "mailDisabled": "Der E-Mail-Versand ist nicht eingerichtet.",
+        "forbidden": "Dafür fehlt dir die Berechtigung."
+      },
+      "household": {
+        "notFound": "Dieser Haushalt wurde nicht gefunden.",
+        "forbidden": "Dafür fehlt dir die Berechtigung in diesem Haushalt.",
+        "lastOwner": "Ein Haushalt braucht mindestens eine Person mit der Rolle Eigentümer."
+      },
+      "invitation": {
+        "invalid": "Diese Einladung ist ungültig oder abgelaufen.",
+        "emailMismatch": "Diese Einladung gehört zu einer anderen E-Mail-Adresse.",
+        "accountExists": "Für diese E-Mail-Adresse gibt es schon ein Konto. Bitte melde dich an.",
+        "alreadyMember": "Diese Person gehört schon zum Haushalt."
       },
       "validation": {
         "failed": "Die Eingabe ist ungültig."
       },
       "internal": "Etwas ist schiefgegangen. Bitte versuche es später noch einmal."
+    },
+    "members": {
+      "linkCopied": "Link kopiert"
     }
   }
 }

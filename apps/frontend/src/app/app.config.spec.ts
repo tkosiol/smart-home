@@ -11,6 +11,7 @@ import { createAppConfig } from './app.config';
 import { RUNTIME_CONFIG } from './core/config';
 import { ApiClient, UNAUTHORIZED_HANDLER } from './core/api';
 import { AuthService } from './core/auth';
+import { InstanceAppearanceSync } from './core/instance';
 import { injectMoreEntries } from './core/features';
 
 const plum: InstanceAppearance = {
@@ -35,24 +36,27 @@ describe('createAppConfig', () => {
   afterEach(() => document.documentElement.removeAttribute('style'));
 
   it('provides the runtime config and its instance default to the theme', () => {
-    const config = { features: { instanceAppearanceEditor: false }, instanceAppearance: plum };
+    const config = { instanceAppearance: plum };
     const theme = setup(config);
     expect(TestBed.inject(RUNTIME_CONFIG)).toBe(config);
     expect(theme.instance()).toEqual(plum);
   });
 
-  it('lets a stored instance theme win only while the instance editor is on', () => {
+  it('lets the copy of the server value on the device win over config.json', () => {
     const stored = new MemoryAppearanceStore();
     stored.instance = { ...plum, shape: 'kantig' };
-    const theme = setup(
-      { features: { instanceAppearanceEditor: true }, instanceAppearance: plum },
-      stored,
-    );
+    const theme = setup({ instanceAppearance: plum }, stored);
     expect(theme.instance().shape).toBe('kantig');
   });
 
+  it('starts the sync of the instance appearance with the app', async () => {
+    setup({ instanceAppearance: plum });
+    await TestBed.inject(ApplicationInitStatus).donePromise;
+    expect(TestBed.inject(InstanceAppearanceSync)).toBeInstanceOf(InstanceAppearanceSync);
+  });
+
   it('restores the scroll position of pages the router comes back to', async () => {
-    setup({ features: { instanceAppearanceEditor: false }, instanceAppearance: plum });
+    setup({ instanceAppearance: plum });
     history.scrollRestoration = 'auto';
     await TestBed.inject(ApplicationInitStatus).donePromise;
     // The router's scroller takes over the browser's restoration once the app is bootstrapped.
@@ -61,21 +65,23 @@ describe('createAppConfig', () => {
   });
 
   it('makes the API client injectable', () => {
-    setup({ features: { instanceAppearanceEditor: false }, instanceAppearance: plum });
+    setup({ instanceAppearance: plum });
     expect(TestBed.inject(ApiClient)).toBeInstanceOf(ApiClient);
   });
 
   it('hands a 401 of the API client to the AuthService', () => {
-    setup({ features: { instanceAppearanceEditor: false }, instanceAppearance: plum });
+    setup({ instanceAppearance: plum });
     const handle = vi.spyOn(TestBed.inject(AuthService), 'handleUnauthorized');
     TestBed.inject(UNAUTHORIZED_HANDLER)();
     expect(handle).toHaveBeenCalledOnce();
   });
 
-  it('registers the settings entry for the More page', () => {
-    setup({ features: { instanceAppearanceEditor: false }, instanceAppearance: plum });
+  it('registers the household, members and settings entries for the More page', () => {
+    setup({ instanceAppearance: plum });
     const entries = TestBed.runInInjectionContext(() => injectMoreEntries());
     expect(entries).toEqual([
+      expect.objectContaining({ id: 'household', route: '/mehr/haushalt', minRole: 'owner' }),
+      expect.objectContaining({ id: 'members', route: '/mehr/mitglieder', minRole: 'viewer' }),
       expect.objectContaining({
         id: 'settings',
         labelKey: 'app.more.settings',

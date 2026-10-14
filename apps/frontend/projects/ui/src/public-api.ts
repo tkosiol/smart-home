@@ -8,10 +8,7 @@ export {
   type BootCache,
 } from './lib/theme/appearance-store';
 export { applyThemeVars } from './lib/theme/apply-theme';
-export {
-  INSTANCE_APPEARANCE,
-  STORED_INSTANCE_ALLOWED,
-} from './lib/theme/instance-appearance.token';
+export { INSTANCE_APPEARANCE } from './lib/theme/instance-appearance.token';
 export { MEDIA_QUERIES, type MediaQueries } from './lib/theme/media-queries';
 export { MemoryAppearanceStore } from './lib/theme/memory-appearance-store';
 export { provideTheme, type ThemeOptions } from './lib/theme/provide-theme';

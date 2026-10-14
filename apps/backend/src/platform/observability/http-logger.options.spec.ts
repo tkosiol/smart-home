@@ -52,6 +52,18 @@ describe('createHttpLoggerOptions', () => {
     expect(raw).not.toContain('server-secret');
   });
 
+  it('does not log the Referer header, which may carry one-time tokens', async () => {
+    const { url, lines } = await serve();
+    await fetch(`${url}/api/things`, {
+      headers: { referer: 'https://app.example.org/einladung/one-time-token', 'x-kept': 'yes' },
+    });
+
+    const raw = JSON.stringify(lines());
+    expect(raw).not.toContain('one-time-token');
+    expect(raw.toLowerCase()).not.toContain('referer');
+    expect(raw).toContain('x-kept');
+  });
+
   it('does not log health probes', async () => {
     const { url, lines } = await serve();
     await fetch(`${url}/api/health/live`);

@@ -1,7 +1,10 @@
 import type { Me } from '@smart/contracts';
 import type { User } from './identity.schema.js';
 
-export function toMe(user: User): Me {
+/** The part of `Me` that identity owns; `MeService` adds the households. */
+export type IdentityMe = Omit<Me, 'households' | 'currentHouseholdId'>;
+
+export function toMe(user: User): IdentityMe {
   return {
     id: user.id,
     email: user.email,

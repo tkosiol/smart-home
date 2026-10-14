@@ -115,6 +115,10 @@ export class EmailLoginService {
     const user = await this.users.findByEmail(email);
     if (!user || !(await this.codes.markUsed(open.id, now, MAX_ATTEMPTS))) throw invalidCode();
     this.attempts.clear(key);
+    // The first proof of the mailbox ends sessions anyone else got through an invitation link: the
+    // inviter sees that link too (spec 3.7) and may have created this account in his own browser.
+    // Done before the new session exists, so that one is never touched.
+    await this.sessions.revokeByMethod(user.id, 'invitation');
     const session = await this.sessions.create(user.id, 'email_code', userAgent);
     return { user, ...session };
   }

@@ -1,8 +1,10 @@
-import type { Language } from '@smart/contracts';
+import { signal } from '@angular/core';
+import type { HouseholdRole, Language } from '@smart/contracts';
 import { UiSnackbar } from '@smart/ui';
 import { ApiError } from '../../core/api';
 import { AuthService } from '../../core/auth';
 import { provideFeature } from '../../core/features';
+import { HouseholdContext } from '../../core/household';
 import { settle, setupPage } from '../../testing/page-testing';
 import { moreRoutes } from './more.routes';
 
@@ -49,7 +51,6 @@ describe('more page', () => {
       'Räume',
       'Module',
       'Benachrichtigungen',
-      'Haushalt',
       'Gateways',
       'Einstellungen',
     ]);
@@ -61,14 +62,13 @@ describe('more page', () => {
     expect(settings.querySelector('a')?.getAttribute('href')).toBe('/mehr/einstellungen');
   });
 
-  it('shows the four coming-soon entries as readable, non-interactive rows', async () => {
+  it('shows the three coming-soon entries as readable, non-interactive rows', async () => {
     const { items } = await open('de');
     const comingSoon = items.filter((item) => item.textContent?.includes('Kommt bald'));
 
     expect(comingSoon.map((item) => item.querySelector('.headline')?.textContent?.trim())).toEqual([
       'Module',
       'Benachrichtigungen',
-      'Haushalt',
       'Gateways',
     ]);
     for (const item of comingSoon) {
@@ -82,11 +82,64 @@ describe('more page', () => {
     expect(items.map((item) => item.textContent?.replace(/\s+/g, ' ').trim())).toEqual([
       expect.stringContaining('Modules'),
       expect.stringContaining('Notifications'),
-      expect.stringContaining('Household'),
       expect.stringContaining('Gateways'),
       expect.stringContaining('Settings'),
     ]);
     expect(items[0].textContent).toContain('Coming soon');
+  });
+
+  describe('rights', () => {
+    const owners = provideFeature({
+      moreEntries: [
+        {
+          id: 'members',
+          labelKey: 'app.nav.rooms',
+          icon: 'group',
+          route: '/x',
+          order: 1,
+          minRole: 'owner',
+        },
+        {
+          id: 'instance',
+          labelKey: 'app.nav.devices',
+          icon: 'settings',
+          route: '/y',
+          order: 2,
+          platformAdminOnly: true,
+        },
+      ],
+    });
+
+    async function openAs(role: HouseholdRole | null, isPlatformAdmin: boolean) {
+      const { items } = await open(
+        'de',
+        owners,
+        { provide: AuthService, useValue: { me: signal({ isPlatformAdmin }) } },
+        {
+          provide: HouseholdContext,
+          useValue: {
+            current: signal(role ? { id: 'h', name: 'H', timezone: 'UTC', role } : null),
+          },
+        },
+      );
+      return items.map((item) => item.querySelector('.headline')?.textContent?.trim());
+    }
+
+    it('hides an owner entry from a member', async () => {
+      expect(await openAs('member', false)).not.toContain('Räume');
+    });
+
+    it('shows an owner entry to an owner', async () => {
+      expect(await openAs('owner', false)).toContain('Räume');
+    });
+
+    it('hides a platform admin entry from everybody else', async () => {
+      expect(await openAs('owner', false)).not.toContain('Geräte');
+    });
+
+    it('shows a platform admin entry to the platform admin', async () => {
+      expect(await openAs('owner', true)).toContain('Geräte');
+    });
   });
 
   describe('signing out', () => {
@@ -94,7 +147,7 @@ describe('more page', () => {
       const snackbar = { show: vi.fn().mockResolvedValue(undefined) };
       const page = await open(
         language,
-        { provide: AuthService, useValue: { logout } },
+        { provide: AuthService, useValue: { logout, me: signal(null) } },
         {
           provide: UiSnackbar,
           useValue: snackbar,

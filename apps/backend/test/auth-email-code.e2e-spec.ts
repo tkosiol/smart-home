@@ -6,6 +6,7 @@ import type { App } from 'supertest/types.js';
 import { inject } from 'vitest';
 import { AppModule } from '../src/app.module.js';
 import { configureApp } from '../src/app.setup.js';
+import { HouseholdsRepository } from '../src/core/households/index.js';
 import {
   CLOCK,
   LOGIN_NONCE_COOKIE,
@@ -339,6 +340,20 @@ describe('auth: e-mail code sign-in and sign-out', () => {
   });
 
   describe('verifying a code', () => {
+    it('answers with the households of the user', async () => {
+      const email = await newUser();
+      const user = await app.get(UsersRepository).findByEmail(email);
+      const household = await app
+        .get(HouseholdsRepository)
+        .createWithOwner(user?.id ?? '', { name: 'Home', timezone: 'Europe/Berlin' });
+      const nonce = await requestCode(email);
+      const response = await verify(email, mailer.codeFor(email), nonce).expect(200);
+      expect(meSchema.parse(response.body)).toMatchObject({
+        households: [{ id: household.id, name: 'Home', timezone: 'Europe/Berlin', role: 'owner' }],
+        currentHouseholdId: household.id,
+      });
+    });
+
     it('signs in with the right code: session cookie, me, nonce cookie removed', async () => {
       const email = await newUser();
       const nonce = await requestCode(email);

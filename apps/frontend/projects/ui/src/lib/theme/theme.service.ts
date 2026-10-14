@@ -10,7 +10,7 @@ import { resolveAppearance } from '@smart/theme/resolve';
 import type { ResolvedContrast, ResolvedMode } from '@smart/theme';
 import { APPEARANCE_STORE, BOOT_CACHE_VERSION } from './appearance-store';
 import { applyThemeVars } from './apply-theme';
-import { INSTANCE_APPEARANCE, STORED_INSTANCE_ALLOWED } from './instance-appearance.token';
+import { INSTANCE_APPEARANCE } from './instance-appearance.token';
 import { MEDIA_QUERIES } from './media-queries';
 import { THEME_ENGINE_LOADER, type ThemeEngine } from './theme-engine';
 
@@ -23,9 +23,9 @@ export class ThemeService {
   private readonly store = inject(APPEARANCE_STORE);
   private readonly media = inject(MEDIA_QUERIES);
   private readonly defaultInstance = inject(INSTANCE_APPEARANCE);
-  private readonly storedInstanceAllowed = inject(STORED_INSTANCE_ALLOWED);
   private readonly engine = signal<ThemeEngine | null>(null);
   private readonly personalListeners = new Set<(value: PersonalAppearance) => void>();
+  private readonly instanceListeners = new Set<(value: InstanceAppearance | null) => void>();
 
   private readonly instanceState = signal<InstanceAppearance>(this.loadInstance());
   private readonly personalState = signal<PersonalAppearance>(this.loadPersonal());
@@ -104,21 +104,49 @@ export class ThemeService {
     this.setPersonal({ mode, contrast });
   }
 
+  /** The platform admin changed the instance appearance: applies, keeps the copy and tells the listeners. */
   setInstance(value: InstanceAppearance): void {
     const parsed = instanceAppearanceSchema.parse(value);
     this.instanceState.set(parsed);
-    if (this.storedInstanceAllowed) this.store.saveInstance(parsed);
+    this.store.saveInstance(parsed);
+    this.notifyInstance(parsed);
   }
 
-  /** Back to the installation default (config.json, else the build default). */
+  /** The platform admin removed the stored value: config.json or the build default applies; listeners hear `null`. */
   resetInstance(): void {
     this.instanceState.set(this.defaultInstance);
     this.store.clearInstance();
+    this.notifyInstance(null);
   }
 
-  /** Precedence (spec 4.5): stored instance (only while the editor is on), config.json, build default. */
+  /**
+   * Takes over the server's value; `null` means none is stored there, so config.json or the build
+   * default applies. The value is kept on the device for the next start. No listener hears of it.
+   */
+  adoptInstance(value: InstanceAppearance | null): void {
+    if (value === null) {
+      this.store.clearInstance();
+      this.instanceState.set(this.defaultInstance);
+      return;
+    }
+    const parsed = instanceAppearanceSchema.parse(value);
+    this.store.saveInstance(parsed);
+    this.instanceState.set(parsed);
+  }
+
+  /** Calls back after every change the admin makes (`null` for a reset), never for `adoptInstance` or another tab; returns the unsubscribe function. */
+  onInstanceChange(listener: (value: InstanceAppearance | null) => void): () => void {
+    this.instanceListeners.add(listener);
+    return () => void this.instanceListeners.delete(listener);
+  }
+
+  /** Precedence (spec 3.8): the server's value (cached on the device), config.json, build default. */
   private loadInstance(): InstanceAppearance {
-    return (this.storedInstanceAllowed ? this.store.loadInstance() : null) ?? this.defaultInstance;
+    return this.store.loadInstance() ?? this.defaultInstance;
+  }
+
+  private notifyInstance(value: InstanceAppearance | null): void {
+    for (const listener of this.instanceListeners) listener(value);
   }
 
   private notifyPersonal(value: PersonalAppearance): void {

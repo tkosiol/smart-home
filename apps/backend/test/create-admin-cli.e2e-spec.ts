@@ -2,19 +2,27 @@ import type { INestApplicationContext } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { inject } from 'vitest';
 import { AppModule } from '../src/app.module.js';
-import { runCli, UsersRepository } from '../src/core/identity/index.js';
+import {
+  CLOCK,
+  type Clock,
+  runCli,
+  SessionsRepository,
+  UsersRepository,
+  type CliDeps,
+} from '../src/core/identity/index.js';
 import { runMigrations } from '../src/platform/database/index.js';
 import { createFreshDatabase } from './helpers/fresh-database.js';
 
 describe('create-admin command', () => {
   let context: INestApplicationContext;
   let users: UsersRepository;
+  let deps: CliDeps;
   const originalUrl = inject('testEnv').DATABASE_URL;
 
   const run = async (...args: string[]): Promise<{ code: number; out: string; err: string }> => {
     const out: string[] = [];
     const err: string[] = [];
-    const code = await runCli(args, users, {
+    const code = await runCli(args, deps, {
       out: (line) => out.push(line),
       err: (line) => err.push(line),
     });
@@ -28,6 +36,7 @@ describe('create-admin command', () => {
     // The same way src/cli.ts starts: the full module graph, no HTTP server.
     context = await NestFactory.createApplicationContext(AppModule, { logger: false });
     users = context.get(UsersRepository);
+    deps = { users, sessions: context.get(SessionsRepository), clock: context.get<Clock>(CLOCK) };
   });
 
   afterAll(async () => {
@@ -119,7 +128,7 @@ describe('create-admin command', () => {
     const err: string[] = [];
     const code = await runCli(
       ['create-admin', '--email', 'secret@example.org', '--name', 'X'],
-      failing,
+      { ...deps, users: failing },
       {
         out: (line) => out.push(line),
         err: (line) => err.push(line),

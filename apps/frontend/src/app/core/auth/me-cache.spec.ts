@@ -9,6 +9,8 @@ const me: Me = {
   locale: 'de',
   appearance: DEFAULT_PERSONAL_APPEARANCE,
   isPlatformAdmin: false,
+  households: [],
+  currentHouseholdId: null,
 };
 
 function memoryStorage(initial: Record<string, string> = {}) {
@@ -35,7 +37,16 @@ describe('LocalStorageMeCache', () => {
     new LocalStorageMeCache(storage).save({ ...me, sessionToken: 'secret' } as Me);
     const stored = JSON.parse(storage.data.get('smart.me') ?? '{}') as Record<string, unknown>;
     expect(Object.keys(stored).sort()).toEqual(
-      ['appearance', 'displayName', 'email', 'id', 'isPlatformAdmin', 'locale'].sort(),
+      [
+        'appearance',
+        'currentHouseholdId',
+        'displayName',
+        'email',
+        'households',
+        'id',
+        'isPlatformAdmin',
+        'locale',
+      ].sort(),
     );
   });
 

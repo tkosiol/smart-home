@@ -69,6 +69,8 @@ describe('me and preferences', () => {
         locale: 'de',
         appearance: { mode: 'system', contrast: 'system' },
         isPlatformAdmin: false,
+        households: [],
+        currentHouseholdId: null,
       });
       expect(response.headers['cache-control']).toBe('no-store');
     });

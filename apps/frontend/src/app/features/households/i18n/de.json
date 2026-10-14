@@ -1,0 +1,65 @@
+{
+  "roles": {
+    "viewer": "Betrachter",
+    "member": "Mitglied",
+    "owner": "Eigentümer"
+  },
+  "setup": {
+    "title": "Haushalt einrichten",
+    "description": "Ein Haushalt fasst Räume, Geräte und die Menschen zusammen, die sie nutzen.",
+    "submit": "Haushalt anlegen",
+    "cancel": "Abbrechen"
+  },
+  "form": {
+    "name": "Name",
+    "nameHint": "Zum Beispiel „Zuhause“",
+    "nameError": "Bitte gib einen Namen mit höchstens 60 Zeichen ein.",
+    "timezone": "Zeitzone",
+    "timezoneHint": "Für Uhrzeiten und Zeitpläne des Haushalts"
+  },
+  "switch": {
+    "title": "Haushalt wechseln",
+    "current": "Aktueller Haushalt",
+    "to": "Zu {{ name }} wechseln",
+    "new": "Neuen Haushalt anlegen"
+  },
+  "household": {
+    "title": "Haushalt",
+    "save": "Speichern",
+    "leave": {
+      "title": "Haushalt verlassen",
+      "description": "Du verlierst den Zugriff auf diesen Haushalt. Zurück kommst du nur mit einer neuen Einladung.",
+      "button": "Haushalt verlassen",
+      "confirm": "Wirklich verlassen?",
+      "lastOwner": "Ernenne zuerst eine andere Person zum Eigentümer."
+    }
+  },
+  "members": {
+    "title": "Mitglieder",
+    "people": "Personen",
+    "entry": "{{ email }} · {{ role }}",
+    "role": "Rolle",
+    "remove": "Entfernen",
+    "removeConfirm": "Wirklich entfernen?",
+    "leave": "Verlassen",
+    "leaveConfirm": "Wirklich verlassen?"
+  },
+  "invitations": {
+    "title": "Offene Einladungen",
+    "entry": "{{ role }} · gültig bis {{ date }}",
+    "none": "Keine offenen Einladungen.",
+    "resend": "Erneut senden",
+    "revoke": "Widerrufen",
+    "revokeConfirm": "Wirklich widerrufen?"
+  },
+  "invite": {
+    "title": "Einladen",
+    "email": "E-Mail-Adresse",
+    "emailError": "Bitte gib eine gültige E-Mail-Adresse ein.",
+    "role": "Rolle",
+    "send": "Einladung senden",
+    "linkLabel": "Einladungslink",
+    "linkHint": "Der Link wird nur jetzt angezeigt. Gib ihn der eingeladenen Person weiter; danach lässt er sich nicht mehr anzeigen.",
+    "copy": "Link kopieren"
+  }
+}

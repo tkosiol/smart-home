@@ -1,0 +1,65 @@
+{
+  "roles": {
+    "viewer": "Viewer",
+    "member": "Member",
+    "owner": "Owner"
+  },
+  "setup": {
+    "title": "Set up a household",
+    "description": "A household brings together rooms, devices and the people who use them.",
+    "submit": "Create household",
+    "cancel": "Cancel"
+  },
+  "form": {
+    "name": "Name",
+    "nameHint": "For example “Home”",
+    "nameError": "Please enter a name of at most 60 characters.",
+    "timezone": "Time zone",
+    "timezoneHint": "For the times and schedules of the household"
+  },
+  "switch": {
+    "title": "Switch household",
+    "current": "Current household",
+    "to": "Switch to {{ name }}",
+    "new": "Create a new household"
+  },
+  "household": {
+    "title": "Household",
+    "save": "Save",
+    "leave": {
+      "title": "Leave household",
+      "description": "You lose access to this household. You can only come back with a new invitation.",
+      "button": "Leave household",
+      "confirm": "Really leave?",
+      "lastOwner": "First make another person an owner."
+    }
+  },
+  "members": {
+    "title": "Members",
+    "people": "People",
+    "entry": "{{ email }} · {{ role }}",
+    "role": "Role",
+    "remove": "Remove",
+    "removeConfirm": "Really remove?",
+    "leave": "Leave",
+    "leaveConfirm": "Really leave?"
+  },
+  "invitations": {
+    "title": "Open invitations",
+    "entry": "{{ role }} · valid until {{ date }}",
+    "none": "No open invitations.",
+    "resend": "Send again",
+    "revoke": "Revoke",
+    "revokeConfirm": "Really revoke?"
+  },
+  "invite": {
+    "title": "Invite",
+    "email": "E-mail address",
+    "emailError": "Please enter a valid e-mail address.",
+    "role": "Role",
+    "send": "Send invitation",
+    "linkLabel": "Invitation link",
+    "linkHint": "The link is only shown now. Pass it on to the invited person; it cannot be shown again afterwards.",
+    "copy": "Copy link"
+  }
+}

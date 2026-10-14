@@ -28,4 +28,17 @@ describe('apiErrorSchema', () => {
     expect(API_ERROR_CODES).toContain('auth.invalidCode');
     expect(API_ERROR_CODES).toContain('validation.failed');
   });
+
+  it.each([
+    'auth.forbidden',
+    'household.notFound',
+    'household.forbidden',
+    'household.lastOwner',
+    'invitation.invalid',
+    'invitation.emailMismatch',
+    'invitation.accountExists',
+    'invitation.alreadyMember',
+  ])('lists the household error code %s', (code) => {
+    expect(API_ERROR_CODES).toContain(code);
+  });
 });

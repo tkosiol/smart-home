@@ -1,0 +1,31 @@
+{
+  "title": "Invitation",
+  "roles": {
+    "viewer": "Viewer",
+    "member": "Member",
+    "owner": "Owner"
+  },
+  "summary": "{{ inviter }} invited you to {{ household }} as {{ role }}.",
+  "invalid": {
+    "text": "Invitation invalid or expired. Please ask the person who invited you for a new link.",
+    "signIn": "To sign in"
+  },
+  "failed": {
+    "text": "The invitation could not be loaded.",
+    "retry": "Try again"
+  },
+  "accept": "Accept",
+  "name": {
+    "label": "Your name",
+    "error": "Please enter a name of at most 60 characters."
+  },
+  "signIn": {
+    "text": "Sign in with {{ email }}.",
+    "button": "Sign in"
+  },
+  "mismatch": {
+    "text": "This invitation belongs to a different email address: {{ email }}.",
+    "switch": "Sign out and sign in with this address",
+    "create": "Sign out and create account"
+  }
+}

@@ -6,17 +6,12 @@ set -eu
 # Must match the alias of `location = /config.json` in the nginx config.
 target=/tmp/smart-config.json
 
-case "${SMART_INSTANCE_APPEARANCE_EDITOR:-false}" in
-  true) editor=true ;;
-  *) editor=false ;;
-esac
-
-# SMART_INSTANCE_APPEARANCE is JSON (instanceAppearanceSchema). The app validates it and falls
-# back to the build default if it is invalid; broken JSON makes the whole file fall back.
+# SMART_INSTANCE_APPEARANCE is JSON (instanceAppearanceSchema), the hoster's default theme. The
+# app validates it and falls back to the build default if it is invalid; broken JSON makes the
+# whole file fall back. The platform admin's value on the server wins over it (spec 3.8).
 appearance="${SMART_INSTANCE_APPEARANCE:-}"
 if [ -n "$appearance" ]; then
-  printf '{"features":{"instanceAppearanceEditor":%s},"instanceAppearance":%s}\n' \
-    "$editor" "$appearance" > "$target"
+  printf '{"instanceAppearance":%s}\n' "$appearance" > "$target"
 else
-  printf '{"features":{"instanceAppearanceEditor":%s}}\n' "$editor" > "$target"
+  printf '{}\n' > "$target"
 fi

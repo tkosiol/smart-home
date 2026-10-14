@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ScheduleModule } from '@nestjs/schedule';
+import { HouseholdsModule } from './core/households/index.js';
 import { IdentityModule } from './core/identity/index.js';
 import { ConfigModule } from './platform/config/index.js';
 import { DatabaseModule } from './platform/database/index.js';
@@ -17,6 +18,7 @@ import { ObservabilityModule } from './platform/observability/index.js';
     // limits, then the session check).
     HttpModule,
     IdentityModule,
+    HouseholdsModule,
     MailModule,
     MqttModule,
     ObservabilityModule,

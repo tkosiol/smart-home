@@ -29,7 +29,7 @@ class FakeMedia implements MediaQueries {
 async function setup(
   store = new MemoryAppearanceStore(),
   media = new FakeMedia(),
-  options: { instance?: InstanceAppearance; allowStoredInstance?: boolean } = {},
+  options: { instance?: InstanceAppearance } = {},
 ) {
   TestBed.configureTestingModule({
     providers: [
@@ -201,64 +201,116 @@ describe('ThemeService', () => {
   const plumInstance: InstanceAppearance = { ...DEFAULT_INSTANCE_APPEARANCE, colors: plum };
   const sharpInstance: InstanceAppearance = { ...DEFAULT_INSTANCE_APPEARANCE, shape: 'kantig' };
 
-  it('ignores a browser-stored instance theme while the instance editor is off', async () => {
+  it('prefers the copy of the server value on the device to config.json', async () => {
     const store = new MemoryAppearanceStore();
     store.instance = sharpInstance;
     const { service } = await setup(store, new FakeMedia(), { instance: plumInstance });
-    expect(service.instance()).toEqual(plumInstance);
-  });
-
-  it('prefers a browser-stored instance theme while the instance editor is on', async () => {
-    const store = new MemoryAppearanceStore();
-    store.instance = sharpInstance;
-    const { service } = await setup(store, new FakeMedia(), {
-      instance: plumInstance,
-      allowStoredInstance: true,
-    });
     expect(service.instance()).toEqual(sharpInstance);
   });
 
-  it('adopts an instance stored in another tab only while the instance editor is on', async () => {
-    const off = await setup(new MemoryAppearanceStore(), new FakeMedia(), {
+  it('uses config.json without a stored copy and the build default without both', async () => {
+    const withConfig = await setup(new MemoryAppearanceStore(), new FakeMedia(), {
       instance: plumInstance,
     });
-    off.store.instance = sharpInstance;
-    off.store.emit('instance');
-    TestBed.tick();
-    expect(off.service.instance()).toEqual(plumInstance);
+    expect(withConfig.service.instance()).toEqual(plumInstance);
     TestBed.resetTestingModule();
-    const on = await setup(new MemoryAppearanceStore(), new FakeMedia(), {
+    const bare = await setup();
+    expect(bare.service.instance()).toEqual(DEFAULT_INSTANCE_APPEARANCE);
+  });
+
+  it('keeps the stored copy over config.json after a restart of the service', async () => {
+    const first = await setup(new MemoryAppearanceStore(), new FakeMedia(), {
       instance: plumInstance,
-      allowStoredInstance: true,
     });
-    on.store.instance = sharpInstance;
-    on.store.emit('instance');
-    TestBed.tick();
-    expect(on.service.instance()).toEqual(sharpInstance);
-  });
-
-  it('stores instance changes only while the instance editor is on', async () => {
-    const off = await setup(new MemoryAppearanceStore(), new FakeMedia());
-    off.service.setInstance(sharpInstance);
-    expect(off.service.instance()).toEqual(sharpInstance);
-    expect(off.store.instance).toBeNull();
+    first.service.adoptInstance(sharpInstance);
     TestBed.resetTestingModule();
-    const on = await setup(new MemoryAppearanceStore(), new FakeMedia(), {
-      allowStoredInstance: true,
-    });
-    on.service.setInstance(sharpInstance);
-    expect(on.store.instance).toEqual(sharpInstance);
+    const second = await setup(first.store, new FakeMedia(), { instance: plumInstance });
+    expect(second.service.instance()).toEqual(sharpInstance);
   });
 
-  it('resets the instance to the installation default and forgets the stored one', async () => {
+  it('adopts an instance stored in another tab', async () => {
     const { service, store } = await setup(new MemoryAppearanceStore(), new FakeMedia(), {
       instance: plumInstance,
-      allowStoredInstance: true,
     });
-    service.setInstance(sharpInstance);
-    service.resetInstance();
-    expect(service.instance()).toEqual(plumInstance);
-    expect(store.instance).toBeNull();
+    store.instance = sharpInstance;
+    store.emit('instance');
+    TestBed.tick();
+    expect(service.instance()).toEqual(sharpInstance);
+  });
+
+  describe('instance appearance from the server', () => {
+    it('applies and stores an adopted value without telling the listeners', async () => {
+      const { service, store } = await setup();
+      const listener = vi.fn();
+      service.onInstanceChange(listener);
+      service.adoptInstance(sharpInstance);
+      expect(service.instance()).toEqual(sharpInstance);
+      expect(store.instance).toEqual(sharpInstance);
+      expect(listener).not.toHaveBeenCalled();
+    });
+
+    it('falls back to config.json when the server has none stored', async () => {
+      const { service, store } = await setup(new MemoryAppearanceStore(), new FakeMedia(), {
+        instance: plumInstance,
+      });
+      service.adoptInstance(sharpInstance);
+      const listener = vi.fn();
+      service.onInstanceChange(listener);
+      service.adoptInstance(null);
+      expect(service.instance()).toEqual(plumInstance);
+      expect(store.instance).toBeNull();
+      expect(listener).not.toHaveBeenCalled();
+    });
+
+    it('falls back to the build default when neither server nor config.json have a value', async () => {
+      const { service } = await setup();
+      service.adoptInstance(sharpInstance);
+      service.adoptInstance(null);
+      expect(service.instance()).toEqual(DEFAULT_INSTANCE_APPEARANCE);
+    });
+
+    it('rejects an invalid server value and keeps the current one', async () => {
+      const { service, store } = await setup();
+      expect(() =>
+        service.adoptInstance({ ...sharpInstance, shape: 'rund' } as unknown as InstanceAppearance),
+      ).toThrow();
+      expect(service.instance()).toEqual(DEFAULT_INSTANCE_APPEARANCE);
+      expect(store.instance).toBeNull();
+    });
+  });
+
+  describe('editing the instance appearance', () => {
+    it('stores the change as a copy and tells the listeners exactly once', async () => {
+      const { service, store } = await setup();
+      const listener = vi.fn();
+      service.onInstanceChange(listener);
+      service.setInstance(sharpInstance);
+      expect(service.instance()).toEqual(sharpInstance);
+      expect(store.instance).toEqual(sharpInstance);
+      expect(listener).toHaveBeenCalledExactlyOnceWith(sharpInstance);
+    });
+
+    it('reports a reset as null and shows config.json again', async () => {
+      const { service, store } = await setup(new MemoryAppearanceStore(), new FakeMedia(), {
+        instance: plumInstance,
+      });
+      service.setInstance(sharpInstance);
+      const listener = vi.fn();
+      service.onInstanceChange(listener);
+      service.resetInstance();
+      expect(service.instance()).toEqual(plumInstance);
+      expect(store.instance).toBeNull();
+      expect(listener).toHaveBeenCalledExactlyOnceWith(null);
+    });
+
+    it('stops telling a listener that unsubscribed', async () => {
+      const { service } = await setup();
+      const listener = vi.fn();
+      const stop = service.onInstanceChange(listener);
+      stop();
+      service.setInstance(sharpInstance);
+      expect(listener).not.toHaveBeenCalled();
+    });
   });
 
   it('resets everything personal to the defaults', async () => {

@@ -15,7 +15,6 @@ services:
     read_only: true
     tmpfs: [/tmp]
     environment:
-      SMART_INSTANCE_APPEARANCE_EDITOR: ${SMART_INSTANCE_APPEARANCE_EDITOR:-false}
       SMART_INSTANCE_APPEARANCE: ${SMART_INSTANCE_APPEARANCE:-}
     depends_on:
       api:
