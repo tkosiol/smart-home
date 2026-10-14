@@ -43,7 +43,7 @@
     "@storybook/test-runner": "0.26.0",
     "@types/node": "24.19.2",
     "axe-playwright": "2.2.2",
-    "concurrently": "10.0.5",
+    "concurrently": "10.0.6",
     "http-server": "14.1.1",
     "jsdom": "^30.0.0",
     "ng-packagr": "^22.2.0",
