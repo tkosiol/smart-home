@@ -24,6 +24,7 @@ const ERROR_TEXT_KEYS: Record<ApiErrorCode, string> = {
   'gateway.invalidCertificate': marker('app.errors.gateway.invalidCertificate'),
   'gateway.exists': marker('app.errors.gateway.exists'),
   'gateway.caMissing': marker('app.errors.gateway.caMissing'),
+  'device.hardwareBound': marker('app.errors.device.hardwareBound'),
   'validation.failed': marker('app.errors.validation.failed'),
   internal: marker('app.errors.internal'),
 };

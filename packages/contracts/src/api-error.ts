@@ -19,6 +19,7 @@ export const API_ERROR_CODES = [
   'gateway.invalidCertificate',
   'gateway.exists',
   'gateway.caMissing',
+  'device.hardwareBound',
   'validation.failed',
   'internal',
 ] as const;

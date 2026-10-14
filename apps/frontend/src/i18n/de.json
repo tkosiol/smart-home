@@ -76,6 +76,9 @@
         "exists": "Dieses Gateway ist schon registriert.",
         "caMissing": "Auf dieser Instanz ist keine Zertifizierungsstelle eingerichtet."
       },
+      "device": {
+        "hardwareBound": "Diese Hardware ist bereits einem Gerät zugeordnet."
+      },
       "validation": {
         "failed": "Die Eingabe ist ungültig."
       },

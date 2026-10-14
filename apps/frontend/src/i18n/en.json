@@ -76,6 +76,9 @@
         "exists": "This gateway is already registered.",
         "caMissing": "No certificate authority is set up on this instance."
       },
+      "device": {
+        "hardwareBound": "This hardware is already assigned to a device."
+      },
       "validation": {
         "failed": "The input is not valid."
       },
