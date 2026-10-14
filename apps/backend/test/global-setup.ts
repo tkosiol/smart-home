@@ -22,6 +22,8 @@ export default async function setup(project: TestProject): Promise<() => Promise
     new GenericContainer('eclipse-mosquitto:2.1.2-alpine')
       .withCopyFilesToContainer([
         { source: brokerFile('mosquitto.conf'), target: '/mosquitto/config/mosquitto.conf' },
+        { source: brokerFile('tls.conf'), target: '/mosquitto/config/tls.conf' },
+        { source: brokerFile('acl'), target: '/mosquitto/config/acl' },
         { source: brokerFile('entrypoint.sh'), target: '/smart/entrypoint.sh' },
       ])
       .withEntrypoint(['/bin/sh', '/smart/entrypoint.sh'])

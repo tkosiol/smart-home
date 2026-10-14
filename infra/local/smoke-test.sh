@@ -17,9 +17,9 @@ fi
 
 # shellcheck disable=SC2016 # the variables must expand inside the broker container
 $COMPOSE exec -T broker sh -c '
-  mosquitto_sub -h localhost -u "$MQTT_USER" -P "$MQTT_PASSWORD" -t smoke/auth -C 1 -W 5 > /tmp/smoke.out &
+  mosquitto_sub -h localhost -u "$MQTT_USER" -P "$MQTT_PASSWORD" -t gw/smoke/auth -C 1 -W 5 > /tmp/smoke.out &
   sleep 1
-  mosquitto_pub -h localhost -u "$MQTT_USER" -P "$MQTT_PASSWORD" -t smoke/auth -m ok
+  mosquitto_pub -h localhost -u "$MQTT_USER" -P "$MQTT_PASSWORD" -t gw/smoke/auth -m ok
   wait
   grep -qx ok /tmp/smoke.out
 ' || fail "authenticated MQTT publish/subscribe failed"

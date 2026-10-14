@@ -23,12 +23,14 @@ services:
     image: eclipse-mosquitto:2.1.2-alpine
     entrypoint: ['/bin/sh', '/smart/entrypoint.sh']
     environment:
-      MQTT_USER: ${LOCAL_MQTT_USER:-smart-dev}
+      MQTT_USER: ${LOCAL_MQTT_USER:-smart-api}
       MQTT_PASSWORD: ${LOCAL_MQTT_PASSWORD:-smart-dev-only}
     ports:
       - '127.0.0.1:1884:1883'
     volumes:
       - ../broker/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ../broker/tls.conf:/mosquitto/config/tls.conf:ro
+      - ../broker/acl:/mosquitto/config/acl:ro
       - ../broker/entrypoint.sh:/smart/entrypoint.sh:ro
       - broker-data:/mosquitto/data
     healthcheck:

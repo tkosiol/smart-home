@@ -80,7 +80,8 @@ services:
     <<: *defaults
     image: ${IMAGE_REGISTRY:-ghcr.io/tkosiol}/smart-home-broker:${IMAGE_TAG:?IMAGE_TAG is required}
     read_only: true
-    tmpfs: [/tmp]
+    # /mosquitto/run holds the rendered configuration, ACL, password file and certificate copies.
+    tmpfs: [/tmp, /mosquitto/run]
     environment:
       MQTT_USER: smart-api
       MQTT_PASSWORD: ${MQTT_API_PASSWORD:?MQTT_API_PASSWORD is required}

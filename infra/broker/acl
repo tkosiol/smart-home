@@ -1,0 +1,10 @@
+# Gateways (user name = certificate CN): their own prefix only. Denied access is dropped silently.
+pattern write gw/%u/z2m/#
+pattern write gw/%u/bridge/connection
+pattern read  gw/%u/z2m/+/set
+pattern read  gw/%u/z2m/bridge/request/#
+
+# The backend. $SYS/broker/uptime is for the container health check.
+user smart-api
+topic readwrite gw/#
+topic read $SYS/broker/uptime
