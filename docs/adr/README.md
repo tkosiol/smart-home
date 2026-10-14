@@ -23,3 +23,4 @@ Neue Entscheidung: `0000-template.md` kopieren, nächste Nummer vergeben, hier e
 | [0017](0017-backups-restic-b2.md)               | Backups mit restic nach Backblaze B2 (EU)              |
 | [0018](0018-self-hosting-guardrails.md)         | Self-Hosting-Leitplanken                               |
 | [0019](0019-license-agpl.md)                    | Lizenz AGPL-3.0-only                                   |
+| [0020](0020-bridge-buffer-and-topics.md)        | Bridge-Puffer und Topic-Konfiguration (Spike 2b)       |
