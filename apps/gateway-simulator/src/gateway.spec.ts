@@ -153,15 +153,15 @@ describe('Gateway', () => {
     expect(client.published).toHaveLength(before);
   });
 
-  it('says 0, stops reporting and disconnects on stop', async () => {
+  it('says offline and 0, stops reporting and disconnects on stop', async () => {
     await connect();
+    const before = client.published.length;
     await gateway.stop();
-    expect(client.published.at(-1)).toEqual({
-      topic: `${P}bridge/connection`,
-      payload: '0',
-      qos: 1,
-      retain: true,
-    });
+    // Like Zigbee2MQTT shutting down: the bridge state first, then the connection flag.
+    expect(client.published.slice(before)).toEqual([
+      { topic: `${P}z2m/bridge/state`, payload: '{"state":"offline"}', qos: 1, retain: true },
+      { topic: `${P}bridge/connection`, payload: '0', qos: 1, retain: true },
+    ]);
     expect(client.ended).toBe(true);
     const count = client.published.length;
     await vi.advanceTimersByTimeAsync(300_000);

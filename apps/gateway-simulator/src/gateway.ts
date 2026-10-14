@@ -99,16 +99,21 @@ export class Gateway {
     );
   }
 
-  /** Says goodbye (`0` on the connection topic) and disconnects. */
+  /** Says goodbye (bridge state "offline", then `0` on the connection topic) and disconnects. */
   async stop(): Promise<void> {
     if (this.timer) clearInterval(this.timer);
     this.timer = undefined;
     try {
-      // Without a connection the message would wait for one; then the last will does the job.
-      await Promise.race([this.publish(this.connectionTopic, '0', 1, true), timeout(3000)]);
+      // Without a connection the messages would wait for one; then the last will does the job.
+      await Promise.race([this.sayGoodbye(), timeout(3000)]);
     } finally {
       await this.client.endAsync(true);
     }
+  }
+
+  private async sayGoodbye(): Promise<void> {
+    await this.publishZ2m('bridge/state', { state: 'offline' }, 1, true);
+    await this.publish(this.connectionTopic, '0', 1, true);
   }
 
   private publishReports(reports: readonly Report[]): Promise<unknown> {
