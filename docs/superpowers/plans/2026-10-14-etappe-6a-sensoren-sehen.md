@@ -204,3 +204,31 @@ export type OverviewCard = Type<unknown> | (() => Promise<Type<unknown>>);
 **E2E:** Plattform-Admin registriert das Simulator-Gateway (wie 5a Task 9) → Geräte zeigt „Neu erkannt“ mit sieben Einträgen (Namen „Pflanze 1“…„Lampe“) → „Pflanze 1“ hinzufügen → Bodenfeuchte erscheint auf Geräteseite und Übersicht (Simulator-Intervall im Stack-Test kurz) → ein Member desselben Haushalts sieht das Gerät, aber nicht „Neu erkannt“. Keine neuen Code-Anmeldungen (Limit 10/IP ausgeschöpft).
 
 Commit(s) `test(infra): cover devices in the stack` und `docs: describe device discovery and readings`.
+
+## Ergebnis und Übertrag
+
+Umgesetzt subagent-gestützt (Sonnet für Umsetzung und Reviews, Haiku für kleine Nachprüfungen, Opus für das Gesamt-Review mit einer Nachbesserungsrunde). Reviews und die nächste Task liefen teils parallel; Task 7 hatte kein eigenes Review. Dieser Abschnitt hält fest, wo die Umsetzung vom Plan abweicht und was 5b und 6b übernehmen müssen.
+
+### Abweichungen vom Plan (Entscheidungen)
+
+- **MQTT 5 mit Subscription-Identifiern:** Überlappende Abos (Gateway-Status und Ingest) lieferten jede Nachricht doppelt; jetzt erreicht jede Kopie nur ihren eigenen Handler.
+- **Gegendruck:** Der Ingest abonniert mit QoS 1 und quittiert erst nach der Verarbeitung; ein Burst von 5 000 Nachrichten kommt vollständig an (vorher 1 029). Beim Herunterfahren wird die Warteschlange abgearbeitet.
+- **Retained Gerätenachrichten** zählen nur, wenn ihr eigenes `last_seen` neuer ist als der gespeicherte Stand.
+- **Messwerte:** nur lesbare Nicht-Einstellungen; `binary` akzeptiert auch `ON`/`OFF` (Z2M-Lampe); `text`/`composite` nur im Zustand. Zustand von Hardware und Gerät rückt nur mit neuerer Messzeit vor.
+- **`bridge/devices`** wird Eintrag für Eintrag gelesen; ein kaputter Eintrag (z. B. Gerät mit gescheitertem Interview) blockiert die Liste nicht.
+- **`last_message_at`** zählt nur Geräteverkehr (keine `set`/`get`/`bridge/*`-Topics).
+- **Oberfläche:** lazy Übersichtskarten (`OverviewCard` mit Lader); Hinzufügen-Knopf heißt „Hinzufügen“; Übersicht ohne Geräte führt zu „Geräte“.
+- **Bundle:** initial rund 472,7 kB von 480 kB.
+
+### Übertrag
+
+- **5b (Pi):** Z2M auf `advanced.last_seen: ISO_8601` stellen – sonst trägt jeder echte Messwert die Empfangszeit (Flag `time_replaced`); QoS des echten Z2M prüfen; Nachliefer-Spitze am echten Aufbau prüfen (ADR-0020).
+- **5b/6b:** dauerhafte MQTT-Sitzung des Backends (`clean: false`, feste Client-ID je Stack), sonst gehen Nachrichten während eines Backend-Neustarts verloren; Zeitlimit für hängende Verarbeitung (Quittung, Herunterfahren); `statement_timeout` der Datenbank.
+- **6b:** Stundenaggregat, Diagramme, Räume, SSE, Befehle (Lampe), Kopplungsmodus; Binärwerte außer `true`/`false`/`ON`/`OFF` (z. B. `OPEN`/`CLOSE`) darstellen.
+
+### Bewusst zurückgestellt (klein)
+
+- Ingest: keine Wiederholung eines gescheiterten `follow` nach der Registrierung; Log-Menge bei vielen unbekannten Namen; Statusmeldungen warten hinter einer langen Nachlieferung (Latenz); kaputter `bridge/devices`-Eintrag markiert seine Hardware vorübergehend als entfernt.
+- Writer: verworfene Zeilen werden erst beim nächsten Verwerfen gezählt.
+- Oberfläche: ein synchron werfender Karten-Lader lässt die Übersicht leer; Überschriftenebenen und Listensemantik der Karten; geteilter Aktualisierungs-Status über Haushaltswechsel; doppelte Bausteine (Aktualisierung, „zuletzt gemeldet“); Gerät ohne Fähigkeiten zeigt keinen Hinweis.
+- Tests: Sperren eines Gateways lässt ein anderes im selben Haushalt unberührt (nicht mehr geprüft); fehlende Tests für Namen über 60 Zeichen und widerrufene Gateways beim Hinzufügen.
