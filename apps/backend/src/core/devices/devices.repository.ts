@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { Availability, Capability } from '@smart/contracts';
-import { and, asc, eq, inArray, isNull, lte, or, sql } from 'drizzle-orm';
+import { and, asc, eq, exists, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { DATABASE, type DatabaseConnection } from '../../platform/database/index.js';
 import { gateways } from '../gateways/index.js';
 import {
@@ -105,7 +105,11 @@ export class DevicesRepository {
     return view;
   }
 
-  /** Renames the household's device; `undefined` if it has no such device. */
+  /**
+   * Renames the household's device and returns it; `undefined` if the household has no such device.
+   * Only a device that is shown (on an active binding) can be renamed, so that a successful
+   * rename always has a device to return.
+   */
   async rename(
     householdId: string,
     deviceId: string,
@@ -119,6 +123,14 @@ export class DevicesRepository {
           eq(devices.id, deviceId),
           eq(devices.householdId, householdId),
           isNull(devices.archivedAt),
+          exists(
+            this.connection.db
+              .select({ one: sql`1` })
+              .from(deviceBindings)
+              .where(
+                and(eq(deviceBindings.deviceId, devices.id), isNull(deviceBindings.unboundAt)),
+              ),
+          ),
         ),
       )
       .returning({ id: devices.id });
