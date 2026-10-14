@@ -16,6 +16,9 @@ export const API_ERROR_CODES = [
   'invitation.emailMismatch',
   'invitation.accountExists',
   'invitation.alreadyMember',
+  'gateway.invalidCertificate',
+  'gateway.exists',
+  'gateway.caMissing',
   'validation.failed',
   'internal',
 ] as const;

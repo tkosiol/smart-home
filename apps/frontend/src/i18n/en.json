@@ -70,6 +70,11 @@
         "accountExists": "An account already exists for this e-mail address. Please sign in.",
         "alreadyMember": "This person is already a member of the household."
       },
+      "gateway": {
+        "invalidCertificate": "The certificate is invalid, expired or was not issued by this instance.",
+        "exists": "This gateway is already registered.",
+        "caMissing": "No certificate authority is set up on this instance."
+      },
       "validation": {
         "failed": "The input is not valid."
       },

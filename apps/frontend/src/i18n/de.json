@@ -70,6 +70,11 @@
         "accountExists": "Für diese E-Mail-Adresse gibt es schon ein Konto. Bitte melde dich an.",
         "alreadyMember": "Diese Person gehört schon zum Haushalt."
       },
+      "gateway": {
+        "invalidCertificate": "Das Zertifikat ist ungültig, abgelaufen oder nicht von dieser Instanz ausgestellt.",
+        "exists": "Dieses Gateway ist schon registriert.",
+        "caMissing": "Auf dieser Instanz ist keine Zertifizierungsstelle eingerichtet."
+      },
       "validation": {
         "failed": "Die Eingabe ist ungültig."
       },

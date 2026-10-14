@@ -21,6 +21,9 @@ const ERROR_TEXT_KEYS: Record<ApiErrorCode, string> = {
   'invitation.emailMismatch': marker('app.errors.invitation.emailMismatch'),
   'invitation.accountExists': marker('app.errors.invitation.accountExists'),
   'invitation.alreadyMember': marker('app.errors.invitation.alreadyMember'),
+  'gateway.invalidCertificate': marker('app.errors.gateway.invalidCertificate'),
+  'gateway.exists': marker('app.errors.gateway.exists'),
+  'gateway.caMissing': marker('app.errors.gateway.caMissing'),
   'validation.failed': marker('app.errors.validation.failed'),
   internal: marker('app.errors.internal'),
 };
