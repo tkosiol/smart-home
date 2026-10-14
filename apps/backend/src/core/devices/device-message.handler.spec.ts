@@ -161,7 +161,25 @@ describe('DeviceMessageProcessor', () => {
       label: 'plant',
       color: { x: 0.3, y: 0.4 },
     });
-    expect(add.mock.calls[0]?.[0].map((row) => row.capability)).toEqual(['soil_moisture', 'label']);
+    // Text and composite values live in the state only, never in the measurements.
+    expect(add.mock.calls[0]?.[0].map((row) => row.capability)).toEqual(['soil_moisture']);
+  });
+
+  it('drops a composite with a NUL character anywhere in it, and only that field', async () => {
+    await handle({
+      soil_moisture: 30,
+      color: { x: 0.3, nested: [{ name: 'a\u0000b' }] },
+      last_seen: SEEN,
+    });
+    await handle({ soil_moisture: 31, color: { ['k\u0000']: 1 }, last_seen: SEEN });
+    await handle({ soil_moisture: 32, color: { x: 0.3, y: 0.4 }, last_seen: SEEN });
+
+    expect(recordDevice.mock.calls.map((call) => call[1])).toEqual([
+      { soil_moisture: 30 },
+      { soil_moisture: 31 },
+      { soil_moisture: 32, color: { x: 0.3, y: 0.4 } },
+    ]);
+    expect(processor.discardedFields).toBe(2);
   });
 
   describe('a retained message', () => {

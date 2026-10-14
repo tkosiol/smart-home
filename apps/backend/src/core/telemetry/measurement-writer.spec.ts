@@ -61,6 +61,13 @@ describe('MeasurementWriter', () => {
     expect(insertMany).not.toHaveBeenCalled();
   });
 
+  it('still writes after a flush that had nothing to write', async () => {
+    await writer.flush();
+    writer.add(rows(2));
+    await writer.flush();
+    expect(insertMany).toHaveBeenCalledTimes(1);
+  });
+
   it('flushes what is left, and waits for it, when the module is destroyed', async () => {
     let finish: (() => void) | undefined;
     insertMany.mockImplementation(
@@ -118,5 +125,49 @@ describe('MeasurementWriter', () => {
     writer.add(rows(1, 1));
     await vi.advanceTimersByTimeAsync(1000);
     expect(insertMany).toHaveBeenCalledTimes(2);
+  });
+
+  it('after destroy takes nothing more: no new timer, one log line', async () => {
+    await writer.onModuleDestroy();
+    writer.add(rows(2));
+    writer.add(rows(2, 2));
+    await vi.advanceTimersByTimeAsync(5000);
+
+    expect(insertMany).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps at most 10000 rows waiting: drops the oldest and logs once per minute', async () => {
+    const written: number[] = [];
+    let release: (() => void) | undefined;
+    insertMany.mockImplementationOnce(
+      (batch) =>
+        new Promise((resolve) => {
+          release = () => resolve(batch.length);
+        }),
+    );
+    insertMany.mockImplementation((batch) => {
+      written.push(...batch.map((row) => row.valueNum ?? -1));
+      return Promise.resolve(batch.length);
+    });
+    // The first batch hangs in the database; 26 more pile up behind it.
+    for (let index = 0; index < 27; index += 1) writer.add(rows(500, index * 500));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(warn).toHaveBeenCalledTimes(1);
+    for (let index = 27; index < 30; index += 1) writer.add(rows(500, index * 500));
+    expect(warn).toHaveBeenCalledTimes(1);
+
+    release?.();
+    await writer.flush();
+    expect(written).toHaveLength(10_000);
+    // The newest rows survive.
+    expect(written.at(-1)).toBe(14_999);
+    expect(written[0]).toBe(5000);
+
+    await vi.advanceTimersByTimeAsync(60_000);
+    for (let index = 30; index < 60; index += 1) writer.add(rows(500, index * 500));
+    await writer.flush();
+    expect(warn).toHaveBeenCalledTimes(2);
   });
 });

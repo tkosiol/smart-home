@@ -217,6 +217,21 @@ describe('readings of the device ingest', () => {
     expect((await readings(deviceId)).map((row) => row.capability)).toEqual(['occupancy']);
   });
 
+  it('merges the state of two messages with the same time but keeps the first reading', async () => {
+    const { hardwareId, deviceId = '' } = await setup(true);
+    const seen = minutesAgo(1);
+
+    await send(hardwareId, { soil_moisture: 10, last_seen: seen });
+    await send(hardwareId, { soil_moisture: 20, mode: 'eco', last_seen: seen });
+
+    expect((await stateRow(deviceId)).state).toEqual({ soil_moisture: 20, mode: 'eco' });
+    const stored = await readings(deviceId);
+    expect(stored.map((row) => [row.capability, row.value_num ?? row.value_text])).toEqual([
+      ['mode', 'eco'],
+      ['soil_moisture', 10],
+    ]);
+  });
+
   describe('late deliveries', () => {
     it('leave the newest state alone and every reading stored once, also when delivered twice', async () => {
       const { hardwareId, deviceId = '' } = await setup(true);

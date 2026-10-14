@@ -15,8 +15,20 @@ const MAX_COMPOSITE_LENGTH = 2000;
 const ON = 'ON';
 const OFF = 'OFF';
 
-/** Postgres cannot store a NUL character in text or jsonb. */
+/** Postgres cannot store a NUL character in text or jsonb (as a value or as a key). */
 const hasNul = (text: string): boolean => text.includes('\u0000');
+const MAX_COMPOSITE_DEPTH = 5;
+
+/** Whether a NUL is in any key or string of the value; anything nested deeper is no composite. */
+function containsNul(value: unknown, depth = 0): boolean {
+  if (typeof value === 'string') return hasNul(value);
+  if (typeof value !== 'object' || value === null) return false;
+  if (depth >= MAX_COMPOSITE_DEPTH) return true;
+  const entries = Array.isArray(value)
+    ? value.map((item): [string, unknown] => ['', item])
+    : Object.entries(value);
+  return entries.some(([key, item]) => hasNul(key) || containsNul(item, depth + 1));
+}
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -34,8 +46,7 @@ function isValid(capability: Capability, value: unknown): boolean {
       return typeof value === 'string' && value.length <= MAX_TEXT_LENGTH && !hasNul(value);
     case 'composite': {
       if (!isPlainObject(value)) return false;
-      const json = JSON.stringify(value);
-      return json.length <= MAX_COMPOSITE_LENGTH && !hasNul(json);
+      return JSON.stringify(value).length <= MAX_COMPOSITE_LENGTH && !containsNul(value);
     }
   }
 }
@@ -51,8 +62,9 @@ function readingOf(
     case 'binary':
       return { valueNum: value === true || value === ON ? 1 : 0 };
     case 'enum':
-    case 'text':
       return { valueText: value as string };
+    // Text and composite values are only ever kept in the state.
+    case 'text':
     case 'composite':
       return undefined;
   }
