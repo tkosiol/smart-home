@@ -31,7 +31,7 @@ Ein bestehendes `SMART_PKI_DIR` mit Gruppen- oder Weltzugriff wird abgelehnt (`c
 SMART_VPS=<user@host> infra/deploy/broker-certs.sh <staging|production>
 ```
 
-Das Skript kopiert `ca.crt`, `server.crt`, `server.key`, `crl.pem` und `crl-next-update` nach `<stack>/certs/`, setzt `MQTT_TLS=on` in der `.env` und startet den Broker neu. Alles geht in einer einzigen SSH-Sitzung (tar-Strom über stdin); eine CRL, die abgelaufen ist oder in weniger als 7 Tagen abläuft, wird nicht übertragen. Nach jeder Sperrung und vor Ablauf der Zertifikate erneut ausführen.
+Das Skript kopiert `ca.crt`, `server.crt`, `server.key`, `crl.pem` und `crl-next-update` nach `<stack>/certs/` (`public/` mit allem außer dem Schlüssel, `private/` mit `server.key`; die API sieht nur `public/`), setzt `MQTT_TLS=on` in der `.env` und startet den Broker neu. Alles geht in einer einzigen SSH-Sitzung (tar-Strom über stdin); eine CRL, die abgelaufen ist oder in weniger als 7 Tagen abläuft, wird nicht übertragen. Nach jeder Sperrung und vor Ablauf der Zertifikate erneut ausführen.
 
 ## Tests
 

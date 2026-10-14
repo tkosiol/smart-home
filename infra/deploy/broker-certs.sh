@@ -47,19 +47,21 @@ if [ "$usable" != yes ]; then
   exit 1
 fi
 
-# One session: unpack into certs/.new, fix the modes, and only after everything succeeded move the files into
-# place. The directory certs/ itself stays (containers bind-mount it). It is world-searchable so the api
-# container (user node) can read the public files; server.key stays 600 and is read only by the broker
-# entrypoint, which runs as root.
-remote_script="umask 077 && cd $remote_dir && mkdir -p certs && chmod 755 certs && rm -rf certs/.new && mkdir certs/.new \
+# One session: unpack into certs/.new (not mounted anywhere), fix the modes, and only after everything succeeded move
+# the files into place. certs/public (ca.crt, server.crt, crl.pem, crl-next-update; 755/644) is mounted read-only into
+# the api and the broker; certs/private (server.key; 700/600) only into the broker, so the api never sees the key.
+# The directories themselves stay (containers bind-mount them), the files are replaced inside them.
+remote_script="umask 077 && cd $remote_dir && mkdir -p certs/public certs/private && chmod 755 certs certs/public && chmod 700 certs/private \
+&& rm -rf certs/.new && mkdir certs/.new \
 && tar -xf - -C certs/.new ${files[*]} \
 && chmod 600 certs/.new/server.key && chmod 644 certs/.new/ca.crt certs/.new/server.crt certs/.new/crl.pem certs/.new/crl-next-update \
-&& mv certs/.new/ca.crt certs/.new/server.crt certs/.new/server.key certs/.new/crl.pem certs/.new/crl-next-update certs/ \
+&& mv certs/.new/ca.crt certs/.new/server.crt certs/.new/crl.pem certs/.new/crl-next-update certs/public/ \
+&& mv certs/.new/server.key certs/private/ \
 && rmdir certs/.new"
 # COPYFILE_DISABLE keeps macOS tar from adding ._ metadata entries.
 # shellcheck disable=SC2029 # see above
 COPYFILE_DISABLE=1 tar -cf - -C "$pki_dir" "${files[@]}" | ssh "$host" "$remote_script"
-echo "copied ${files[*]} to $remote_dir/certs (server.key mode 600, the rest 644)"
+echo "copied ${files[*]} to $remote_dir/certs (server.key into private/ with mode 600, the rest into public/ with mode 644)"
 
 # MQTT_TLS is the only line this script changes in the .env. A grep failure other than "no line left" (status 1)
 # stops the chain before the file is replaced.

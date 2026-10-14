@@ -10,15 +10,16 @@ services:
       SMTP_URL: smtp://mailpit:1025
       MAIL_FROM: Smart Home <noreply@example.org>
     volumes:
-      # Same target as in compose.yaml, so this replaces the ./certs bind mount (the test keeps its
-      # throwaway certificates in a volume instead of the repository).
-      - certs-test:/smart/certs:ro
+      # Same targets as in compose.yaml, so these replace the ./certs/* bind mounts (the test keeps its
+      # throwaway certificates in volumes instead of the repository). The api gets the public files only.
+      - certs-public-test:/smart/certs:ro
     depends_on:
       mailpit:
         condition: service_healthy
   broker:
     volumes:
-      - certs-test:/mosquitto/certs:ro
+      - certs-public-test:/mosquitto/certs:ro
+      - certs-private-test:/mosquitto/certs-private:ro
   # Test gateway: the Raspberry Pi's Mosquitto, bridged to the stack broker over mTLS with the
   # gateway certificate. stack-test.sh renders pi.mosquitto.conf and the certificates into pi-test.
   pi:
@@ -52,12 +53,20 @@ services:
       # (Docker Desktop file sharing returns EIO); the test copies the files into this volume.
       - stack-config-test:/stack-config:ro
 
+# All created (and removed) by stack-test.sh before compose runs; external keeps compose from warning about it.
 volumes:
-  certs-test:
-    name: smart-stacktest-certs
+  certs-public-test:
+    name: smart-stacktest-certs-public
+    external: true
+  certs-private-test:
+    name: smart-stacktest-certs-private
+    external: true
   pi-test:
     name: smart-stacktest-pi
+    external: true
   restic-test:
     name: smart-stacktest-restic
+    external: true
   stack-config-test:
     name: smart-stacktest-config
+    external: true

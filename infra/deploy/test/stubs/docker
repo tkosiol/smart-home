@@ -1,6 +1,8 @@
 #!/bin/sh
 # Test double: records every call; fails or answers depending on STUB_* variables.
 printf '%s\n' "$*" >> "$STUB_CALLS"
+# Whether the bind-mounted certificate directories exist at the time of the call (deploy.sh runs in the stack directory).
+if [ -d certs/public ] && [ -d certs/private ]; then echo present >> "${STUB_CALLS}.certs"; else echo missing >> "${STUB_CALLS}.certs"; fi
 # One line per argument, to prove how arguments arrive (word boundaries survive).
 if [ -n "${STUB_ARGV_LOG:-}" ]; then
   printf 'docker' >> "$STUB_ARGV_LOG"

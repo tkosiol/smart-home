@@ -64,13 +64,18 @@ check "deploy runs pull, migrate, up and readiness in order" '[ "$(grep -oE "pul
 check "deploy records the new sha" 'grep -qx "IMAGE_TAG=$SHA" "$SMART_STACKS_DIR/smart-prod/deploy.env"'
 check "deploy promotes the commit compose file after success" 'grep -qx "name: next" "$SMART_STACKS_DIR/smart-prod/compose.yaml" && [ ! -e "$SMART_STACKS_DIR/smart-prod/compose.next.yaml" ]'
 check "deploy runs the new version with the new compose file" 'grep -q "compose -f compose.next.yaml --env-file .env --env-file deploy.env.next up -d --wait --remove-orphans" "$STUB_CALLS"'; teardown
-# Docker would create a missing ./certs bind mount as root; the stack directory must own it before anything starts.
+# Docker would create missing ./certs/public and ./certs/private bind mounts as root; the stack directory must own
+# them before any compose command runs (the stub docker notes at every call whether both exist).
 setup; prepare_stack smart-prod "$OLD_SHA"
-check "deploy creates the certs directory before the first compose call" '[ "$(run_deploy production)" = 0 ] && [ -d "$SMART_STACKS_DIR/smart-prod/certs" ]'; teardown
-setup; prepare_stack smart-prod "$OLD_SHA"; mkdir "$SMART_STACKS_DIR/smart-prod/certs"; echo keep > "$SMART_STACKS_DIR/smart-prod/certs/ca.crt"
-check "deploy leaves an existing certs directory alone" '[ "$(run_deploy production)" = 0 ] && [ "$(cat "$SMART_STACKS_DIR/smart-prod/certs/ca.crt")" = keep ]'; teardown
+check "deploy creates certs/public (755) and certs/private (700)" '[ "$(run_deploy production)" = 0 ] && [ "$(mode_of "$SMART_STACKS_DIR/smart-prod/certs/public")" = 755 ] && [ "$(mode_of "$SMART_STACKS_DIR/smart-prod/certs/private")" = 700 ]'
+check "deploy has both certs directories before every compose call" '[ -s "$STUB_CALLS.certs" ] && ! grep -q missing "$STUB_CALLS.certs"'; teardown
+setup; prepare_stack smart-prod "$OLD_SHA"
+check "deploy sets the certs modes even under a restrictive umask" '[ "$(umask 077 && run_deploy production)" = 0 ] && [ "$(mode_of "$SMART_STACKS_DIR/smart-prod/certs")" = 755 ] && [ "$(mode_of "$SMART_STACKS_DIR/smart-prod/certs/public")" = 755 ] && [ "$(mode_of "$SMART_STACKS_DIR/smart-prod/certs/private")" = 700 ]'; teardown
+setup; prepare_stack smart-prod "$OLD_SHA"; mkdir -p "$SMART_STACKS_DIR/smart-prod/certs/public"; echo keep > "$SMART_STACKS_DIR/smart-prod/certs/public/ca.crt"
+check "deploy leaves existing certificates alone" '[ "$(run_deploy production)" = 0 ] && [ "$(cat "$SMART_STACKS_DIR/smart-prod/certs/public/ca.crt")" = keep ]'; teardown
 setup; prepare_stack smart-prod "$OLD_SHA"; export STUB_FAIL_INFRA=1
-check "deploy has created the certs directory even when the broker does not start" '[ "$(run_deploy production)" = 1 ] && [ -d "$SMART_STACKS_DIR/smart-prod/certs" ]'; teardown
+check "deploy has created the certs directories even when the broker does not start" '[ "$(run_deploy production)" = 1 ] && [ -d "$SMART_STACKS_DIR/smart-prod/certs/public" ] && [ -d "$SMART_STACKS_DIR/smart-prod/certs/private" ]'; teardown
+
 setup; prepare_stack smart-prod "$OLD_SHA"; export STUB_READY_FAILURES=2
 check "deploy retries readiness while the new version warms up" '[ "$(run_deploy production)" = 0 ]'
 check "deploy does not roll back a version that becomes ready" '! grep -q "env-file deploy.env up" "$STUB_CALLS"'; teardown
@@ -142,19 +147,19 @@ exec_provision_setup() {
 exec_provision_setup
 STAGING_STACK="$STUB_REMOTE_HOME/docker/apps/smart-staging"
 check "provision writes MQTT_TLS=off and no public port for staging" 'provision_staging && grep -qx "MQTT_TLS=off" "$STAGING_STACK/.env" && [ "$(grep -c "^MQTT_TLS=" "$STAGING_STACK/.env")" = 1 ] && ! grep -q "MQTT_PUBLIC_PORT" "$STAGING_STACK/.env"'
-check "provision creates the certs directory readable for the containers" '[ -d "$STAGING_STACK/certs" ] && [ "$(mode_of "$STAGING_STACK/certs")" = 755 ] && [ "$(mode_of "$STAGING_STACK/.env")" = 600 ]'
+check "provision creates certs/public readable for the containers and certs/private for the owner only" '[ "$(mode_of "$STAGING_STACK/certs")" = 755 ] && [ "$(mode_of "$STAGING_STACK/certs/public")" = 755 ] && [ "$(mode_of "$STAGING_STACK/certs/private")" = 700 ] && [ "$(mode_of "$STAGING_STACK/.env")" = 600 ]'
 check "provision keeps the stack directory private" '[ "$(mode_of "$STAGING_STACK")" = 700 ]'
 teardown
 exec_provision_setup
 # shellcheck disable=SC2034 # used by the check() expression below
 PROD_STACK="$STUB_REMOTE_HOME/docker/apps/smart-prod"
-check "provision publishes the MQTT port of production" 'answers | bash "$DEPLOY_DIR/provision.sh" production > /dev/null 2>&1 && grep -qx "MQTT_TLS=off" "$PROD_STACK/.env" && grep -qx "MQTT_PUBLIC_PORT=8883" "$PROD_STACK/.env" && [ "$(mode_of "$PROD_STACK/certs")" = 755 ]'
+check "provision publishes the MQTT port of production" 'answers | bash "$DEPLOY_DIR/provision.sh" production > /dev/null 2>&1 && grep -qx "MQTT_TLS=off" "$PROD_STACK/.env" && grep -qx "MQTT_PUBLIC_PORT=8883" "$PROD_STACK/.env" && [ "$(mode_of "$PROD_STACK/certs/public")" = 755 ] && [ "$(mode_of "$PROD_STACK/certs/private")" = 700 ]'
 teardown
 exec_provision_setup
 STAGING_STACK="$STUB_REMOTE_HOME/docker/apps/smart-staging"
-mkdir -p "$STAGING_STACK/certs" && printf 'ca\n' > "$STAGING_STACK/certs/ca.crt" && chmod 755 "$STAGING_STACK/certs"
+mkdir -p "$STAGING_STACK/certs/public" "$STAGING_STACK/certs/private" && printf 'ca\n' > "$STAGING_STACK/certs/public/ca.crt"
 printf 'STACK_NAME=smart-staging\nDB_PASSWORD=keep-db\nMQTT_API_PASSWORD=keep-mqtt\nMQTT_TLS=on\n' > "$STAGING_STACK/.env"
-check "provision --force keeps MQTT_TLS=on set by broker-certs and the certificates" 'provision_staging --force && grep -qx "MQTT_TLS=on" "$STAGING_STACK/.env" && [ "$(grep -c "^MQTT_TLS=" "$STAGING_STACK/.env")" = 1 ] && [ "$(cat "$STAGING_STACK/certs/ca.crt")" = ca ]'
+check "provision --force keeps MQTT_TLS=on set by broker-certs and the certificates" 'provision_staging --force && grep -qx "MQTT_TLS=on" "$STAGING_STACK/.env" && [ "$(grep -c "^MQTT_TLS=" "$STAGING_STACK/.env")" = 1 ] && [ "$(cat "$STAGING_STACK/certs/public/ca.crt")" = ca ]'
 teardown
 setup; STUB_EXISTING_ENV=$(printf 'STACK_NAME=smart-staging\nDB_PASSWORD=keep-db\nMQTT_TLS=on')
 export SMART_VPS=deploy@vps STUB_ENV_EXISTS=1 STUB_EXISTING_ENV
@@ -242,15 +247,15 @@ check "broker-certs refuses a stack without a provisioned .env" '[ "$(run_certs 
 check "broker-certs succeeds for staging" '[ "$(run_certs staging)" = 0 ]'
 # shellcheck disable=SC2034 # used by the check() expressions below
 STACK_DIR="$STUB_REMOTE_HOME/docker/apps/smart-staging"
-check "broker-certs copies all five files unchanged" 'for f in ca.crt server.crt server.key crl.pem crl-next-update; do cmp -s "$WORK/pki/$f" "$STACK_DIR/certs/$f" || exit 1; done'
-check "broker-certs keeps the key private and the public files readable" '[ "$(mode_of "$STACK_DIR/certs/server.key")" = 600 ] && [ "$(mode_of "$STACK_DIR/certs/ca.crt")" = 644 ] && [ "$(mode_of "$STACK_DIR/certs/crl.pem")" = 644 ] && [ "$(mode_of "$STACK_DIR/certs/crl-next-update")" = 644 ] && [ "$(mode_of "$STACK_DIR/certs")" = 755 ]'
+check "broker-certs copies all five files unchanged, the key only into certs/private" '(for f in ca.crt server.crt crl.pem crl-next-update; do cmp -s "$WORK/pki/$f" "$STACK_DIR/certs/public/$f" || exit 1; done) && cmp -s "$WORK/pki/server.key" "$STACK_DIR/certs/private/server.key" && [ ! -e "$STACK_DIR/certs/public/server.key" ]'
+check "broker-certs keeps the key private and the public files readable" '[ "$(mode_of "$STACK_DIR/certs/private/server.key")" = 600 ] && [ "$(mode_of "$STACK_DIR/certs/private")" = 700 ] && [ "$(mode_of "$STACK_DIR/certs/public/ca.crt")" = 644 ] && [ "$(mode_of "$STACK_DIR/certs/public/server.crt")" = 644 ] && [ "$(mode_of "$STACK_DIR/certs/public/crl.pem")" = 644 ] && [ "$(mode_of "$STACK_DIR/certs/public/crl-next-update")" = 644 ] && [ "$(mode_of "$STACK_DIR/certs/public")" = 755 ] && [ "$(mode_of "$STACK_DIR/certs")" = 755 ]'
 check "broker-certs leaves no temporary files" '[ -z "$(find "$STACK_DIR" -name "*.new")" ]'
 check "broker-certs sets MQTT_TLS=on exactly once" '[ "$(grep -c "^MQTT_TLS=" "$STACK_DIR/.env")" = 1 ] && grep -qx "MQTT_TLS=on" "$STACK_DIR/.env"'
 check "broker-certs changes no other line of the .env" '[ "$(grep -v "^MQTT_TLS=" "$STACK_DIR/.env")" = "$(printf "STACK_NAME=smart-staging\nDB_PASSWORD=keep-db\nSMTP_URL=smtps://resend:re_keep@smtp.resend.com:465")" ]'
 check "broker-certs keeps the .env at mode 600" '[ "$(mode_of "$STACK_DIR/.env")" = 600 ]'
 check "broker-certs recreates the broker of the stack" 'grep -qx "compose -f compose.yaml --env-file .env --env-file deploy.env up -d --no-deps --force-recreate broker" "$STUB_CALLS"'
-check "broker-certs sends all files in one ssh session on stdin with umask 077" '[ "$(grep -c "^ssh deploy@vps umask 077 && cd docker/apps/smart-staging && mkdir -p certs" "$STUB_CALLS")" = 1 ] && grep -q "tar -xf - -C certs/.new" "$STUB_CALLS"'
-check "broker-certs leaves no .new directory and no ._ files" '[ ! -e "$STACK_DIR/certs/.new" ] && [ -z "$(find "$STACK_DIR/certs" -name "._*")" ] && [ "$(ls "$STACK_DIR/certs" | wc -l | tr -d " ")" = 5 ]'
+check "broker-certs sends all files in one ssh session on stdin with umask 077" '[ "$(grep -c "^ssh deploy@vps umask 077 && cd docker/apps/smart-staging && mkdir -p certs/public certs/private" "$STUB_CALLS")" = 1 ] && grep -q "tar -xf - -C certs/.new" "$STUB_CALLS"'
+check "broker-certs leaves no .new directory and no ._ files" '[ ! -e "$STACK_DIR/certs/.new" ] && [ -z "$(find "$STACK_DIR/certs" -name "._*")" ] && [ "$(ls "$STACK_DIR/certs/public" | wc -l | tr -d " ")" = 4 ] && [ "$(ls "$STACK_DIR/certs/private" | wc -l | tr -d " ")" = 1 ]'
 check "broker-certs never puts key content on a command line or in the output" '! grep -q "$KEY_MARKER" "$STUB_CALLS" && ! grep -q "$KEY_MARKER" "$WORK/out"'
 check "broker-certs works a second time and keeps one MQTT_TLS line" '[ "$(run_certs staging)" = 0 ] && [ "$(grep -c "^MQTT_TLS=" "$STACK_DIR/.env")" = 1 ] && grep -qx "MQTT_TLS=on" "$STACK_DIR/.env"'
 teardown
@@ -259,7 +264,7 @@ printf 'STACK_NAME=smart-staging' > "$STUB_REMOTE_HOME/docker/apps/smart-staging
 check "broker-certs appends MQTT_TLS to an .env without trailing newline and without the line" '[ "$(run_certs staging)" = 0 ] && [ "$(cat "$STUB_REMOTE_HOME/docker/apps/smart-staging/.env")" = "$(printf "STACK_NAME=smart-staging\nMQTT_TLS=on")" ]'
 teardown
 certs_setup; remote_stack smart-prod
-check "broker-certs uses the production stack for production" '[ "$(run_certs production)" = 0 ] && [ -f "$STUB_REMOTE_HOME/docker/apps/smart-prod/certs/server.key" ] && [ ! -e "$STUB_REMOTE_HOME/docker/apps/smart-staging/certs" ]'
+check "broker-certs uses the production stack for production" '[ "$(run_certs production)" = 0 ] && [ -f "$STUB_REMOTE_HOME/docker/apps/smart-prod/certs/private/server.key" ] && [ ! -e "$STUB_REMOTE_HOME/docker/apps/smart-staging/certs" ]'
 teardown
 certs_setup
 printf 'STACK_NAME=smart-staging\nMQTT_TLS=off\n' > "$STUB_REMOTE_HOME/docker/apps/smart-staging/.env"; chmod 000 "$STUB_REMOTE_HOME/docker/apps/smart-staging/.env"
@@ -277,15 +282,15 @@ check "broker-certs refuses a malformed crl-next-update" '[ "$(run_certs staging
 fake_pki; chmod 000 "$WORK/pki/server.key"
 check "broker-certs refuses an unreadable key before contacting the VPS" '[ "$(run_certs staging)" = 1 ] && grep -q "server.key" "$WORK/out" && [ ! -s "$STUB_CALLS" ]'
 chmod 600 "$WORK/pki/server.key"; teardown
-certs_setup; mkdir -p "$STUB_REMOTE_HOME/docker/apps/smart-staging/certs"
-printf 'old-ca\n' > "$STUB_REMOTE_HOME/docker/apps/smart-staging/certs/ca.crt"; printf 'old-key\n' > "$STUB_REMOTE_HOME/docker/apps/smart-staging/certs/server.key"
+certs_setup; mkdir -p "$STUB_REMOTE_HOME/docker/apps/smart-staging/certs/public" "$STUB_REMOTE_HOME/docker/apps/smart-staging/certs/private"
+printf 'old-ca\n' > "$STUB_REMOTE_HOME/docker/apps/smart-staging/certs/public/ca.crt"; printf 'old-key\n' > "$STUB_REMOTE_HOME/docker/apps/smart-staging/certs/private/server.key"
 # A tar that works for creating the archive but fails when the VPS side unpacks it halfway.
 mkdir "$WORK/badtar"
 printf '#!/bin/sh\ncase "$1" in -x*) head -c 10 > /dev/null; exit 1 ;; esac\nexec %s "$@"\n' "$(command -v tar)" > "$WORK/badtar/tar"
 chmod +x "$WORK/badtar/tar"
 SAVED_PATH=$PATH
 export PATH="$WORK/badtar:$PATH"
-check "broker-certs leaves the previous certs untouched when the transfer fails" '[ "$(run_certs staging)" != 0 ] && [ "$(cat "$STUB_REMOTE_HOME/docker/apps/smart-staging/certs/ca.crt")" = old-ca ] && [ "$(cat "$STUB_REMOTE_HOME/docker/apps/smart-staging/certs/server.key")" = old-key ] && grep -qx "MQTT_TLS=off" "$STUB_REMOTE_HOME/docker/apps/smart-staging/.env" && ! grep -q "^compose" "$STUB_CALLS"'
+check "broker-certs leaves the previous certs untouched when the transfer fails" '[ "$(run_certs staging)" != 0 ] && [ "$(cat "$STUB_REMOTE_HOME/docker/apps/smart-staging/certs/public/ca.crt")" = old-ca ] && [ "$(cat "$STUB_REMOTE_HOME/docker/apps/smart-staging/certs/private/server.key")" = old-key ] && grep -qx "MQTT_TLS=off" "$STUB_REMOTE_HOME/docker/apps/smart-staging/.env" && ! grep -q "^compose" "$STUB_CALLS"'
 PATH=$SAVED_PATH
 teardown
 

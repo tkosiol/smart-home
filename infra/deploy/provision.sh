@@ -136,7 +136,8 @@ if [ "$environment" = production ]; then
 fi
 
 # shellcheck disable=SC2029 # see above
-# certs/ is created here (not by Docker, which would make it root-owned); it is world-searchable like in
-# broker-certs.sh so the containers can read the public files, the server key inside stays 600.
-printf '%s\n' "${lines[@]}" | ssh "$host" "umask 077 && mkdir -p $remote_dir/certs && chmod 755 $remote_dir/certs && cat > $remote_dir/.env"
-echo "wrote $remote_dir/.env on the VPS (mode 600) and created $remote_dir/certs"
+# certs/public (api and broker read it) and certs/private (the broker's server key only) are created here, not by
+# Docker, which would make them root-owned. The modes are explicit because of the umask 077 of this session.
+printf '%s\n' "${lines[@]}" | ssh "$host" "umask 077 && mkdir -p $remote_dir/certs/public $remote_dir/certs/private \
+&& chmod 755 $remote_dir/certs $remote_dir/certs/public && chmod 700 $remote_dir/certs/private && cat > $remote_dir/.env"
+echo "wrote $remote_dir/.env on the VPS (mode 600) and created $remote_dir/certs/public and certs/private"

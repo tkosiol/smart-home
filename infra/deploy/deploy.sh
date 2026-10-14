@@ -27,8 +27,12 @@ fail() { echo "deploy[$environment]: $*" >&2; exit 1; }
 cp "$source_dir/compose.yaml" "$stack_dir/compose.next.yaml"
 printf 'IMAGE_TAG=%s\n' "$sha" > "$stack_dir/deploy.env.next"
 cd "$stack_dir"
-# The compose file bind-mounts ./certs; Docker would create a missing directory as root.
-mkdir -p certs
+# The compose file bind-mounts ./certs/public (api and broker) and ./certs/private (broker only, holds the server key);
+# Docker would create missing directories as root. The modes are set explicitly: a restrictive umask must not
+# hide the public files from the api, and the private directory must stay owner-only.
+mkdir -p certs/public certs/private
+chmod 755 certs certs/public
+chmod 700 certs/private
 
 next() { docker compose -f compose.next.yaml --env-file .env --env-file deploy.env.next "$@"; }
 current() { docker compose -f compose.yaml --env-file .env --env-file deploy.env "$@"; }

@@ -50,18 +50,22 @@ topic read  gw/$id/z2m/bridge/request/#
 ACL
 fi
 
-# Certificates arrive read-only and owned by the deploy user; mosquitto reads them after dropping
+# Certificates arrive read-only and owned by the deploy user: the public files (also visible to the api) under
+# /mosquitto/certs, the server key alone under /mosquitto/certs-private. mosquitto reads them after dropping
 # privileges, so they are copied into the tmpfs, owned by the broker user. TLS is only switched on when asked
 # for and complete: a half-provisioned stack must not open a public listener.
+cert_source() {
+  if [ "$1" = server.key ]; then echo "/mosquitto/certs-private/$1"; else echo "/mosquitto/certs/$1"; fi
+}
 case "${MQTT_TLS:-off}" in
   off) ;;
   on)
     for f in ca.crt server.crt server.key crl.pem; do
-      [ -s "/mosquitto/certs/$f" ] || fail "MQTT_TLS=on but /mosquitto/certs/$f is missing"
+      [ -s "$(cert_source "$f")" ] || fail "MQTT_TLS=on but $(cert_source "$f") is missing"
     done
     install -d -o mosquitto -g mosquitto -m 700 "$RUN/certs"
     for f in ca.crt server.crt server.key crl.pem; do
-      install -o mosquitto -g mosquitto -m 600 "/mosquitto/certs/$f" "$RUN/certs/"
+      install -o mosquitto -g mosquitto -m 600 "$(cert_source "$f")" "$RUN/certs/"
     done
     cat /mosquitto/config/tls.conf >> "$RUN/mosquitto.conf"
     ;;

@@ -50,7 +50,8 @@ services:
       GATEWAY_CA_FILE: /smart/certs/ca.crt
       GATEWAY_CRL_NEXT_UPDATE_FILE: /smart/certs/crl-next-update
     volumes:
-      - ./certs:/smart/certs:ro
+      # Public files only (CA, CRL expiry): the api must never see the broker's server key.
+      - ./certs/public:/smart/certs:ro
     depends_on:
       db:
         condition: service_healthy
@@ -99,7 +100,9 @@ services:
       TZ: UTC
     volumes:
       - broker-data:/mosquitto/data
-      - ./certs:/mosquitto/certs:ro
+      - ./certs/public:/mosquitto/certs:ro
+      # The server key lives apart from the files the api can read.
+      - ./certs/private:/mosquitto/certs-private:ro
     # Gateways connect here with a client certificate. Production publishes 8883 to the internet
     # (MQTT_PUBLIC_PORT=8883); everywhere else it stays on localhost.
     ports:

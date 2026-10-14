@@ -32,7 +32,7 @@ cleanup() {
   compose down -v > /dev/null 2>&1 || true
   docker network rm "$NETWORK" > /dev/null 2>&1 || true
   docker rm -f smart-stacktest-decoy > /dev/null 2>&1 || true
-  docker volume rm smart-stacktest-config smart-stacktest-restic smart-stacktest-certs smart-stacktest-pi > /dev/null 2>&1 || true
+  docker volume rm smart-stacktest-config smart-stacktest-restic smart-stacktest-certs-public smart-stacktest-certs-private smart-stacktest-pi > /dev/null 2>&1 || true
   rm -rf "$ENV_FILE" "$WORK"
 }
 trap cleanup EXIT
@@ -51,23 +51,30 @@ pki init-ca
 pki issue-server broker
 pki issue-gateway "$GATEWAY_ID"
 
-# Only what the stack needs goes into the volumes, never the CA key. certs-test replaces ./certs of the stack
-# directory (see compose.test.yaml); pi-test holds the pi's configuration and gateway certificate.
-mkdir "$WORK/stage-certs" "$WORK/stage-pi"
-for f in ca.crt server.crt server.key crl.pem crl-next-update; do cp "$WORK/pki/$f" "$WORK/stage-certs/$f"; done
+# Only what the stack needs goes into the volumes, never the CA key. The layout is the one of the stack directory
+# (certs/public for api and broker, certs/private with the server key for the broker only); the volumes
+# certs-public-test and certs-private-test replace those bind mounts (see compose.test.yaml). pi-test holds the
+# pi's configuration and gateway certificate.
+mkdir "$WORK/stage-public" "$WORK/stage-private" "$WORK/stage-pi"
+for f in ca.crt server.crt crl.pem crl-next-update; do cp "$WORK/pki/$f" "$WORK/stage-public/$f"; done
+cp "$WORK/pki/server.key" "$WORK/stage-private/server.key"
 sed "s/@GATEWAY_ID@/$GATEWAY_ID/g" infra/compose/test/pi.mosquitto.conf > "$WORK/stage-pi/mosquitto.conf"
 cp "$WORK/pki/ca.crt" "$WORK/pki/gateways/$GATEWAY_ID.crt" "$WORK/pki/gateways/$GATEWAY_ID.key" "$WORK/stage-pi/"
-docker volume rm smart-stacktest-certs smart-stacktest-pi > /dev/null 2>&1 || true
-docker volume create smart-stacktest-certs > /dev/null
-docker volume create smart-stacktest-pi > /dev/null
-# Same modes as broker-certs.sh sets on the VPS: directory 755, public files 644, server.key 600.
-docker run --rm -v smart-stacktest-certs:/dst -v "$WORK/stage-certs:/src:ro" alpine:3.24.2 \
-  sh -c 'cp /src/* /dst/ && chmod 755 /dst && chmod 644 /dst/* && chmod 600 /dst/server.key'
+for volume in smart-stacktest-certs-public smart-stacktest-certs-private smart-stacktest-pi; do
+  docker volume rm "$volume" > /dev/null 2>&1 || true
+  docker volume create "$volume" > /dev/null
+done
+# Same modes as broker-certs.sh sets on the VPS: public 755/644, private 700/600.
+docker run --rm -v smart-stacktest-certs-public:/dst -v "$WORK/stage-public:/src:ro" alpine:3.24.2 \
+  sh -c 'cp /src/* /dst/ && chmod 755 /dst && chmod 644 /dst/*'
+docker run --rm -v smart-stacktest-certs-private:/dst -v "$WORK/stage-private:/src:ro" alpine:3.24.2 \
+  sh -c 'cp /src/* /dst/ && chmod 700 /dst && chmod 600 /dst/*'
 # The pi's Mosquitto drops to user 1883 and reads the key as that user.
 docker run --rm -v smart-stacktest-pi:/dst -v "$WORK/stage-pi:/src:ro" alpine:3.24.2 \
   sh -c 'cp /src/* /dst/ && chown -R 1883:1883 /dst && chmod 755 /dst && chmod 600 /dst/*.key'
 
 docker network inspect "$NETWORK" > /dev/null 2>&1 || docker network create "$NETWORK" > /dev/null
+docker volume rm smart-stacktest-config smart-stacktest-restic > /dev/null 2>&1 || true
 docker volume create smart-stacktest-config > /dev/null
 # Same shape as on the VPS: the stack directory belongs to the deploy user (here 4242:4343), mode 700,
 # and .env is mode 600 – the backup container must run as that owner to read it.
@@ -99,6 +106,15 @@ const next = fs.readFileSync(process.env.GATEWAY_CRL_NEXT_UPDATE_FILE, "utf8");
 if (!ca.includes("BEGIN CERTIFICATE") || !/^\d{4}-\d{2}-\d{2}T/.test(next)) process.exit(1);
 ' || {
   echo "FAIL: the api cannot read the gateway CA or the CRL expiry file" >&2
+  exit 1
+}
+# ... and never the broker's private key: nothing named server.key exists anywhere in its certificate mount.
+compose exec -T api node -e '
+const fs = require("node:fs");
+const names = fs.readdirSync("/smart/certs", { recursive: true });
+if (names.length === 0 || names.some((name) => String(name).includes("server.key"))) process.exit(1);
+' || {
+  echo "FAIL: the api sees server.key (or an empty certificate mount)" >&2
   exit 1
 }
 

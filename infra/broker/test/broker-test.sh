@@ -62,10 +62,12 @@ if ! { pki "$PKI_DIR" init-ca && pki "$PKI_DIR" issue-server broker \
 fi
 
 # What the broker container gets (never the CA key) and what the client container gets.
+# The stack mounts certs/public (also visible to the api) and certs/private (the server key, broker only) apart.
 CERTS="$WORK/certs"
 CLIENT="$WORK/client"
-mkdir -p "$CERTS" "$CLIENT"
-for f in ca.crt server.crt server.key crl.pem; do cp "$PKI_DIR/$f" "$CERTS/$f"; done
+mkdir -p "$CERTS/public" "$CERTS/private" "$CLIENT"
+for f in ca.crt server.crt crl.pem; do cp "$PKI_DIR/$f" "$CERTS/public/$f"; done
+cp "$PKI_DIR/server.key" "$CERTS/private/server.key"
 cp "$PKI_DIR/ca.crt" "$CLIENT/ca.crt"
 for id in "$GW_A" "$GW_B" "$GW_REVOKED"; do
   cp "$PKI_DIR/gateways/$id.crt" "$PKI_DIR/gateways/$id.key" "$CLIENT/"
@@ -185,12 +187,14 @@ docker rm -fv "$PREFIX-off" > /dev/null 2>&1
 # --- MQTT_TLS=on with an incomplete certificate set aborts with a message ---
 for missing in ca.crt server.crt server.key crl.pem; do
   rm -rf "$WORK/partial"
-  mkdir "$WORK/partial"
-  for f in ca.crt server.crt server.key crl.pem; do
-    if [ "$f" != "$missing" ]; then cp "$CERTS/$f" "$WORK/partial/$f"; fi
+  mkdir -p "$WORK/partial/public" "$WORK/partial/private"
+  for f in ca.crt server.crt crl.pem; do
+    if [ "$f" != "$missing" ]; then cp "$CERTS/public/$f" "$WORK/partial/public/$f"; fi
   done
-  run_expect_abort -v "$WORK/partial:/mosquitto/certs:ro" -e MQTT_TLS=on
-  check "MQTT_TLS=on without $missing exits with a message" '[ "$status" -ne 0 ] && echo "$out" | grep -q "MQTT_TLS=on but /mosquitto/certs/$missing is missing"'
+  if [ server.key != "$missing" ]; then cp "$CERTS/private/server.key" "$WORK/partial/private/server.key"; fi
+  if [ server.key = "$missing" ]; then where=/mosquitto/certs-private; else where=/mosquitto/certs; fi
+  run_expect_abort -v "$WORK/partial/public:/mosquitto/certs:ro" -v "$WORK/partial/private:/mosquitto/certs-private:ro" -e MQTT_TLS=on
+  check "MQTT_TLS=on without $missing exits with a message" '[ "$status" -ne 0 ] && echo "$out" | grep -q "MQTT_TLS=on but $where/$missing is missing"'
 done
 run_expect_abort -e MQTT_TLS=maybe
 check "an unknown MQTT_TLS value aborts instead of silently staying off" '[ "$status" -ne 0 ] && echo "$out" | grep -q "MQTT_TLS must be on or off"'
@@ -203,7 +207,7 @@ for bad in 'gw-abc' 'GW-testsimu' 'gw-TESTSIMU' 'gw-testsimu9' 'gw-testsimu/#' '
 done
 
 # --- TLS on, with the simulator user ---
-start_broker "$PREFIX-on" -v "$CERTS:/mosquitto/certs:ro" -e MQTT_TLS=on \
+start_broker "$PREFIX-on" -v "$CERTS/public:/mosquitto/certs:ro" -v "$CERTS/private:/mosquitto/certs-private:ro" -e MQTT_TLS=on \
   -e MQTT_SIMULATOR_PASSWORD="$SIM_PW" -e MQTT_SIMULATOR_GATEWAY_ID="$GW_SIM"
 check "TLS on: the broker starts and accepts a valid gateway certificate" 'wait_for tls_ready'
 check "TLS on: nothing is stored under /mosquitto/data from the certificates" '[ -z "$(docker exec "$PREFIX-on" find /mosquitto/data -name "*.key" -o -name "*.crt")" ]'
