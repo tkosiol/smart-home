@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for the deploy wrapper, deploy.sh, provision.sh and admin.sh using stubbed docker, curl and ssh.
+# Tests for the deploy wrapper, deploy.sh, provision.sh, admin.sh and broker-certs.sh using stubbed docker, curl and ssh.
 # shellcheck disable=SC2016 # check() expressions are evaluated later on purpose
 set -u
 cd "$(dirname "$0")/.." || exit 1
@@ -170,6 +170,64 @@ check "admin hands every argument to the remote command as one word" 'run_admin 
 check "admin lets no argument run on the VPS" '[ ! -e "$WORK/pwned" ]'
 check "admin runs revoke-sessions and hands its arguments over as one word each" 'run_admin staging revoke-sessions --email "a b@example.org" > /dev/null && [ "$(tail -n 1 "$STUB_ARGV_LOG")" = "docker <compose> <-f> <compose.yaml> <--env-file> <.env> <--env-file> <deploy.env> <exec> <-T> <api> <node> <dist/cli.js> <revoke-sessions> <--email> <a b@example.org>" ]'
 check "admin keeps empty arguments" 'run_admin staging create-admin --name "" > /dev/null && tail -n 1 "$STUB_ARGV_LOG" | grep -q "<--name> <>$"'; teardown
+
+# --- broker-certs.sh ---
+# The stub ssh runs the remote command for real (STUB_SSH_EXEC=1) in a fake home, the stub docker records the call.
+KEY_MARKER=key-content-that-must-never-be-printed
+fake_pki() {
+  mkdir -p "$WORK/pki"
+  printf 'ca-content\n' > "$WORK/pki/ca.crt"
+  printf 'server-content\n' > "$WORK/pki/server.crt"
+  printf '%s\n' "$KEY_MARKER" > "$WORK/pki/server.key"
+  printf 'crl-content\n' > "$WORK/pki/crl.pem"
+  printf '2027-10-14T12:00:00Z\n' > "$WORK/pki/crl-next-update"
+}
+remote_stack() {
+  mkdir -p "$STUB_REMOTE_HOME/docker/apps/$1"
+  printf 'STACK_NAME=%s\nDB_PASSWORD=keep-db\nMQTT_TLS=off\nSMTP_URL=smtps://resend:re_keep@smtp.resend.com:465' "$1" > "$STUB_REMOTE_HOME/docker/apps/$1/.env"
+  chmod 600 "$STUB_REMOTE_HOME/docker/apps/$1/.env"
+}
+mode_of() { stat -c %a "$1" 2> /dev/null || stat -f %Lp "$1"; }
+run_certs() { (bash "$DEPLOY_DIR/broker-certs.sh" "$@" < /dev/null > "$WORK/out" 2>&1); echo $?; }
+certs_setup() {
+  setup; fake_pki
+  export SMART_VPS=deploy@vps SMART_PKI_DIR="$WORK/pki" STUB_SSH_EXEC=1 STUB_REMOTE_HOME="$WORK/home"
+  remote_stack smart-staging
+}
+certs_setup
+check "broker-certs refuses an unknown environment" '[ "$(run_certs prod)" = 2 ] && [ "$(run_certs)" = 2 ] && [ ! -s "$STUB_CALLS" ]'
+check "broker-certs refuses an environment with a shell command" '[ "$(run_certs "staging; id")" = 2 ] && [ ! -s "$STUB_CALLS" ]'
+unset SMART_VPS
+check "broker-certs requires SMART_VPS" '[ "$(run_certs staging)" != 0 ] && [ ! -s "$STUB_CALLS" ]'
+export SMART_VPS=deploy@vps
+rm "$WORK/pki/crl-next-update"
+check "broker-certs refuses to run with a missing file and contacts nothing" '[ "$(run_certs staging)" = 1 ] && grep -q "crl-next-update" "$WORK/out" && [ ! -s "$STUB_CALLS" ]'
+fake_pki
+check "broker-certs refuses a stack without a provisioned .env" '[ "$(run_certs production)" = 1 ] && [ ! -e "$STUB_REMOTE_HOME/docker/apps/smart-prod/certs" ] && ! grep -q "^compose" "$STUB_CALLS"'
+check "broker-certs succeeds for staging" '[ "$(run_certs staging)" = 0 ]'
+# shellcheck disable=SC2034 # used by the check() expressions below
+STACK_DIR="$STUB_REMOTE_HOME/docker/apps/smart-staging"
+check "broker-certs copies all five files unchanged" 'for f in ca.crt server.crt server.key crl.pem crl-next-update; do cmp -s "$WORK/pki/$f" "$STACK_DIR/certs/$f" || exit 1; done'
+check "broker-certs keeps the key private and the public files readable" '[ "$(mode_of "$STACK_DIR/certs/server.key")" = 600 ] && [ "$(mode_of "$STACK_DIR/certs/ca.crt")" = 644 ] && [ "$(mode_of "$STACK_DIR/certs/crl.pem")" = 644 ] && [ "$(mode_of "$STACK_DIR/certs/crl-next-update")" = 644 ] && [ "$(mode_of "$STACK_DIR/certs")" = 755 ]'
+check "broker-certs leaves no temporary files" '[ -z "$(find "$STACK_DIR" -name "*.new")" ]'
+check "broker-certs sets MQTT_TLS=on exactly once" '[ "$(grep -c "^MQTT_TLS=" "$STACK_DIR/.env")" = 1 ] && grep -qx "MQTT_TLS=on" "$STACK_DIR/.env"'
+check "broker-certs changes no other line of the .env" '[ "$(grep -v "^MQTT_TLS=" "$STACK_DIR/.env")" = "$(printf "STACK_NAME=smart-staging\nDB_PASSWORD=keep-db\nSMTP_URL=smtps://resend:re_keep@smtp.resend.com:465")" ]'
+check "broker-certs keeps the .env at mode 600" '[ "$(mode_of "$STACK_DIR/.env")" = 600 ]'
+check "broker-certs recreates the broker of the stack" 'grep -qx "compose -f compose.yaml --env-file .env --env-file deploy.env up -d --no-deps --force-recreate broker" "$STUB_CALLS"'
+check "broker-certs sends every file on stdin with umask 077" '[ "$(grep -c "^ssh deploy@vps umask 077 && cd docker/apps/smart-staging && mkdir -p certs" "$STUB_CALLS")" = 5 ]'
+check "broker-certs never puts key content on a command line or in the output" '! grep -q "$KEY_MARKER" "$STUB_CALLS" && ! grep -q "$KEY_MARKER" "$WORK/out"'
+check "broker-certs works a second time and keeps one MQTT_TLS line" '[ "$(run_certs staging)" = 0 ] && [ "$(grep -c "^MQTT_TLS=" "$STACK_DIR/.env")" = 1 ] && grep -qx "MQTT_TLS=on" "$STACK_DIR/.env"'
+teardown
+certs_setup
+printf 'STACK_NAME=smart-staging' > "$STUB_REMOTE_HOME/docker/apps/smart-staging/.env"
+check "broker-certs appends MQTT_TLS to an .env without trailing newline and without the line" '[ "$(run_certs staging)" = 0 ] && [ "$(cat "$STUB_REMOTE_HOME/docker/apps/smart-staging/.env")" = "$(printf "STACK_NAME=smart-staging\nMQTT_TLS=on")" ]'
+teardown
+certs_setup; remote_stack smart-prod
+check "broker-certs uses the production stack for production" '[ "$(run_certs production)" = 0 ] && [ -f "$STUB_REMOTE_HOME/docker/apps/smart-prod/certs/server.key" ] && [ ! -e "$STUB_REMOTE_HOME/docker/apps/smart-staging/certs" ]'
+teardown
+certs_setup; export STUB_SSH_DOWN=1
+check "broker-certs aborts when the VPS is unreachable" '[ "$(run_certs staging)" != 0 ] && ! grep -q "^compose" "$STUB_CALLS"'
+teardown
 
 echo "deploy tests: $passed passed, $failures failed"
 [ "$failures" -eq 0 ]
