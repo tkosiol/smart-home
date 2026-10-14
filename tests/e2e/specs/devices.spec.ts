@@ -63,6 +63,17 @@ test.describe.serial('devices from the simulator', () => {
     await expect(block).toBeVisible();
     await expect(block).toContainText('Zigbee2MQTT: Online');
     await expect(block).toContainText('Bridge: Online');
+    await expect(block).toContainText(/Letzte Nachricht|Noch keine Nachricht empfangen/);
+  });
+
+  test('without devices the overview points to "Geräte"', async ({ page }) => {
+    await page.goto('/');
+    await expect(heading(page, 'Übersicht')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Noch keine Geräte' })).toBeVisible();
+    await expect(page.getByText('„Geräte → Neu erkannt“')).toBeVisible();
+    await page.getByRole('link', { name: 'Zu den Geräten' }).click();
+    await expect(page).toHaveURL(/\/geraete$/);
+    await expect(heading(page, 'Geräte')).toBeVisible();
   });
 
   test('"Neu erkannt" lists the seven simulated devices, showing readings only', async ({
@@ -147,8 +158,25 @@ test.describe.serial('devices from the simulator', () => {
       // A member can rename the device.
       await card(page, 'Pflanze 1').getByRole('link', { name: 'Details' }).click();
       await expect(page.getByRole('textbox', { name: 'Name' })).toHaveValue('Pflanze 1');
+      await page.getByRole('textbox', { name: 'Name' }).fill('Basilikum');
+      await page.getByRole('button', { name: 'Speichern' }).click();
+      await expect(heading(page, 'Basilikum')).toBeVisible();
+      await page.goto('/geraete');
+      await expect(card(page, 'Basilikum')).toBeVisible();
+      await expect(card(page, 'Pflanze 1')).toHaveCount(0);
     } finally {
       await context.close();
     }
+  });
+  test("the simulator's gateway is not touched by the revoking of the Pi's gateway", async ({
+    page,
+  }) => {
+    // `gateways.spec.ts` registers the Pi's gateway in another household and revokes it, in
+    // parallel with this spec; whenever that happens, this household's gateway stays as it was.
+    await page.goto('/mehr/gateways');
+    const block = page.locator('ui-section ui-section').filter({ hasText: 'Simulator' });
+    await expect(block).toContainText('Bridge: Online');
+    await expect(block).toContainText('Zigbee2MQTT: Online');
+    await expect(block).not.toContainText('Gesperrt am');
   });
 });

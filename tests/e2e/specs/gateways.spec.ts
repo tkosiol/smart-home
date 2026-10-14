@@ -62,6 +62,7 @@ test.describe.serial('registering gateways', () => {
     // The broker holds the retained "1" of the bridge's connection topic; the backend applies it at registration.
     await expect(block).toContainText('Bridge: Online');
     await expect(block).toContainText('Zertifikat gültig bis');
+    await expect(block).toContainText(/Letzte Nachricht|Noch keine Nachricht empfangen/);
     // The form is empty again for the next gateway.
     await expect(page.getByRole('textbox', { name: 'Zertifikat', exact: true })).toHaveValue('');
   });
