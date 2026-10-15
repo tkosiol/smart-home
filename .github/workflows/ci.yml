@@ -116,7 +116,7 @@ jobs:
           gateway/render.sh gateway/mosquitto-entrypoint.sh gateway/test/gateway-test.sh
           gateway/deploy.sh gateway/test/deploy-tests.sh gateway/test/stubs/docker gateway/test/stubs/rsync
           gateway/migrate.sh gateway/start.sh gateway/test/stubs/timeout gateway/test/stubs/chown gateway/test/stubs/systemctl
-          gateway/test/stubs/curl gateway/test/stubs/ssh gateway/test/stubs/systemd-run gateway/test/stubs/tar gateway/test/stubs/cp
+          gateway/test/stubs/curl gateway/test/stubs/ssh gateway/test/stubs/systemd-run gateway/test/stubs/tar gateway/test/stubs/cp gateway/test/stubs/cut
           gateway/backup/lib.sh gateway/backup/backup.sh gateway/backup/restore-test.sh gateway/backup/restic-job.sh
           gateway/test/backup-tests.sh
       - name: deploy script tests

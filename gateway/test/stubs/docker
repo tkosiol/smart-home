@@ -7,6 +7,8 @@
 #   STUB_Z2M_OFFLINE = 1: bridge/state says offline; STUB_BRIDGE = 0: the bridge is down (default 1)
 #   STUB_Z2M_OLD_START = 1: the Z2M container "started long ago" (a retained online may be stale);
 #   STUB_Z2M_RESTARTS = 1: the restart count grows with every look (restart loop); STUB_MOSQ_UNHEALTHY = 1
+#   STUB_PS_FAIL = <exit code>: the "ps -q" probes of the NEW project (compose and docker ps) fail with that code and
+#   no output (124 = a timeout); STUB_OLD_PS_FAIL = <exit code>: the same for "ps -q" of the old stack
 #   STUB_OLD_ONLY_MOSQ = 1: only the mosquitto service of the old stack runs; STUB_UP_DELAY = <s>: "up -d" of the
 #   new stack takes that long
 printf 'docker %s\n' "$*" >> "$STUB_CALLS"
@@ -17,6 +19,10 @@ case "$*" in
     case "$*" in
       *" config --services"*) printf 'mosquitto\nzigbee2mqtt\n' ;;
       *" ps "*)
+        case "$*" in
+          *--services*) ;;
+          *) [ -n "${STUB_OLD_PS_FAIL:-}" ] && exit "$STUB_OLD_PS_FAIL" ;;
+        esac
         if [ -e "$state/old_running" ]; then
           case "$*" in
             *--services*) if [ "${STUB_OLD_ONLY_MOSQ:-0}" = 1 ]; then echo mosquitto; else printf 'mosquitto\nzigbee2mqtt\n'; fi ;;
@@ -45,7 +51,9 @@ case "$*" in
       *"ps --status running -q zigbee2mqtt"*) if [ -e "$state/new_running" ]; then echo z2mcontainer; fi ;;
       *"ps -q zigbee2mqtt"*) if [ -e "$state/new_running" ]; then echo z2mcontainer; fi ;;
       *"ps -q mosquitto"*) if [ -e "$state/new_running" ]; then echo mosquittocontainer; fi ;;
-      *"ps --status running -q"*) if [ -e "$state/new_running" ]; then echo z2mcontainer; fi ;;
+      *"ps --status running -q"*)
+        [ -n "${STUB_PS_FAIL:-}" ] && exit "$STUB_PS_FAIL"
+        if [ -e "$state/new_running" ]; then echo z2mcontainer; fi ;;
       *"mosquitto_sub"*"bridge/state"*)
         if [ "${STUB_Z2M_OFFLINE:-0}" = 1 ]; then echo '{"state":"offline"}'; else echo '{"state":"online"}'; fi ;;
       *"mosquitto_sub"*"bridge/connection"*) echo "${STUB_BRIDGE:-1}" ;;
@@ -66,6 +74,7 @@ case "$*" in
     esac ;;
   "ps "*)
     # docker ps of the new project (by label), running or all (names)
+    [ -n "${STUB_PS_FAIL:-}" ] && exit "$STUB_PS_FAIL"
     if [ -e "$state/new_running" ]; then
       case "$*" in
         *--format*) echo smart-gateway-zigbee2mqtt-1 ;;

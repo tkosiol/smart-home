@@ -35,7 +35,7 @@ setup() {
   PI_DIR="$HOME_DIR/srv/smart-gateway"
   OLD="$HOME_DIR/opt/old-stack"
   mkdir -p "$PI_DIR/secrets" "$OLD/zigbee2mqtt-data" "$WORK/bin" "$WORK/state" "$WORK/systemd"
-  for tool in docker rsync timeout chown systemctl systemd-run tar cp ssh; do ln -s "$GATEWAY_DIR/test/stubs/$tool" "$WORK/bin/$tool"; done
+  for tool in docker rsync timeout chown systemctl systemd-run tar cp ssh cut; do ln -s "$GATEWAY_DIR/test/stubs/$tool" "$WORK/bin/$tool"; done
   ln -s "$GATEWAY_DIR/../infra/deploy/test/stubs/sudo" "$WORK/bin/sudo"
   printf 'GATEWAY_ID=gw-testpi01\nBROKER_HOST=mqtt.example.org\nBROKER_PORT=8883\nZ2M_SERIAL_DEVICE=/dev/null\n' > "$PI_DIR/secrets/gateway.env"
   printf 'ZIGBEE2MQTT_CONFIG_MQTT_USER=z2m\nZIGBEE2MQTT_CONFIG_MQTT_PASSWORD=%s\nZIGBEE2MQTT_CONFIG_FRONTEND_AUTH_TOKEN=%s\n' "$Z2M_PASSWORD_MARKER" "$Z2M_TOKEN_MARKER" > "$PI_DIR/secrets/z2m.env"
@@ -58,7 +58,8 @@ setup() {
     STUB_FAIL_RSYNC STUB_Z2M_OFFLINE STUB_BRIDGE STUB_FAIL_SYSTEMCTL STUB_FAIL_NEW_STOP STUB_FAIL_DOCKER_STOP \
     STUB_Z2M_OLD_START STUB_Z2M_RESTARTS STUB_MOSQ_UNHEALTHY STUB_OLD_ONLY_MOSQ STUB_UP_DELAY STUB_SSH_DROP_AFTER_START \
     STUB_FAIL_SYSTEMD_RUN STUB_NO_START STUB_FAIL_TAR STUB_FAIL_TAR_VERIFY STUB_FAIL_CP STUB_FAIL_CHOWN \
-    SMART_DEPLOY_MIGRATE_TIMEOUT SMART_DEPLOY_DETACH SMART_DEPLOY_STAMP
+    SMART_DEPLOY_MIGRATE_TIMEOUT SMART_DEPLOY_DETACH SMART_DEPLOY_STAMP SMART_DEPLOY_START_GRACE \
+    STUB_PS_FAIL STUB_OLD_PS_FAIL STUB_CUT_FINISH STUB_SSH_BREAK_START STUB_SSH_BREAK_AFTER_START
   export PATH="$WORK/bin:$PATH"
   export STUB_CALLS="$CALLS" STUB_STATE="$WORK/state" STUB_SSH_EXEC=1 STUB_REMOTE_HOME="$HOME_DIR"
   export STUB_REAL_SSH="$GATEWAY_DIR/../infra/deploy/test/stubs/ssh"
@@ -371,6 +372,44 @@ echo "running 20250101T000000Z $$ copy" > "$PI_DIR/migration/status"
 check "migrate refuses to start while another migration runs on the Pi" '[ "$(deploy --migrate)" = 1 ] && grep -qi "running on the Pi already" "$OUT" && ! grep -q "^rsync" "$CALLS"'; teardown
 setup; export SMART_PI_OLD_STACK="$OLD" STUB_OLD_ONLY_MOSQ=1
 check "migrate refuses when only Mosquitto of the old stack runs (not the zigbee2mqtt service)" '[ "$(deploy --migrate)" = 1 ] && grep -qi "zigbee2mqtt service" "$OUT" && ! grep -q "^rsync" "$CALLS"'; teardown
+
+
+# --- fix round 2: stop verification fails closed, status race, launch messages, plain deploy vs. a migration ---
+for ps_code in 1 124; do
+  setup; export SMART_PI_OLD_STACK="$OLD" STUB_Z2M_OFFLINE=1 STUB_PS_FAIL=$ps_code
+  check "rollback with failing ps probes (exit $ps_code) is failed-manual and never starts the old stack" '[ "$(deploy --migrate)" = 1 ] && [ "$(cut -d" " -f1 "$PI_DIR/migration/status")" = failed-manual ] && ! grep -q "^docker compose -f $OLD/docker-compose.yml up -d" "$CALLS" && ! old_running && grep -q "MANUAL ACTION" "$OUT"'
+  check "after the failed probes the copy stays where it is and the backup is kept" '[ -d "$PI_DIR/zigbee2mqtt-data" ] && ls "$PI_DIR"/migration/*.tar.gz > /dev/null'
+  teardown
+done
+setup; export SMART_PI_OLD_STACK="$OLD" STUB_OLD_PS_FAIL=1
+check "forward path: an old stack whose stop cannot be verified is not copied, the run rolls back" '[ "$(deploy --migrate)" = 1 ] && ! grep -q "cp -a" "$CALLS" && grep -q "could not verify that the old stack is stopped" "$OUT" && [ "$(cut -d" " -f1 "$PI_DIR/migration/status")" = rolled-back ] && old_running'; teardown
+
+# The poll reads the status after it checked the pid: a run that finished in between is done, not vanished.
+setup; export SMART_PI_OLD_STACK="$OLD" STUB_NO_START=1 SMART_DEPLOY_STAMP=20260101T000000Z
+mkdir -p "$PI_DIR/migration"
+true &
+dead_pid=$!
+wait "$dead_pid"
+echo "running 20260101T000000Z $dead_pid start-new" > "$PI_DIR/migration/status"
+export STUB_CUT_FINISH="$PI_DIR/migration/status|done 20260101T000000Z $dead_pid end"
+check "a run that wrote done and exited between the status read and the pid check is reported as done" '[ "$(deploy --migrate)" = 0 ] && ! grep -q "UNKNOWN" "$OUT"'; teardown
+
+# Launch messages.
+setup; export SMART_PI_OLD_STACK="$OLD" STUB_SSH_BREAK_AFTER_START=1
+check "an ssh drop right after the start of migrate.sh: the Mac warns that it may have started and still follows it to done" '[ "$(deploy --migrate)" = 0 ] && grep -q "MAY have started" "$OUT" && grep -q "sudo cat .*migration/status" "$OUT"'; teardown
+setup; export SMART_PI_OLD_STACK="$OLD" STUB_SSH_BREAK_START=1 SMART_DEPLOY_START_GRACE=2
+check "no status after the grace time: the Mac does not claim the old stack is untouched, gives the commands and the stopped-waiting note" '[ "$(deploy --migrate)" = 1 ] && grep -q "MAY still have started" "$OUT" && grep -q "sudo cat .*migration/status" "$OUT" && grep -q "sudo tail -n 40 .*migrate-" "$OUT" && grep -q "stopped waiting" "$OUT" && ! grep -qi "was not touched" "$OUT"'; teardown
+
+# A plain deploy must not run beside a migration or over a failed-manual one.
+setup; mkdir -p "$PI_DIR/migration" "$PI_DIR/zigbee2mqtt-data"; echo x > "$PI_DIR/zigbee2mqtt-data/database.db"
+echo "running 20260101T000000Z $$ copy" > "$PI_DIR/migration/status"
+check "a plain deploy refuses while a migration runs, names status file, log and runbook, and changes nothing" '[ "$(deploy)" = 1 ] && grep -q "migration is running on the Pi already" "$OUT" && grep -q "migration/status" "$OUT" && grep -q "migrate-" "$OUT" && grep -q "section 11" "$OUT" && ! grep -q "^rsync" "$CALLS" && no_stack_calls'
+check "deploy --fresh refuses too" '[ "$(deploy --fresh)" = 1 ] && grep -q "running on the Pi already" "$OUT" && ! grep -q "^rsync" "$CALLS"'
+echo "failed-manual 20260101T000000Z 999999 rollback" > "$PI_DIR/migration/status"
+check "a plain deploy refuses after failed-manual and says how to clear it" '[ "$(deploy)" = 1 ] && grep -q "failed-manual" "$OUT" && grep -q "migration/status" "$OUT" && grep -q "section 11" "$OUT" && ! grep -q "^rsync" "$CALLS"'
+echo "done 20260101T000000Z 999999 end" > "$PI_DIR/migration/status"
+check "a finished migration does not block a plain deploy" '[ "$(deploy)" = 0 ]'
+teardown
 
 echo "deploy tests: $passed passed, $failures failed"
 [ "$failures" = 0 ]

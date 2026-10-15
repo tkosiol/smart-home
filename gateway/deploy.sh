@@ -26,7 +26,8 @@
 # Settings for tests: SMART_GATEWAY_DIR (default /srv/smart-gateway), SMART_CGROUP_CONTROLLERS,
 # SMART_PROC_CGROUPS, SMART_DEPLOY_WAIT_SECONDS (120), SMART_DEPLOY_POLL_SECONDS (3),
 # SMART_DEPLOY_PULL_TIMEOUT (900), SMART_DEPLOY_COMPOSE_TIMEOUT (300), SMART_DEPLOY_MIGRATE_TIMEOUT (1800: how
-# long the Mac polls), SMART_DEPLOY_DETACH (auto|nohup: nohup skips systemd-run), SMART_DEPLOY_STAMP,
+# long the Mac polls), SMART_DEPLOY_START_GRACE (90: how long the status of the started run may be missing),
+# SMART_DEPLOY_DETACH (auto|nohup: nohup skips systemd-run), SMART_DEPLOY_STAMP,
 # SMART_SYSTEMD_DIR (default /etc/systemd/system).
 # At the end (Z2M online) it installs and enables the backup timers (gateway/systemd, nightly backup and weekly
 # restore test, see gateway/backup); the pull includes the restic image of the compose profile backup.
@@ -78,6 +79,7 @@ poll_seconds="${SMART_DEPLOY_POLL_SECONDS:-3}"
 pull_timeout="${SMART_DEPLOY_PULL_TIMEOUT:-900}"
 compose_timeout="${SMART_DEPLOY_COMPOSE_TIMEOUT:-300}"
 migrate_limit="${SMART_DEPLOY_MIGRATE_TIMEOUT:-1800}"
+start_grace="${SMART_DEPLOY_START_GRACE:-90}"
 detach="${SMART_DEPLOY_DETACH:-auto}"
 [[ "$detach" =~ ^(auto|nohup)$ ]] || { echo "SMART_DEPLOY_DETACH must be auto or nohup" >&2; exit 2; }
 stamp="${SMART_DEPLOY_STAMP:-$(date -u +%Y%m%dT%H%M%SZ)}"
@@ -85,7 +87,7 @@ stamp="${SMART_DEPLOY_STAMP:-$(date -u +%Y%m%dT%H%M%SZ)}"
 systemd_dir="${SMART_SYSTEMD_DIR:-/etc/systemd/system}"
 systemd_dir="${systemd_dir%/}"
 plain_path "$systemd_dir" || { echo "SMART_SYSTEMD_DIR is not a plain absolute path" >&2; exit 2; }
-for number in "$wait_seconds" "$poll_seconds" "$pull_timeout" "$compose_timeout" "$migrate_limit"; do
+for number in "$wait_seconds" "$poll_seconds" "$pull_timeout" "$compose_timeout" "$migrate_limit" "$start_grace"; do
   [[ "$number" =~ ^[0-9]{1,5}$ ]] || { echo "the SMART_DEPLOY_* time limits must be whole seconds" >&2; exit 2; }
 done
 
@@ -106,6 +108,15 @@ sudo -n test -d "$1" || { echo nodir; exit 0; }
 for f in gateway.env z2m.env backup.env passwd ca.crt gateway.crt gateway.key; do
   sudo -n test -s "$1/secrets/$f" || { echo "nosecret:$f"; exit 0; }
 done
+if sudo -n test -s "$1/migration/status"; then
+  line=$(sudo -n cat "$1/migration/status" 2> /dev/null)
+  mst=${line%% *}
+  rest=${line#* }
+  rest=${rest#* }
+  mpid=${rest%% *}
+  if [ "$mst" = running ] && sudo -n sh -c "kill -0 \"\$1\"" sh "$mpid" 2> /dev/null; then echo migrating; exit 0; fi
+  if [ "$mst" = failed-manual ]; then echo needsmanual; exit 0; fi
+fi
 if [ "$4" = plain ] && [ -z "$(sudo -n ls -A "$1/zigbee2mqtt-data" 2> /dev/null)" ]; then echo nodata; exit 0; fi
 cg=unknown
 if [ -r "$2" ]; then
@@ -188,13 +199,15 @@ else
 fi
 EOF
 )
-# The status line of migrate.sh ("<state> <stamp> <pid> <step>") and whether that process lives.
+# The status line of migrate.sh ("<state> <stamp> <pid> <step>") and whether that process lived at the check.
 S_MIG_STATUS=$(cat << 'EOF'
 f=$1/migration/status
 if [ -s "$f" ]; then
-  cat "$f"
   pid=$(cut -d" " -f3 "$f")
-  if kill -0 "$pid" 2> /dev/null; then echo alive; else echo dead; fi
+  if kill -0 "$pid" 2> /dev/null; then alive=alive; else alive=dead; fi
+  # Read AFTER the pid check: a run that finished in between has written its final state before it exited.
+  cat "$f"
+  echo "$alive"
 else
   echo none
 fi
@@ -256,7 +269,7 @@ show_migration_log() {
 # migrate_limit. Sets migration_result to done, rolled-back, failed-manual, vanished, notstarted or timeout.
 migration_result=""
 poll_migration() {
-  local deadline=$((SECONDS + migrate_limit)) grace=$((SECONDS + 90)) reply first alive state reply_stamp step last="" fails=0
+  local deadline=$((SECONDS + migrate_limit)) grace=$((SECONDS + start_grace)) reply first alive state reply_stamp step last="" fails=0
   while :; do
     if reply=$(remote root "$S_MIG_STATUS" "$dir" 2> /dev/null); then
       fails=0
@@ -301,6 +314,8 @@ case "$state" in
   missing:*) die "${state#missing:} is not installed on the Pi - nothing was changed" ;;
   nodir) die "$dir does not exist on the Pi - run infra/deploy/provision-gateway.sh first. Nothing was changed" ;;
   nosecret:*) die "$dir/secrets/${state#nosecret:} is missing or empty on the Pi - run infra/deploy/provision-gateway.sh first. Nothing was changed" ;;
+  migrating) die "a migration is running on the Pi already - do not deploy now. Status: sudo cat $dir/migration/status, log: sudo tail -n 40 $dir/migration/migrate-*.log (docs/runbooks/gateway.md, section 11). Nothing was changed" ;;
+  needsmanual) die "the last migration on the Pi ended in failed-manual and needs manual action first. Status: sudo cat $dir/migration/status, log: sudo tail -n 40 $dir/migration/migrate-*.log (docs/runbooks/gateway.md, section 11). After fixing it remove the status file: sudo rm $dir/migration/status. Nothing was changed" ;;
   nodata) die "$dir/zigbee2mqtt-data is missing or empty on the Pi. On an existing Pi the first run must be --migrate (it takes over the Zigbee network of the old setup; a plain deploy would start Zigbee2MQTT with an empty network and the paired devices would be lost). Only a NEW Pi with a fresh adapter uses --fresh. Nothing was changed" ;;
   *) die "unexpected answer from the Pi - nothing was changed" ;;
 esac
@@ -313,8 +328,8 @@ if [ "$migrate" = 1 ]; then
     nocompose) die "$old/docker-compose.yml does not exist on the Pi - check SMART_PI_OLD_STACK. Nothing was changed" ;;
     nodata) die "$old/zigbee2mqtt-data does not exist on the Pi - check SMART_PI_OLD_STACK. Nothing was changed" ;;
     newdata) die "$dir/zigbee2mqtt-data already has content - a migration would merge into it. Is the Pi migrated already (deploy without --migrate)? Nothing was changed" ;;
-    migrating) die "a migration is running on the Pi already (sudo cat $dir/migration/status). Nothing was changed" ;;
-    needsmanual) die "the last migration ended in failed-manual (see $dir/migration/migrate-*.log on the Pi). Fix it by hand, then remove $dir/migration/status. Nothing was changed" ;;
+    migrating) die "a migration is running on the Pi already (sudo cat $dir/migration/status, log $dir/migration/migrate-*.log). Nothing was changed" ;;
+    needsmanual) die "the last migration ended in failed-manual (sudo cat $dir/migration/status, log $dir/migration/migrate-*.log on the Pi; docs/runbooks/gateway.md, section 11). Fix it by hand, then remove $dir/migration/status. Nothing was changed" ;;
     notz2m) die "$old/docker-compose.yml has no service zigbee2mqtt - check SMART_PI_OLD_STACK. Nothing was changed" ;;
     notrunning) die "the zigbee2mqtt service of the old stack ($old) is not running - start the whole old stack first, so the way back is a known good state. Nothing was changed" ;;
     *) die "unexpected answer from the Pi - nothing was changed" ;;
@@ -338,8 +353,15 @@ if [ "$migrate" = 1 ]; then
   # --- 4. migration: the destructive part runs on the Pi, detached ---
   step "starting the migration on the Pi (detached: it survives this terminal and the ssh session)"
   migration_started=1
-  remote root "$S_MIG_START" "$dir" "$old" "$stamp" "$compose_timeout" "$wait_seconds" "$poll_seconds" "$detach" \
-    || { migration_started=0; die "could not start migrate.sh on the Pi - the old stack was not touched"; }
+  launch_rc=0
+  remote root "$S_MIG_START" "$dir" "$old" "$stamp" "$compose_timeout" "$wait_seconds" "$poll_seconds" "$detach" || launch_rc=$?
+  case "$launch_rc" in
+    0) ;;
+    4 | 5) migration_started=0; die "migrate.sh could not be started on the Pi (exit $launch_rc: no migrate.sh, or systemd-run failed) - the old stack was not touched" ;;
+    *)
+      echo "warning: the ssh call that starts migrate.sh failed (exit $launch_rc). The migration MAY have started on the Pi; waiting for its status."
+      echo "warning: to look yourself: sudo cat $dir/migration/status ; sudo tail -n 40 $dir/migration/migrate-$stamp.log" ;;
+  esac
   step "waiting for the Pi (up to $((migrate_limit)) s; Ctrl+C only stops the waiting)"
   poll_migration
   migration_over=1
@@ -348,8 +370,10 @@ if [ "$migrate" = 1 ]; then
     done) ;;
     rolled-back) die "the migration failed and was rolled back: the old stack runs again (details in the log above). Nothing of the old setup was changed" ;;
     failed-manual) die "the migration failed and needs MANUAL ACTION on the Pi (the commands are in the log above; the old stack was not started on purpose if the new one could not be stopped)" ;;
-    vanished) die "migrate.sh on the Pi ended without a final state (killed, or the Pi lost power?). The state of the stacks is UNKNOWN: on the Pi check sudo docker ps, $dir/migration/status and the log" ;;
-    notstarted) die "migrate.sh did not report back on the Pi within 90 s (see sudo journalctl -u smart-gateway-migrate on the Pi). The old stack was not touched as far as known" ;;
+    vanished) die "migrate.sh on the Pi ended without a final state (killed after TimeoutStopSec, or the Pi lost power?). The state of the stacks is UNKNOWN: on the Pi check sudo docker ps -a, sudo cat $dir/migration/status, the log $dir/migration/migrate-$stamp.log and sudo journalctl -u smart-gateway-migrate (docs/runbooks/gateway.md, section 11)" ;;
+    notstarted)
+      migration_over=0
+      die "no status of this run appeared on the Pi within ${start_grace} s. The migration MAY still have started (or may start late), so the old stack may be touched. Check on the Pi: sudo cat $dir/migration/status ; sudo tail -n 40 $dir/migration/migrate-$stamp.log ; sudo systemctl status smart-gateway-migrate ; sudo docker ps -a" ;;
     *) migration_over=0; die "gave up waiting after ${migrate_limit} s; the migration on the Pi is NOT stopped and finishes or rolls back on its own (sudo cat $dir/migration/status)" ;;
   esac
 else

@@ -60,17 +60,28 @@ data_created=0
 cd "$DIR" || exit 2
 new_compose() { timeout -k 10 "$CT" docker compose --env-file secrets/gateway.env "$@"; }
 old_compose() { timeout -k 10 "$CT" docker compose -f "$OLD/docker-compose.yml" "$@"; }
+# A probe may only be trusted when it succeeded: a timeout, an error or a wedged Docker daemon gives empty output,
+# which must never be read as "nothing runs" (the rollback would start the old stack while Z2M still holds the
+# adapter). probe_out is the output; the return status is the command's.
+probe_out=""
+probe() { probe_out=$("$@" 2> /dev/null); }
 # Is anything of the new project running? Asked twice, independently: compose and the project label.
-new_running() {
-  [ -n "$(timeout -k 5 30 docker compose --env-file secrets/gateway.env ps --status running -q 2> /dev/null)" ] && return 0
-  [ -n "$(timeout -k 5 30 docker ps -q --filter "label=com.docker.compose.project=$PROJECT" 2> /dev/null)" ] && return 0
+# Returns 0 running, 1 verified stopped, 2 unknown (a probe failed).
+new_state() {
+  probe timeout -k 5 30 docker compose --env-file secrets/gateway.env ps --status running -q || return 2
+  [ -z "$probe_out" ] || return 0
+  probe timeout -k 5 30 docker ps -q --filter "label=com.docker.compose.project=$PROJECT" || return 2
+  [ -z "$probe_out" ] || return 0
   return 1
 }
 old_z2m_running() {
   timeout -k 5 30 docker compose -f "$OLD/docker-compose.yml" ps --status running --services 2> /dev/null | grep -qx zigbee2mqtt
 }
-old_any_running() {
-  [ -n "$(timeout -k 5 30 docker compose -f "$OLD/docker-compose.yml" ps --status running -q 2> /dev/null)" ]
+# Returns 0 running, 1 verified stopped, 2 unknown.
+old_state() {
+  probe timeout -k 5 30 docker compose -f "$OLD/docker-compose.yml" ps --status running -q || return 2
+  [ -z "$probe_out" ] || return 0
+  return 1
 }
 
 end_with() {
@@ -83,22 +94,30 @@ end_with() {
 }
 
 # Stops the new stack and proves it: compose stop (three tries), then docker stop and rm by container name.
+# Only a probe that succeeded and found nothing counts as stopped; an unknown answer counts as still running.
 stop_new_verified() {
-  local try names name
+  local try name state
   for try in 1 2 3; do
     log "stopping the new stack (try $try)"
     new_compose stop || log "compose stop failed"
-    if ! new_running; then return 0; fi
+    new_state
+    state=$?
+    if [ "$state" = 1 ]; then return 0; fi
+    if [ "$state" = 2 ]; then log "could not tell whether the new stack stopped (a probe failed)"; fi
     sleep "$POLL"
   done
-  names=$(timeout -k 5 30 docker ps -a --filter "label=com.docker.compose.project=$PROJECT" --format '{{.Names}}' 2> /dev/null)
-  for name in $names; do
-    log "docker stop and rm of $name"
-    timeout -k 10 120 docker stop "$name" || log "docker stop $name failed"
-    timeout -k 10 120 docker rm -f "$name" || log "docker rm $name failed"
-  done
+  if probe timeout -k 5 30 docker ps -a --filter "label=com.docker.compose.project=$PROJECT" --format '{{.Names}}'; then
+    for name in $probe_out; do
+      log "docker stop and rm of $name"
+      timeout -k 10 120 docker stop "$name" || log "docker stop $name failed"
+      timeout -k 10 120 docker rm -f "$name" || log "docker rm $name failed"
+    done
+  else
+    log "could not list the containers of the new stack"
+  fi
   sleep "$POLL"
-  ! new_running
+  new_state
+  [ $? = 1 ]
 }
 
 manual_help() {
@@ -118,8 +137,8 @@ rollback() {
   set_state running rollback
   log "ROLLBACK: going back to the old stack"
   if ! stop_new_verified; then
-    log "the new stack is STILL RUNNING; the old stack is NOT started"
-    manual_help "The new stack could not be stopped."
+    log "the new stack is still running or could not be verified as stopped; the old stack is NOT started"
+    manual_help "The new stack could not be stopped (or not proven stopped)."
     end_with failed-manual "the new stack could not be stopped, the old stack was not started"
   fi
   log "the new stack is stopped (verified)"
@@ -192,7 +211,12 @@ armed=1
 set_state running stop-old
 log "stopping the old stack"
 old_compose stop || fail "the old stack could not be stopped"
-if old_any_running; then fail "the old stack is still running after stop"; fi
+old_state
+case $? in
+  1) ;;
+  0) fail "the old stack is still running after stop" ;;
+  *) fail "could not verify that the old stack is stopped (a probe failed)" ;;
+esac
 
 set_state running copy
 log "copying the data folder (the old one stays as it is)"
