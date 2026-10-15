@@ -10,6 +10,7 @@ max_queued_bytes 75497472
 listener 1883
 allow_anonymous false
 password_file /mosquitto/secrets/passwd
+acl_file /mosquitto/secrets/acl
 
 connection {{GATEWAY_ID}}-bridge
 address {{BROKER_HOST}}:{{BROKER_PORT}}

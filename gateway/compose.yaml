@@ -4,7 +4,8 @@
 # secrets/gateway.env: GATEWAY_ID, BROKER_HOST, BROKER_PORT, Z2M_SERIAL_DEVICE (host path of the adapter).
 # secrets/z2m.env (KEY=value lines, no quotes, no $): ZIGBEE2MQTT_CONFIG_MQTT_USER, ZIGBEE2MQTT_CONFIG_MQTT_PASSWORD,
 # ZIGBEE2MQTT_CONFIG_FRONTEND_AUTH_TOKEN. Also needed in secrets/: passwd, ca.crt, gateway.crt, gateway.key.
-# Run render.sh first: it writes run/mosquitto.conf.
+# Run render.sh first: it writes run/mosquitto.conf. render.sh replaces the file (new inode) and the single-file bind
+# mount keeps the old one: recreate Mosquitto after every render (docker compose up -d --force-recreate mosquitto).
 name: smart-gateway
 
 x-logging: &logging
@@ -29,13 +30,11 @@ services:
     tmpfs:
       - /mosquitto/secrets:uid=1883,gid=1883,mode=0700
     healthcheck:
-      # Logs in as the local Zigbee2MQTT user; the credentials are read from its env file (never printed).
+      # Logs in as the user "health" that mosquitto-entrypoint.sh adds: its password is public on purpose and it may
+      # only read the uptime topic, so no secret ever appears in the health check (visible in ps and docker inspect).
       test:
         - CMD-SHELL
-        - >-
-          u=$$(sed -n 's/^ZIGBEE2MQTT_CONFIG_MQTT_USER=//p' /mosquitto/secrets-src/z2m.env) &&
-          p=$$(sed -n 's/^ZIGBEE2MQTT_CONFIG_MQTT_PASSWORD=//p' /mosquitto/secrets-src/z2m.env) &&
-          mosquitto_sub -h 127.0.0.1 -u "$$u" -P "$$p" -t '$$SYS/broker/uptime' -C 1 -W 5 > /dev/null
+        - mosquitto_sub -h 127.0.0.1 -u health -P health -t '$$SYS/broker/uptime' -C 1 -W 5 > /dev/null
       interval: 15s
       timeout: 8s
       retries: 5
@@ -70,7 +69,7 @@ services:
       ZIGBEE2MQTT_CONFIG_FRONTEND_PORT: '8080'
       ZIGBEE2MQTT_CONFIG_ADVANCED_LAST_SEEN: ISO_8601
       ZIGBEE2MQTT_CONFIG_AVAILABILITY_ENABLED: 'true'
-      TZ: Europe/Berlin
+      TZ: ${TZ:-Europe/Berlin}
     logging: *logging
     networks: [gateway]
 

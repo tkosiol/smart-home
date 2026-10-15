@@ -39,10 +39,11 @@ compose() {
     -f "$GW/compose.yaml" -f "$GW/compose.test.yaml" "$@"
 }
 remove_test_containers() {
-  compose down -v > /dev/null 2>&1
-  docker rm -fv "$PREFIX-broker" "$PREFIX-control" "$PREFIX-volume" > /dev/null 2>&1
-  docker volume rm "$PREFIX-secrets" > /dev/null 2>&1
-  docker network rm "$NET" > /dev/null 2>&1
+  # By label and name, so leftovers of an aborted run go too (the compose files of that run are gone).
+  docker ps -aq --filter "label=com.docker.compose.project=$PREFIX" | xargs docker rm -fv > /dev/null 2>&1
+  docker rm -fv "$PREFIX-broker" "$PREFIX-control" "$PREFIX-volume" "$PREFIX-collector" > /dev/null 2>&1
+  docker volume rm "$PREFIX-secrets" "${PREFIX}_mosquitto-data" > /dev/null 2>&1
+  docker network rm "${PREFIX}_gateway" "$NET" > /dev/null 2>&1
 }
 cleanup() {
   remove_test_containers
@@ -136,6 +137,27 @@ reject "port 70000" gw-abcdefgh gateway.example.org 70000
 reject "a port with letters" gw-abcdefgh gateway.example.org 88a3
 reject "an empty port" gw-abcdefgh gateway.example.org ''
 rm -f "$GW/secrets/gateway.env.keep"
+# A missing or empty frontend token must stop the render: the frontend would be open in the home network.
+reject_token() {
+  local what="$1"
+  mkdir -p "$GW/run"
+  printf 'previous\n' > "$GW/run/mosquitto.conf"
+  mv "$GW/secrets/z2m.env" "$GW/secrets/z2m.env.keep"
+  case "$2" in
+    none) ;;
+    nokey) printf 'ZIGBEE2MQTT_CONFIG_MQTT_USER=%s\n' "$Z2M_USER" > "$GW/secrets/z2m.env" ;;
+    *) printf 'ZIGBEE2MQTT_CONFIG_MQTT_USER=%s\nZIGBEE2MQTT_CONFIG_FRONTEND_AUTH_TOKEN=%s\n' "$Z2M_USER" "$3" > "$GW/secrets/z2m.env" ;;
+  esac
+  status=0
+  out=$(run_render 2>&1) || status=$?
+  rm -f "$GW/secrets/z2m.env"
+  mv "$GW/secrets/z2m.env.keep" "$GW/secrets/z2m.env"
+  check "render.sh stops on $what" '[ "$status" -ne 0 ] && [ "$(cat "$GW/run/mosquitto.conf")" = previous ] && ! echo "$out" | grep -q "$Z2M_TOKEN"'
+  rm -rf "$GW/run"
+}
+reject_token "a missing z2m.env" none
+reject_token "an empty frontend token" file ""
+reject_token "a z2m.env without a frontend token" nokey ""
 status=0
 out=$(SMART_GATEWAY_DIR="$WORK/nowhere" bash "$RENDER" 2>&1) || status=$?
 check "render.sh stops when gateway.env is missing" '[ "$status" -ne 0 ] && [ ! -e "$WORK/nowhere/run" ]'
@@ -244,7 +266,7 @@ must docker run -d --name "$PREFIX-control" --network "$NET" --entrypoint sh \
   --tmpfs /mosquitto/secrets-src --tmpfs /mosquitto/secrets \
   -v "$GW/mosquitto-entrypoint.sh:/smart/mosquitto-entrypoint.sh:ro" "$MOSQUITTO_IMAGE" \
   /smart/mosquitto-entrypoint.sh mosquitto -c /mosquitto/config/mosquitto.conf
-sleep 2
+wait_for sh -c '[ "$(docker inspect -f "{{.State.Running}}" '"$PREFIX"'-control)" = false ]'
 check "missing secrets stop the container with a message" \
   '[ "$(docker inspect -f "{{.State.Running}}" "$PREFIX-control")" = false ] && docker logs "$PREFIX-control" 2>&1 | grep -q "passwd is missing or empty"'
 docker rm -fv "$PREFIX-control" > /dev/null 2>&1
@@ -259,6 +281,17 @@ check "the log rotates (10 MB x 3)" '[ "$(docker inspect -f "{{.HostConfig.LogCo
 check "the local listener refuses anonymous clients" '! quiet compose exec -T mosquitto mosquitto_pub -h 127.0.0.1 -t zigbee2mqtt/x -m 1'
 check "the local listener refuses a wrong password" '! quiet compose exec -T mosquitto mosquitto_pub -h 127.0.0.1 -u "$Z2M_USER" -P wrong -t zigbee2mqtt/x -m 1'
 check "the Zigbee2MQTT credentials work" 'quiet local_pub -t zigbee2mqtt/ping -m 1'
+# The health check logs in as "health" with a public password; the local broker's ACL lets that user read the
+# uptime topic and nothing else, and no secret is part of the container configuration or the health check.
+check "no secret is part of the Mosquitto container's configuration (health check, environment)" \
+  '! docker inspect "$(compose ps -q mosquitto)" | grep -qE "$Z2M_PASSWORD|$Z2M_TOKEN" && docker inspect -f "{{json .Config.Healthcheck.Test}}" "$(compose ps -q mosquitto)" | grep -q -- "-u health -P health"'
+check "the health user reads the uptime" 'quiet compose exec -T mosquitto mosquitto_sub -h 127.0.0.1 -u health -P health -t "\$SYS/broker/uptime" -C 1 -W 3'
+local_pub -r -t zigbee2mqtt/aclprobe -m acl-secret > /dev/null 2>&1
+check "the Zigbee2MQTT user reads and writes freely (ACL positive control)" '[ "$(local_sub -t zigbee2mqtt/aclprobe -C 1 -W 3 2> /dev/null)" = acl-secret ]'
+check "the health user cannot read other topics" '[ -z "$(compose exec -T mosquitto mosquitto_sub -h 127.0.0.1 -u health -P health -t "zigbee2mqtt/#" -C 1 -W 3 2> /dev/null)" ]'
+compose exec -T mosquitto mosquitto_pub -h 127.0.0.1 -u health -P health -r -t zigbee2mqtt/hprobe -m intruder > /dev/null 2>&1
+check "the health user cannot publish" '[ -z "$(local_sub -t zigbee2mqtt/hprobe -C 1 -W 2 2> /dev/null)" ]'
+local_pub -r -n -t zigbee2mqtt/aclprobe > /dev/null 2>&1
 check "the bridge connects with the gateway certificate (retained 1)" 'expect_vps "gw/$GATEWAY_ID/bridge/connection" "1 1"'
 check "no secret appears in the Mosquitto log" '! compose logs mosquitto 2>&1 | grep -qE "$Z2M_PASSWORD|$Z2M_TOKEN"'
 
@@ -267,13 +300,19 @@ check "zigbee2mqtt/x arrives at the VPS broker as gw/<id>/z2m/x" \
 local_pub -r -n -t zigbee2mqtt/x > /dev/null 2>&1 || true
 vps_pub "gw/$GATEWAY_ID/z2m/x" "" > /dev/null 2>&1 || true
 
-sleep 2
-local_sub -t 'zigbee2mqtt/+/set' -v -W 8 > "$WORK/command.out" 2> /dev/null &
+# The subscriber is only trusted after a probe command has come through the bridge (a probe sent before the
+# bridge's subscription is active is simply lost, so it is repeated); then the one command is sent.
+local_sub -t 'zigbee2mqtt/+/set' -v -W 14 > "$WORK/command.out" 2> /dev/null &
 command_pid=$!
-sleep 1
+for _ in $(seq 1 40); do
+  vps_pub "gw/$GATEWAY_ID/z2m/probe/set" probe-ready > /dev/null 2>&1
+  grep -q "probe-ready" "$WORK/command.out" 2> /dev/null && break
+  sleep 0.25
+done
+check "the local subscriber is ready (a probe command came through the bridge)" 'grep -q "probe-ready" "$WORK/command.out"'
 vps_pub "gw/$GATEWAY_ID/z2m/x/set" switch-once
 wait "$command_pid" 2> /dev/null
-check "a command gw/<id>/z2m/x/set arrives locally exactly once" '[ "$(grep -c "^zigbee2mqtt/x/set switch-once$" "$WORK/command.out")" = 1 ] && [ "$(wc -l < "$WORK/command.out" | tr -d " ")" = 1 ]'
+check "a command gw/<id>/z2m/x/set arrives locally exactly once" '[ "$(grep -c "^zigbee2mqtt/x/set switch-once$" "$WORK/command.out")" = 1 ] && [ -z "$(grep -v "probe-ready\|switch-once" "$WORK/command.out")" ]'
 
 # Messages published during an outage of the VPS broker are buffered and delivered in order after its restart.
 # The collector is a persistent session on the VPS side that keeps what arrives while it is not connected.
@@ -286,6 +325,39 @@ wait_for vps_up
 docker exec "$PREFIX-broker" sh -c 'mosquitto_sub -h localhost -u smart-api -P "$MQTT_PASSWORD" -c -i collector -q 1 -t "$0" -C 21 -W 20' "gw/$GATEWAY_ID/z2m/buf" > "$WORK/buffered.out" 2> /dev/null
 check "20 messages published during the outage arrive in order, once, after the restart" '[ "$(cat "$WORK/buffered.out")" = "$(seq 1 20)" ]'
 check "the bridge is connected again after the restart" 'expect_vps "gw/$GATEWAY_ID/bridge/connection" "1 1"'
+
+# Zigbee2MQTT publishes with QoS 0. The same outage with QoS 0 messages, this time as a lost network link: the
+# gateway's Mosquitto is cut off from the VPS network until its bridge has noticed (keepalive 20 s, local
+# notification "0"), 20 QoS 0 messages are published, the link comes back. A subscriber on the VPS broker is
+# online the whole time (the VPS queues no QoS 0 messages for offline clients), so what it prints is what the
+# bridge delivered after reconnecting.
+must docker run -d --name "$PREFIX-collector" --network "$NET" "$MOSQUITTO_IMAGE" \
+  mosquitto_sub -h broker -p 1883 -u smart-api -P "$API_PASSWORD" -q 1 -t "gw/$GATEWAY_ID/z2m/buf0" -F '%p'
+for _ in $(seq 1 40); do
+  local_pub -q 0 -t zigbee2mqtt/buf0 -m probe > /dev/null 2>&1
+  docker logs "$PREFIX-collector" 2>&1 | grep -qx probe && break
+  sleep 0.5
+done
+check "QoS 0 outage: the VPS subscriber is ready (a probe came through)" 'docker logs "$PREFIX-collector" 2>&1 | grep -qx probe'
+mosquitto_container=$(compose ps -q mosquitto)
+docker network disconnect "$NET" "$mosquitto_container"
+local_bridge_state() { local_sub -t "gw/$GATEWAY_ID/bridge/connection" -F '%p' -C 1 -W 2 2> /dev/null; }
+for _ in $(seq 1 60); do
+  [ "$(local_bridge_state)" = 0 ] && break
+  sleep 1
+done
+check "QoS 0 outage: the bridge noticed the lost link (local notification 0)" '[ "$(local_bridge_state)" = 0 ]'
+for i in $(seq 1 20); do local_pub -q 0 -t zigbee2mqtt/buf0 -m "q0-$i" > /dev/null 2>&1; done
+docker network connect "$NET" "$mosquitto_container"
+for _ in $(seq 1 60); do
+  [ "$(docker logs "$PREFIX-collector" 2>&1 | grep -c '^q0-')" -ge 20 ] && break
+  sleep 1
+done
+sleep 3
+check "QoS 0 outage: 20 messages arrive in order, once, after the link is back" \
+  '[ "$(docker logs "$PREFIX-collector" 2>&1 | grep "^q0-")" = "$(for i in $(seq 1 20); do echo "q0-$i"; done)" ]'
+docker rm -fv "$PREFIX-collector" > /dev/null 2>&1
+check "the bridge is connected again after the link is back" 'expect_vps "gw/$GATEWAY_ID/bridge/connection" "1 1"'
 
 # --- Zigbee2MQTT: settings by environment variables, the configuration.yaml with the devices stays ---
 # Without an adapter Zigbee2MQTT cannot start fully: it reads and applies its settings, then fails to open the

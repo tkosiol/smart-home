@@ -80,6 +80,7 @@ cp "$WORK/pki/server.key" "$WORK/stage-private/server.key"
 # The pi's Mosquitto configuration is the real template of the gateway package, rendered by the real render.sh.
 mkdir -p "$WORK/pi-dir/secrets"
 printf 'GATEWAY_ID=%s\nBROKER_HOST=broker\nBROKER_PORT=8883\n' "$GATEWAY_ID" > "$WORK/pi-dir/secrets/gateway.env"
+printf 'ZIGBEE2MQTT_CONFIG_MQTT_USER=%s\nZIGBEE2MQTT_CONFIG_FRONTEND_AUTH_TOKEN=stack-test-token\n' "$PI_LOCAL_USER" > "$WORK/pi-dir/secrets/z2m.env"
 SMART_GATEWAY_DIR="$WORK/pi-dir" bash gateway/render.sh > /dev/null
 cp "$WORK/pi-dir/run/mosquitto.conf" "$WORK/stage-pi/mosquitto.conf"
 cp "$WORK/pki/ca.crt" "$WORK/stage-pi/ca.crt"

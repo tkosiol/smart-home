@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Renders run/mosquitto.conf from mosquitto.conf.template and secrets/gateway.env. Runs on the gateway as root
+# Renders run/mosquitto.conf from mosquitto.conf.template and secrets/gateway.env (and checks secrets/z2m.env). Runs on the gateway as root
 # (sudo), before every start of the stack. The directory defaults to /srv/smart-gateway; SMART_GATEWAY_DIR
 # overrides it (tests). gateway.env is parsed, never sourced: it is read as root, so it must not run code.
 # Nothing is written unless every value is valid; the output replaces the old file atomically (mode 600).
@@ -9,6 +9,7 @@ umask 077
 DIR="${SMART_GATEWAY_DIR:-/srv/smart-gateway}"
 TEMPLATE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/mosquitto.conf.template"
 ENV_FILE="$DIR/secrets/gateway.env"
+Z2M_ENV_FILE="$DIR/secrets/z2m.env"
 OUT_DIR="$DIR/run"
 
 fail() {
@@ -39,6 +40,17 @@ done < "$ENV_FILE"
 [[ "$BROKER_PORT" =~ ^[0-9]{1,5}$ ]] && [ "$((10#$BROKER_PORT))" -ge 1 ] && [ "$((10#$BROKER_PORT))" -le 65535 ] \
   || fail "BROKER_PORT in $ENV_FILE must be a port number (1-65535)"
 BROKER_PORT=$((10#$BROKER_PORT))
+
+# Fails closed: compose.yaml switches the Zigbee2MQTT frontend on, so a missing or empty token would leave the
+# frontend open in the home network. Only the presence is checked; the value is never printed.
+[ -r "$Z2M_ENV_FILE" ] || fail "cannot read $Z2M_ENV_FILE (run provision-gateway.sh first)"
+token=""
+while IFS= read -r line || [ -n "$line" ]; do
+  case "$line" in
+    ZIGBEE2MQTT_CONFIG_FRONTEND_AUTH_TOKEN=*) token="${line#ZIGBEE2MQTT_CONFIG_FRONTEND_AUTH_TOKEN=}" ;;
+  esac
+done < "$Z2M_ENV_FILE"
+[ -n "$token" ] || fail "ZIGBEE2MQTT_CONFIG_FRONTEND_AUTH_TOKEN in $Z2M_ENV_FILE is missing or empty (the frontend must not be open)"
 
 mkdir -p "$OUT_DIR"
 tmp=$(mktemp "$OUT_DIR/.mosquitto.conf.XXXXXX")
