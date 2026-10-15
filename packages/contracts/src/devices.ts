@@ -97,3 +97,26 @@ export const LOW_BATTERY_PERCENT = 20;
 export function isLowBattery(percent: unknown): boolean {
   return typeof percent === 'number' && Number.isFinite(percent) && percent < LOW_BATTERY_PERCENT;
 }
+
+export const DEVICE_KINDS = ['light', 'soil', 'climate', 'contact', 'other'] as const;
+export type DeviceKind = (typeof DEVICE_KINDS)[number];
+
+/**
+ * light: writable `state` or `brightness`; soil: `soil_moisture`; climate: `temperature`/`humidity`
+ * without `soil_moisture`; contact: `contact`; else other.
+ */
+export function deviceKind(capabilities: readonly Capability[]): DeviceKind {
+  const has = (key: string): boolean => capabilities.some((capability) => capability.key === key);
+  if (
+    capabilities.some(
+      (capability) =>
+        capability.writable && (capability.key === 'state' || capability.key === 'brightness'),
+    )
+  ) {
+    return 'light';
+  }
+  if (has('soil_moisture')) return 'soil';
+  if (has('temperature') || has('humidity')) return 'climate';
+  if (has('contact')) return 'contact';
+  return 'other';
+}

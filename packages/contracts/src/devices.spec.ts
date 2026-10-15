@@ -9,6 +9,8 @@ import {
   deviceSchema,
   hardwareSchema,
   primaryCapability,
+  deviceKind,
+  DEVICE_KINDS,
   type Capability,
 } from './devices.js';
 import { API_ERROR_CODES } from './api-error.js';
@@ -257,5 +259,42 @@ describe('constants', () => {
 
   it('lists the hardware-bound error code', () => {
     expect(API_ERROR_CODES).toContain('device.hardwareBound');
+  });
+});
+
+describe('deviceKind', () => {
+  const contact = capability({ key: 'contact', kind: 'binary' });
+  const readOnlyState = capability({ key: 'state', kind: 'binary' });
+
+  it('lists the kinds', () => {
+    expect(DEVICE_KINDS).toEqual(['light', 'soil', 'climate', 'contact', 'other']);
+  });
+
+  it('recognises a light by a writable state or brightness', () => {
+    expect(deviceKind([lampState])).toBe('light');
+    expect(deviceKind([brightness, battery].map((c) => ({ ...c, writable: true })))).toBe('light');
+  });
+
+  it('does not treat a readable-only state as a light', () => {
+    expect(deviceKind([readOnlyState])).toBe('other');
+  });
+
+  it('recognises soil, also with temperature', () => {
+    expect(deviceKind([soilMoisture, battery])).toBe('soil');
+    expect(deviceKind([soilMoisture, temperature])).toBe('soil');
+  });
+
+  it('recognises climate without soil moisture', () => {
+    expect(deviceKind([temperature])).toBe('climate');
+    expect(deviceKind([humidity, battery])).toBe('climate');
+  });
+
+  it('recognises a contact sensor', () => {
+    expect(deviceKind([contact, battery])).toBe('contact');
+  });
+
+  it('falls back to other', () => {
+    expect(deviceKind([])).toBe('other');
+    expect(deviceKind([battery])).toBe('other');
   });
 });
