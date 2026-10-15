@@ -12,7 +12,7 @@
 
 **Planform:** schlank wie 5b. Exakte Schnittstellen dort, wo Tasks voneinander abhängen (Contracts, API); Verhalten und Tests sonst als Anforderung.
 
-**Wer setzt um (Tills Vorgabe):** Tasks mit sichtbarer Oberfläche (6–10) setzen **Fable-Subagenten** um, auch ihr Design-Review läuft über Fable. Contracts, Backend und Theme (1–5) übernehmen Sonnet-Subagenten, kleine Nachprüfungen Haiku, das Gesamt-Review Opus. Die Mockups auf dem Design-Canvas (privat, bei Till) sind die Vorlage. Die Fable-Tasks bekommen die Dateien unter `<scratchpad>/design-canvas/project/` als Referenz (B-Uebersicht, B-Dunkel, B-Detail, B-Anpassen, B-Status-*).
+**Wer setzt um (Tills Vorgabe):** Tasks mit sichtbarer Oberfläche (6–10): Fable macht das Visuelle; ab Task 8 baut zuerst Sonnet Logik, Gerüst und Tests, dann setzt Fable die Gestaltung darauf und macht ein kurzes Design-Review auf Screenshots (Änderung Till, 2026-10-15). Contracts, Backend und Theme (1–5) übernehmen Sonnet-Subagenten, kleine Nachprüfungen Haiku, das Gesamt-Review Opus. Die Mockups auf dem Design-Canvas (privat, bei Till) sind die Vorlage. Die Fable-Tasks bekommen die Dateien unter `<scratchpad>/design-canvas/project/` als Referenz (B-Uebersicht, B-Dunkel, B-Detail, B-Anpassen, B-Status-*).
 
 **Bewusste Entscheidungen:**
 
@@ -25,7 +25,7 @@
 - Alle Global Constraints aus 6a gelten weiter: Gate je Task (`pnpm lint && pnpm typecheck && pnpm test && pnpm test:tz && pnpm build`), keine KI-Attribution, öffentliches Repo ohne private Daten, Conventional Commits mit Scope, Commit-Body-Zeilen ≤ 100 Zeichen.
 - UI-Regeln aus `CLAUDE.md`: kein `@angular/material`/`@angular/cdk` außerhalb von `@smart/ui`; kein Feature-CSS; in `@smart/ui` nur Tokens (keine Hex-Farben, keine px außerhalb `tokens/`); kein sichtbarer Text ohne Übersetzungsschlüssel (`pnpm i18n:check`); keine `DatePipe`.
 - Initiales Bundle höchstens **480 kB** (Stand rund 472,7 kB): neue Bausteine nur in `public-api.ts`/`forms.ts`, nie in `shell.ts`; Bottom Sheet und Drag-Drop lazy. Nach jedem UI-Task `pnpm build` und die Zahl im Task-Bericht nennen.
-- Farbe nur über Rollen (`--mat-sys-*`) und `--smart-*`-Tokens; jede neue Darstellung in Storybook in sechs Kombinationen (hell/dunkel × Standard/Mittel/Hoch) mit zwei Grundfarben (Standard und ein kräftiges Rot) und axe ohne Verstöße.
+- Farbe nur über Rollen (`--mat-sys-*`) und `--smart-*`-Tokens; jede neue Darstellung in Storybook **hell und dunkel mit der Standard-Grundfarbe** und axe ohne Verstöße (Änderung Till, 2026-10-15: keine Matrix über Kontraststufen und Grundfarben; die Tasks 6 und 7 wurden noch mit der 12er-Matrix gebaut).
 - Formen: Karten `--mat-sys-corner-extra-large`, Pods und Einträge `--mat-sys-corner-large`, Chips/Pillen/Schalter `--mat-sys-corner-full`. Pods 140 × 116 px (`--smart-size-pod-width`/`-height`). Hauptwert `--smart-type-value-hero` 80/84 px, Gewicht 600, Laufweite −0,03 em. Zahlen `tabular-nums`.
 - Touch-Ziele ≥ `--smart-size-touch` (48 px); Farbe nie alleiniger Träger; `prefers-reduced-motion` → nur Opazität.
 - Zeit: speichern und übertragen nur UTC; Anzeige in Haushalts-Zeitzone; Tests auch unter `TZ=Pacific/Chatham`.
@@ -198,7 +198,7 @@ export function normalizeOverviewLayout(
 
 **Verhalten:** wie Spec 2.1–2.6 und Tabelle 7 (Inputs exakt so benannt). `ui-value-display` mit `size: 'hero' | 'large' | 'medium'`; `ui-progress-band` mit `band: { from, to, tone }`, als `role="meter"` mit `aria-valuetext`.
 
-**Tests:** Komponententests für Inputs und ARIA; Stories in den sechs Kombinationen mit zwei Grundfarben, axe ohne Verstöße; Bundle-Zahl im Bericht. Commit `feat(ui): add the tokens and basic building blocks of the new design`.
+**Tests:** Komponententests für Inputs und ARIA; Stories hell und dunkel, axe ohne Verstöße; Bundle-Zahl im Bericht. Commit `feat(ui): add the tokens and basic building blocks of the new design`.
 
 ---
 
@@ -240,7 +240,7 @@ export function normalizeOverviewLayout(
 
 **Verhalten:** Spec 3.6 und 3.7 (Medium zweispaltig, Expanded bis drei Spalten bis `--smart-size-content-max`); keine Funktionsänderung.
 
-**Tests:** bestehende Tests und E2E bleiben grün (Selektoren nur über Rollen/Texte); Seiten-Stories in den sechs Kombinationen mit axe. Bundle-Zahl im Bericht. Commit `feat(frontend): bring the existing pages into the new design`.
+**Tests:** bestehende Tests und E2E bleiben grün (Selektoren nur über Rollen/Texte); Seiten-Stories hell und dunkel mit axe. Bundle-Zahl im Bericht. Commit `feat(frontend): bring the existing pages into the new design`.
 
 ---
 
