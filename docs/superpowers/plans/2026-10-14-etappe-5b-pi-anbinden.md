@@ -182,7 +182,21 @@ Umgesetzt subagent-gestützt: Sonnet hat umgesetzt und geprüft, Haiku hat klein
 - **Internet-Trennung mindestens 10 min statt 2 min.** Die Sensoren melden nur etwa alle 5 min.
 - **Zusätzlich beschrieben: Wiederherstellung nach Verlust des Pi** (Runbook, Abschnitt 11). Die Befehle sind noch ungeprüft.
 
+### Inbetriebnahme (2026-10-15)
+
+- **Erster Umzug zurückgesetzt, zweiter erfolgreich.**
+  - Der erste Lauf scheiterte an einem Fehler in `start.sh`, behoben in #25: `docker inspect` kennt kein `.State.RestartCount`, das Feld heißt `.RestartCount`, und die Docker-Simulation der Tests hatte das falsche Feld beantwortet.
+  - Der Rückweg funktionierte wie vorgesehen: Der neue Stack war nachweislich gestoppt, die Neustart-Richtlinie wiederhergestellt, der alte Stack lief wieder, und seine Daten waren unverändert.
+  - Beim zweiten Lauf war Zigbee2MQTT nach 28 s online, mit allen 8 Geräten, und die Bridge war verbunden. Danach wurde der alte Stack entfernt; sein Datenordner bleibt als zusätzliche Sicherung liegen.
+- **Port 8883 war über IPv6 gesperrt.** Über IPv6 läuft die Verbindung durch UFW, über IPv4 nicht; die UFW-Regel ist nötig (Runbook Abschnitt 5, korrigiert).
+- **QoS des echten Zigbee2MQTT ist 0** (am Broker der Produktion mit QoS 1 abonniert, geliefert mit 0). Es gilt die Folge aus ADR-0020; Verbesserung siehe Übertrag.
+- **ACL:** Das eigene Präfix kommt an, ein fremdes wird verworfen, ohne Client-Zertifikat gibt es keine Verbindung.
+- **Backup:** Das erste Backup nach B2 lief, `restic check` meldete keinen Fehler, und der Wiederherstellungstest ist bestanden.
+- **Noch offen:** Nachliefer-Spitze und das retained `bridge/connection` nach einem Neustart des Brokers sind am echten Aufbau noch nicht beobachtet (optionaler Schritt 9 der Checkliste).
+
 ### Übertrag
+
+- **Zigbee2MQTT mit QoS 1** (`device_options: qos: 1` für alle Geräte): Damit entfällt die Lücke von rund 30 s bei einem ungeplanten Ausfall des Netzes. Vorher prüfen, wie Zigbee2MQTT 2.14 das per Umgebungsvariable übernimmt.
 
 - **Inbetriebnahme des Pi:** Runbook Abschnitt 12, erst nach Tills Freigabe. Dabei festhalten:
   - QoS des echten Z2M (erwartet 0)

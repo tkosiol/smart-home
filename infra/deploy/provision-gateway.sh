@@ -217,9 +217,10 @@ done
 grep -q "^z2m:[$]7[$]" .new/passwd || { echo "provision-gateway: passwd is not a hashed password file" >&2; exit 1; }
 chmod 600 .new/*
 mv -f .new/gateway.env .new/z2m.env .new/backup.env .new/passwd .new/ca.crt .new/gateway.crt .new/gateway.key .'
-# COPYFILE_DISABLE keeps macOS tar from adding ._ metadata entries.
+# COPYFILE_DISABLE keeps macOS tar from adding ._ metadata entries; --no-xattrs drops extended attributes such as
+# com.apple.provenance, which GNU tar on the Pi would warn about ("unknown extended header keyword").
 # shellcheck disable=SC2029 # see above
-COPYFILE_DISABLE=1 tar -cf - -C "$stage" "${files[@]}" | ssh "$host" "sudo -n sh -c '$remote_script' sh $remote_dir $mosquitto_image" \
+COPYFILE_DISABLE=1 tar --no-xattrs -cf - -C "$stage" "${files[@]}" | ssh "$host" "sudo -n sh -c '$remote_script' sh $remote_dir $mosquitto_image" \
   || fail "the transfer failed – the previous files on the Pi are unchanged"
 
 echo "wrote gateway.env, z2m.env, passwd, backup.env, ca.crt, gateway.crt and gateway.key for $gateway_id to $remote_dir/secrets on the Pi (root, directory 700, files 600)"
