@@ -1,0 +1,5 @@
+#!/bin/sh
+# Test double for systemctl on the Pi (deploy.sh tests): records the call. STUB_FAIL_SYSTEMCTL=1 makes it fail.
+printf 'systemctl %s\n' "$*" >> "$STUB_CALLS"
+[ "${STUB_FAIL_SYSTEMCTL:-0}" = 1 ] && exit 1
+exit 0

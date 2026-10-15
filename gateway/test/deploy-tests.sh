@@ -34,12 +34,12 @@ setup() {
   HOME_DIR="$WORK/home"
   PI_DIR="$HOME_DIR/srv/smart-gateway"
   OLD="$HOME_DIR/opt/old-stack"
-  mkdir -p "$PI_DIR/secrets" "$OLD/zigbee2mqtt-data" "$WORK/bin" "$WORK/state"
-  for tool in docker rsync timeout chown; do ln -s "$GATEWAY_DIR/test/stubs/$tool" "$WORK/bin/$tool"; done
+  mkdir -p "$PI_DIR/secrets" "$OLD/zigbee2mqtt-data" "$WORK/bin" "$WORK/state" "$WORK/systemd"
+  for tool in docker rsync timeout chown systemctl; do ln -s "$GATEWAY_DIR/test/stubs/$tool" "$WORK/bin/$tool"; done
   for tool in ssh sudo; do ln -s "$GATEWAY_DIR/../infra/deploy/test/stubs/$tool" "$WORK/bin/$tool"; done
   printf 'GATEWAY_ID=gw-testpi01\nBROKER_HOST=mqtt.example.org\nBROKER_PORT=8883\nZ2M_SERIAL_DEVICE=/dev/null\n' > "$PI_DIR/secrets/gateway.env"
   printf 'ZIGBEE2MQTT_CONFIG_MQTT_USER=z2m\nZIGBEE2MQTT_CONFIG_MQTT_PASSWORD=%s\nZIGBEE2MQTT_CONFIG_FRONTEND_AUTH_TOKEN=%s\n' "$Z2M_PASSWORD_MARKER" "$Z2M_TOKEN_MARKER" > "$PI_DIR/secrets/z2m.env"
-  for f in passwd ca.crt gateway.crt gateway.key; do echo "invented $f" > "$PI_DIR/secrets/$f"; done
+  for f in passwd ca.crt gateway.crt gateway.key backup.env; do echo "invented $f" > "$PI_DIR/secrets/$f"; done
   chmod 700 "$PI_DIR/secrets"
   chmod 600 "$PI_DIR"/secrets/*
   echo "sentinel" > "$PI_DIR/secrets/sentinel"
@@ -55,10 +55,10 @@ setup() {
   OUT="$WORK/out"
   unset SMART_PI SMART_PI_OLD_STACK SMART_CGROUP_CONTROLLERS SMART_PROC_CGROUPS
   unset STUB_SSH_DOWN STUB_SUDO_PASSWORD STUB_FAIL_PULL STUB_FAIL_NEW_UP STUB_FAIL_OLD_UP STUB_FAIL_OLD_STOP \
-    STUB_FAIL_RSYNC STUB_Z2M_OFFLINE STUB_BRIDGE
+    STUB_FAIL_RSYNC STUB_Z2M_OFFLINE STUB_BRIDGE STUB_FAIL_SYSTEMCTL
   export PATH="$WORK/bin:$PATH"
   export STUB_CALLS="$CALLS" STUB_STATE="$WORK/state" STUB_SSH_EXEC=1 STUB_REMOTE_HOME="$HOME_DIR"
-  export SMART_PI=pi@pi SMART_GATEWAY_DIR="$PI_DIR"
+  export SMART_PI=pi@pi SMART_GATEWAY_DIR="$PI_DIR" SMART_SYSTEMD_DIR="$WORK/systemd"
   # A Pi with the memory cgroup, a short wait (the real one is 120 s).
   echo "cpuset cpu io memory pids" > "$WORK/controllers"
   export SMART_CGROUP_CONTROLLERS="$WORK/controllers" SMART_PROC_CGROUPS="$WORK/no-proc-cgroups"
@@ -117,7 +117,7 @@ check "deploy aborts when the Pi is not reachable, before any change" '[ "$(depl
 check "deploy limits the connection attempt to 10 seconds" 'grep "^ssh " "$CALLS" | grep -q "ConnectTimeout=10"'; teardown
 setup; export STUB_SUDO_PASSWORD=1
 check "deploy aborts without passwordless sudo and says so" '[ "$(deploy)" = 1 ] && grep -qi "passwordless sudo" "$OUT" && ! grep -q "^rsync" "$CALLS" && no_changes_on_pi'; teardown
-for missing in gateway.env z2m.env passwd ca.crt gateway.crt gateway.key; do
+for missing in gateway.env z2m.env passwd ca.crt gateway.crt gateway.key backup.env; do
   setup; rm "$PI_DIR/secrets/$missing"
   check "deploy aborts when secrets/$missing is missing, names it and changes nothing" '[ "$(deploy)" = 1 ] && grep -q "$missing" "$OUT" && grep -q provision-gateway "$OUT" && ! grep -q "^rsync" "$CALLS" && no_stack_calls && no_changes_on_pi'
   teardown
@@ -169,6 +169,34 @@ setup; export STUB_Z2M_OFFLINE=1
 check "deploy fails when Z2M does not report online, and does not touch any old stack" '[ "$(deploy)" = 1 ] && grep -qi "online" "$OUT" && ! grep -q "docker compose -f" "$CALLS"'; teardown
 setup; export STUB_BRIDGE=0
 check "deploy shows a bridge that is down (0) as a warning, not as a failure" '[ "$(deploy)" = 0 ] && grep -qi "bridge.*not connected" "$OUT"'; teardown
+
+# --- backup timers ---
+setup
+bash "$DEPLOY" > "$OUT" 2>&1 < /dev/null
+units="smart-gateway-backup.service smart-gateway-backup.timer smart-gateway-restore-test.service smart-gateway-restore-test.timer"
+units_installed() {
+  local u
+  for u in $units; do { [ -s "$WORK/systemd/$u" ] && [ "$(mode_of "$WORK/systemd/$u")" = 644 ]; } || return 1; done
+}
+check "deploy installs the backup service, the restore-test service and both timers into the systemd folder (644)" \
+  'units_installed'
+check "deploy points the units at the gateway folder of the Pi" \
+  'grep -q "ExecStart=.*$PI_DIR/backup/backup.sh" "$WORK/systemd/smart-gateway-backup.service" && grep -q "ExecStart=.*$PI_DIR/backup/restore-test.sh" "$WORK/systemd/smart-gateway-restore-test.service" && grep -q "^WorkingDirectory=$PI_DIR$" "$WORK/systemd/smart-gateway-backup.service" && ! grep -q "=/srv/smart-gateway" "$WORK"/systemd/*'
+check "deploy copies the backup scripts and the systemd units to the Pi" '[ -s "$PI_DIR/backup/backup.sh" ] && [ -s "$PI_DIR/backup/restore-test.sh" ] && [ -s "$PI_DIR/backup/lib.sh" ] && [ -s "$PI_DIR/backup/restic-job.sh" ] && [ -s "$PI_DIR/systemd/smart-gateway-backup.timer" ]'
+check "deploy reloads systemd and enables both timers with --now, after the stack is up" \
+  'in_order "gateway.env up -d$" "bridge/state" "systemctl daemon-reload" "systemctl enable --now smart-gateway-backup.timer smart-gateway-restore-test.timer"'
+check "deploy pulls the images of the backup profile too (the restic image) without starting the backup service" \
+  'grep -q "^pull-profiles COMPOSE_PROFILES=backup" "$CALLS" && ! grep -E "^docker .*up -d" "$CALLS" | grep -q "profile"'
+check "deploy never prints or sends the backup secrets" '! grep -q "invented backup.env" "$OUT" "$CALLS"'
+teardown
+setup; export STUB_FAIL_SYSTEMCTL=1
+check "deploy fails with a clear message when the timers cannot be enabled (the stack stays up)" '[ "$(deploy)" = 1 ] && grep -qi "timer" "$OUT" && new_running'; teardown
+setup; export STUB_Z2M_OFFLINE=1
+check "deploy installs no timer when Z2M does not come up" '[ "$(deploy)" = 1 ] && [ ! -e "$WORK/systemd/smart-gateway-backup.timer" ] && ! grep -q "^systemctl" "$CALLS"'; teardown
+setup; export SMART_PI_OLD_STACK="$OLD"
+check "migrate installs the timers as well" '[ "$(deploy --migrate)" = 0 ] && [ -s "$WORK/systemd/smart-gateway-backup.timer" ]'; teardown
+setup; export STUB_FAIL_RSYNC=1
+check "deploy installs no timer when the copy to the Pi failed" '[ "$(deploy)" != 0 ] && ! grep -q "^systemctl" "$CALLS"'; teardown
 
 # --- migration ---
 setup; export SMART_PI_OLD_STACK="$OLD"

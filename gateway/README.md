@@ -11,6 +11,8 @@ Der Ordner enthält alles, was auf einem Gateway läuft: Mosquitto (lokaler Brok
 | `test/gateway-test.sh`    | Docker-Test des Pakets (`bash gateway/test/gateway-test.sh`, braucht Docker und OpenSSL 3)                        |
 | `deploy.sh`               | `SMART_PI=<user@pi-host> pnpm gateway:deploy [--migrate]`: installiert/aktualisiert den Stack auf dem Pi vom Mac  |
 | `test/deploy-tests.sh`    | Test von `deploy.sh` mit Stub-ssh/-rsync/-docker in einer Sandbox (`bash gateway/test/deploy-tests.sh`)           |
+| `backup/`, `systemd/`     | nächtliches restic-Backup nach B2, wöchentlicher Restore-Test, systemd-Timer (Abschnitt „Backups“)                |
+| `test/backup-tests.sh`    | Docker-Test der Backups mit lokalem restic-Repository und Stub-curl (`bash gateway/test/backup-tests.sh`)         |
 
 ## Dateien in `secrets/` (root `700`, Dateien `600`)
 
@@ -36,6 +38,15 @@ sudo docker compose --env-file secrets/gateway.env up -d  # Mosquitto, dann Zigb
 ```
 
 `SMART_GATEWAY_DIR` verlegt das Verzeichnis (Standard `/srv/smart-gateway`), nur für Tests.
+
+## Backups
+
+`deploy.sh` installiert zwei systemd-Timer (aus `systemd/`, mit dem tatsächlichen Ordner eingesetzt) und aktiviert sie:
+
+- `smart-gateway-backup.timer`: täglich 03:30 (Ortszeit des Pi, `Persistent=true`) → `backup/backup.sh`. Es prüft `secrets/backup.env` (`KEY=Wert`-Zeilen, nie per `source` gelesen; Fehler nennen Zeile oder Schlüssel, nie einen Wert), sendet den healthchecks.io-Ping `/start`, führt im Compose-Dienst `backup` (Profil `backup`, `restic/restic` gepinnt, `backup/restic-job.sh`) `restic backup` von `zigbee2mqtt-data/` (ohne `log/`) und `secrets/` aus, danach `restic forget --prune` (7 täglich, 4 wöchentlich, 6 monatlich) und `restic check`, und pingt Erfolg oder `/fail`. Repository: `s3:https://<B2_ENDPOINT>/<B2_BUCKET>/pi`, Host-Tag ist die Gateway-ID.
+- `smart-gateway-restore-test.timer`: sonntags 05:00 → `backup/restore-test.sh` stellt den letzten Snapshot der Z2M-Daten in ein Temp-Verzeichnis im Container wieder her und prüft `configuration.yaml` und `database.db` (vorhanden, nicht leer). Pingt `HC_RESTORE_URL`, falls in `backup.env` gesetzt (optional, wird von `provision-gateway.sh` nicht geschrieben); ohne sie meldet nur ein Fehler sich über `HC_BACKUP_URL/fail`.
+
+Die Ping-URLs gehen per `curl -K -` über stdin (nie in einer Kommandozeile, nie im Log); die Geheimnisse erreichen den Container nur als Umgebung aus `backup.env`. Von Hand: `sudo bash /srv/smart-gateway/backup/backup.sh`, Log: `journalctl -u smart-gateway-backup`.
 
 ## Entscheidungen und Befunde (gemessen mit den gepinnten Images)
 

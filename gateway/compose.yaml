@@ -73,10 +73,35 @@ services:
     logging: *logging
     networks: [gateway]
 
+  # Nightly backup to B2 (restic). Only in the profile "backup": a plain "up" never starts it; the systemd service runs
+  #   docker compose --env-file secrets/gateway.env --profile backup run --rm -T backup backup | restore-test
+  # (backup/backup.sh and backup/restore-test.sh, installed by deploy.sh). The B2 key, the restic password and the
+  # ping URL come from secrets/backup.env as environment (never argv); the ping itself is sent by the scripts on the
+  # host (the restic image has no curl). The data are mounted read-only.
+  backup:
+    image: restic/restic:0.19.1
+    profiles: [backup]
+    entrypoint: ['sh', '/smart/backup/restic-job.sh']
+    mem_limit: 256m
+    env_file:
+      - ./secrets/backup.env
+    environment:
+      BACKUP_HOST_TAG: ${GATEWAY_ID:?set GATEWAY_ID in secrets/gateway.env}
+      RESTIC_CACHE_DIR: /cache
+      TZ: ${TZ:-Europe/Berlin}
+    volumes:
+      - ./backup:/smart/backup:ro
+      - ./zigbee2mqtt-data:/data/zigbee2mqtt-data:ro
+      - ./secrets:/data/secrets:ro
+      - backup-cache:/cache
+    logging: *logging
+    networks: [gateway]
+
 networks:
-  # Not "internal: true": the bridge in Mosquitto needs the way out, and Docker cannot publish a port from an
+  # Not "internal": true": the bridge in Mosquitto needs the way out, and Docker cannot publish a port from an
   # internal network. Nothing is published except the Z2M frontend.
   gateway:
 
 volumes:
   mosquitto-data:
+  backup-cache:

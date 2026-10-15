@@ -20,7 +20,9 @@ case "$*" in
     esac ;;
   "compose --env-file secrets/gateway.env "*)
     case "$*" in
-      *" pull"*) [ "${STUB_FAIL_PULL:-0}" = 1 ] && exit 1 ;;
+      *" pull"*)
+        printf 'pull-profiles COMPOSE_PROFILES=%s\n' "${COMPOSE_PROFILES:-}" >> "$STUB_CALLS"
+        [ "${STUB_FAIL_PULL:-0}" = 1 ] && exit 1 ;;
       *" up -d"*)
         [ "${STUB_FAIL_NEW_UP:-0}" = 1 ] && exit 1
         : > "$state/new_running" ;;

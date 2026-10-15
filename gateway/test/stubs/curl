@@ -1,0 +1,8 @@
+#!/bin/sh
+# Test double for curl (backup tests): the backup scripts hand the ping URL to curl on stdin ("-K -"), never in argv.
+# Records the arguments in $STUB_CALLS and the stdin (the config with the URL) in $STUB_PING_LOG, so a test can see
+# which ping went out while the URL stays out of the logs. STUB_CURL_FAIL=1 makes every call fail.
+printf 'curl %s\n' "$*" >> "$STUB_CALLS"
+if [ "${1:-}" != --version ]; then cat >> "${STUB_PING_LOG:?}"; fi
+[ "${STUB_CURL_FAIL:-0}" = 1 ] && exit 22
+exit 0

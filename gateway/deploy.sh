@@ -20,7 +20,9 @@
 #   the old stack again, exit 1. The old data folder is never modified.
 # Settings for tests: SMART_GATEWAY_DIR (default /srv/smart-gateway), SMART_CGROUP_CONTROLLERS,
 # SMART_PROC_CGROUPS, SMART_DEPLOY_WAIT_SECONDS (120), SMART_DEPLOY_POLL_SECONDS (3),
-# SMART_DEPLOY_PULL_TIMEOUT (900), SMART_DEPLOY_COMPOSE_TIMEOUT (300).
+# SMART_DEPLOY_PULL_TIMEOUT (900), SMART_DEPLOY_COMPOSE_TIMEOUT (300), SMART_SYSTEMD_DIR (default /etc/systemd/system).
+# At the end (Z2M online) it installs and enables the backup timers (gateway/systemd, nightly backup and weekly
+# restore test, see gateway/backup); the pull includes the restic image of the compose profile backup.
 # Every remote command is bounded: ssh connects within 10 s and notices a dead connection, compose, tar and cp
 # run under timeout on the Pi, rsync has an I/O timeout.
 set -euo pipefail
@@ -66,6 +68,9 @@ wait_seconds="${SMART_DEPLOY_WAIT_SECONDS:-120}"
 poll_seconds="${SMART_DEPLOY_POLL_SECONDS:-3}"
 pull_timeout="${SMART_DEPLOY_PULL_TIMEOUT:-900}"
 compose_timeout="${SMART_DEPLOY_COMPOSE_TIMEOUT:-300}"
+systemd_dir="${SMART_SYSTEMD_DIR:-/etc/systemd/system}"
+systemd_dir="${systemd_dir%/}"
+plain_path "$systemd_dir" || { echo "SMART_SYSTEMD_DIR is not a plain absolute path" >&2; exit 2; }
 for number in "$wait_seconds" "$poll_seconds" "$pull_timeout" "$compose_timeout"; do
   [[ "$number" =~ ^[0-9]{1,5}$ ]] || { echo "the SMART_DEPLOY_* time limits must be whole seconds" >&2; exit 2; }
 done
@@ -79,12 +84,12 @@ bridge_topic='gw/+/bridge/connection'
 # --- remote scripts: no single quote inside (they travel inside single quotes), arguments as $1, $2, ... ---
 S_PREFLIGHT=$(cat << 'EOF'
 sudo -n true > /dev/null 2>&1 || { echo nosudo; exit 0; }
-for c in docker rsync timeout tar; do
+for c in docker rsync timeout tar systemctl; do
   command -v "$c" > /dev/null 2>&1 || { echo "missing:$c"; exit 0; }
 done
 sudo -n docker compose version > /dev/null 2>&1 || { echo "missing:docker-compose"; exit 0; }
 sudo -n test -d "$1" || { echo nodir; exit 0; }
-for f in gateway.env z2m.env passwd ca.crt gateway.crt gateway.key; do
+for f in gateway.env z2m.env backup.env passwd ca.crt gateway.crt gateway.key; do
   sudo -n test -s "$1/secrets/$f" || { echo "nosecret:$f"; exit 0; }
 done
 cg=unknown
@@ -123,13 +128,27 @@ EOF
 )
 S_PULL=$(cat << 'EOF'
 cd "$1" || exit 1
-timeout -k 10 "$2" docker compose --env-file secrets/gateway.env pull
+COMPOSE_PROFILES=backup timeout -k 10 "$2" docker compose --env-file secrets/gateway.env pull
 EOF
 )
 S_UP=$(cat << 'EOF'
 cd "$1" || exit 1
 timeout -k 10 "$2" docker compose --env-file secrets/gateway.env up -d --force-recreate mosquitto || exit 1
 timeout -k 10 "$2" docker compose --env-file secrets/gateway.env up -d
+EOF
+)
+# The units name /srv/smart-gateway: written with the real folder, replaced atomically (new file, then mv).
+S_TIMERS=$(cat << 'EOF'
+set -e
+for u in smart-gateway-backup.service smart-gateway-backup.timer smart-gateway-restore-test.service smart-gateway-restore-test.timer; do
+  sed "s|/srv/smart-gateway|$1|g" "$1/systemd/$u" > "$2/$u.new"
+  chmod 644 "$2/$u.new"
+  mv -f "$2/$u.new" "$2/$u"
+done
+systemctl daemon-reload
+systemctl enable --now smart-gateway-backup.timer smart-gateway-restore-test.timer
+# A timer that runs already takes a changed schedule only after a restart.
+systemctl restart smart-gateway-backup.timer smart-gateway-restore-test.timer
 EOF
 )
 S_STOP_NEW=$(cat << 'EOF'
@@ -323,7 +342,11 @@ rollback_armed=0
 # Z2M may have rewritten configuration.yaml at its start.
 remote root "$S_PERMS" "$dir" || echo "warning: could not set the modes of the Z2M data folder again" >&2
 
-# --- 6. status ---
+# --- 6. backup timers ---
+step "installing the backup timers (nightly backup 03:30, weekly restore test)"
+remote root "$S_TIMERS" "$dir" "$systemd_dir" || die "could not install the backup timers (the stack is running; check $dir/systemd and $systemd_dir on the Pi)"
+
+# --- 7. status ---
 step "status"
 remote root "$S_STATUS" "$dir" || echo "warning: could not read the container status" >&2
 bridge=$(remote root "$S_BRIDGE" "$dir" "$bridge_topic" 2> /dev/null) || bridge=""
