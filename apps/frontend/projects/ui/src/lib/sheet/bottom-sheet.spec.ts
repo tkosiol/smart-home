@@ -2,6 +2,8 @@ import { BreakpointObserver } from '@angular/cdk/layout';
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MATERIAL_ANIMATIONS } from '@angular/material/core';
+import { NavigationStart, Router } from '@angular/router';
+import { Subject } from 'rxjs';
 import { MEDIUM } from '../adaptive-shell/adaptive-shell';
 import { UiAnnouncer } from '../announcer/announcer';
 import { UiButton } from '../button/button';
@@ -29,9 +31,10 @@ class Content {
   protected readonly ref = inject<UiSheetRef<'saved'>>(UiSheetRef);
 }
 
-function setup(medium: boolean) {
+function setup(medium: boolean, router?: { events: Subject<unknown> }) {
   TestBed.configureTestingModule({
     providers: [
+      ...(router ? [{ provide: Router, useValue: router }] : []),
       { provide: MATERIAL_ANIMATIONS, useValue: { animationsDisabled: true } },
       {
         provide: BreakpointObserver,
@@ -138,5 +141,46 @@ describe('UiBottomSheet', () => {
     const region = document.querySelector('.ui-announcer')!;
     expect(element.contains(region)).toBe(true);
     expect(region.textContent).toBe('Status an Position 2 von 3');
+  });
+
+  it('closes on a navigation and resolves undefined', async () => {
+    const events = new Subject<unknown>();
+    const sheet = setup(false, { events });
+    const result = sheet.open<Content, Data, 'saved'>(Content, { name: 'Status' });
+    await settle();
+    events.next(new NavigationStart(1, '/geraete'));
+    await expect(result).resolves.toBeUndefined();
+    expect(dialog()).toBeNull();
+  });
+
+  it('leaves no router subscription behind once a sheet has closed', async () => {
+    const events = new Subject<unknown>();
+    const sheet = setup(false, { events });
+    for (let round = 0; round < 3; round++) {
+      const result = sheet.open<Content, Data, 'saved'>(Content, { name: 'Status' });
+      await settle();
+      expect(events.observed).toBe(true);
+      buttonNamed('Abbrechen').click();
+      await result;
+      expect(events.observed).toBe(false);
+    }
+  });
+
+  it('returns the pending promise for a second open and stacks no second dialog', async () => {
+    const sheet = setup(false);
+    const first = sheet.open<Content, Data, 'saved'>(Content, { name: 'Status' });
+    const second = sheet.open<Content, Data, 'saved'>(Content, { name: 'Anderes' });
+    expect(second).toBe(first);
+    await settle();
+    expect(sheet.open<Content, Data, 'saved'>(Content, { name: 'Drittes' })).toBe(first);
+    expect(document.querySelectorAll('ui-sheet-host')).toHaveLength(1);
+    expect(document.querySelector('.body')?.textContent).toBe('Status');
+    buttonNamed('Fertig').click();
+    await expect(first).resolves.toBe('saved');
+    const again = sheet.open<Content, Data, 'saved'>(Content, { name: 'Neu' });
+    expect(again).not.toBe(first);
+    await settle();
+    buttonNamed('Abbrechen').click();
+    await expect(again).resolves.toBeUndefined();
   });
 });

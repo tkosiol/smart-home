@@ -40,11 +40,26 @@ async function render(medium: boolean, setup: (host: Host) => void = () => undef
     host: fixture.componentInstance,
     element,
     scroller: element.querySelector<HTMLElement>('.scroller')!,
-    arrows: () => [...element.querySelectorAll<HTMLElement>('.arrows button')],
+    arrows: () => [...element.querySelectorAll<HTMLButtonElement>('.arrows button')],
   };
 }
 
+/** Gives the scroller the geometry jsdom lacks and tells the row about a scroll. */
+function geometry(
+  scroller: HTMLElement,
+  fixture: { detectChanges(): void },
+  values: { scrollWidth: number; clientWidth: number; scrollLeft: number },
+): void {
+  for (const [name, value] of Object.entries(values)) {
+    Object.defineProperty(scroller, name, { value, configurable: true });
+  }
+  scroller.dispatchEvent(new Event('scroll'));
+  fixture.detectChanges();
+}
+
 describe('UiPodRow', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
   it('scrolls horizontally with snapping and no arrows on compact windows', async () => {
     const { element, scroller, arrows } = await render(false);
     expect(scroller).not.toBeNull();
@@ -54,14 +69,14 @@ describe('UiPodRow', () => {
   });
 
   it('offers labelled arrows from medium windows up that page the row', async () => {
-    const { scroller, arrows } = await render(true);
+    const { fixture, scroller, arrows } = await render(true);
+    geometry(scroller, fixture, { scrollWidth: 900, clientWidth: 300, scrollLeft: 300 });
     expect(arrows().map((arrow) => arrow.getAttribute('aria-label'))).toEqual([
       'Zurück blättern',
       'Weiter blättern',
     ]);
     const scrollBy = vi.fn();
     scroller.scrollBy = scrollBy;
-    Object.defineProperty(scroller, 'clientWidth', { value: 300, configurable: true });
     arrows()[1]!.click();
     expect(scrollBy).toHaveBeenCalledWith(expect.objectContaining({ left: 300 }));
     arrows()[0]!.click();
@@ -82,5 +97,44 @@ describe('UiPodRow', () => {
     pod.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
     expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest', inline: 'nearest' });
     expect(scroller.contains(pod)).toBe(true);
+  });
+
+  it('shows no arrows while the row fits', async () => {
+    const { fixture, scroller, arrows } = await render(true);
+    geometry(scroller, fixture, { scrollWidth: 300, clientWidth: 300, scrollLeft: 0 });
+    expect(arrows()).toHaveLength(0);
+  });
+
+  it('disables the arrow at the end the row has reached', async () => {
+    const { fixture, scroller, arrows } = await render(true);
+    const disabled = () => arrows().map((arrow) => arrow.disabled);
+    geometry(scroller, fixture, { scrollWidth: 900, clientWidth: 300, scrollLeft: 0 });
+    expect(disabled()).toEqual([true, false]);
+    geometry(scroller, fixture, { scrollWidth: 900, clientWidth: 300, scrollLeft: 300 });
+    expect(disabled()).toEqual([false, false]);
+    geometry(scroller, fixture, { scrollWidth: 900, clientWidth: 300, scrollLeft: 600 });
+    expect(disabled()).toEqual([false, true]);
+  });
+
+  it('measures again when the row is resized', async () => {
+    let notify: () => void = () => undefined;
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(callback: () => void) {
+          notify = callback;
+        }
+        observe(): void {}
+        disconnect(): void {}
+      },
+    );
+    const { fixture, scroller, arrows } = await render(true);
+    expect(arrows()).toHaveLength(0);
+    for (const [name, value] of Object.entries({ scrollWidth: 900, clientWidth: 300 })) {
+      Object.defineProperty(scroller, name, { value, configurable: true });
+    }
+    notify();
+    fixture.detectChanges();
+    expect(arrows()).toHaveLength(2);
   });
 });

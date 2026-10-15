@@ -24,10 +24,15 @@ import { TranslocoService } from '@jsverse/transloco';
 import { UiAnnouncer } from '../announcer/announcer';
 import { UiIconButton } from '../button/icon-button';
 
-/** A row of `ui-reorder-list`; `label` names its drag handle ("Status verschieben"). */
+/**
+ * A row of `ui-reorder-list`; `label` names its drag handle ("Status verschieben"), `name` the
+ * row itself in the announcement of a move ("Status: Position 2 von 3"). Without a `name` only
+ * the position is announced; the focused handle has just named the row.
+ */
 export interface UiReorderItem {
   readonly id: string;
   readonly label: string;
+  readonly name?: string;
 }
 
 export interface UiReorderRowContext<T> {
@@ -94,14 +99,12 @@ export class UiReorderList<T extends UiReorderItem> {
     this.order.set(list);
     this.reordered.emit(list.map((item) => item.id));
     const moved = list[to]!;
-    void this.announcer.announce(
-      this.transloco.translate('ui.reorderList.moved', {
-        label: moved.label,
-        position: to + 1,
-        count: list.length,
-      }),
-      'polite',
-    );
+    const params = { name: moved.name, position: to + 1, count: list.length };
+    // Literal keys, so the key check finds both texts.
+    const text = moved.name
+      ? this.transloco.translate('ui.reorderList.moved', params)
+      : this.transloco.translate('ui.reorderList.movedUnnamed', params);
+    void this.announcer.announce(text, 'polite');
     // Moving a row moves its DOM node, which drops keyboard focus; put it back on the handle.
     afterNextRender(
       () => {

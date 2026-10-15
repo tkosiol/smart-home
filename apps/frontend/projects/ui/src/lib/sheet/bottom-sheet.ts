@@ -30,8 +30,23 @@ export class UiBottomSheet {
   private readonly document = inject(DOCUMENT);
   private readonly breakpoints = inject(BreakpointObserver);
 
-  /** Resolves with the content's result, or `undefined` when it was closed without one. */
-  async open<C, D, R>(component: Type<C>, data: D): Promise<R | undefined> {
+  private pending: Promise<unknown> | null = null;
+
+  /**
+   * Resolves with the content's result, or `undefined` when it was closed without one. One sheet
+   * at a time: while one is loading or open, another `open()` returns the promise of that sheet
+   * (its `component` and `data` are ignored) and stacks no second dialog.
+   */
+  open<C, D, R>(component: Type<C>, data: D): Promise<R | undefined> {
+    if (this.pending) return this.pending as Promise<R | undefined>;
+    const sheet = this.show<C, D, R>(component, data);
+    const done = () => (this.pending = null);
+    this.pending = sheet;
+    sheet.then(done, done);
+    return sheet;
+  }
+
+  private async show<C, D, R>(component: Type<C>, data: D): Promise<R | undefined> {
     const { UiSheetHost } = await import('./sheet-host');
     const presentation: UiSheetPresentation = this.breakpoints.isMatched(MEDIUM)
       ? 'dialog'

@@ -43,4 +43,21 @@ describe('UiAnnouncer', () => {
       vi.useRealTimers();
     }
   });
+
+  it('resolves a superseded announcement as well', async () => {
+    vi.useFakeTimers();
+    try {
+      const announcer = TestBed.inject(UiAnnouncer);
+      let firstDone = false;
+      void announcer.announce('Eins').then(() => (firstDone = true));
+      const second = announcer.announce('Zwei');
+      await Promise.resolve();
+      expect(firstDone).toBe(true);
+      vi.advanceTimersByTime(100);
+      await second;
+      expect(region()?.textContent).toBe('Zwei');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

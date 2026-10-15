@@ -2,11 +2,14 @@ import { BreakpointObserver } from '@angular/cdk/layout';
 import {
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
   ElementRef,
+  afterNextRender,
   booleanAttribute,
   computed,
   inject,
   input,
+  signal,
   viewChild,
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
@@ -20,8 +23,9 @@ const REDUCED_MOTION = '(prefers-reduced-motion: reduce)';
 
 /**
  * A row of `ui-device-pod`s (spec 3.1): scrolls sideways with snapping, each pod is reached with
- * Tab and scrolls into view when focused; from medium windows up two arrows page the row. With
- * `wrap` the pods wrap instead (the devices block, medium windows).
+ * Tab and scrolls into view when focused; from medium windows up two arrows page the row, shown
+ * only while the row really scrolls and disabled at the end it has reached. With `wrap` the pods
+ * wrap instead (the devices block, medium windows).
  */
 @Component({
   selector: 'ui-pod-row',
@@ -45,7 +49,46 @@ export class UiPodRow {
     { initialValue: false },
   );
 
-  protected readonly arrows = computed(() => this.medium() && !this.wrap());
+  private readonly overflowing = signal(false);
+  protected readonly atStart = signal(true);
+  protected readonly atEnd = signal(true);
+
+  protected readonly arrows = computed(() => this.medium() && !this.wrap() && this.overflowing());
+
+  constructor() {
+    const destroyRef = inject(DestroyRef);
+    afterNextRender(() => {
+      this.measure();
+      if (typeof ResizeObserver === 'undefined') return;
+      // The row's own box changes with the window; its pods change its content width.
+      const scroller = this.scroller().nativeElement;
+      const resize = new ResizeObserver(() => this.measure());
+      const observeAll = () => {
+        resize.disconnect();
+        resize.observe(scroller);
+        for (const pod of Array.from(scroller.children)) resize.observe(pod);
+      };
+      observeAll();
+      const mutation = new MutationObserver(() => {
+        observeAll();
+        this.measure();
+      });
+      mutation.observe(scroller, { childList: true });
+      destroyRef.onDestroy(() => {
+        resize.disconnect();
+        mutation.disconnect();
+      });
+    });
+  }
+
+  /** Reads the scroll position and whether the pods overflow the row. */
+  protected measure(): void {
+    const { scrollWidth, clientWidth, scrollLeft } = this.scroller().nativeElement;
+    this.overflowing.set(scrollWidth > clientWidth);
+    // `scrollLeft` is negative in right-to-left writing; one pixel of slack for fractions.
+    this.atStart.set(Math.abs(scrollLeft) < 1);
+    this.atEnd.set(Math.abs(scrollLeft) + clientWidth >= scrollWidth - 1);
+  }
 
   protected page(direction: -1 | 1): void {
     const scroller = this.scroller().nativeElement;

@@ -34,6 +34,11 @@ html:has(dialog:modal) {
   overflow: hidden;
 }
 
+// Keeps the room of the desktop scrollbar, so the page does not shift when the scroll lock hides it.
+html {
+  scrollbar-gutter: stable;
+}
+
 // Keeps a focused control scrolled into view clear of the fixed bottom bar (WCAG 2.4.11).
 :root:has(ui-adaptive-shell[data-window-class='compact']) {
   scroll-padding-bottom: var(--smart-size-nav-bar);

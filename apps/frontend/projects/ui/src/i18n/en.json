@@ -84,7 +84,8 @@
       "next": "Scroll forward"
     },
     "reorderList": {
-      "moved": "{{label}} at position {{position}} of {{count}}"
+      "moved": "{{name}}: position {{position}} of {{count}}",
+      "movedUnnamed": "Position {{position}} of {{count}}"
     }
   }
 }

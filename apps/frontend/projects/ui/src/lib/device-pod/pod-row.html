@@ -1,4 +1,4 @@
-<div #scroller class="scroller" (focusin)="bringIntoView($event)">
+<div #scroller class="scroller" (focusin)="bringIntoView($event)" (scroll)="measure()">
   <ng-content />
 </div>
 @if (arrows()) {
@@ -7,12 +7,14 @@
       variant="tonal"
       icon="chevron_left"
       [label]="'ui.podRow.previous' | transloco"
+      [disabled]="atStart()"
       (pressed)="page(-1)"
     />
     <ui-icon-button
       variant="tonal"
       icon="chevron_right"
       [label]="'ui.podRow.next' | transloco"
+      [disabled]="atEnd()"
       (pressed)="page(1)"
     />
   </div>

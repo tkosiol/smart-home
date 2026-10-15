@@ -11,6 +11,7 @@ import {
   viewChild,
   type Type,
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NavigationStart, Router } from '@angular/router';
 import { filter } from 'rxjs';
 import type { UiSheetPresentation } from './sheet-ref';
@@ -42,7 +43,10 @@ export class UiSheetHost {
   constructor() {
     afterNextRender(() => this.show());
     inject(Router, { optional: true })
-      ?.events.pipe(filter((event) => event instanceof NavigationStart))
+      ?.events.pipe(
+        filter((event) => event instanceof NavigationStart),
+        takeUntilDestroyed(),
+      )
       .subscribe(() => this.close());
     inject(DestroyRef).onDestroy(() => this.close());
   }

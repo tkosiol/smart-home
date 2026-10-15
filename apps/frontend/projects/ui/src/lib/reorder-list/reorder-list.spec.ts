@@ -6,22 +6,22 @@ import { provideUiTranslocoTesting } from '../testing/i18n-testing';
 import { UiReorderList, UiReorderRow, type UiReorderItem } from './reorder-list';
 
 interface Block extends UiReorderItem {
-  readonly name: string;
+  readonly title: string;
 }
 
 @Component({
   imports: [UiReorderList, UiReorderRow],
   template: `<ui-reorder-list [items]="items()" (reordered)="orders.update((o) => [...o, $event])">
     <ng-template [uiReorderRow]="items()" let-block>
-      <span class="name">{{ block.name }}</span>
+      <span class="name">{{ block.title }}</span>
     </ng-template>
   </ui-reorder-list>`,
 })
 class Host {
   readonly items = signal<readonly Block[]>([
-    { id: 'status', label: 'Status verschieben', name: 'Status' },
-    { id: 'devices', label: 'Geräte verschieben', name: 'Geräte' },
-    { id: 'gateway', label: 'Gateway verschieben', name: 'Gateway' },
+    { id: 'status', label: 'Status verschieben', name: 'Status', title: 'Status' },
+    { id: 'devices', label: 'Geräte verschieben', name: 'Geräte', title: 'Geräte' },
+    { id: 'gateway', label: 'Gateway verschieben', title: 'Gateway' },
   ]);
   readonly orders = signal<string[][]>([]);
 }
@@ -73,7 +73,7 @@ describe('UiReorderList', () => {
     expect(names()).toEqual(['Geräte', 'Status', 'Gateway']);
     expect(host.orders()).toEqual([['devices', 'status', 'gateway']]);
     expect(document.activeElement).toBe(status);
-    expect(announce).toHaveBeenCalledWith('Status verschieben an Position 2 von 3', 'polite');
+    expect(announce).toHaveBeenCalledWith('Status: Position 2 von 3', 'polite');
     press(status, 'ArrowUp');
     expect(names()).toEqual(['Status', 'Geräte', 'Gateway']);
     expect(host.orders()).toEqual([
@@ -102,6 +102,13 @@ describe('UiReorderList', () => {
   it('announces moves in English', async () => {
     const { handles, press, announce } = await render('en');
     press(handles()[1]!, 'ArrowDown');
-    expect(announce).toHaveBeenCalledWith('Geräte verschieben at position 3 of 3', 'polite');
+    expect(announce).toHaveBeenCalledWith('Geräte: position 3 of 3', 'polite');
+  });
+
+  it('announces only the position of an item without a name', async () => {
+    const { handles, press, announce } = await render();
+    const gateway = handles()[2]!;
+    press(gateway, 'ArrowUp');
+    expect(announce).toHaveBeenCalledWith('Position 2 von 3', 'polite');
   });
 });

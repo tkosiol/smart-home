@@ -19,6 +19,7 @@ export class UiAnnouncer {
   private readonly document = inject(DOCUMENT);
   private region: HTMLElement | null = null;
   private timer: ReturnType<typeof setTimeout> | undefined;
+  private settle: (() => void) | undefined;
 
   announce(message: string, politeness: 'polite' | 'assertive' = 'polite'): Promise<void> {
     const region = (this.region ??= this.createRegion());
@@ -26,10 +27,14 @@ export class UiAnnouncer {
     if (region.parentElement !== host) host.appendChild(region);
     region.setAttribute('aria-live', politeness);
     region.textContent = '';
+    // A superseded announcement still resolves (as CDK's did); only its text is dropped.
     clearTimeout(this.timer);
+    this.settle?.();
     return new Promise((resolve) => {
+      this.settle = resolve;
       this.timer = setTimeout(() => {
         region.textContent = message;
+        this.settle = undefined;
         resolve();
       }, ANNOUNCE_DELAY_MS);
     });

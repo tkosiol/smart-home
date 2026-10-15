@@ -11,7 +11,6 @@
   border: 0;
   background: transparent;
   color: var(--mat-sys-on-surface);
-  overscroll-behavior: contain;
 }
 
 .dialog::backdrop {
@@ -22,6 +21,7 @@
   box-sizing: border-box;
   max-height: inherit;
   overflow: auto;
+  overscroll-behavior: contain;
   background: var(--mat-sys-surface-container-low);
   box-shadow: var(--mat-sys-level1);
 }
