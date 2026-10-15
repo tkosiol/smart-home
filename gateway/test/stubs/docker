@@ -72,6 +72,12 @@ case "$*" in
       *" ps"*) printf 'NAME  STATUS\nmosquitto  Up (healthy)\nzigbee2mqtt  Up\n' ;;
     esac ;;
   "inspect -f "*)
+    # Like the real docker: RestartCount is a top-level field; .State.RestartCount is a template error (exit 1).
+    case "$*" in
+      *.State.RestartCount*)
+        echo 'template parsing error: map has no entry for key "RestartCount"' >&2
+        exit 1 ;;
+    esac
     case "$*" in
       *RestartPolicy*)
         [ "${STUB_INSPECT_FAIL:-0}" = 1 ] && exit 1

@@ -26,7 +26,7 @@ marker=$(date -u +%Y-%m-%dT%H:%M:%S)
 baseline=-1
 z2m_id=$(probe_compose ps -q zigbee2mqtt 2> /dev/null)
 if [ -n "$z2m_id" ]; then
-  baseline=$(timeout -k 5 20 docker inspect -f '{{.State.RestartCount}}' "$z2m_id" 2> /dev/null) || baseline=-1
+  baseline=$(timeout -k 5 20 docker inspect -f '{{.RestartCount}}' "$z2m_id" 2> /dev/null) || baseline=-1
 fi
 
 # Mosquitto is always recreated: the rendered configuration and the entry point are single-file bind mounts.
@@ -40,7 +40,7 @@ probe() {
   z=$(probe_compose ps -q zigbee2mqtt 2> /dev/null)
   m=$(probe_compose ps -q mosquitto 2> /dev/null)
   if [ -z "$z" ] || [ -z "$m" ]; then reason="a container is missing"; previous=""; return 1; fi
-  info=$(timeout -k 5 20 docker inspect -f '{{.State.Running}} {{.State.RestartCount}} {{.State.StartedAt}}' "$z" 2> /dev/null) || info=""
+  info=$(timeout -k 5 20 docker inspect -f '{{.State.Running}} {{.RestartCount}} {{.State.StartedAt}}' "$z" 2> /dev/null) || info=""
   read -r running restarts started <<< "$info"
   if [ "$running" != true ]; then reason="the zigbee2mqtt container is not running"; previous=""; return 1; fi
   if [[ "$started" < "$marker" ]] && [ "$restarts" != "$baseline" ]; then
