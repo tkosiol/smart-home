@@ -34,6 +34,9 @@ const discovered = (page: Page) =>
 /** The card of one hardware or device with this heading, inside `scope` (the whole page by default). */
 const card = (page: Page, name: string, scope: Locator = page.locator('body')) =>
   scope.locator('ui-card').filter({ has: page.getByRole('heading', { name, exact: true }) });
+/** The pod of a device on the overview: a link named by its value, name and side value. */
+const pod = (page: Page, name: string) =>
+  page.locator('app-devices-block ui-device-pod').filter({ hasText: name });
 
 /** The "Messwerte" section of the device page. */
 const readingsOf = (page: Page) =>
@@ -125,10 +128,12 @@ test.describe.serial('devices from the simulator', () => {
 
     await page.goto('/');
     await expect(heading(page, 'Übersicht')).toBeVisible();
-    const overview = card(page, 'Pflanze 1');
+    const overview = pod(page, 'Pflanze 1');
     await expect(overview).toBeVisible();
-    await expect(overview).toContainText(/Bodenfeuchte:\s*\d/);
-    await expect(overview).toContainText(/Batterie:\s*\d/);
+    // The soil moisture is the value of the pod, in front of the name.
+    await expect(overview).toContainText(/\d+(,\d)?\s*%\s*Pflanze 1/);
+    await overview.getByRole('link').click();
+    await expect(page).toHaveURL(/\/geraete\/[0-9a-f-]+$/);
   });
 
   test('a member of the household sees the device but not "Neu erkannt"', async ({ browser }) => {
@@ -142,7 +147,7 @@ test.describe.serial('devices from the simulator', () => {
       await page.getByRole('textbox', { name: 'Dein Name' }).fill(MEMBER.name);
       await page.getByRole('button', { name: 'Annehmen' }).click();
       await expect(heading(page, 'Übersicht')).toBeVisible();
-      await expect(card(page, 'Pflanze 1')).toBeVisible();
+      await expect(pod(page, 'Pflanze 1')).toBeVisible();
 
       await page
         .getByRole('navigation', { name: 'Hauptnavigation' })

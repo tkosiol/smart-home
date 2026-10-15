@@ -44,6 +44,7 @@ export const ICON_CODEPOINTS = {
   settings: 0xe8b8,
   swap_horiz: 0xe8d4,
   thermostat: 0xf076,
+  tune: 0xe429,
   warning: 0xe002,
   water_drop: 0xe798,
   wifi_off: 0xe648,

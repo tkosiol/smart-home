@@ -56,5 +56,8 @@
       "name": "Name",
       "submit": "Save"
     }
+  },
+  "block": {
+    "title": "Devices"
   }
 }

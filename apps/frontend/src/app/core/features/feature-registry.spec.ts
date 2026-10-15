@@ -1,27 +1,17 @@
-import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import {
+  TopBarActions,
   injectMoreEntries,
-  injectOverviewCards,
-  isCardLoader,
   provideFeature,
-  resolveOverviewCards,
   visibleMoreEntries,
-  type MoreEntry,
   type FeatureDefinition,
+  type MoreEntry,
+  type TopBarAction,
 } from './feature-registry';
-
-@Component({ selector: 'app-card-a', template: '' })
-class CardA {}
-@Component({ selector: 'app-card-b', template: '' })
-class CardB {}
 
 function setup(...features: FeatureDefinition[]) {
   TestBed.configureTestingModule({ providers: features.map((f) => provideFeature(f)) });
-  return TestBed.runInInjectionContext(() => ({
-    entries: injectMoreEntries(),
-    cards: injectOverviewCards(),
-  }));
+  return TestBed.runInInjectionContext(() => ({ entries: injectMoreEntries() }));
 }
 
 describe('feature registry', () => {
@@ -44,30 +34,37 @@ describe('feature registry', () => {
     expect(entries.map((e) => e.id)).toEqual(['modules', 'gateways', 'settings']);
   });
 
-  it('collects the overview cards of all features', () => {
-    const { cards } = setup({ overviewCards: [CardA] }, { overviewCards: [CardB] });
-    expect(cards).toEqual([CardA, CardB]);
-  });
-
-  it('keeps loader functions next to components', async () => {
-    const loader = () => Promise.resolve(CardB);
-    const { cards } = setup({ overviewCards: [CardA, loader] });
-    expect(cards).toEqual([CardA, loader]);
-    expect(isCardLoader(CardA)).toBe(false);
-    expect(isCardLoader(loader)).toBe(true);
-    expect(isCardLoader(async () => CardB)).toBe(true);
-    expect(await resolveOverviewCards([CardA, loader])).toEqual([CardA, CardB]);
-  });
-
-  it('drops only the card whose loader fails', async () => {
-    const failing = () => Promise.reject(new Error('chunk lost'));
-    expect(await resolveOverviewCards([failing, CardA, failing, CardB])).toEqual([CardA, CardB]);
-  });
-
   it('is empty without features and ignores features without entries', () => {
-    expect(setup()).toEqual({ entries: [], cards: [] });
+    expect(setup()).toEqual({ entries: [] });
     TestBed.resetTestingModule();
-    expect(setup({})).toEqual({ entries: [], cards: [] });
+    expect(setup({})).toEqual({ entries: [] });
+  });
+});
+
+describe('top bar action', () => {
+  const action = (id: string): TopBarAction => ({
+    id,
+    icon: 'settings',
+    labelKey: `app.${id}`,
+    run: () => undefined,
+  });
+
+  it('shows an action and takes it away again', () => {
+    const bar = TestBed.inject(TopBarActions);
+    expect(bar.action()).toBeNull();
+    const remove = bar.show(action('customise'));
+    expect(bar.action()?.id).toBe('customise');
+    remove();
+    expect(bar.action()).toBeNull();
+  });
+
+  it('lets the next page replace the action, and the old remover leaves the new one alone', () => {
+    const bar = TestBed.inject(TopBarActions);
+    const removeFirst = bar.show(action('first'));
+    const second = action('second');
+    bar.show(second);
+    removeFirst();
+    expect(bar.action()).toBe(second);
   });
 });
 

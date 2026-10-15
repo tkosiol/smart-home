@@ -56,5 +56,8 @@
       "name": "Name",
       "submit": "Speichern"
     }
+  },
+  "block": {
+    "title": "Geräte"
   }
 }

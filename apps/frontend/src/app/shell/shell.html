@@ -1,6 +1,15 @@
 <ui-adaptive-shell [destinations]="destinations()" [navigationLabel]="'app.nav.label' | transloco">
   <header uiShellTopBar>
     <ui-top-app-bar [heading]="householdName()">
+      @if (pageAction(); as action) {
+        <ui-icon-button
+          uiTopAppBarActions
+          variant="tonal"
+          [icon]="action.icon"
+          [label]="action.labelKey | transloco"
+          (pressed)="action.run()"
+        />
+      }
       @if (canSwitchHousehold()) {
         <ui-icon-button
           uiTopAppBarActions

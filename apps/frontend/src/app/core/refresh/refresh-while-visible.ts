@@ -1,6 +1,6 @@
 import { DOCUMENT } from '@angular/common';
 import { DestroyRef, inject } from '@angular/core';
-import { ApiError } from '../../core/api';
+import { ApiError } from '../api';
 
 /** How often shown values are fetched again while the page is in view. */
 export const REFRESH_MS = 60_000;

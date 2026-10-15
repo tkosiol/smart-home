@@ -38,5 +38,9 @@
     "certificateError": "Please paste the certificate (at most 20,000 characters).",
     "privateKeyError": "This looks like a private key and was not sent. Only the certificate (the public part) belongs here; the key stays on the gateway.",
     "submit": "Register gateway"
+  },
+  "block": {
+    "title": "Gateways",
+    "empty": "No gateway registered yet."
   }
 }

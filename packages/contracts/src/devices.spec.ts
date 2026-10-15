@@ -147,6 +147,7 @@ describe('deviceSchema', () => {
     lastSeenAt: '2026-10-14T08:00:00.000Z',
     state: { state: 'ON', brightness: 200 },
     capabilities: [lampState, brightness],
+    kind: 'light' as const,
     thresholds: {},
     effectiveThresholds: {
       soilMoistureMin: null,
@@ -182,6 +183,11 @@ describe('deviceSchema', () => {
       capabilities: [],
     });
     expect(parsed.success).toBe(true);
+  });
+
+  it('requires the kind the server computed and rejects an unknown one', () => {
+    expect(deviceSchema.safeParse({ ...device, kind: undefined }).success).toBe(false);
+    expect(deviceSchema.safeParse({ ...device, kind: 'toaster' }).success).toBe(false);
   });
 
   it('requires the own and the effective thresholds', () => {

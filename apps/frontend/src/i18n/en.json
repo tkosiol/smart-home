@@ -25,6 +25,103 @@
       "gateways": "Gateways",
       "notFound": "Not found"
     },
+    "overview": {
+      "customize": "Customise overview",
+      "move": "Move {{ name }}",
+      "blocks": {
+        "status": {
+          "label": "Status",
+          "description": "Notices that need your attention, or the calm row."
+        },
+        "devices": {
+          "label": "Devices",
+          "description": "All devices with their current value."
+        },
+        "gateway": {
+          "label": "Gateway",
+          "description": "Status and last message of your gateways."
+        }
+      }
+    },
+    "attention": {
+      "heading": "Needs attention",
+      "severity": {
+        "critical": "Critical"
+      },
+      "more": {
+        "one": "1 more group",
+        "other": "{{ n }} more groups"
+      },
+      "calm": {
+        "noDevices": "No devices yet",
+        "detail": "Gateway online · {{ count }} devices · {{ time }}",
+        "detailOne": "Gateway online · 1 device · {{ time }}",
+        "detailNoTime": "Gateway online · {{ count }} devices",
+        "detailOneNoTime": "Gateway online · 1 device"
+      },
+      "announce": {
+        "critical": "Critical: {{ title }}",
+        "criticalMany": "{{ count }} new critical notices",
+        "changed": "Notices updated: {{ count }} open",
+        "none": "No open notices"
+      },
+      "subtitle": {
+        "devices": "{{ count }} devices unreachable",
+        "devicesOne": "1 device unreachable"
+      },
+      "kind": {
+        "gateway_offline": {
+          "one": "Gateway {{ name }} is offline",
+          "many": "{{ count }} gateways are offline"
+        },
+        "device_silent": {
+          "one": "{{ name }} is not reporting",
+          "many": "{{ count }} devices are not reporting"
+        },
+        "soil_dry": {
+          "one": "{{ name }} is too dry",
+          "many": "{{ count }} plants too dry"
+        },
+        "soil_wet": {
+          "one": "{{ name }} is too wet",
+          "many": "{{ count }} plants too wet"
+        },
+        "battery_low": {
+          "one": "{{ name }}: battery low",
+          "many": "{{ count }} devices: battery low"
+        },
+        "contact_open": {
+          "one": "{{ name }} is open",
+          "many": "{{ count }} contacts are open"
+        },
+        "hardware_new": {
+          "one": "New device found: {{ name }}",
+          "many": "{{ count }} new devices found"
+        },
+        "cert_expiring": {
+          "one": "Certificate of {{ name }} expires soon",
+          "expired": "Certificate of {{ name }} has expired",
+          "crl": "Revocation list expires soon",
+          "crlExpired": "Revocation list has expired",
+          "many": "{{ count }} certificates expire soon"
+        },
+        "unknown": {
+          "one": "{{ name }}",
+          "many": "{{ count }} notices"
+        }
+      }
+    },
+    "devices": {
+      "pod": {
+        "on": "On",
+        "off": "Off",
+        "dry": "dry",
+        "wet": "wet",
+        "ok": "OK",
+        "offline": "Offline",
+        "lowBattery": "Battery"
+      }
+    },
     "household": {
       "switch": "Switch household",
       "saved": "Saved."

@@ -46,6 +46,10 @@ export const hardwareSchema = z.object({
 });
 export type Hardware = z.infer<typeof hardwareSchema>;
 
+export const DEVICE_KINDS = ['light', 'soil', 'climate', 'contact', 'other'] as const;
+export type DeviceKind = (typeof DEVICE_KINDS)[number];
+export const deviceKindSchema = z.enum(DEVICE_KINDS);
+
 /** A household's named device on top of a piece of hardware. */
 export const deviceSchema = z.object({
   id: z.string(),
@@ -63,6 +67,11 @@ export const deviceSchema = z.object({
   state: z.record(z.string(), z.unknown()),
   /** Readable capabilities without settings. */
   capabilities: z.array(capabilitySchema),
+  /**
+   * What sort of device this is, computed by the server from all its capabilities (also those
+   * that are only written, like a lamp's switch); clients never derive it.
+   */
+  kind: deviceKindSchema,
   /** The thresholds set on this device; a missing field uses the kind's default. */
   thresholds: thresholdsSchema,
   /** The thresholds in force: the device's own value, else the default of its kind. */
@@ -117,9 +126,6 @@ export function primaryCapability(capabilities: readonly Capability[]): Capabili
 export function isLowBattery(percent: unknown): boolean {
   return typeof percent === 'number' && Number.isFinite(percent) && percent < LOW_BATTERY_PERCENT;
 }
-
-export const DEVICE_KINDS = ['light', 'soil', 'climate', 'contact', 'other'] as const;
-export type DeviceKind = (typeof DEVICE_KINDS)[number];
 
 /**
  * light: writable `state` or `brightness`; soil: `soil_moisture`; climate: `temperature`/`humidity`

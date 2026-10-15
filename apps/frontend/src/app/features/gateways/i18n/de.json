@@ -38,5 +38,9 @@
     "certificateError": "Bitte füge das Zertifikat ein (höchstens 20.000 Zeichen).",
     "privateKeyError": "Das sieht nach einem privaten Schlüssel aus und wurde nicht gesendet. Hier gehört nur das Zertifikat (der öffentliche Teil) hinein; der Schlüssel bleibt auf dem Gateway.",
     "submit": "Gateway registrieren"
+  },
+  "block": {
+    "title": "Gateways",
+    "empty": "Noch kein Gateway registriert."
   }
 }

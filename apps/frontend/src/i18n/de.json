@@ -25,6 +25,103 @@
       "gateways": "Gateways",
       "notFound": "Nicht gefunden"
     },
+    "overview": {
+      "customize": "Übersicht anpassen",
+      "move": "{{ name }} verschieben",
+      "blocks": {
+        "status": {
+          "label": "Status",
+          "description": "Hinweise, die deine Aufmerksamkeit brauchen, oder die Ruhezeile."
+        },
+        "devices": {
+          "label": "Geräte",
+          "description": "Alle Geräte mit ihrem aktuellen Wert."
+        },
+        "gateway": {
+          "label": "Gateway",
+          "description": "Status und letzte Meldung deiner Gateways."
+        }
+      }
+    },
+    "attention": {
+      "heading": "Braucht Aufmerksamkeit",
+      "severity": {
+        "critical": "Kritisch"
+      },
+      "more": {
+        "one": "1 weitere Gruppe",
+        "other": "{{ n }} weitere Gruppen"
+      },
+      "calm": {
+        "noDevices": "Noch keine Geräte",
+        "detail": "Gateway online · {{ count }} Geräte · {{ time }}",
+        "detailOne": "Gateway online · 1 Gerät · {{ time }}",
+        "detailNoTime": "Gateway online · {{ count }} Geräte",
+        "detailOneNoTime": "Gateway online · 1 Gerät"
+      },
+      "announce": {
+        "critical": "Kritisch: {{ title }}",
+        "criticalMany": "{{ count }} neue kritische Hinweise",
+        "changed": "Hinweise aktualisiert: {{ count }} offen",
+        "none": "Keine offenen Hinweise"
+      },
+      "subtitle": {
+        "devices": "{{ count }} Geräte nicht erreichbar",
+        "devicesOne": "1 Gerät nicht erreichbar"
+      },
+      "kind": {
+        "gateway_offline": {
+          "one": "Gateway {{ name }} ist offline",
+          "many": "{{ count }} Gateways sind offline"
+        },
+        "device_silent": {
+          "one": "{{ name }} meldet sich nicht",
+          "many": "{{ count }} Geräte melden sich nicht"
+        },
+        "soil_dry": {
+          "one": "{{ name }} ist zu trocken",
+          "many": "{{ count }} Pflanzen zu trocken"
+        },
+        "soil_wet": {
+          "one": "{{ name }} ist zu nass",
+          "many": "{{ count }} Pflanzen zu nass"
+        },
+        "battery_low": {
+          "one": "{{ name }}: Batterie schwach",
+          "many": "{{ count }} Geräte: Batterie schwach"
+        },
+        "contact_open": {
+          "one": "{{ name }} ist offen",
+          "many": "{{ count }} Kontakte sind offen"
+        },
+        "hardware_new": {
+          "one": "Neues Gerät erkannt: {{ name }}",
+          "many": "{{ count }} neue Geräte erkannt"
+        },
+        "cert_expiring": {
+          "one": "Zertifikat von {{ name }} läuft bald ab",
+          "expired": "Zertifikat von {{ name }} ist abgelaufen",
+          "crl": "Sperrliste läuft bald ab",
+          "crlExpired": "Sperrliste ist abgelaufen",
+          "many": "{{ count }} Zertifikate laufen bald ab"
+        },
+        "unknown": {
+          "one": "{{ name }}",
+          "many": "{{ count }} Hinweise"
+        }
+      }
+    },
+    "devices": {
+      "pod": {
+        "on": "An",
+        "off": "Aus",
+        "dry": "trocken",
+        "wet": "nass",
+        "ok": "OK",
+        "offline": "Offline",
+        "lowBattery": "Batterie"
+      }
+    },
     "household": {
       "switch": "Haushalt wechseln",
       "saved": "Gespeichert."

@@ -38,6 +38,7 @@ export const toDevice = (view: DeviceView): Device => ({
   lastSeenAt: iso(view.lastSeenAt),
   state: view.state,
   capabilities: view.capabilities,
+  kind: view.kind,
   thresholds: view.thresholds,
   effectiveThresholds: effectiveThresholds(view.kind, view.thresholds),
 });

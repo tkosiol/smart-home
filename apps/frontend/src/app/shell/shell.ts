@@ -23,6 +23,7 @@ import {
   type UiNavDestination,
 } from '@smart/ui/shell';
 import { AuthService } from '../core/auth';
+import { TopBarActions } from '../core/features';
 import { HouseholdContext } from '../core/household';
 import { AppUpdates, OnlineStatus } from '../core/pwa';
 import { MAIN_DESTINATIONS } from './navigation';
@@ -55,6 +56,9 @@ export class Shell {
   private readonly auth = inject(AuthService);
   private readonly updates = inject(AppUpdates);
   private readonly household = inject(HouseholdContext);
+
+  /** What the page being shown adds to the top bar (the overview's "customise" icon). */
+  protected readonly pageAction = inject(TopBarActions).action;
 
   protected readonly householdName = computed(() => this.household.current()?.name ?? '');
   protected readonly canSwitchHousehold = computed(() => this.household.households().length > 1);

@@ -11,5 +11,16 @@ export default defineConfig({
     locale: 'de-DE',
     trace: 'retain-on-failure',
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  projects: [
+    { name: 'chromium', testIgnore: /overview\.spec\.ts/, use: { ...devices['Desktop Chrome'] } },
+    {
+      // Reads what `devices.spec.ts` leaves behind (the simulator's gateway and its hardware in the
+      // household of `theme`) and changes that person's overview layout, so it runs afterwards and
+      // alone: specs in parallel never change the same household or the same person's settings.
+      name: 'overview',
+      testMatch: /overview\.spec\.ts/,
+      dependencies: ['chromium'],
+      use: { ...devices['Desktop Chrome'] },
+    },
+  ],
 });

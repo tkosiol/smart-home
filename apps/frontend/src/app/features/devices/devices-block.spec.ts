@@ -2,7 +2,7 @@ import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import type { Language, Me } from '@smart/contracts';
 import { UiClock } from '@smart/ui';
-import { injectOverviewCards, resolveOverviewCards } from '../../core/features';
+import { injectOverviewBlocks, resolveOverviewBlocks } from '../../core/overview-blocks';
 import { householdOf, meWith } from '../../testing/auth-testing';
 import {
   flush,
@@ -11,15 +11,15 @@ import {
   type OpenedHouseholdPage,
 } from '../../testing/household-page-testing';
 import { device, devicesServer } from './devices-testing';
-import { DevicesOverview } from './devices-overview';
+import { DevicesBlock } from './devices-block';
 import { provideDevicesFeature } from './devices-feature';
 
 const home = householdOf('Home', { role: 'viewer' });
 
 @Component({
   selector: 'app-overview-host',
-  imports: [DevicesOverview],
-  template: '<h1>Übersicht</h1><app-devices-overview />',
+  imports: [DevicesBlock],
+  template: '<h1>Übersicht</h1><app-devices-block />',
 })
 class Host {}
 
@@ -39,7 +39,7 @@ function open(
   });
 }
 
-/** The overview card's texts load lazily: waits until the page shows `text`. */
+/** The block's texts load lazily: waits until the page shows `text`. */
 async function shown(page: OpenedHouseholdPage, text: string) {
   await vi.waitFor(async () => {
     await flush(page, 1);
@@ -47,27 +47,44 @@ async function shown(page: OpenedHouseholdPage, text: string) {
   });
 }
 
-describe('devices overview card', () => {
+describe('devices overview block', () => {
   afterEach(() => document.documentElement.setAttribute('lang', 'de'));
 
-  it('registers a loader, not the component, so the card stays out of the initial bundle', async () => {
+  it('registers a loader, not the component, so the block stays out of the initial bundle', async () => {
     TestBed.configureTestingModule({ providers: [provideDevicesFeature()] });
-    const registered = TestBed.runInInjectionContext(() => injectOverviewCards());
+    const registered = TestBed.runInInjectionContext(() => injectOverviewBlocks());
     expect(registered).toHaveLength(1);
-    expect(typeof registered[0]).toBe('function');
-    expect(registered[0]).not.toBe(DevicesOverview);
-    expect(await resolveOverviewCards(registered)).toEqual([DevicesOverview]);
+    expect(registered[0]).toMatchObject({
+      id: 'devices',
+      icon: 'devices',
+      defaultVisible: true,
+      labelKey: 'app.overview.blocks.devices.label',
+      descriptionKey: 'app.overview.blocks.devices.description',
+    });
+    expect(typeof registered[0]?.component).toBe('function');
+    expect(registered[0]?.component).not.toBe(DevicesBlock);
+    const resolved = await resolveOverviewBlocks(registered);
+    expect(resolved.map((entry) => entry.component)).toEqual([DevicesBlock]);
   });
 
-  it('shows one card per device with its main value and battery', async () => {
+  it('shows one pod per device, a link to its page, with the kind the server computed', async () => {
     const page = await open();
-    await shown(page, 'Bodenfeuchte: 41,3 %');
-    const cards = [...page.element.querySelectorAll('app-device-card')] as HTMLElement[];
-    expect(cards).toHaveLength(2);
-    expect(pageText(cards[0]!)).toContain('Basilikum');
-    expect(pageText(cards[0]!)).toContain('Bodenfeuchte: 41,3 %');
-    expect(pageText(cards[0]!)).toContain('Batterie: 87 %');
-    expect(pageText(cards[1]!)).toContain('Minze');
+    await shown(page, 'Basilikum');
+    await shown(page, 'OK');
+    const pods = [...page.element.querySelectorAll('ui-device-pod')] as HTMLElement[];
+    expect(pods).toHaveLength(2);
+    expect(pageText(pods[0]!)).toContain('41,3');
+    expect(pageText(pods[0]!)).toContain('Basilikum');
+    expect(pageText(pods[0]!)).toContain('OK');
+    expect(pods[0]!.querySelector('a')?.getAttribute('href')).toBe('/geraete/dev-1');
+    expect(pageText(pods[1]!)).toContain('Minze');
+    expect(page.element.querySelector('h2')?.textContent?.trim()).toBe('Geräte');
+  });
+
+  it('puts the pods in a wrapping row', async () => {
+    const page = await open();
+    await shown(page, 'Basilikum');
+    expect(page.element.querySelector('ui-pod-row')?.hasAttribute('data-wrap')).toBe(true);
   });
 
   it('explains an empty household and leads to the devices page', async () => {
@@ -79,9 +96,9 @@ describe('devices overview card', () => {
     expect(link?.textContent?.trim()).toBe('Zu den Geräten');
   });
 
-  it('has no link to the devices page when there are devices', async () => {
+  it('has no empty state when there are devices', async () => {
     const page = await open();
-    await shown(page, 'Bodenfeuchte: 41,3 %');
+    await shown(page, 'Basilikum');
     expect(page.element.querySelector('ui-empty-state')).toBeNull();
   });
 
@@ -95,7 +112,8 @@ describe('devices overview card', () => {
   });
 
   it('speaks English', async () => {
-    const page = await open(undefined, 'en');
-    await shown(page, 'Soil moisture: 41.3 %');
+    const page = await open([device('dev-1', 'Basil', { availability: 'offline' })], 'en');
+    await shown(page, 'Offline');
+    expect(pageText(page.element)).toContain('41.3');
   });
 });

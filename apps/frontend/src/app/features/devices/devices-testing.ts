@@ -31,6 +31,7 @@ export const device = (id: string, name: string, overrides: Partial<Device> = {}
   lastSeenAt: '2026-10-14T11:55:00Z',
   state: { soil_moisture: 41.26, temperature: 21.5, battery: 87, linkquality: 120, dry: false },
   capabilities: [moisture, temperature, battery, linkquality, dry],
+  kind: 'soil',
   thresholds: {},
   effectiveThresholds: {
     soilMoistureMin: 25,

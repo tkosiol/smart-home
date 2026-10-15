@@ -1,7 +1,7 @@
 import { DestroyRef, computed, effect, inject, untracked } from '@angular/core';
 import type { Device } from '@smart/contracts';
 import { HouseholdContext, injectHouseholdErrorHandler, LoadedList } from '../../core/household';
-import { isNetworkFailure, refreshWhileVisible } from './device-refresh';
+import { isNetworkFailure, refreshWhileVisible } from '../../core/refresh';
 import { DevicesApi } from './devices.api';
 
 /**

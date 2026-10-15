@@ -25,7 +25,7 @@ describe('the contract shapes of devices and hardware', () => {
     expect(deviceSchema.parse(device)).toEqual(device);
     expect(device.lastSeenAt).toBe('2026-10-14T11:00:00.000Z');
     expect(device).not.toHaveProperty('createdAt');
-    expect(device).not.toHaveProperty('kind');
+    expect(device.kind).toBe('soil');
     expect(device.thresholds).toEqual({ batteryMin: 10 });
     expect(device.effectiveThresholds).toMatchObject({ soilMoistureMin: 25, batteryMin: 10 });
     expect(toDevice({ ...view, lastSeenAt: null })).toMatchObject({ lastSeenAt: null, icon: null });

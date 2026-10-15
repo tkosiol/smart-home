@@ -17,7 +17,7 @@ import { UiTextField } from '@smart/ui/forms';
 import { ApiError } from '../../core/api';
 import { HouseholdContext, injectHouseholdErrorHandler } from '../../core/household';
 import { DeviceReading } from './device-reading';
-import { isNetworkFailure, refreshWhileVisible } from './device-refresh';
+import { isNetworkFailure, refreshWhileVisible } from '../../core/refresh';
 import { batteryPercent, readingsOf } from './device-values';
 import { DevicesApi } from './devices.api';
 

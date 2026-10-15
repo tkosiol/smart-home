@@ -3,5 +3,15 @@
   "empty": {
     "heading": "Noch nichts zu sehen",
     "description": "Hier erscheinen später Räume, Geräte und Hinweise auf einen Blick."
+  },
+  "hidden": {
+    "heading": "Alles ausgeblendet",
+    "description": "Du hast alle Blöcke ausgeblendet. Blende sie wieder ein, um deine Übersicht zu sehen."
+  },
+  "customize": {
+    "description": "Blöcke ein- oder ausblenden und mit dem Ziehgriff sortieren.",
+    "show": "{{ name }} anzeigen",
+    "reset": "Zurücksetzen",
+    "done": "Fertig"
   }
 }

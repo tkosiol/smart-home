@@ -9,6 +9,7 @@ import { provideRuntimeConfig } from './core/config';
 import { provideI18n } from './core/i18n';
 import { provideInstanceAppearance } from './core/instance';
 import { PageTitleStrategy } from './core/routing';
+import { provideAttentionFeature } from './features/attention';
 import { provideDevicesFeature } from './features/devices';
 import { provideGatewaysFeature } from './features/gateways';
 import { provideHouseholdsFeature } from './features/households';
@@ -25,6 +26,7 @@ export function createAppConfig(config: RuntimeConfig = DEFAULT_RUNTIME_CONFIG):
       provideInstanceAppearance(),
       provideI18n(),
       provideHouseholdsFeature(),
+      provideAttentionFeature(),
       provideDevicesFeature(),
       provideGatewaysFeature(),
       provideSettingsFeature(),

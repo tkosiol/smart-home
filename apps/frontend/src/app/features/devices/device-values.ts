@@ -25,7 +25,12 @@ function numberFormat(locale: string): Intl.NumberFormat {
   return format;
 }
 
-function binaryOf(value: unknown): boolean | undefined {
+/** A number as `formatReading` shows it, without a unit. */
+export function formatNumber(value: number, locale: string): string {
+  return numberFormat(locale).format(value);
+}
+
+export function binaryOf(value: unknown): boolean | undefined {
   if (typeof value === 'boolean') return value;
   if (value === 'ON') return true;
   if (value === 'OFF') return false;
