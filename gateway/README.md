@@ -12,12 +12,15 @@ Der Ordner enthält alles, was auf einem Gateway läuft: Mosquitto (lokaler Brok
 
 ## Dateien in `secrets/` (root `700`, Dateien `600`)
 
-| Datei                                  | Inhalt                                                                                                              |
-| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `gateway.env`                          | `GATEWAY_ID` (`gw-[a-z0-9]{8}`), `BROKER_HOST`, `BROKER_PORT`, `Z2M_SERIAL_DEVICE` (Pfad des Adapters auf dem Host) |
-| `z2m.env`                              | `ZIGBEE2MQTT_CONFIG_MQTT_USER`, `ZIGBEE2MQTT_CONFIG_MQTT_PASSWORD`, `ZIGBEE2MQTT_CONFIG_FRONTEND_AUTH_TOKEN`        |
-| `passwd`                               | Passwortdatei des lokalen Brokers (Benutzer wie in `z2m.env`, erzeugt mit `mosquitto_passwd`)                       |
-| `ca.crt`, `gateway.crt`, `gateway.key` | CA und Gateway-Zertifikat für die mTLS-Bridge                                                                       |
+| Datei                                  | Inhalt                                                                                                                                                                |
+| -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `gateway.env`                          | `GATEWAY_ID` (`gw-[a-z0-9]{8}`), `BROKER_HOST`, `BROKER_PORT`, `Z2M_SERIAL_DEVICE` (Pfad des Adapters auf dem Host)                                                   |
+| `z2m.env`                              | `ZIGBEE2MQTT_CONFIG_MQTT_USER`, `ZIGBEE2MQTT_CONFIG_MQTT_PASSWORD`, `ZIGBEE2MQTT_CONFIG_FRONTEND_AUTH_TOKEN`                                                          |
+| `passwd`                               | Passwortdatei des lokalen Brokers (Benutzer wie in `z2m.env`, erzeugt mit `mosquitto_passwd`)                                                                         |
+| `ca.crt`, `gateway.crt`, `gateway.key` | CA und Gateway-Zertifikat für die mTLS-Bridge                                                                                                                         |
+| `backup.env`                           | `B2_ENDPOINT` (Host ohne `https://`), `B2_BUCKET`, `B2_KEY_ID`, `B2_APP_KEY`, `RESTIC_PASSWORD`, `HC_BACKUP_URL` (für das Backup des Pi, Schlüssel `smart-pi-restic`) |
+
+`infra/deploy/provision-gateway.sh` (`SMART_PI=<user@pi-host> infra/deploy/provision-gateway.sh <gateway-id> [--force]`, läuft auf dem Mac im Heimnetz) schreibt alle diese Dateien in einer SSH-Sitzung als `sudo -n` (der Betreiber-Benutzer braucht passwortloses `sudo` und Docker; die Passwortdatei hasht das gepinnte Mosquitto-Image mit `mosquitto_passwd -U`, das Passwort steht nie in einer Kommandozeile). Zertifikat und Schlüssel kommen aus `~/.smart-pki` (`pki.sh issue-gateway`). Z2M-Passwort und Frontend-Token werden erzeugt und nicht ausgegeben (`sudo cat /srv/smart-gateway/secrets/z2m.env`); `--force` behält sie.
 
 Die `.env`-Dateien sind einfache `KEY=Wert`-Zeilen: keine Anführungszeichen, kein `$` im Wert (Compose liest sie mit Interpolation). `render.sh` liest `gateway.env` nur zeilenweise und führt nichts davon aus; es läuft als root.
 

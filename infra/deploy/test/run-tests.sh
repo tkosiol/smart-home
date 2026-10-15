@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Tests for the deploy wrapper, deploy.sh, provision.sh, admin.sh and broker-certs.sh using stubbed docker, curl and ssh.
+# Tests for the deploy wrapper, deploy.sh, provision.sh, admin.sh, broker-certs.sh and provision-gateway.sh using stubbed
+# docker, curl, ssh and sudo.
 # shellcheck disable=SC2016 # check() expressions are evaluated later on purpose
 set -u
 cd "$(dirname "$0")/.." || exit 1
@@ -16,7 +17,7 @@ setup() {
   export SMART_STACKS_DIR="$WORK/apps" SMART_READY_DELAY=0
   export PATH="$STUBS:$PATH"
   : > "$STUB_CALLS"
-  unset STUB_FAIL_INFRA STUB_FAIL_MIGRATE STUB_FAIL_UP STUB_READY_FAILURES STUB_COMPARE_STATUS STUB_ENV_EXISTS STUB_SSH_DOWN STUB_EXISTING_ENV STUB_SSH_EXEC STUB_REMOTE_HOME STUB_ARGV_LOG SSH_ORIGINAL_COMMAND
+  unset STUB_FAIL_INFRA STUB_FAIL_MIGRATE STUB_FAIL_UP STUB_READY_FAILURES STUB_COMPARE_STATUS STUB_ENV_EXISTS STUB_SSH_DOWN STUB_EXISTING_ENV STUB_SSH_EXEC STUB_REMOTE_HOME STUB_ARGV_LOG STUB_STDIN_COPY STUB_SUDO_PASSWORD STUB_FAIL_PASSWD SSH_ORIGINAL_COMMAND
 }
 teardown() { rm -rf "$WORK"; }
 mode_of() { stat -c %a "$1" 2> /dev/null || stat -f %Lp "$1"; }
@@ -334,6 +335,126 @@ SAVED_PATH=$PATH
 export PATH="$WORK/badtar:$PATH"
 check "broker-certs leaves the previous certs untouched when the transfer fails" '[ "$(run_certs staging)" != 0 ] && [ "$(cat "$STUB_REMOTE_HOME/docker/apps/smart-staging/certs/public/ca.crt")" = old-ca ] && [ "$(cat "$STUB_REMOTE_HOME/docker/apps/smart-staging/certs/private/server.key")" = old-key ] && grep -qx "MQTT_TLS=off" "$STUB_REMOTE_HOME/docker/apps/smart-staging/.env" && ! grep -q "^compose" "$STUB_CALLS"'
 PATH=$SAVED_PATH
+teardown
+
+# --- provision-gateway.sh ---
+# The stub ssh runs the remote commands for real in a fake home (the Pi), the stub sudo runs them as this user, the
+# stub docker stands in for the mosquitto image (mosquitto_passwd -U), and the adapter folder is a fake by-id folder.
+GW_ID=gw-test0001
+GW_KEY_MARKER=gateway-key-content-that-must-never-be-printed
+GW_RESTIC=restic-gateway-secret-pw
+GW_ADAPTER=usb-Example_Zigbee_Adapter_0001-if00
+# Answers in prompt order: broker host, broker port, adapter, B2 endpoint, bucket, keyID, application key, restic
+# password, healthchecks URL. An empty line takes the stored or default value.
+gw_answers() { printf 'mqtt.example.org\n\n\ns3.example.org\ngateway-bucket\n%s\n%s\n%s\nhttps://hc.example.org/ping/backup\n' "$KEY_ID" "$APP_KEY" "$GW_RESTIC"; }
+gw_empty_answers() { empty_lines 9; }
+gw_setup() {
+  setup
+  mkdir -p "$WORK/pki/gateways" "$WORK/home/dev/serial/by-id"
+  printf 'ca-content\n' > "$WORK/pki/ca.crt"
+  printf 'gateway-cert-content\n' > "$WORK/pki/gateways/$GW_ID.crt"
+  printf '%s\n' "$GW_KEY_MARKER" > "$WORK/pki/gateways/$GW_ID.key"
+  chmod 600 "$WORK/pki/gateways/$GW_ID.key"
+  : > "$WORK/home/dev/serial/by-id/$GW_ADAPTER"
+  export SMART_PI=pi@pi SMART_PKI_DIR="$WORK/pki" STUB_SSH_EXEC=1 STUB_REMOTE_HOME="$WORK/home"
+  export SMART_GATEWAY_DIR="$WORK/home/srv/smart-gateway" SMART_SERIAL_BY_ID_DIR="$WORK/home/dev/serial/by-id"
+  GW_DIR=$SMART_GATEWAY_DIR
+  GW_SECRETS=$GW_DIR/secrets
+}
+provision_gw() { gw_answers | bash "$DEPLOY_DIR/provision-gateway.sh" "$@" > "$WORK/out" 2>&1; }
+run_gw() { (provision_gw "$@"); echo $?; }
+gw_value() { sed -n "s/^$2=//p" "$GW_SECRETS/$1"; }
+gw_all_modes_600() { local f; for f in gateway.env z2m.env backup.env passwd ca.crt gateway.crt gateway.key; do [ "$(mode_of "$GW_SECRETS/$f")" = 600 ] || return 1; done; }
+
+gw_setup
+check "provision-gateway rejects a malformed gateway ID and contacts nothing" '[ "$(run_gw gw-ABCDEFGH)" = 2 ] && [ "$(run_gw gw-1234567)" = 2 ] && [ "$(run_gw gw-123456789)" = 2 ] && [ "$(run_gw "../etc")" = 2 ] && [ "$(run_gw "$GW_ID; id")" = 2 ] && [ "$(run_gw)" = 2 ] && [ ! -s "$STUB_CALLS" ]'
+check "provision-gateway rejects an unknown second argument" '[ "$(run_gw "$GW_ID" --forced)" = 2 ] && [ ! -s "$STUB_CALLS" ]'
+check "provision-gateway has not changed the Pi yet" '[ ! -e "$GW_DIR" ]'
+unset SMART_PI
+check "provision-gateway requires SMART_PI" '[ "$(run_gw "$GW_ID")" != 0 ] && [ ! -s "$STUB_CALLS" ]'
+export SMART_PI=pi@pi
+check "provision-gateway aborts without the certificate and names pki.sh, without ssh" 'mv "$WORK/pki/gateways/$GW_ID.crt" "$WORK/crt.bak" && [ "$(run_gw "$GW_ID")" = 1 ] && grep -q "issue-gateway $GW_ID" "$WORK/out" && [ ! -s "$STUB_CALLS" ]'
+mv "$WORK/crt.bak" "$WORK/pki/gateways/$GW_ID.crt"
+check "provision-gateway aborts without the key, without ssh" 'mv "$WORK/pki/gateways/$GW_ID.key" "$WORK/key.bak" && [ "$(run_gw "$GW_ID")" = 1 ] && [ ! -s "$STUB_CALLS" ]'
+mv "$WORK/key.bak" "$WORK/pki/gateways/$GW_ID.key"
+check "provision-gateway aborts without the CA certificate, without ssh" 'mv "$WORK/pki/ca.crt" "$WORK/ca.bak" && [ "$(run_gw "$GW_ID")" = 1 ] && [ ! -s "$STUB_CALLS" ]'
+mv "$WORK/ca.bak" "$WORK/pki/ca.crt"
+check "provision-gateway aborts on an unreadable key, without ssh" 'chmod 000 "$WORK/pki/gateways/$GW_ID.key" && [ "$(run_gw "$GW_ID")" = 1 ] && [ ! -s "$STUB_CALLS" ]'
+chmod 600 "$WORK/pki/gateways/$GW_ID.key"
+teardown
+
+gw_setup; export STUB_STDIN_COPY="$WORK/archive.tar"
+check "provision-gateway succeeds on the happy path" '[ "$(run_gw "$GW_ID")" = 0 ]'
+check "provision-gateway keeps the secrets directory private and every file at mode 600" '[ "$(mode_of "$GW_SECRETS")" = 700 ] && gw_all_modes_600'
+check "provision-gateway leaves exactly the seven files (no plain password file, no .new)" '[ "$(ls -A "$GW_SECRETS" | sort | tr "\n" " ")" = "backup.env ca.crt gateway.crt gateway.env gateway.key passwd z2m.env " ]'
+check "provision-gateway writes gateway.env" '[ "$(cat "$GW_SECRETS/gateway.env")" = "$(printf "GATEWAY_ID=%s\nBROKER_HOST=mqtt.example.org\nBROKER_PORT=8883\nZ2M_SERIAL_DEVICE=%s" "$GW_ID" "$SMART_SERIAL_BY_ID_DIR/$GW_ADAPTER")" ]'
+check "provision-gateway takes the single adapter and port 8883 as defaults" 'grep -qx "Z2M_SERIAL_DEVICE=$SMART_SERIAL_BY_ID_DIR/$GW_ADAPTER" "$GW_SECRETS/gateway.env" && grep -qx "BROKER_PORT=8883" "$GW_SECRETS/gateway.env"'
+check "provision-gateway generates the Z2M password and frontend token (64 hex characters, different)" 'grep -qx "ZIGBEE2MQTT_CONFIG_MQTT_USER=z2m" "$GW_SECRETS/z2m.env" && gw_value z2m.env ZIGBEE2MQTT_CONFIG_MQTT_PASSWORD | grep -Eq "^[0-9a-f]{64}$" && gw_value z2m.env ZIGBEE2MQTT_CONFIG_FRONTEND_AUTH_TOKEN | grep -Eq "^[0-9a-f]{64}$" && [ "$(gw_value z2m.env ZIGBEE2MQTT_CONFIG_MQTT_PASSWORD)" != "$(gw_value z2m.env ZIGBEE2MQTT_CONFIG_FRONTEND_AUTH_TOKEN)" ] && [ "$(wc -l < "$GW_SECRETS/z2m.env" | tr -d " ")" = 3 ]'
+check "provision-gateway writes backup.env" '[ "$(cat "$GW_SECRETS/backup.env")" = "$(printf "B2_ENDPOINT=s3.example.org\nB2_BUCKET=gateway-bucket\nB2_KEY_ID=%s\nB2_APP_KEY=%s\nRESTIC_PASSWORD=%s\nHC_BACKUP_URL=https://hc.example.org/ping/backup" "$KEY_ID" "$APP_KEY" "$GW_RESTIC")" ]'
+check "provision-gateway installs the hashed password file of the Z2M user without the plain password" '[ "$(wc -l < "$GW_SECRETS/passwd" | tr -d " ")" = 1 ] && grep -q "^z2m:[$]7[$]" "$GW_SECRETS/passwd" && ! grep -q "$(gw_value z2m.env ZIGBEE2MQTT_CONFIG_MQTT_PASSWORD)" "$GW_SECRETS/passwd"'
+check "provision-gateway hashes with the image pinned in gateway/compose.yaml" 'grep -q "^run --rm -v .*/.new:/work eclipse-mosquitto:2.1.2-alpine mosquitto_passwd -U /work/passwd.plain$" "$STUB_CALLS" && grep -q "image: eclipse-mosquitto:2.1.2-alpine" "$DEPLOY_DIR/../../gateway/compose.yaml"'
+check "provision-gateway copies CA, certificate and key unchanged" 'cmp -s "$WORK/pki/ca.crt" "$GW_SECRETS/ca.crt" && cmp -s "$WORK/pki/gateways/$GW_ID.crt" "$GW_SECRETS/gateway.crt" && cmp -s "$WORK/pki/gateways/$GW_ID.key" "$GW_SECRETS/gateway.key"'
+check "provision-gateway provisions no ACL (the entrypoint generates it)" '[ ! -e "$GW_SECRETS/acl" ]'
+check "provision-gateway sends everything in one writing ssh session as root on stdin with umask 077" '[ "$(grep -c "tar -xf - --no-same-owner" "$STUB_CALLS")" = 1 ] && [ "$(grep -c "^ssh pi@pi sudo -n sh -c .set -e" "$STUB_CALLS")" = 1 ] && grep -q "umask 077" "$STUB_CALLS"'
+check "provision-gateway archives every file with mode 600 and nothing else" '[ "$(tar -tvf "$STUB_STDIN_COPY" | wc -l | tr -d " ")" = 7 ] && [ "$(tar -tvf "$STUB_STDIN_COPY" | cut -c1-10 | sort -u)" = "-rw-------" ] && ! tar -tf "$STUB_STDIN_COPY" | grep -q "/"'
+check "provision-gateway archives the plain password file for the hashing step only" 'tar -tf "$STUB_STDIN_COPY" | grep -qx "passwd.plain" && ! tar -tf "$STUB_STDIN_COPY" | grep -qx "passwd"'
+check "provision-gateway never puts a secret on a command line or in the output" '! grep -q "$GW_KEY_MARKER" "$STUB_CALLS" "$WORK/out" && ! grep -q "$APP_KEY" "$STUB_CALLS" "$WORK/out" && ! grep -q "$GW_RESTIC" "$STUB_CALLS" "$WORK/out" && ! grep -q "$(gw_value z2m.env ZIGBEE2MQTT_CONFIG_MQTT_PASSWORD)" "$STUB_CALLS" "$WORK/out" && ! grep -q "$(gw_value z2m.env ZIGBEE2MQTT_CONFIG_FRONTEND_AUTH_TOKEN)" "$STUB_CALLS" "$WORK/out"'
+check "provision-gateway does not print the frontend token but says where it is" '! grep -Eq "[0-9a-f]{64}" "$WORK/out" && grep -q "sudo cat $GW_SECRETS/z2m.env" "$WORK/out"'
+teardown
+
+# Existing secrets and --force.
+gw_setup
+provision_gw "$GW_ID"
+# shellcheck disable=SC2034 # used by the check() expressions below
+OLD_PASSWORD=$(gw_value z2m.env ZIGBEE2MQTT_CONFIG_MQTT_PASSWORD)
+# shellcheck disable=SC2034 # see above
+OLD_TOKEN=$(gw_value z2m.env ZIGBEE2MQTT_CONFIG_FRONTEND_AUTH_TOKEN)
+# shellcheck disable=SC2034 # see above
+OLD_PASSWD=$(cat "$GW_SECRETS/passwd")
+: > "$STUB_CALLS"
+check "provision-gateway refuses to overwrite existing secrets without --force and writes nothing" '[ "$(run_gw "$GW_ID")" = 1 ] && grep -q -- "--force" "$WORK/out" && ! grep -q "tar -xf" "$STUB_CALLS" && [ "$(gw_value z2m.env ZIGBEE2MQTT_CONFIG_MQTT_PASSWORD)" = "$OLD_PASSWORD" ]'
+check "provision-gateway --force keeps the Z2M password, token, passwd and every setting when the answers are empty" '(gw_empty_answers | bash "$DEPLOY_DIR/provision-gateway.sh" "$GW_ID" --force > "$WORK/out" 2>&1) && [ "$(gw_value z2m.env ZIGBEE2MQTT_CONFIG_MQTT_PASSWORD)" = "$OLD_PASSWORD" ] && [ "$(gw_value z2m.env ZIGBEE2MQTT_CONFIG_FRONTEND_AUTH_TOKEN)" = "$OLD_TOKEN" ] && [ "$(cat "$GW_SECRETS/passwd")" = "$OLD_PASSWD" ] && grep -qx "BROKER_HOST=mqtt.example.org" "$GW_SECRETS/gateway.env" && grep -qx "B2_APP_KEY=$APP_KEY" "$GW_SECRETS/backup.env" && grep -qx "RESTIC_PASSWORD=$GW_RESTIC" "$GW_SECRETS/backup.env" && grep -qx "HC_BACKUP_URL=https://hc.example.org/ping/backup" "$GW_SECRETS/backup.env" && gw_all_modes_600 && [ "$(mode_of "$GW_SECRETS")" = 700 ]'
+check "provision-gateway --force never prints the stored secrets" '! grep -q "$APP_KEY" "$WORK/out" && ! grep -q "$GW_RESTIC" "$WORK/out" && ! grep -q "$OLD_PASSWORD" "$WORK/out" && ! grep -q "$OLD_TOKEN" "$WORK/out" && ! grep -q "$OLD_TOKEN" "$STUB_CALLS"'
+check "provision-gateway --force replaces only the answered settings" '(printf "\n\n\n\nnew-gateway-bucket\n\n\n\n\n" | bash "$DEPLOY_DIR/provision-gateway.sh" "$GW_ID" --force > "$WORK/out" 2>&1) && grep -qx "B2_BUCKET=new-gateway-bucket" "$GW_SECRETS/backup.env" && grep -qx "B2_ENDPOINT=s3.example.org" "$GW_SECRETS/backup.env" && grep -qx "B2_APP_KEY=$APP_KEY" "$GW_SECRETS/backup.env" && [ "$(gw_value z2m.env ZIGBEE2MQTT_CONFIG_FRONTEND_AUTH_TOKEN)" = "$OLD_TOKEN" ]'
+check "provision-gateway --force still checks a newly typed B2 keyID and never echoes it" '! (printf "\n\n\n\n\n%s\n\n\n\n" "$APP_KEY" | bash "$DEPLOY_DIR/provision-gateway.sh" "$GW_ID" --force > "$WORK/out" 2>&1) && ! grep -q "$APP_KEY" "$WORK/out" && grep -qx "B2_KEY_ID=$KEY_ID" "$GW_SECRETS/backup.env"'
+# A failure while hashing must leave the old files in place and nothing behind.
+export STUB_FAIL_PASSWD=1
+check "provision-gateway leaves the previous secrets untouched when the password hashing fails" '! (gw_empty_answers | bash "$DEPLOY_DIR/provision-gateway.sh" "$GW_ID" --force > "$WORK/out" 2>&1) && [ "$(cat "$GW_SECRETS/passwd")" = "$OLD_PASSWD" ] && [ "$(gw_value z2m.env ZIGBEE2MQTT_CONFIG_FRONTEND_AUTH_TOKEN)" = "$OLD_TOKEN" ] && [ ! -e "$GW_SECRETS/.new" ] && [ "$(ls -A "$GW_SECRETS" | wc -l | tr -d " ")" = 7 ]'
+unset STUB_FAIL_PASSWD
+teardown
+gw_setup
+check "provision-gateway --force on a Pi without secrets stops without stored values" '[ "$(gw_empty_answers | bash "$DEPLOY_DIR/provision-gateway.sh" "$GW_ID" --force > /dev/null 2>&1; echo $?)" != 0 ] && [ ! -e "$GW_DIR" ]'
+teardown
+
+# Checks on the Pi before anything is written.
+gw_setup; export STUB_SUDO_PASSWORD=1
+check "provision-gateway stops when sudo needs a password and explains it" '[ "$(run_gw "$GW_ID")" = 1 ] && grep -q "sudo" "$WORK/out" && grep -q "password" "$WORK/out" && [ ! -e "$GW_DIR" ]'
+teardown
+gw_setup; export STUB_SSH_DOWN=1
+check "provision-gateway aborts when the Pi is unreachable" '[ "$(run_gw "$GW_ID")" != 0 ] && [ ! -e "$GW_DIR" ] && ! grep -q "tar -xf" "$STUB_CALLS"'
+teardown
+gw_setup; : > "$WORK/home/dev/serial/by-id/usb-Example_Second_Adapter_0002-if00"
+check "provision-gateway asks for the adapter when there are several and an empty answer stops" '[ "$(run_gw "$GW_ID")" != 0 ] && grep -q "usb-Example_Second_Adapter_0002-if00" "$WORK/out" && [ ! -e "$GW_DIR" ]'
+check "provision-gateway takes the typed adapter when there are several" '(printf "mqtt.example.org\n\n%s/%s\ns3.example.org\ngateway-bucket\n%s\n%s\n%s\nhttps://hc.example.org/ping/backup\n" "$SMART_SERIAL_BY_ID_DIR" "$GW_ADAPTER" "$KEY_ID" "$APP_KEY" "$GW_RESTIC" | bash "$DEPLOY_DIR/provision-gateway.sh" "$GW_ID" > "$WORK/out" 2>&1) && grep -qx "Z2M_SERIAL_DEVICE=$SMART_SERIAL_BY_ID_DIR/$GW_ADAPTER" "$GW_SECRETS/gateway.env"'
+teardown
+gw_setup; rm "$WORK/home/dev/serial/by-id/$GW_ADAPTER"
+check "provision-gateway requires an adapter when none is plugged in" '[ "$(run_gw "$GW_ID")" != 0 ] && [ ! -e "$GW_DIR" ]'
+check "provision-gateway refuses an adapter path that does not exist on the Pi" '[ "$(printf "mqtt.example.org\n\n/dev/serial/by-id/nothing\n" | bash "$DEPLOY_DIR/provision-gateway.sh" "$GW_ID" > "$WORK/out" 2>&1; echo $?)" != 0 ] && grep -q "does not exist" "$WORK/out" && [ ! -e "$GW_DIR" ]'
+teardown
+
+# Input checks: nothing is written for an invalid answer, and a rejected secret is never echoed.
+gw_setup
+check "provision-gateway rejects an invalid broker host" '[ "$(printf "mqtt.example.org/x\n" | bash "$DEPLOY_DIR/provision-gateway.sh" "$GW_ID" > /dev/null 2>&1; echo $?)" != 0 ] && [ ! -e "$GW_DIR" ]'
+check "provision-gateway requires a broker host on a first run" '[ "$(printf "\n" | bash "$DEPLOY_DIR/provision-gateway.sh" "$GW_ID" > /dev/null 2>&1; echo $?)" != 0 ] && [ ! -e "$GW_DIR" ]'
+check "provision-gateway rejects an invalid broker port" '[ "$(printf "mqtt.example.org\n70000\n" | bash "$DEPLOY_DIR/provision-gateway.sh" "$GW_ID" > /dev/null 2>&1; echo $?)" != 0 ] && [ "$(printf "mqtt.example.org\nabc\n" | bash "$DEPLOY_DIR/provision-gateway.sh" "$GW_ID" > /dev/null 2>&1; echo $?)" != 0 ] && [ ! -e "$GW_DIR" ]'
+check "provision-gateway takes a typed broker port" 'printf "mqtt.example.org\n8884\n\ns3.example.org\ngateway-bucket\n%s\n%s\n%s\nhttps://hc.example.org/ping/backup\n" "$KEY_ID" "$APP_KEY" "$GW_RESTIC" | bash "$DEPLOY_DIR/provision-gateway.sh" "$GW_ID" > /dev/null 2>&1 && grep -qx "BROKER_PORT=8884" "$GW_SECRETS/gateway.env"'
+teardown
+gw_setup
+check "provision-gateway rejects an application key entered as keyID and never echoes it" '! printf "mqtt.example.org\n\n\ns3.example.org\ngateway-bucket\n%s\n%s\n%s\nhttps://hc.example.org/ping/backup\n" "$APP_KEY" "$KEY_ID" "$GW_RESTIC" | bash "$DEPLOY_DIR/provision-gateway.sh" "$GW_ID" > "$WORK/out" 2>&1 && ! grep -q "$APP_KEY" "$WORK/out" && [ ! -e "$GW_DIR" ]'
+check "provision-gateway rejects a malformed application key and never echoes it" '! printf "mqtt.example.org\n\n\ns3.example.org\ngateway-bucket\n%s\nsecret-but-wrong\n%s\nhttps://hc.example.org/ping/backup\n" "$KEY_ID" "$GW_RESTIC" | bash "$DEPLOY_DIR/provision-gateway.sh" "$GW_ID" > "$WORK/out" 2>&1 && ! grep -q "secret-but-wrong" "$WORK/out" && [ ! -e "$GW_DIR" ]'
+check "provision-gateway rejects characters in the restic password that break an env file" '! printf "mqtt.example.org\n\n\ns3.example.org\ngateway-bucket\n%s\n%s\nbad\$password\nhttps://hc.example.org/ping/backup\n" "$KEY_ID" "$APP_KEY" | bash "$DEPLOY_DIR/provision-gateway.sh" "$GW_ID" > "$WORK/out" 2>&1 && ! grep -q "bad.password" "$WORK/out" && [ ! -e "$GW_DIR" ]'
+check "provision-gateway rejects a B2 endpoint with a scheme" '! printf "mqtt.example.org\n\n\nhttps://s3.example.org\n" | bash "$DEPLOY_DIR/provision-gateway.sh" "$GW_ID" > /dev/null 2>&1 && [ ! -e "$GW_DIR" ]'
+check "provision-gateway rejects a healthchecks URL that is not https" '! printf "mqtt.example.org\n\n\ns3.example.org\ngateway-bucket\n%s\n%s\n%s\nhttp://hc.example.org/x\n" "$KEY_ID" "$APP_KEY" "$GW_RESTIC" | bash "$DEPLOY_DIR/provision-gateway.sh" "$GW_ID" > /dev/null 2>&1 && [ ! -e "$GW_DIR" ]'
 teardown
 
 echo "deploy tests: $passed passed, $failures failed"
