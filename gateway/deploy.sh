@@ -114,8 +114,20 @@ if sudo -n test -s "$1/migration/status"; then
   rest=${line#* }
   rest=${rest#* }
   mpid=${rest%% *}
-  if [ "$mst" = running ] && sudo -n sh -c "kill -0 \"\$1\"" sh "$mpid" 2> /dev/null; then echo migrating; exit 0; fi
+  if sudo -n sh -c "kill -0 \"\$1\"" sh "$mpid" 2> /dev/null; then malive=alive; else malive=dead; fi
+  if [ "$mst" = running ] && [ "$malive" = alive ]; then echo migrating; exit 0; fi
   if [ "$mst" = failed-manual ]; then echo needsmanual; exit 0; fi
+  # A plain deploy and --fresh want a settled Pi: only "done" passes (rolled-back, a dead running, anything else
+  # means the stacks may not be what a deploy assumes). --migrate may rerun after rolled-back.
+  if [ "$4" != migrate ] && [ "$mst" != done ]; then echo "migstatus:$mst:$malive"; exit 0; fi
+fi
+if [ "$4" != migrate ]; then
+  # No second Zigbee2MQTT beside the stack: a running container with zigbee2mqtt as service or in its image that is
+  # not part of the compose project smart-gateway (the old stack after a rollback, a manual way back, ...). A probe
+  # that fails or times out refuses too: an empty answer proves nothing.
+  list=$(sudo -n timeout -k 5 30 docker ps --format "{{.Label \"com.docker.compose.project\"}}|{{.Label \"com.docker.compose.service\"}}|{{.Image}}|{{.Names}}") || { echo probefail; exit 0; }
+  foreign=$(printf "%s\n" "$list" | grep -v "^smart-gateway|" | grep -E "^[^|]*[|][^|]*zigbee2mqtt|^[^|]*[|][^|]*[|][^|]*zigbee2mqtt" | cut -d"|" -f4 | tr "\n" " ")
+  if [ -n "$foreign" ]; then echo "foreign:$foreign"; exit 0; fi
 fi
 if [ "$4" = plain ] && [ -z "$(sudo -n ls -A "$1/zigbee2mqtt-data" 2> /dev/null)" ]; then echo nodata; exit 0; fi
 cg=unknown
@@ -316,6 +328,9 @@ case "$state" in
   nosecret:*) die "$dir/secrets/${state#nosecret:} is missing or empty on the Pi - run infra/deploy/provision-gateway.sh first. Nothing was changed" ;;
   migrating) die "a migration is running on the Pi already - do not deploy now. Status: sudo cat $dir/migration/status, log: sudo tail -n 40 $dir/migration/migrate-*.log (docs/runbooks/gateway.md, section 11). Nothing was changed" ;;
   needsmanual) die "the last migration on the Pi ended in failed-manual and needs manual action first. Status: sudo cat $dir/migration/status, log: sudo tail -n 40 $dir/migration/migrate-*.log (docs/runbooks/gateway.md, section 11). After fixing it remove the status file: sudo rm $dir/migration/status. Nothing was changed" ;;
+  probefail) die "could not list the running containers on the Pi (docker ps failed or timed out), so it cannot be ruled out that another Zigbee2MQTT runs beside the new stack. Nothing was changed" ;;
+  foreign:*) die "another Zigbee2MQTT container is running on the Pi that is not part of the smart-gateway stack: ${state#foreign:}- two of them cannot share the adapter and the bridge certificate. Check: sudo docker ps. If it is the old stack: stop it (sudo docker compose -f <old stack folder>/docker-compose.yml stop, or remove it with down), then run this again; after a failed migration see docs/runbooks/gateway.md, section 11. Nothing was changed" ;;
+  migstatus:*) die "the migration status on the Pi is not done: ${state#migstatus:} (state:pid alive or dead). Check: sudo cat $dir/migration/status ; sudo tail -n 40 $dir/migration/migrate-*.log ; sudo docker ps -a. If the log shows the migration is over and the stacks are as you want them (also a stale running after a reboot), clear it: sudo rm $dir/migration/status (docs/runbooks/gateway.md, section 11). Nothing was changed" ;;
   nodata) die "$dir/zigbee2mqtt-data is missing or empty on the Pi. On an existing Pi the first run must be --migrate (it takes over the Zigbee network of the old setup; a plain deploy would start Zigbee2MQTT with an empty network and the paired devices would be lost). Only a NEW Pi with a fresh adapter uses --fresh. Nothing was changed" ;;
   *) die "unexpected answer from the Pi - nothing was changed" ;;
 esac

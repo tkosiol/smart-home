@@ -9,6 +9,8 @@
 #   STUB_Z2M_RESTARTS = 1: the restart count grows with every look (restart loop); STUB_MOSQ_UNHEALTHY = 1
 #   STUB_PS_FAIL = <exit code>: the "ps -q" probes of the NEW project (compose and docker ps) fail with that code and
 #   no output (124 = a timeout); STUB_OLD_PS_FAIL = <exit code>: the same for "ps -q" of the old stack
+#   STUB_LIST_OLD = 1: the old stack shows in the preflight listing of running containers; STUB_FOREIGN_Z2M = <name>:
+#   a zigbee2mqtt container of another compose project is running
 #   STUB_OLD_ONLY_MOSQ = 1: only the mosquitto service of the old stack runs; STUB_UP_DELAY = <s>: "up -d" of the
 #   new stack takes that long
 printf 'docker %s\n' "$*" >> "$STUB_CALLS"
@@ -75,6 +77,15 @@ case "$*" in
   "ps "*)
     # docker ps of the new project (by label), running or all (names)
     [ -n "${STUB_PS_FAIL:-}" ] && exit "$STUB_PS_FAIL"
+    case "$*" in
+      *com.docker.compose.service*)
+        # The preflight listing of every running container: project|service|image|name. The old stack shows only with
+        # STUB_LIST_OLD=1 (the sandbox starts with it running); STUB_FOREIGN_Z2M=<name> adds a Z2M of some other project.
+        if [ "${STUB_LIST_OLD:-0}" = 1 ] && [ -e "$state/old_running" ]; then echo "old-stack|zigbee2mqtt|koenkk/zigbee2mqtt:1.42.0|old-stack-zigbee2mqtt-1"; echo "old-stack|mosquitto|eclipse-mosquitto:2|old-stack-mosquitto-1"; fi
+        if [ -n "${STUB_FOREIGN_Z2M:-}" ]; then echo "other||koenkk/zigbee2mqtt:latest|$STUB_FOREIGN_Z2M"; fi
+        if [ -e "$state/new_running" ]; then echo "smart-gateway|zigbee2mqtt|koenkk/zigbee2mqtt:2.14.2|smart-gateway-zigbee2mqtt-1"; echo "unrelated|web|nginx:1|nginx-1"; fi
+        exit 0 ;;
+    esac
     if [ -e "$state/new_running" ]; then
       case "$*" in
         *--format*) echo smart-gateway-zigbee2mqtt-1 ;;

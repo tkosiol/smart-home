@@ -58,7 +58,7 @@ setup() {
     STUB_FAIL_RSYNC STUB_Z2M_OFFLINE STUB_BRIDGE STUB_FAIL_SYSTEMCTL STUB_FAIL_NEW_STOP STUB_FAIL_DOCKER_STOP \
     STUB_Z2M_OLD_START STUB_Z2M_RESTARTS STUB_MOSQ_UNHEALTHY STUB_OLD_ONLY_MOSQ STUB_UP_DELAY STUB_SSH_DROP_AFTER_START \
     STUB_FAIL_SYSTEMD_RUN STUB_NO_START STUB_FAIL_TAR STUB_FAIL_TAR_VERIFY STUB_FAIL_CP STUB_FAIL_CHOWN \
-    SMART_DEPLOY_MIGRATE_TIMEOUT SMART_DEPLOY_DETACH SMART_DEPLOY_STAMP SMART_DEPLOY_START_GRACE \
+    SMART_DEPLOY_MIGRATE_TIMEOUT SMART_DEPLOY_DETACH SMART_DEPLOY_STAMP SMART_DEPLOY_START_GRACE STUB_LIST_OLD STUB_FOREIGN_Z2M \
     STUB_PS_FAIL STUB_OLD_PS_FAIL STUB_CUT_FINISH STUB_SSH_BREAK_START STUB_SSH_BREAK_AFTER_START
   export PATH="$WORK/bin:$PATH"
   export STUB_CALLS="$CALLS" STUB_STATE="$WORK/state" STUB_SSH_EXEC=1 STUB_REMOTE_HOME="$HOME_DIR"
@@ -153,7 +153,7 @@ check "deploy renders the Mosquitto configuration (mode 600)" 'grep -q "^connect
 check "deploy pulls, recreates Mosquitto after the render, starts the stack and checks Z2M, in that order" 'in_order "^rsync" "gateway.env pull" "up -d --force-recreate mosquitto" "gateway.env up -d$" "bridge/state"'
 check "deploy bounds pull, start and checks with a timeout" 'bounded "gateway.env pull" && bounded "up -d --force-recreate mosquitto" && bounded "gateway.env up -d$" && bounded "bridge/state"'
 check "deploy limits every ssh connection attempt to 10 seconds" '[ "$(grep -c "^ssh " "$CALLS")" -gt 3 ] && [ "$(grep "^ssh " "$CALLS" | grep -vc "ConnectTimeout=10")" = 0 ] && grep "^rsync" "$CALLS" | grep -q "ConnectTimeout=10"'
-check "deploy runs the compose commands as root with the secrets as project environment" 'grep -q "^docker compose --env-file secrets/gateway.env up -d" "$CALLS" && ! grep "^docker" "$CALLS" | grep -v -e "--env-file secrets/gateway.env" -e "compose version" -e "^docker inspect" | grep -q .'
+check "deploy runs the compose commands as root with the secrets as project environment" 'grep -q "^docker compose --env-file secrets/gateway.env up -d" "$CALLS" && ! grep "^docker" "$CALLS" | grep -v -e "--env-file secrets/gateway.env" -e "compose version" -e "^docker inspect" -e "^docker ps " | grep -q .'
 check "deploy does not touch the old stack" '! grep -q "docker compose -f" "$CALLS" && old_running'
 check "deploy sets the Z2M data folder to 700 and configuration.yaml to 600, owned by root" '[ "$(mode_of "$PI_DIR/zigbee2mqtt-data")" = 700 ] && chown_line=$(grep "^chown" "$CALLS") && echo "$chown_line" | grep -q "root:root"'
 check "deploy prints the container status and the bridge state" 'grep -q "zigbee2mqtt  Up" "$OUT" && grep -qi "bridge.*connected" "$OUT"'
@@ -411,6 +411,40 @@ check "a plain deploy refuses after failed-manual and says how to clear it" '[ "
 echo "done 20260101T000000Z 999999 end" > "$PI_DIR/migration/status"
 check "a finished migration does not block a plain deploy" '[ "$(deploy)" = 0 ]'
 teardown
+
+
+# --- fix round 3: never start a second Z2M beside the old stack ---
+setup; mkdir -p "$PI_DIR/migration" "$PI_DIR/zigbee2mqtt-data"; echo x > "$PI_DIR/zigbee2mqtt-data/database.db"
+echo "rolled-back 20260101T000000Z 999999 rollback" > "$PI_DIR/migration/status"
+check "a plain deploy refuses after rolled-back, names the status and says how to clear it" '[ "$(deploy)" = 1 ] && grep -q "rolled-back" "$OUT" && grep -q "sudo rm .*migration/status" "$OUT" && grep -q "sudo tail -n 40 .*migrate-" "$OUT" && ! grep -q "^rsync" "$CALLS" && no_changes_on_pi'
+check "deploy --fresh refuses after rolled-back too" '[ "$(deploy --fresh)" = 1 ] && grep -q "rolled-back" "$OUT" && ! grep -q "^rsync" "$CALLS"'
+true &
+dead_pid=$!
+wait "$dead_pid"
+echo "running 20260101T000000Z $dead_pid copy" > "$PI_DIR/migration/status"
+check "a plain deploy refuses a stale running status whose process is gone (after a reboot) and names the way out" '[ "$(deploy)" = 1 ] && grep -q "running:dead" "$OUT" && grep -q "sudo rm .*migration/status" "$OUT" && ! grep -q "^rsync" "$CALLS"'
+echo "done 20260101T000000Z $dead_pid end" > "$PI_DIR/migration/status"
+check "a done status passes" '[ "$(deploy)" = 0 ]'
+teardown
+setup; mkdir -p "$PI_DIR/migration"; echo "rolled-back 20260101T000000Z 999999 rollback" > "$PI_DIR/migration/status"
+check "after rolled-back a new --migrate is allowed (the old stack runs, the new data folder is empty)" '[ "$(SMART_PI_OLD_STACK="$OLD" deploy --migrate)" = 0 ]'
+teardown
+setup; mkdir -p "$PI_DIR/zigbee2mqtt-data"; echo x > "$PI_DIR/zigbee2mqtt-data/database.db"; export STUB_LIST_OLD=1
+check "a plain deploy refuses while the old stack's zigbee2mqtt container runs, names it and the way out" '[ "$(deploy)" = 1 ] && grep -q "old-stack-zigbee2mqtt-1" "$OUT" && grep -q "docker-compose.yml" "$OUT" && grep -q "sudo docker ps" "$OUT" && ! grep -q "^rsync" "$CALLS" && no_stack_calls && no_changes_on_pi'
+check "deploy --fresh refuses too" '[ "$(deploy --fresh)" = 1 ] && grep -q "old-stack-zigbee2mqtt-1" "$OUT" && ! grep -q "^rsync" "$CALLS"'
+rm "$WORK/state/old_running"
+check "after the old stack is stopped the deploy runs" '[ "$(deploy)" = 0 ]'
+check "the stack of this project (and unrelated containers) does not count as foreign on the next deploy" '[ "$(deploy)" = 0 ]'
+teardown
+setup; mkdir -p "$PI_DIR/zigbee2mqtt-data"; echo x > "$PI_DIR/zigbee2mqtt-data/database.db"; rm "$WORK/state/old_running"; export STUB_FOREIGN_Z2M=hand-started-z2m
+check "any other running zigbee2mqtt container (another project, by image) refuses the deploy" '[ "$(deploy)" = 1 ] && grep -q "hand-started-z2m" "$OUT" && ! grep -q "^rsync" "$CALLS"'
+teardown
+for ps_code in 1 124; do
+  setup; mkdir -p "$PI_DIR/zigbee2mqtt-data"; echo x > "$PI_DIR/zigbee2mqtt-data/database.db"; export STUB_PS_FAIL=$ps_code
+  check "a failing container probe (exit $ps_code) refuses a plain deploy, fail closed" '[ "$(deploy)" = 1 ] && grep -q "could not list the running containers" "$OUT" && ! grep -q "^rsync" "$CALLS" && no_changes_on_pi'
+  check "a failing container probe (exit $ps_code) refuses --fresh as well" '[ "$(deploy --fresh)" = 1 ] && ! grep -q "^rsync" "$CALLS"'
+  teardown
+done
 
 echo "deploy tests: $passed passed, $failures failed"
 [ "$failures" = 0 ]
