@@ -12,16 +12,20 @@
 # come from infra/deploy/provision-gateway.sh and are never read, printed or transferred by this script.
 #
 # Every stage checks first and stops cleanly. Plain deploy:
-#   preflight (ssh reachable within 10 s, sudo, secrets present, Z2M data present) -> rsync gateway/ to
+#   preflight (ssh reachable within 10 s, sudo, secrets present, no unfinished zigbee2mqtt-data.partial, no second
+#   Zigbee2MQTT, Z2M data present; a clock that is not synchronized only warns) -> rsync gateway/ to
 #   /srv/smart-gateway (without secrets/, zigbee2mqtt-data/, run/, migration/) -> render.sh -> pull -> data folder
 #   700/600 -> start.sh on the Pi (Mosquitto is recreated: the rendered file and the entry point are single-file bind
 #   mounts; waits until Zigbee2MQTT is online, stable and Mosquitto healthy) -> backup timers -> status.
 # With --migrate (the old stack must run), after the pull, the destructive part runs ON THE PI as gateway/migrate.sh,
 #   detached (systemd-run, else setsid/nohup) so it survives this ssh session and this terminal: backup tarball
-#   migration/<UTC time>.tar.gz (verified) -> stop the old stack -> COPY the data folder (never move) -> start the new
-#   stack -> wait for Z2M. Any failure rolls back on the Pi: stop the new stack and verify it is stopped, set the copy
-#   aside, start the old stack, verify it runs; if the new stack cannot be stopped the old one is NOT started and the
-#   state is failed-manual. The Mac side only starts it and polls migration/status (bounded, tolerant of ssh drops);
+#   migration/<UTC time>.tar.gz (verified) -> stop the old stack -> save the restart policy of its containers to
+#   migration/old-restart-<UTC time> and set them to "no" (a stopped container with restart: always would come back
+#   after a reboot) -> COPY the data folder (never move; into zigbee2mqtt-data.partial, then mv) -> check for a
+#   second Zigbee2MQTT again -> start the new stack -> wait for Z2M. Any failure rolls back on the Pi: stop the new
+#   stack and verify it is stopped, set the copy aside, restore the saved policies, start the old stack, verify it
+#   runs; if the new stack cannot be stopped the old one is NOT started and the state is failed-manual. The Mac
+#   side only starts it and polls migration/status (bounded, tolerant of ssh drops);
 #   Ctrl+C or a closed terminal here only stops the polling, the Pi finishes (or rolls back) on its own.
 # Settings for tests: SMART_GATEWAY_DIR (default /srv/smart-gateway), SMART_CGROUP_CONTROLLERS,
 # SMART_PROC_CGROUPS, SMART_DEPLOY_WAIT_SECONDS (120), SMART_DEPLOY_POLL_SECONDS (3),
@@ -108,6 +112,8 @@ sudo -n test -d "$1" || { echo nodir; exit 0; }
 for f in gateway.env z2m.env backup.env passwd ca.crt gateway.crt gateway.key; do
   sudo -n test -s "$1/secrets/$f" || { echo "nosecret:$f"; exit 0; }
 done
+mst=""
+malive=""
 if sudo -n test -s "$1/migration/status"; then
   line=$(sudo -n cat "$1/migration/status" 2> /dev/null)
   mst=${line%% *}
@@ -117,10 +123,13 @@ if sudo -n test -s "$1/migration/status"; then
   if sudo -n sh -c "kill -0 \"\$1\"" sh "$mpid" 2> /dev/null; then malive=alive; else malive=dead; fi
   if [ "$mst" = running ] && [ "$malive" = alive ]; then echo migrating; exit 0; fi
   if [ "$mst" = failed-manual ]; then echo needsmanual; exit 0; fi
-  # A plain deploy and --fresh want a settled Pi: only "done" passes (rolled-back, a dead running, anything else
-  # means the stacks may not be what a deploy assumes). --migrate may rerun after rolled-back.
-  if [ "$4" != migrate ] && [ "$mst" != done ]; then echo "migstatus:$mst:$malive"; exit 0; fi
 fi
+# A copy that never finished (power loss, kill during the copy of a migration): half the Zigbee2MQTT data. In every mode, and
+# whatever the status file says (it may have been removed already).
+if sudo -n test -e "$1/zigbee2mqtt-data.partial"; then echo partial; exit 0; fi
+# A plain deploy and --fresh want a settled Pi: only "done" passes (rolled-back, a dead running, anything else
+# means the stacks may not be what a deploy assumes). --migrate may rerun after rolled-back.
+if [ -n "$mst" ] && [ "$4" != migrate ] && [ "$mst" != done ]; then echo "migstatus:$mst:$malive"; exit 0; fi
 if [ "$4" != migrate ]; then
   # No second Zigbee2MQTT beside the stack: a running container with zigbee2mqtt as service or in its image that is
   # not part of the compose project smart-gateway (the old stack after a rollback, a manual way back, ...). A probe
@@ -136,13 +145,20 @@ if [ -r "$2" ]; then
 elif [ -r "$3" ]; then
   if grep -Eq "^memory[[:space:]]+[0-9]+[[:space:]]+[0-9]+[[:space:]]+1$" "$3"; then cg=ok; else cg=nomem; fi
 fi
-echo "ok:$cg"
+# The bridge TLS needs a correct clock (the Pi has no RTC): only a warning.
+clock=unknown
+if command -v timedatectl > /dev/null 2>&1; then
+  ntp=$(timeout -k 2 10 timedatectl show -p NTPSynchronized --value 2> /dev/null) || ntp=""
+  if [ "$ntp" = yes ]; then clock=synced; elif [ "$ntp" = no ]; then clock=notsynced; fi
+fi
+echo "ok:$cg:$clock"
 EOF
 )
 S_OLD_CHECK=$(cat << 'EOF'
 test -f "$1/docker-compose.yml" || { echo nocompose; exit 0; }
 test -d "$1/zigbee2mqtt-data" || { echo nodata; exit 0; }
 if [ -n "$(ls -A "$2/zigbee2mqtt-data" 2> /dev/null)" ]; then echo newdata; exit 0; fi
+if [ -e "$2/zigbee2mqtt-data.partial" ]; then echo partial; exit 0; fi
 if [ -s "$2/migration/status" ]; then
   read -r st sp pid step < "$2/migration/status"
   if [ "$st" = running ] && kill -0 "$pid" 2> /dev/null; then echo migrating; exit 0; fi
@@ -317,11 +333,11 @@ if [ "$fresh" = 1 ]; then mode=fresh; fi
 state=$(remote user "$S_PREFLIGHT" "$dir" "$cgroup_controllers" "$proc_cgroups" "$mode") \
   || die "the Pi ($host) is not reachable over ssh (10 s limit) - nothing was changed"
 case "$state" in
-  ok:ok) ;;
-  ok:nomem)
+  ok:ok:*) ;;
+  ok:nomem:*)
     echo "warning: the Pi kernel has no memory cgroup, so mem_limit in compose.yaml is ignored (the containers run without a memory limit)."
     echo "warning: enable it with cgroup_enable=memory cgroup_memory=1 in the kernel command line (cmdline.txt on the Pi) and reboot." ;;
-  ok:unknown) echo "note: could not tell whether the Pi kernel has a memory cgroup (mem_limit needs it)." ;;
+  ok:unknown:*) echo "note: could not tell whether the Pi kernel has a memory cgroup (mem_limit needs it)." ;;
   nosudo) die "sudo on the Pi asks for a password or is not allowed for this user - there is no terminal for a prompt. Allow passwordless sudo for the operator user (docs/runbooks/gateway.md). Nothing was changed" ;;
   missing:*) die "${state#missing:} is not installed on the Pi - nothing was changed" ;;
   nodir) die "$dir does not exist on the Pi - run infra/deploy/provision-gateway.sh first. Nothing was changed" ;;
@@ -331,8 +347,16 @@ case "$state" in
   probefail) die "could not list the running containers on the Pi (docker ps failed or timed out), so it cannot be ruled out that another Zigbee2MQTT runs beside the new stack. Nothing was changed" ;;
   foreign:*) die "another Zigbee2MQTT container is running on the Pi that is not part of the smart-gateway stack: ${state#foreign:}- two of them cannot share the adapter and the bridge certificate. Check: sudo docker ps. If it is the old stack: stop it (sudo docker compose -f <old stack folder>/docker-compose.yml stop, or remove it with down), then run this again; after a failed migration see docs/runbooks/gateway.md, section 11. Nothing was changed" ;;
   migstatus:*) die "the migration status on the Pi is not done: ${state#migstatus:} (state:pid alive or dead). Check: sudo cat $dir/migration/status ; sudo tail -n 40 $dir/migration/migrate-*.log ; sudo docker ps -a. If the log shows the migration is over and the stacks are as you want them (also a stale running after a reboot), clear it: sudo rm $dir/migration/status (docs/runbooks/gateway.md, section 11). Nothing was changed" ;;
+  partial) die "$dir/zigbee2mqtt-data.partial exists on the Pi: an earlier --migrate was interrupted during the copy (power loss or kill) and left half of the Zigbee2MQTT data there. Never start the stack on it, and no deploy will. The old stack's data folder was never modified, and migrate.sh stopped the old stack and set its containers to restart=no (the saved policy is in $dir/migration/old-restart-*). Check: sudo docker ps -a ; sudo cat $dir/migration/status ; sudo tail -n 40 $dir/migration/migrate-*.log. Then move the leftover away: sudo mv $dir/zigbee2mqtt-data.partial $dir/migration/partial-data, put the old stack back as the runbook describes and run --migrate again (docs/runbooks/gateway.md, section 11). Nothing was changed" ;;
   nodata) die "$dir/zigbee2mqtt-data is missing or empty on the Pi. On an existing Pi the first run must be --migrate (it takes over the Zigbee network of the old setup; a plain deploy would start Zigbee2MQTT with an empty network and the paired devices would be lost). Only a NEW Pi with a fresh adapter uses --fresh. Nothing was changed" ;;
   *) die "unexpected answer from the Pi - nothing was changed" ;;
+esac
+case "${state##*:}" in
+  synced) ;;
+  notsynced)
+    echo "warning: the clock of the Pi is not synchronized (timedatectl: NTPSynchronized=no). The TLS bridge to the platform broker needs a correct clock (the Pi has no real-time clock), so the bridge may stay down until it is; the backups wait for it too."
+    echo "warning: check the time source of the Pi (timedatectl status); the deploy carries on." ;;
+  *) echo "note: could not tell whether the clock of the Pi is synchronized (the TLS bridge needs a correct clock)." ;;
 esac
 
 if [ "$migrate" = 1 ]; then
@@ -343,6 +367,7 @@ if [ "$migrate" = 1 ]; then
     nocompose) die "$old/docker-compose.yml does not exist on the Pi - check SMART_PI_OLD_STACK. Nothing was changed" ;;
     nodata) die "$old/zigbee2mqtt-data does not exist on the Pi - check SMART_PI_OLD_STACK. Nothing was changed" ;;
     newdata) die "$dir/zigbee2mqtt-data already has content - a migration would merge into it. Is the Pi migrated already (deploy without --migrate)? Nothing was changed" ;;
+    partial) die "$dir/zigbee2mqtt-data.partial exists on the Pi: an earlier --migrate was interrupted during the copy. Move it away (sudo mv $dir/zigbee2mqtt-data.partial $dir/migration/partial-data), see docs/runbooks/gateway.md, section 11. Nothing was changed" ;;
     migrating) die "a migration is running on the Pi already (sudo cat $dir/migration/status, log $dir/migration/migrate-*.log). Nothing was changed" ;;
     needsmanual) die "the last migration ended in failed-manual (sudo cat $dir/migration/status, log $dir/migration/migrate-*.log on the Pi; docs/runbooks/gateway.md, section 11). Fix it by hand, then remove $dir/migration/status. Nothing was changed" ;;
     notz2m) die "$old/docker-compose.yml has no service zigbee2mqtt - check SMART_PI_OLD_STACK. Nothing was changed" ;;
@@ -384,7 +409,7 @@ if [ "$migrate" = 1 ]; then
   case "$migration_result" in
     done) ;;
     rolled-back) die "the migration failed and was rolled back: the old stack runs again (details in the log above). Nothing of the old setup was changed" ;;
-    failed-manual) die "the migration failed and needs MANUAL ACTION on the Pi (the commands are in the log above; the old stack was not started on purpose if the new one could not be stopped)" ;;
+    failed-manual) die "the migration failed and needs MANUAL ACTION on the Pi (the commands are in the log above; the old stack was not started on purpose if the new one could not be stopped, or its restart policy could not be put back)" ;;
     vanished) die "migrate.sh on the Pi ended without a final state (killed after TimeoutStopSec, or the Pi lost power?). The state of the stacks is UNKNOWN: on the Pi check sudo docker ps -a, sudo cat $dir/migration/status, the log $dir/migration/migrate-$stamp.log and sudo journalctl -u smart-gateway-migrate (docs/runbooks/gateway.md, section 11)" ;;
     notstarted)
       migration_over=0
@@ -401,6 +426,7 @@ else
   case "$rc" in
     0) ;;
     1) die "docker compose up failed" ;;
+    255 | 124) die "the start step ended with exit $rc: the ssh connection failed (255) or the start took longer than its limit (124), so it is not known whether the stack came up. It may still be starting. Look on the Pi, in $dir: sudo docker compose --env-file secrets/gateway.env ps ; sudo docker compose --env-file secrets/gateway.env logs zigbee2mqtt. Zigbee2MQTT may also simply not have reported bridge/state online and stable within ${wait_seconds} s" ;;
     *) die "Zigbee2MQTT did not report bridge/state online and stable within ${wait_seconds} s, or Mosquitto is not healthy (logs: sudo docker compose --env-file secrets/gateway.env logs zigbee2mqtt, in $dir)" ;;
   esac
   # Z2M may have rewritten configuration.yaml at its start.
@@ -430,10 +456,13 @@ if [ "$migrate" = 1 ]; then
   echo ""
   echo "Migration done. The old stack is stopped, not removed; its data folder is unchanged."
   echo "  backup:   $dir/migration/$stamp.tar.gz (root only; taken from the running old Z2M, the copy after the stop is the consistent one)"
-  echo "  way back: on the Pi, sudo docker compose --env-file secrets/gateway.env stop (in $dir), then"
-  echo "            sudo docker compose -f $old/docker-compose.yml up -d"
+  echo "  restart:  the old containers were set to restart=no (their old policy is saved in $dir/migration/old-restart-$stamp),"
+  echo "            so the old stack does not come back after a reboot and cannot fight the new one for the adapter."
+  echo "  way back: on the Pi, sudo docker compose --env-file secrets/gateway.env stop (in $dir), then restore the saved"
+  echo "            restart policy of every old container (lines '<container> <policy>'):"
+  echo "            sudo cat $dir/migration/old-restart-$stamp | while read -r c p; do sudo docker update --restart=\"\$p\" \"\$c\"; done"
+  echo "            then sudo docker compose -f $old/docker-compose.yml up -d"
   echo "            (devices paired since the migration are NOT in the old data folder and are lost on the way back)"
   echo "  after you have checked everything (frontend, devices, the app): remove the old stack for good with"
   echo "            sudo docker compose -f $old/docker-compose.yml down"
-  echo "  (a stopped old stack with restart: always starts again after a reboot and would fight for the adapter)."
 fi

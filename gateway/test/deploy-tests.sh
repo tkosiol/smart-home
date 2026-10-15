@@ -35,7 +35,7 @@ setup() {
   PI_DIR="$HOME_DIR/srv/smart-gateway"
   OLD="$HOME_DIR/opt/old-stack"
   mkdir -p "$PI_DIR/secrets" "$OLD/zigbee2mqtt-data" "$WORK/bin" "$WORK/state" "$WORK/systemd"
-  for tool in docker rsync timeout chown systemctl systemd-run tar cp ssh cut; do ln -s "$GATEWAY_DIR/test/stubs/$tool" "$WORK/bin/$tool"; done
+  for tool in docker rsync timeout chown systemctl systemd-run tar cp ssh cut timedatectl; do ln -s "$GATEWAY_DIR/test/stubs/$tool" "$WORK/bin/$tool"; done
   ln -s "$GATEWAY_DIR/../infra/deploy/test/stubs/sudo" "$WORK/bin/sudo"
   printf 'GATEWAY_ID=gw-testpi01\nBROKER_HOST=mqtt.example.org\nBROKER_PORT=8883\nZ2M_SERIAL_DEVICE=/dev/null\n' > "$PI_DIR/secrets/gateway.env"
   printf 'ZIGBEE2MQTT_CONFIG_MQTT_USER=z2m\nZIGBEE2MQTT_CONFIG_MQTT_PASSWORD=%s\nZIGBEE2MQTT_CONFIG_FRONTEND_AUTH_TOKEN=%s\n' "$Z2M_PASSWORD_MARKER" "$Z2M_TOKEN_MARKER" > "$PI_DIR/secrets/z2m.env"
@@ -59,7 +59,9 @@ setup() {
     STUB_Z2M_OLD_START STUB_Z2M_RESTARTS STUB_MOSQ_UNHEALTHY STUB_OLD_ONLY_MOSQ STUB_UP_DELAY STUB_SSH_DROP_AFTER_START \
     STUB_FAIL_SYSTEMD_RUN STUB_NO_START STUB_FAIL_TAR STUB_FAIL_TAR_VERIFY STUB_FAIL_CP STUB_FAIL_CHOWN \
     SMART_DEPLOY_MIGRATE_TIMEOUT SMART_DEPLOY_DETACH SMART_DEPLOY_STAMP SMART_DEPLOY_START_GRACE STUB_LIST_OLD STUB_FOREIGN_Z2M \
-    STUB_PS_FAIL STUB_OLD_PS_FAIL STUB_CUT_FINISH STUB_SSH_BREAK_START STUB_SSH_BREAK_AFTER_START
+    STUB_PS_FAIL STUB_OLD_PS_FAIL STUB_CUT_FINISH STUB_SSH_BREAK_START STUB_SSH_BREAK_AFTER_START \
+    STUB_OLD_PSA_FAIL STUB_INSPECT_FAIL STUB_INSPECT_EMPTY STUB_FAIL_UPDATE_NAME STUB_FAIL_RESTORE STUB_OLD_POLICY \
+    STUB_FOREIGN_WHEN_OLD_STOPPED STUB_LIST_FAIL STUB_CP_KILL STUB_TIMEOUT_START STUB_SSH_BREAK_PLAIN_START STUB_TIMEDATECTL
   export PATH="$WORK/bin:$PATH"
   export STUB_CALLS="$CALLS" STUB_STATE="$WORK/state" STUB_SSH_EXEC=1 STUB_REMOTE_HOME="$HOME_DIR"
   export STUB_REAL_SSH="$GATEWAY_DIR/../infra/deploy/test/stubs/ssh"
@@ -445,6 +447,112 @@ for ps_code in 1 124; do
   check "a failing container probe (exit $ps_code) refuses --fresh as well" '[ "$(deploy --fresh)" = 1 ] && ! grep -q "^rsync" "$CALLS"'
   teardown
 done
+
+# --- fix round 4 (final review): restart policy of the old stack, partial copy, clock, start messages ---
+policy_of() { cat "$WORK/state/policy_$1" 2> /dev/null || echo always; }
+RS="20260102T030405Z"
+# shellcheck disable=SC2034 # used by the check() expressions
+MOSQ=old-stack-mosquitto-1
+# shellcheck disable=SC2034 # see above
+Z2MC=old-stack-zigbee2mqtt-1
+policy_file() { echo "$PI_DIR/migration/old-restart-$RS"; }
+
+# The restart policy of the old containers is saved and set to "no" once the old stack is verified stopped.
+setup; export SMART_PI_OLD_STACK="$OLD" SMART_DEPLOY_STAMP=$RS
+check "migrate succeeds with an old stack whose containers restart always" '[ "$(deploy --migrate)" = 0 ]'
+check "migrate saves the restart policy of every old container to migration/old-restart-<stamp> (root only)" '[ "$(mode_of "$(policy_file)")" = 600 ] && [ "$(wc -l < "$(policy_file)" | tr -d " ")" = 2 ] && grep -qx "$MOSQ always" "$(policy_file)" && grep -qx "$Z2MC always" "$(policy_file)"'
+check "migrate sets every old container to restart=no and logs it" '[ "$(policy_of $MOSQ)" = no ] && [ "$(policy_of $Z2MC)" = no ] && grep -q "restart=no" "$PI_DIR"/migration/migrate-*.log && grep -q "docker update --restart=no $Z2MC" "$CALLS"'
+check "migrate saves and sets the policies after the stop is verified and before the copy" 'in_order "$OLD_STOP" "ps -aq" "RestartPolicy" "update --restart=no $MOSQ" "update --restart=no $Z2MC" "cp -a"'
+check "the end message tells how to restore the saved policy on the way back and no longer claims the old stack restarts" 'grep -q "old-restart-$RS" "$OUT" && grep -q "docker update --restart=" "$OUT" && ! grep -q "starts again after a reboot" "$OUT"'
+teardown
+
+setup; export SMART_PI_OLD_STACK="$OLD" SMART_DEPLOY_STAMP=$RS STUB_FAIL_NEW_UP=1 STUB_OLD_POLICY=unless-stopped
+check "rollback restores the saved policy of every old container before it starts the old stack" '[ "$(deploy --migrate)" = 1 ] && [ "$(policy_of $MOSQ)" = unless-stopped ] && [ "$(policy_of $Z2MC)" = unless-stopped ] && in_order "update --restart=no $Z2MC" "gateway.env stop" "update --restart=unless-stopped $MOSQ" "update --restart=unless-stopped $Z2MC" "docker compose -f $OLD/docker-compose.yml up -d" && old_running && [ "$(cut -d" " -f1 "$PI_DIR/migration/status")" = rolled-back ]'
+teardown
+
+setup; export SMART_PI_OLD_STACK="$OLD" SMART_DEPLOY_STAMP=$RS STUB_FAIL_UPDATE_NAME=$Z2MC
+check "a docker update that fails rolls back: nothing is copied, the policies are back as they were, the old stack runs" '[ "$(deploy --migrate)" = 1 ] && [ "$(cut -d" " -f1 "$PI_DIR/migration/status")" = rolled-back ] && ! grep -q "cp -a" "$CALLS" && [ "$(policy_of $MOSQ)" = always ] && [ "$(policy_of $Z2MC)" = always ] && grep -q "update --restart=always $MOSQ" "$CALLS" && old_running && grep -qi "restart policy" "$OUT"'
+teardown
+for failure in STUB_INSPECT_FAIL STUB_INSPECT_EMPTY STUB_OLD_PSA_FAIL; do
+  setup; export SMART_PI_OLD_STACK="$OLD" SMART_DEPLOY_STAMP=$RS; export "$failure=1"
+  check "an unreadable restart policy ($failure) fails closed: rolled back, no update, no copy, old stack running" '[ "$(deploy --migrate)" = 1 ] && [ "$(cut -d" " -f1 "$PI_DIR/migration/status")" = rolled-back ] && ! grep -q "docker update" "$CALLS" && ! grep -q "cp -a" "$CALLS" && old_running && [ ! -e "$(policy_file)" ]'
+  teardown
+done
+setup; export SMART_PI_OLD_STACK="$OLD" SMART_DEPLOY_STAMP=$RS STUB_FAIL_NEW_UP=1 STUB_FAIL_RESTORE=1
+check "a rollback that cannot restore the policy still starts the old stack but ends failed-manual with the commands" '[ "$(deploy --migrate)" = 1 ] && [ "$(cut -d" " -f1 "$PI_DIR/migration/status")" = failed-manual ] && old_running && grep -q "MANUAL ACTION" "$OUT" && grep -q "docker update --restart=" "$OUT" && grep -q "old-restart-$RS" "$OUT"'
+teardown
+
+# The foreign-Z2M check of the plain deploy runs again right before the new stack starts.
+setup; export SMART_PI_OLD_STACK="$OLD" STUB_FOREIGN_WHEN_OLD_STOPPED=hand-started-z2m
+check "migrate refuses to start the new stack when another Zigbee2MQTT runs after the old stack was stopped, and rolls back" '[ "$(deploy --migrate)" = 1 ] && [ "$(cut -d" " -f1 "$PI_DIR/migration/status")" = rolled-back ] && grep -q "hand-started-z2m" "$OUT" && ! grep -q "up -d --force-recreate mosquitto" "$CALLS" && ! grep -q "bash ./start.sh" "$CALLS" && old_running'
+teardown
+setup; export SMART_PI_OLD_STACK="$OLD" STUB_LIST_FAIL=1
+check "migrate refuses when the container list cannot be read before the start (fail closed) and rolls back" '[ "$(deploy --migrate)" = 1 ] && [ "$(cut -d" " -f1 "$PI_DIR/migration/status")" = rolled-back ] && ! grep -q "bash ./start.sh" "$CALLS" && old_running'
+teardown
+setup; export SMART_PI_OLD_STACK="$OLD"
+check "migrate runs the foreign-Z2M check after the copy and before the start" '[ "$(deploy --migrate)" = 0 ] && in_order "cp -a" "^docker ps --format" "up -d --force-recreate mosquitto"'
+teardown
+
+# The copy goes to zigbee2mqtt-data.partial and moves into place when complete.
+setup; export SMART_PI_OLD_STACK="$OLD"
+check "migrate copies into zigbee2mqtt-data.partial and leaves no .partial behind" '[ "$(deploy --migrate)" = 0 ] && grep "^timeout -k 10 300 cp -a" "$CALLS" | grep -q "zigbee2mqtt-data.partial/$" && [ ! -e "$PI_DIR/zigbee2mqtt-data.partial" ] && [ -s "$PI_DIR/zigbee2mqtt-data/database.db" ]'
+teardown
+setup; export SMART_PI_OLD_STACK="$OLD"; mkdir -p "$PI_DIR/zigbee2mqtt-data"; chmod 755 "$PI_DIR/zigbee2mqtt-data"
+check "migrate into an existing EMPTY data folder (after a --fresh run) puts the data in it, not below it" '[ "$(deploy --migrate)" = 0 ] && [ -s "$PI_DIR/zigbee2mqtt-data/database.db" ] && [ ! -e "$PI_DIR/zigbee2mqtt-data/zigbee2mqtt-data.partial" ] && [ ! -e "$PI_DIR/zigbee2mqtt-data.partial" ]'
+teardown
+for failure in STUB_FAIL_CP STUB_FAIL_CHOWN; do
+  setup; export SMART_PI_OLD_STACK="$OLD"; export "$failure=1"
+  check "a failure ($failure) leaves no .partial in place after the rollback, the copy is set aside" '[ "$(deploy --migrate)" = 1 ] && [ ! -e "$PI_DIR/zigbee2mqtt-data.partial" ] && [ ! -e "$PI_DIR/zigbee2mqtt-data" ] && ls "$PI_DIR"/migration/failed-data-*/database.db > /dev/null'
+  teardown
+done
+
+# SIGKILL / power loss during the copy: a half-filled .partial stays, and no deploy starts on it.
+setup; export SMART_PI_OLD_STACK="$OLD" SMART_DEPLOY_STAMP=$RS STUB_CP_KILL=1
+check "a migrate.sh killed during the copy leaves a .partial and no data folder, and the Mac reports UNKNOWN" '[ "$(deploy --migrate)" = 1 ] && grep -q "UNKNOWN" "$OUT" && [ -s "$PI_DIR/zigbee2mqtt-data.partial/database.db" ] && [ ! -e "$PI_DIR/zigbee2mqtt-data" ]'
+unset STUB_CP_KILL
+rm -f "$PI_DIR/migration/status"
+: > "$CALLS"
+check "after the status is cleared a plain deploy still refuses: unfinished migration, names the folder, the way out and the runbook, changes nothing" '[ "$(deploy)" = 1 ] && grep -q "zigbee2mqtt-data.partial" "$OUT" && grep -q "section 11" "$OUT" && grep -q "sudo mv" "$OUT" && ! grep -q "^rsync" "$CALLS" && no_stack_calls'
+check "deploy --fresh refuses it too" '[ "$(deploy --fresh)" = 1 ] && grep -q "zigbee2mqtt-data.partial" "$OUT" && ! grep -q "^rsync" "$CALLS"'
+check "deploy --migrate refuses it too, before the old stack is looked at" '[ "$(deploy --migrate)" = 1 ] && grep -q "zigbee2mqtt-data.partial" "$OUT" && ! grep -q "^rsync" "$CALLS" && ! grep -q "tar -czf" "$CALLS"'
+echo "done $RS 999999 end" > "$PI_DIR/migration/status"
+check "a done status does not let a .partial pass" '[ "$(deploy)" = 1 ] && grep -q "zigbee2mqtt-data.partial" "$OUT" && ! grep -q "^rsync" "$CALLS"'
+mv "$PI_DIR/zigbee2mqtt-data.partial" "$PI_DIR/migration/partial-data"; rm -f "$PI_DIR/migration/status"
+check "with the .partial moved away deploy --fresh runs again" '[ "$(deploy --fresh)" = 0 ]'
+teardown
+
+setup; mkdir -p "$PI_DIR/zigbee2mqtt-data" "$PI_DIR/zigbee2mqtt-data.partial"; echo x > "$PI_DIR/zigbee2mqtt-data/database.db"
+check "a plain deploy refuses a .partial even beside a complete data folder" '[ "$(deploy)" = 1 ] && grep -q "zigbee2mqtt-data.partial" "$OUT" && ! grep -q "^rsync" "$CALLS" && no_stack_calls'
+teardown
+
+setup; cp "$GATEWAY_DIR/migrate.sh" "$GATEWAY_DIR/start.sh" "$PI_DIR/"; mkdir -p "$PI_DIR/zigbee2mqtt-data.partial"
+bash "$PI_DIR/migrate.sh" "$PI_DIR" "$OLD" 20260101T000000Z 300 2 1 > /dev/null 2>&1 < /dev/null
+check "migrate.sh itself refuses a leftover .partial before it touches the old stack" '[ "$(cut -d" " -f1 "$PI_DIR/migration/status")" = rolled-back ] && grep -q "zigbee2mqtt-data.partial" "$PI_DIR"/migration/migrate-*.log && ! grep -q "$OLD_STOP" "$CALLS" && ! grep -q "tar -czf" "$CALLS" && old_running && [ -d "$PI_DIR/zigbee2mqtt-data.partial" ]'
+teardown
+
+# --- smaller fixes ---
+check "compose.yaml gives Mosquitto 60 s to save a large persisted buffer on stop" 'sed -n "/^  mosquitto:/,/^  zigbee2mqtt:/p" "$GATEWAY_DIR/compose.yaml" | grep -q "^    stop_grace_period: 60s$"'
+
+setup; export STUB_TIMEDATECTL=no
+check "deploy warns, but carries on, when the clock of the Pi is not synchronized" '[ "$(deploy --fresh)" = 0 ] && grep -qi "warning.*clock" "$OUT" && grep -qi "NTP" "$OUT" && grep -q "^timedatectl show -p NTPSynchronized --value$" "$CALLS"'
+teardown
+setup
+check "deploy does not warn about the clock when it is synchronized" '[ "$(deploy --fresh)" = 0 ] && ! grep -qi "clock" "$OUT" && grep -q "^timedatectl show" "$CALLS"'
+teardown
+setup; export STUB_TIMEDATECTL=fail
+check "deploy only notes it when timedatectl cannot tell, and carries on" '[ "$(deploy --fresh)" = 0 ] && grep -qi "could not tell.*clock" "$OUT"'
+teardown
+
+setup; export STUB_SSH_BREAK_PLAIN_START=1
+check "a start step that ends with ssh 255 says the connection may have failed and gives the status command" '[ "$(deploy --fresh)" = 1 ] && grep -q "ssh connection failed" "$OUT" && grep -q "docker compose --env-file secrets/gateway.env ps" "$OUT"'
+teardown
+setup; export STUB_TIMEOUT_START=1
+check "a start step that hits its time limit (124) says so too and gives the status command" '[ "$(deploy --fresh)" = 1 ] && grep -q "ssh connection failed" "$OUT" && grep -q "docker compose --env-file secrets/gateway.env ps" "$OUT"'
+teardown
+setup; export STUB_Z2M_OFFLINE=1
+check "a Z2M that is simply not online keeps the plain message without the ssh remark" '[ "$(deploy --fresh)" = 1 ] && grep -q "did not report" "$OUT" && ! grep -q "ssh connection failed" "$OUT"'
+teardown
+
 
 echo "deploy tests: $passed passed, $failures failed"
 [ "$failures" = 0 ]

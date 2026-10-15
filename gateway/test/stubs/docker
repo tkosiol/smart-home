@@ -13,6 +13,13 @@
 #   a zigbee2mqtt container of another compose project is running
 #   STUB_OLD_ONLY_MOSQ = 1: only the mosquitto service of the old stack runs; STUB_UP_DELAY = <s>: "up -d" of the
 #   new stack takes that long
+#   The old stack has two containers (old-stack-mosquitto-1, old-stack-zigbee2mqtt-1) whose restart policy lives in
+#   $STUB_STATE/policy_<name> (default "always", or $STUB_OLD_POLICY). STUB_OLD_PSA_FAIL = 1: "ps -aq" of the old
+#   stack fails; STUB_INSPECT_FAIL = 1: reading a restart policy fails; STUB_INSPECT_EMPTY = 1: it answers nothing;
+#   STUB_FAIL_UPDATE_NAME = <name>: "docker update --restart=no" of that container fails; STUB_FAIL_RESTORE = 1:
+#   "docker update" with any other policy than no fails
+#   STUB_FOREIGN_WHEN_OLD_STOPPED = <name>: a zigbee2mqtt container of another project shows in the listing as soon
+#   as the old stack is stopped (the old stack came back by itself); STUB_LIST_FAIL = 1: only that listing fails
 printf 'docker %s\n' "$*" >> "$STUB_CALLS"
 state=${STUB_STATE:?}
 case "$*" in
@@ -20,6 +27,9 @@ case "$*" in
     # The old stack (its own compose file).
     case "$*" in
       *" config --services"*) printf 'mosquitto\nzigbee2mqtt\n' ;;
+      *" ps -aq"*)
+        [ "${STUB_OLD_PSA_FAIL:-0}" = 1 ] && exit 1
+        printf 'old-stack-mosquitto-1\nold-stack-zigbee2mqtt-1\n' ;;
       *" ps "*)
         case "$*" in
           *--services*) ;;
@@ -63,6 +73,11 @@ case "$*" in
     esac ;;
   "inspect -f "*)
     case "$*" in
+      *RestartPolicy*)
+        [ "${STUB_INSPECT_FAIL:-0}" = 1 ] && exit 1
+        [ "${STUB_INSPECT_EMPTY:-0}" = 1 ] && exit 0
+        for last; do :; done
+        cat "$state/policy_$last" 2> /dev/null || echo "${STUB_OLD_POLICY:-always}" ;;
       *StartedAt*)
         count=0
         if [ "${STUB_Z2M_RESTARTS:-0}" = 1 ]; then
@@ -82,7 +97,9 @@ case "$*" in
         # The preflight listing of every running container: project|service|image|name. The old stack shows only with
         # STUB_LIST_OLD=1 (the sandbox starts with it running); STUB_FOREIGN_Z2M=<name> adds a Z2M of some other project.
         if [ "${STUB_LIST_OLD:-0}" = 1 ] && [ -e "$state/old_running" ]; then echo "old-stack|zigbee2mqtt|koenkk/zigbee2mqtt:1.42.0|old-stack-zigbee2mqtt-1"; echo "old-stack|mosquitto|eclipse-mosquitto:2|old-stack-mosquitto-1"; fi
+        [ "${STUB_LIST_FAIL:-0}" = 1 ] && exit 1
         if [ -n "${STUB_FOREIGN_Z2M:-}" ]; then echo "other||koenkk/zigbee2mqtt:latest|$STUB_FOREIGN_Z2M"; fi
+        if [ -n "${STUB_FOREIGN_WHEN_OLD_STOPPED:-}" ] && [ ! -e "$state/old_running" ]; then echo "other||koenkk/zigbee2mqtt:latest|$STUB_FOREIGN_WHEN_OLD_STOPPED"; fi
         if [ -e "$state/new_running" ]; then echo "smart-gateway|zigbee2mqtt|koenkk/zigbee2mqtt:2.14.2|smart-gateway-zigbee2mqtt-1"; echo "unrelated|web|nginx:1|nginx-1"; fi
         exit 0 ;;
     esac
@@ -92,6 +109,13 @@ case "$*" in
         *) echo z2mcontainer ;;
       esac
     fi ;;
+  "update --restart="*)
+    # docker update --restart=<policy> <container>
+    policy=${2#--restart=}
+    for last; do :; done
+    [ "$policy" = no ] && [ "${STUB_FAIL_UPDATE_NAME:-}" = "$last" ] && exit 1
+    [ "$policy" != no ] && [ "${STUB_FAIL_RESTORE:-0}" = 1 ] && exit 1
+    echo "$policy" > "$state/policy_$last" ;;
   "stop "* | "rm "*)
     [ "${STUB_FAIL_DOCKER_STOP:-0}" = 1 ] && exit 1
     rm -f "$state/new_running" ;;

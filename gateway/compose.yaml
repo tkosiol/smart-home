@@ -22,6 +22,9 @@ services:
     entrypoint: ['sh', '/smart/mosquitto-entrypoint.sh']
     command: ['mosquitto', '-c', '/mosquitto/config/mosquitto.conf']
     mem_limit: 256m
+    # A large persisted buffer (queued messages while the bridge is down) is written on stop: Docker's 10 s default
+    # would kill Mosquitto in the middle of it.
+    stop_grace_period: 60s
     volumes:
       - ./mosquitto-entrypoint.sh:/smart/mosquitto-entrypoint.sh:ro
       - ./run/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
