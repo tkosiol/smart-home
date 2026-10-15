@@ -24,20 +24,21 @@ export const TEXT_ATTRIBUTES = new Set([
 ]);
 
 /**
- * Inputs of @smart/ui components that carry text but share their name with a plain HTML attribute
- * (`<option value>`, `<input value>`): text only on `ui-*` elements, so HTML keeps its values.
+ * Inputs of components that carry text but share their name with a plain HTML attribute
+ * (`<option value>`, `<input value>`): text only on custom elements (`ui-*`, `app-*`), so HTML
+ * keeps its values.
  */
 export const UI_TEXT_INPUTS = new Set(['unit', 'value', 'valueText']);
 
-/** True for an attribute of a `ui-*` element. */
-function onUiElement(attribute) {
-  return /^ui-/.test(attribute.parent?.name ?? '');
+/** True for an attribute of a custom element; native HTML element names have no hyphen. */
+function onCustomElement(attribute) {
+  return (attribute.parent?.name ?? '').includes('-');
 }
 
 function isTextAttribute(attribute) {
   return (
     TEXT_ATTRIBUTES.has(attribute.name) ||
-    (UI_TEXT_INPUTS.has(attribute.name) && onUiElement(attribute))
+    (UI_TEXT_INPUTS.has(attribute.name) && onCustomElement(attribute))
   );
 }
 

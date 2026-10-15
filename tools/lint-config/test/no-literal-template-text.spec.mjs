@@ -68,6 +68,11 @@ ruleTester.run('no-literal-template-text', noLiteralTemplateText, {
       code: '<ui-value-display [value]="\'Aus\'" />',
       errors: [{ messageId: 'literalAttribute', data: { name: 'value' } }],
     },
+    // Feature components (`app-*`) are custom elements too: their text inputs count as text.
+    {
+      code: '<app-device-reading value="Aus" />',
+      errors: [{ messageId: 'literalAttribute', data: { name: 'value' } }],
+    },
     // A unit is visible text too: "°C" or "min" belong to the reading (bound from the data) or to a
     // key, since units like "h" or "Tage" differ by language.
     {
