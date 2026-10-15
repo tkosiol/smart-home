@@ -261,6 +261,27 @@ describe('DeviceIngestConsumer', () => {
       }
     });
 
+    it('does not tell the connection when it is shut down before the gateways are followed', async () => {
+      let release: (gateways: { id: string; topicPrefix: string }[]) => void = () => undefined;
+      consumer = new DeviceIngestConsumer(
+        {
+          listActive: () => new Promise((resolve) => (release = resolve)),
+        } as unknown as GatewaysService,
+        events,
+        { listNames } as unknown as HardwareRepository,
+        { handle },
+        mqtt as unknown as MqttConnection,
+        () => now,
+      );
+      consumer.onModuleInit();
+      await new Promise((resolve) => setImmediate(resolve));
+      const destroyed = consumer.onModuleDestroy();
+      release([{ id: GW, topicPrefix: prefix(GW) }]);
+      await destroyed;
+      await consumer.idle();
+      expect(mqtt.complete).toBe(0);
+    });
+
     it('tries again when the database is not there on start', async () => {
       vi.useFakeTimers();
       try {

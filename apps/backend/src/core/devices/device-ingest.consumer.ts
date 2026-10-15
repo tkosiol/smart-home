@@ -233,7 +233,8 @@ export class DeviceIngestConsumer implements OnModuleInit, OnModuleDestroy {
       .then(() => {
         // What the broker queued while the app was down is replayed on connecting, before the
         // above: the connection holds it until the subscriptions are there.
-        this.mqtt.markSubscriptionsComplete();
+        // Not when shutting down meanwhile: the gateways are not all followed then.
+        if (!this.destroyed) this.mqtt.markSubscriptionsComplete();
       })
       .catch((error: unknown) => {
         if (this.failures.allow('start', this.clock())) {

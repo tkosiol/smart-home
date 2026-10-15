@@ -108,6 +108,11 @@ export class MqttConnection {
       reconnectPeriod: 2000,
     });
     this.client.on('error', this.onError);
+    // What was held belongs to the connection that is gone: the broker delivers the unacknowledged
+    // copies again on the next one, and a stale callback must not acknowledge on that.
+    this.client.on('close', () => {
+      this.held = [];
+    });
     // mqtt.js acknowledges a message when this calls back, and handles the next one only after
     // that: a slow handler holds up the acknowledgements and so the broker's delivery.
     this.client.handleMessage = (packet, callback) => {

@@ -428,6 +428,26 @@ describe('MqttConnection acknowledgements', () => {
       expect(handler).toHaveBeenCalledTimes(1);
     });
 
+    it('forgets the copies held when the connection closes, and never acknowledges them', async () => {
+      const id = idFor('gw/a/z2m/#');
+      const gate = gated();
+      const acked = vi.fn();
+      void deliver('gw/a/z2m/x', id).then(acked);
+      await settle();
+      client.emit('close');
+      // The broker delivers it again on the next connection; that copy is held in its place.
+      const again = vi.fn();
+      void deliver('gw/a/z2m/x', id).then(again);
+      await settle();
+
+      const handler = vi.fn();
+      gate.subscribe('gw/a/z2m/#', handler);
+      await settle();
+      expect(handler).toHaveBeenCalledTimes(1);
+      expect(again).toHaveBeenCalledTimes(1);
+      expect(acked).not.toHaveBeenCalled();
+    });
+
     it('does not hold anything unless asked to', async () => {
       await deliver('gw/a/z2m/x', 4711);
     });
