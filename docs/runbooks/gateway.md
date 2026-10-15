@@ -2,7 +2,7 @@
 
 Dieses Runbook beschreibt, wie Gateways (der Raspberry Pi in Produktion, der Simulator auf Staging) an den Broker des VPS angebunden werden: die private Zertifizierungsstelle (CA), die Zertifikate auf dem VPS, Registrierung in der App, Sperren, Erneuern und die Prüfung nach der Inbetriebnahme. Konkrete Werte für `<…>` stehen in `.local/`. Die Architektur steht in `docs/superpowers/specs/2026-10-11-smart-home-architecture-design.md` (Abschnitt 4), die Entscheidungen in ADR-0002 und ADR-0020.
 
-Alle Schritte mit Schlüsseln führt Till selbst im eigenen Terminal aus. Schlüssel, Passphrasen und Passwörter gehen nie durch den Chat, nie in das Repository und nie in ein Ticket. Der Pi selbst (Ordner `gateway/`, `provision-gateway.sh`, `pnpm gateway:deploy`, Umzug, Pi-Backups) folgt mit Etappe 5b und wird hier ergänzt.
+Alle Schritte mit Schlüsseln führt Till selbst im eigenen Terminal aus. Schlüssel, Passphrasen und Passwörter gehen nie durch den Chat, nie in das Repository und nie in ein Ticket. Der Pi selbst (Ordner `gateway/`, `provision-gateway.sh`, `pnpm gateway:deploy`, Umzug) steht in Abschnitt 11; die Pi-Backups folgen mit Etappe 5b und werden dort ergänzt.
 
 ## Überblick
 
@@ -270,6 +270,68 @@ mqtt mosquitto_pub -q 1 -r -n -t gw/<id>/z2m/acl-test
 
 (`gw/gw-zzzzzzzz/z2m/acl-test` wurde nie gespeichert, die ACL hat es verworfen.) In der App zeigt das Gateway „Bridge: Online“.
 
+## 11. Pi: Stack installieren, umziehen, zurück
+
+Der Pi im Heimnetz führt den Ordner `gateway/` (Mosquitto mit Bridge zum Broker, Zigbee2MQTT, gepinnte Images) unter `/srv/smart-gateway` aus. Alles läuft vom Mac aus im Heimnetz; auf dem Pi ist nichts von Hand zu tun außer der einmaligen Voraussetzung unten. Aufbau und Befunde des Pakets: `gateway/README.md`.
+
+**Voraussetzungen**
+
+- Der Pi hat Docker mit dem Compose-Plugin, `rsync` und `timeout` (Raspberry Pi OS: vorhanden).
+- **Passwortloses `sudo` für den Betreiber-Benutzer.** Die Skripte laufen ohne Terminal (`sudo -n`) und scheitern sonst mit einer klaren Meldung, bevor etwas geändert wird. Einmalig auf dem Pi: `sudo visudo -f /etc/sudoers.d/smart-gateway` und die Zeile `<benutzer> ALL=(ALL) NOPASSWD:ALL` eintragen (Benutzername wie in `SMART_PI`).
+- Die Geheimnisse liegen auf dem Pi (`infra/deploy/provision-gateway.sh <gateway-id>`, Abschnitt 6 und `gateway/README.md`); fehlt eine Datei, bricht das Deploy vor jeder Änderung ab und nennt sie.
+- `SMART_PI=<benutzer>@<PI_HOST>` (Wert in `.local/pi.md`). Für den Umzug zusätzlich `SMART_PI_OLD_STACK=<Ordner des alten Stacks auf dem Pi>`: darin liegen `docker-compose.yml` (Dienste `mosquitto` und `zigbee2mqtt`) und `zigbee2mqtt-data`. Der Pfad steht nicht im Repository.
+- Memory-cgroup: Der Raspberry-Pi-Kernel hat sie standardmäßig aus; dann ignoriert Docker `mem_limit` (Mosquitto 256 MB, Zigbee2MQTT 384 MB). `gateway:deploy` warnt darüber (nur lesend geprüft). Abhilfe: in der Kernel-Kommandozeile des Pi (`cmdline.txt` unter `/boot/firmware/`, eine Zeile) `cgroup_enable=memory cgroup_memory=1` ergänzen und neu starten.
+
+**Installieren und aktualisieren**
+
+```bash
+SMART_PI=<benutzer>@<PI_HOST> pnpm gateway:deploy
+```
+
+Stufen (jede prüft vorher und bricht sauber ab, ssh nach höchstens 10 s, Pull und Compose mit Zeitlimit): Pi erreichbar, `sudo -n` geht, alle Geheimnisse vorhanden, Speicher-cgroup (nur Warnung) – `rsync` von `gateway/` nach `/srv/smart-gateway` (nie `secrets/`, `zigbee2mqtt-data/`, `run/`, `migration/`) – `render.sh` – `docker compose pull` – Rechte des Z2M-Datenordners – Start (Mosquitto wird immer neu erzeugt, weil die gerenderte Konfiguration und der Entrypoint Einzeldatei-Einbindungen sind) – warten, bis Zigbee2MQTT `zigbee2mqtt/bridge/state` mit `online` meldet (bis 120 s; Zugriff über den Benutzer `health` des lokalen Brokers, ohne Passwort in der Kommandozeile) – Status (Container, Bridge `1`/`0`, lokal von Mosquitto unter `gw/<id>/bridge/connection` veröffentlicht). Meldet Z2M nicht `online`, endet das Skript mit Exit 1 und lässt den Stack laufen (Logs: `sudo docker compose --env-file secrets/gateway.env logs zigbee2mqtt` in `/srv/smart-gateway`).
+
+Z2M schreibt Passwort und Frontend-Token bei jedem Start in `zigbee2mqtt-data/configuration.yaml`. Das Skript hält deshalb bei jedem Deploy den Ordner auf `700` und die Datei auf `600` (Eigentümer root; das Image läuft als root). Geheimnisse gehen nie über das Skript: kein Wert in Ausgabe oder Kommandozeile.
+
+**Einmaliger Umzug vom alten Stack**
+
+```bash
+SMART_PI=<benutzer>@<PI_HOST> SMART_PI_OLD_STACK=<alter-stack-ordner> pnpm gateway:deploy --migrate
+```
+
+Voraussetzung: der alte Stack läuft (sonst kein Umzug, ein bekannt guter Rückweg fehlt), und `/srv/smart-gateway/zigbee2mqtt-data` ist leer oder fehlt (das Skript vermischt nie). Nach Prüfung, rsync, Render und Pull (der alte Stack ist bis hierhin unberührt):
+
+1. Sicherung von `<alt>/zigbee2mqtt-data` als Tarball `/srv/smart-gateway/migration/<UTC-Zeit>.tar.gz` (root, `600`, Ordner `700`; das Skript liest den Tarball zur Probe).
+2. Alter Stack: `docker compose -f <alt>/docker-compose.yml stop` (nicht `down`; Container und Daten bleiben).
+3. Datenordner **kopieren** (nie verschieben) nach `/srv/smart-gateway/zigbee2mqtt-data`, Rechte `700`/`600`.
+4. Neuen Stack starten, bis zu 120 s auf `bridge/state` `online` warten.
+
+**Weg zurück, automatisch:** scheitert nach dem Stopp des alten Stacks irgendetwas (Kopie, Start, Z2M nicht `online`, Abbruch mit Strg+C), stoppt das Skript den neuen Stack, stellt die Kopie als `migration/failed-data-<Zeit>` beiseite (löscht sie nicht), startet den alten Stack mit `docker compose -f <alt>/docker-compose.yml up -d` und endet mit Exit 1 und einer Meldung. Der Datenordner des alten Stacks wird nie verändert. Startet auch der alte Stack nicht, steht `OLD STACK DID NOT START AGAIN` mit dem Befehl für die Handarbeit in der Ausgabe.
+
+**Weg zurück, von Hand** (auch nach einem erfolgreichen Umzug, solange der alte Stack nicht entfernt ist) auf dem Pi:
+
+```bash
+cd /srv/smart-gateway
+sudo docker compose --env-file secrets/gateway.env stop
+sudo docker compose -f <alter-stack-ordner>/docker-compose.yml up -d
+```
+
+Wiederherstellen der Daten aus der Sicherung (nur nötig, wenn der alte Ordner beschädigt wäre): `sudo tar -xzf /srv/smart-gateway/migration/<Zeit>.tar.gz -C <Zielordner>`.
+
+**Nach dem Umzug**
+
+- Frontend `http://<PI_HOST>:8080` (Anmeldung mit dem Token aus `sudo cat /srv/smart-gateway/secrets/z2m.env`, nur im Heimnetz, Port nie ins Internet weiterleiten), alle Geräte vorhanden, Messwerte kommen an.
+- In der App (Abschnitt 6): Gateway „Bridge: Online“, „Zigbee2MQTT: Online“; danach die ACL-Prüfung aus Abschnitt 10.
+- Erst wenn alles geprüft ist, den alten Stack entfernen: `sudo docker compose -f <alter-stack-ordner>/docker-compose.yml down`. Bis dahin startet ein alter Stack mit `restart: always` nach einem Neustart des Pi wieder und streitet sich mit dem neuen um den Adapter.
+
+**Prüfungen auf dem Pi**
+
+```bash
+cd /srv/smart-gateway
+sudo docker compose --env-file secrets/gateway.env ps           # beide Container "running", Mosquitto "healthy"
+sudo stat -c '%a %U' zigbee2mqtt-data zigbee2mqtt-data/configuration.yaml   # 700 root, 600 root
+sudo docker stats --no-stream                                    # Speicherlimits (0 = Limit ignoriert, siehe Memory-cgroup)
+```
+
 ## Fehlerbilder
 
 | Symptom                                                                                   | Ursache / Abhilfe                                                                                                                                                                                                                      |
@@ -285,3 +347,6 @@ mqtt mosquitto_pub -q 1 -r -n -t gw/<id>/z2m/acl-test
 | Gateway „Offline“ oder „Unbekannt“                                                        | Broker-Log prüfen (Abschnitt 4); Zertifikat abgelaufen oder gesperrt, CRL abgelaufen (Abschnitt 9), Uhr des Gateways falsch (der Pi hat keine RTC), von Fail2ban gesperrt (Abschnitt 5), Port nicht erreichbar                         |
 | Alle Gateways „Offline“, Broker-Log voller `Protocol error`                               | CRL abgelaufen: `pki.sh crl` und `broker-certs.sh`                                                                                                                                                                                     |
 | Simulator „Unbekannt“ auf Staging                                                         | Dienst `simulator` läuft nicht (Profil, GHCR-Paket öffentlich? `docs/runbooks/deploy.md`) oder die registrierte ID ist nicht die aus der `.env`                                                                                        |
+| `gateway:deploy`: „sudo on the Pi asks for a password“                                    | passwortloses `sudo` für den Betreiber-Benutzer einrichten (Abschnitt 11); es gibt kein Terminal für eine Passwortabfrage                                                                                                              |
+| `gateway:deploy`: „secrets/… is missing“                                                  | `provision-gateway.sh` für dieses Gateway ausführen (Abschnitt 6, `gateway/README.md`)                                                                                                                                                 |
+| `gateway:deploy`: Zigbee2MQTT meldet nicht `online`                                       | Logs von `zigbee2mqtt` auf dem Pi lesen (Adapter-Pfad `Z2M_SERIAL_DEVICE`, Adapter angesteckt, Frontend-Port 8080 frei); bei `--migrate` ist der alte Stack schon wieder gestartet                                                     |

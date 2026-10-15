@@ -5,8 +5,10 @@
 #    file and the bridge key after it dropped to the mosquitto user. So they are copied into a tmpfs, owned by that
 #    user.
 # 2. The local broker gets an ACL: every user of the password file (Zigbee2MQTT's) may do everything, plus the user
-#    "health" of the container health check, which may only read $SYS/broker/uptime. Its password is public on
-#    purpose (a health check cannot keep a secret out of the process list), so it must stay that powerless.
+#    "health" of the container health check and of deploy.sh, which may only read three things: $SYS/broker/uptime,
+#    the bridge state (gw/<id>/bridge/connection, 1 or 0: Mosquitto also publishes its notification topic locally) and zigbee2mqtt/bridge/state (Zigbee2MQTT's
+#    online/offline). Its password is public on purpose (a health check cannot keep a secret out of the process
+#    list), so it must stay that powerless.
 set -eu
 
 SRC=/mosquitto/secrets-src
@@ -31,7 +33,8 @@ mosquitto_passwd -b "$WORKDIR/passwd" health health > /dev/null 2>&1 || fail "co
 
 : > "$WORKDIR/acl"
 # shellcheck disable=SC2016 # $SYS is a topic name, not a variable
-printf '%s\n' 'user health' 'topic read $SYS/broker/uptime' >> "$WORKDIR/acl"
+printf '%s\n' 'user health' 'topic read $SYS/broker/uptime' 'topic read gw/+/bridge/connection' \
+  'topic read zigbee2mqtt/bridge/state' >> "$WORKDIR/acl"
 users=0
 cut -d: -f1 "$SRC/passwd" > "$WORKDIR/users"
 while IFS= read -r user; do

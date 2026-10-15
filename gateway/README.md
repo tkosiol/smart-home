@@ -9,6 +9,8 @@ Der Ordner enthält alles, was auf einem Gateway läuft: Mosquitto (lokaler Brok
 | `render.sh`               | prüft `secrets/gateway.env`, füllt die Vorlage, schreibt `run/mosquitto.conf` (Modus 600, atomar)                 |
 | `mosquitto-entrypoint.sh` | kopiert die Geheimnisse beim Start für den Mosquitto-Benutzer lesbar in ein tmpfs und erzeugt die lokale ACL      |
 | `test/gateway-test.sh`    | Docker-Test des Pakets (`bash gateway/test/gateway-test.sh`, braucht Docker und OpenSSL 3)                        |
+| `deploy.sh`               | `SMART_PI=<user@pi-host> pnpm gateway:deploy [--migrate]`: installiert/aktualisiert den Stack auf dem Pi vom Mac  |
+| `test/deploy-tests.sh`    | Test von `deploy.sh` mit Stub-ssh/-rsync/-docker in einer Sandbox (`bash gateway/test/deploy-tests.sh`)           |
 
 ## Dateien in `secrets/` (root `700`, Dateien `600`)
 
@@ -26,6 +28,8 @@ Die `.env`-Dateien sind einfache `KEY=Wert`-Zeilen: keine Anführungszeichen, ke
 
 ## Ablauf
 
+Vom Mac aus erledigt das `deploy.sh` (Runbook `docs/runbooks/gateway.md`, Abschnitt „Pi“); von Hand auf dem Pi:
+
 ```sh
 sudo ./render.sh                                          # schreibt run/mosquitto.conf, bricht bei ungültigen Werten ab
 sudo docker compose --env-file secrets/gateway.env up -d  # Mosquitto, dann Zigbee2MQTT
@@ -35,7 +39,7 @@ sudo docker compose --env-file secrets/gateway.env up -d  # Mosquitto, dann Zigb
 
 ## Entscheidungen und Befunde (gemessen mit den gepinnten Images)
 
-- **Geheimnisse und Rechte:** Mosquitto liest Passwortdatei und Bridge-Schlüssel erst nach dem Wechsel auf den Benutzer `mosquitto` (UID 1883); eine root-eigene Datei mit Modus 600 scheitert mit `Unable to open pwfile`. `mosquitto-entrypoint.sh` kopiert die vier Dateien deshalb aus `secrets/` (nur lesend eingebunden) in ein tmpfs, das dem Benutzer gehört. Auf der SD-Karte bleiben sie root-eigen mit 600. `run/mosquitto.conf` liest Mosquitto noch als root. **Healthcheck ohne Geheimnis:** der Entrypoint fügt der Passwortkopie im tmpfs den Benutzer `health` mit öffentlichem Passwort hinzu und schreibt eine ACL: alle Benutzer der `passwd` (Zigbee2MQTT) dürfen alles, `health` nur `$SYS/broker/uptime` lesen. So steht kein Geheimnis in `docker inspect` oder `ps`. **`render.sh` bricht ab**, wenn `z2m.env` fehlt oder `ZIGBEE2MQTT_CONFIG_FRONTEND_AUTH_TOKEN` leer ist (das Frontend wäre sonst offen). **Nach jedem `render.sh` Mosquitto neu erzeugen** (`docker compose --env-file secrets/gateway.env up -d --force-recreate mosquitto`): `render.sh` ersetzt die Datei (neuer Inode), die Einzeldatei-Einbindung zeigt sonst weiter auf die alte.
+- **Geheimnisse und Rechte:** Mosquitto liest Passwortdatei und Bridge-Schlüssel erst nach dem Wechsel auf den Benutzer `mosquitto` (UID 1883); eine root-eigene Datei mit Modus 600 scheitert mit `Unable to open pwfile`. `mosquitto-entrypoint.sh` kopiert die vier Dateien deshalb aus `secrets/` (nur lesend eingebunden) in ein tmpfs, das dem Benutzer gehört. Auf der SD-Karte bleiben sie root-eigen mit 600. `run/mosquitto.conf` liest Mosquitto noch als root. **Healthcheck ohne Geheimnis:** der Entrypoint fügt der Passwortkopie im tmpfs den Benutzer `health` mit öffentlichem Passwort hinzu und schreibt eine ACL: alle Benutzer der `passwd` (Zigbee2MQTT) dürfen alles, `health` nur `$SYS/broker/uptime`, den lokalen Bridge-Status (`gw/+/bridge/connection`, `1`/`0`; Mosquitto veröffentlicht die Benachrichtigung bei gesetztem `notification_topic` auch lokal, nicht unter `$SYS`) und `zigbee2mqtt/bridge/state` lesen (Letzteres wartet `deploy.sh` ab, ohne ein Passwort in der Kommandozeile). So steht kein Geheimnis in `docker inspect` oder `ps`. **`render.sh` bricht ab**, wenn `z2m.env` fehlt oder `ZIGBEE2MQTT_CONFIG_FRONTEND_AUTH_TOKEN` leer ist (das Frontend wäre sonst offen). **Nach jedem `render.sh` Mosquitto neu erzeugen** (`docker compose --env-file secrets/gateway.env up -d --force-recreate mosquitto`): `render.sh` ersetzt die Datei (neuer Inode), die Einzeldatei-Einbindung zeigt sonst weiter auf die alte.
 - **Zeitzone:** Zigbee2MQTT läuft mit `TZ=Europe/Berlin`; `TZ` in der Umgebung von `docker compose` (oder in `secrets/gateway.env`) überschreibt das (`TZ: ${TZ:-Europe/Berlin}`).
 - **Netz:** `gateway` ist ein gewöhnliches Bridge-Netz und kein `internal: true`: die Bridge braucht den Weg ins Internet, und Docker veröffentlicht keine Ports aus internen Netzen. Mosquitto veröffentlicht keinen Port; nur das Z2M-Frontend (8080, im Heimnetz, mit `auth_token`) ist erreichbar.
 - **Z2M-Einstellungen per Umgebung:** Die Variablen heißen `ZIGBEE2MQTT_CONFIG_<PFAD>` (Großbuchstaben, `_` statt `.`), z. B. `…_MQTT_SERVER`, `…_MQTT_USER`, `…_MQTT_PASSWORD`, `…_FRONTEND_AUTH_TOKEN`, `…_ADVANCED_LAST_SEEN`, `…_AVAILABILITY_ENABLED`, `…_SERIAL_PORT`. Z2M 2.x hat das Frontend standardmäßig **aus**; deshalb setzt `compose.yaml` zusätzlich `…_FRONTEND_ENABLED=true` und `…_FRONTEND_PORT=8080`. Den Adapter reicht Compose immer als `/dev/zigbee` durch und setzt `…_SERIAL_PORT=/dev/zigbee`, so hängt der Start nicht davon ab, wie das alte Setup den Pfad genannt hat.

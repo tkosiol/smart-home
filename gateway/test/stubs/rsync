@@ -1,0 +1,18 @@
+#!/bin/sh
+# Test double for rsync (deploy.sh tests): records the call and copies the source directory into the "Pi" sandbox
+# (the part of the destination after "host:" is a path in the sandbox), honouring the --exclude=/name/ options.
+printf 'rsync %s\n' "$*" >> "$STUB_CALLS"
+[ "${STUB_FAIL_RSYNC:-0}" = 1 ] && exit 23
+excludes=''
+for argument; do
+  case "$argument" in
+    --exclude=/*) name=${argument#--exclude=/}; excludes="$excludes --exclude=./${name%/}" ;;
+  esac
+  source_dir=${destination:-}
+  destination=$argument
+done
+# Now source_dir is the second to last argument and destination the last one.
+target=${destination#*:}
+mkdir -p "$target"
+# shellcheck disable=SC2086 # the exclude options are separate words on purpose
+tar -C "$source_dir" $excludes -cf - . | tar -C "$target" -xf -

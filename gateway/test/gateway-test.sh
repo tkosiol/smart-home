@@ -231,6 +231,7 @@ vps_pub() {
   docker exec "$PREFIX-broker" sh -c 'mosquitto_pub -h localhost -u smart-api -P "$MQTT_PASSWORD" -t "$0" -m "$1"' "$1" "$2"
 }
 # Local broker of the gateway, as the Zigbee2MQTT user.
+health_bridge_is_up() { [ "$(compose exec -T mosquitto mosquitto_sub -h 127.0.0.1 -u health -P health -t 'gw/+/bridge/connection' -C 1 -W 3 2> /dev/null)" = 1 ]; }
 local_pub() { compose exec -T mosquitto mosquitto_pub -h 127.0.0.1 -u "$Z2M_USER" -P "$Z2M_PASSWORD" "$@"; }
 local_sub() { compose exec -T mosquitto mosquitto_sub -h 127.0.0.1 -u "$Z2M_USER" -P "$Z2M_PASSWORD" "$@"; }
 
@@ -306,7 +307,16 @@ check "the health user cannot read other topics" '[ -z "$(compose exec -T mosqui
 compose exec -T mosquitto mosquitto_pub -h 127.0.0.1 -u health -P health -r -t zigbee2mqtt/hprobe -m intruder > /dev/null 2>&1
 check "the health user cannot publish" '[ -z "$(local_sub -t zigbee2mqtt/hprobe -C 1 -W 2 2> /dev/null)" ]'
 local_pub -r -n -t zigbee2mqtt/aclprobe > /dev/null 2>&1
+# deploy.sh waits for Zigbee2MQTT with the health user: it may read the bridge state of Z2M (and nothing else of it).
+local_pub -r -t zigbee2mqtt/bridge/state -m '{"state":"online"}' > /dev/null 2>&1
+check "the health user reads zigbee2mqtt/bridge/state" '[ "$(compose exec -T mosquitto mosquitto_sub -h 127.0.0.1 -u health -P health -t zigbee2mqtt/bridge/state -C 1 -W 3 2> /dev/null)" = "{\"state\":\"online\"}" ]'
+local_pub -r -t zigbee2mqtt/bridge/info -m '{"secret":"info"}' > /dev/null 2>&1
+check "the health user cannot read the rest of zigbee2mqtt/bridge" '[ -z "$(compose exec -T mosquitto mosquitto_sub -h 127.0.0.1 -u health -P health -t zigbee2mqtt/bridge/info -C 1 -W 3 2> /dev/null)" ]'
+local_pub -r -n -t zigbee2mqtt/bridge/info > /dev/null 2>&1
+local_pub -r -n -t zigbee2mqtt/bridge/state > /dev/null 2>&1
 check "the bridge connects with the gateway certificate (retained 1)" 'expect_vps "gw/$GATEWAY_ID/bridge/connection" "1 1"'
+# The local bridge state (1 = connected) that deploy.sh shows, readable by the health user.
+check "the health user reads the local bridge state (1)" 'wait_for health_bridge_is_up'
 check "no secret appears in the Mosquitto log" '! compose logs mosquitto 2>&1 | grep -qE "$Z2M_PASSWORD|$Z2M_TOKEN"'
 
 check "zigbee2mqtt/x arrives at the VPS broker as gw/<id>/z2m/x" \

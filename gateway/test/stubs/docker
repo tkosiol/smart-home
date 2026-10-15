@@ -1,0 +1,35 @@
+#!/bin/sh
+# Test double for docker on the Pi (deploy.sh tests). Records every call and keeps the state of the two stacks
+# in $STUB_STATE (files old_running and new_running). STUB_* variables inject failures:
+#   STUB_FAIL_PULL, STUB_FAIL_NEW_UP, STUB_FAIL_OLD_UP, STUB_FAIL_OLD_STOP = 1
+#   STUB_Z2M_OFFLINE = 1: bridge/state says offline; STUB_BRIDGE = 0: the bridge is down (default 1)
+printf 'docker %s\n' "$*" >> "$STUB_CALLS"
+state=${STUB_STATE:?}
+case "$*" in
+  "compose -f "*)
+    # The old stack (its own compose file).
+    case "$*" in
+      *" config --services"*) printf 'mosquitto\nzigbee2mqtt\n' ;;
+      *" ps "*) if [ -e "$state/old_running" ]; then echo oldcontainer; fi ;;
+      *" stop"*)
+        [ "${STUB_FAIL_OLD_STOP:-0}" = 1 ] && exit 1
+        rm -f "$state/old_running" ;;
+      *" up -d"*)
+        [ "${STUB_FAIL_OLD_UP:-0}" = 1 ] && exit 1
+        : > "$state/old_running" ;;
+    esac ;;
+  "compose --env-file secrets/gateway.env "*)
+    case "$*" in
+      *" pull"*) [ "${STUB_FAIL_PULL:-0}" = 1 ] && exit 1 ;;
+      *" up -d"*)
+        [ "${STUB_FAIL_NEW_UP:-0}" = 1 ] && exit 1
+        : > "$state/new_running" ;;
+      *" stop"*) rm -f "$state/new_running" ;;
+      *"ps --status running -q zigbee2mqtt"*) if [ -e "$state/new_running" ]; then echo z2mcontainer; fi ;;
+      *"mosquitto_sub"*"bridge/state"*)
+        if [ "${STUB_Z2M_OFFLINE:-0}" = 1 ]; then echo '{"state":"offline"}'; else echo '{"state":"online"}'; fi ;;
+      *"mosquitto_sub"*"bridge/connection"*) echo "${STUB_BRIDGE:-1}" ;;
+      *" ps"*) printf 'NAME  STATUS\nmosquitto  Up (healthy)\nzigbee2mqtt  Up\n' ;;
+    esac ;;
+esac
+exit 0

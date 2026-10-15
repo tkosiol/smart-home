@@ -32,6 +32,7 @@ Smart-Home-Plattform. Verbindliche Architektur: `docs/superpowers/specs/2026-10-
 | Deploy-Skripte testen                            | `bash infra/deploy/test/run-tests.sh`                                           |
 | PKI-Skripte testen (OpenSSL ≥ 3)                 | `bash infra/pki/test/run-tests.sh`                                              |
 | Broker-Image testen (Docker, OpenSSL ≥ 3)        | `bash infra/broker/test/broker-test.sh`                                         |
+| Gateway-Deploy-Skript testen                     | `bash gateway/test/deploy-tests.sh`                                             |
 | Symbol-Schrift neu erzeugen                      | `pnpm icons:build`                                                              |
 | App-Icon (PNGs, Favicon) neu erzeugen            | `pnpm app-icon:build`                                                           |
 

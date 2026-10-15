@@ -31,7 +31,7 @@ services:
       - /mosquitto/secrets:uid=1883,gid=1883,mode=0700
     healthcheck:
       # Logs in as the user "health" that mosquitto-entrypoint.sh adds: its password is public on purpose and it may
-      # only read the uptime topic, so no secret ever appears in the health check (visible in ps and docker inspect).
+      # only read the uptime, the bridge state and Z2M's bridge/state, so no secret ever appears in the health check (visible in ps and docker inspect).
       test:
         - CMD-SHELL
         - mosquitto_sub -h 127.0.0.1 -u health -P health -t '$$SYS/broker/uptime' -C 1 -W 5 > /dev/null

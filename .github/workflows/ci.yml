@@ -114,6 +114,8 @@ jobs:
           infra/backup/backup.sh infra/backup/restore-test.sh infra/broker/entrypoint.sh
           infra/local/smoke-test.sh infra/compose/test/stack-test.sh infra/broker/test/broker-test.sh
           gateway/render.sh gateway/mosquitto-entrypoint.sh gateway/test/gateway-test.sh
+          gateway/deploy.sh gateway/test/deploy-tests.sh gateway/test/stubs/docker gateway/test/stubs/rsync
+          gateway/test/stubs/timeout gateway/test/stubs/chown
       - name: deploy script tests
         run: bash infra/deploy/test/run-tests.sh
       - name: pki script tests
@@ -122,3 +124,5 @@ jobs:
         run: bash infra/broker/test/broker-test.sh
       - name: gateway tests
         run: bash gateway/test/gateway-test.sh
+      - name: gateway deploy tests
+        run: bash gateway/test/deploy-tests.sh

@@ -1,0 +1,3 @@
+#!/bin/sh
+# Test double for chown (the sandbox runs as an ordinary user): records the call only.
+printf 'chown %s\n' "$*" >> "$STUB_CALLS"

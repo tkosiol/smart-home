@@ -1,0 +1,6 @@
+#!/bin/sh
+# Test double for timeout (macOS has none): records the call and runs the command without a limit.
+printf 'timeout %s\n' "$*" >> "$STUB_CALLS"
+if [ "$1" = -k ]; then shift 2; fi
+shift
+exec "$@"
