@@ -84,6 +84,7 @@ const ENDPOINTS: {
     body: { name: 'Hijacked' },
     crossIds: true,
   },
+  { route: 'GET /v1/households/:householdId/attention' },
   { route: 'GET /v1/households/:householdId/me/overview-layout' },
   {
     route: 'PUT /v1/households/:householdId/me/overview-layout',
@@ -297,7 +298,7 @@ describe('household tenancy', () => {
           return [`${METHOD_NAMES[method] ?? String(method)} ${joinPath(path, sub)}`];
         }),
       );
-      expect(routes.length).toBeGreaterThanOrEqual(19);
+      expect(routes.length).toBeGreaterThanOrEqual(20);
       expect(routes.sort()).toEqual(ENDPOINTS.map(({ route }) => route).sort());
     });
   });

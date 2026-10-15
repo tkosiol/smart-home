@@ -72,6 +72,9 @@ function visibleTo(item: AttentionItem, role: HouseholdRole, isPlatformAdmin: bo
 export class AttentionService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(AttentionService.name);
   private readonly households = new Map<string, HouseholdState>();
+  /** Which household a device or a gateway of the computed state belongs to. */
+  private readonly deviceHouseholds = new Map<string, string>();
+  private readonly gatewayHouseholds = new Map<string, string>();
   private readonly queued = new Set<string>();
   private tail: Promise<unknown> = Promise.resolve();
   private timer: NodeJS.Timeout | undefined;
@@ -85,17 +88,15 @@ export class AttentionService implements OnModuleInit, OnModuleDestroy {
     @Inject(CLOCK) private readonly clock: Clock,
   ) {}
 
-  async onModuleInit(): Promise<void> {
+  onModuleInit(): void {
     this.gatewayEvents.on(GATEWAY_STATUS_CHANGED, this.onGatewayStatus);
     this.gatewayEvents.on(GATEWAY_REGISTERED, this.onGatewaysChanged);
     this.gatewayEvents.on(GATEWAY_REVOKED, this.onGatewaysChanged);
     this.deviceEvents.on(DEVICE_STATE_CHANGED, this.onDeviceState);
     this.deviceEvents.on(DEVICE_THRESHOLDS_CHANGED, this.onThresholds);
-    try {
-      await this.refreshAll();
-    } catch (error) {
-      this.logger.warn(`Cannot compute the attention items at start: ${describeError(error)}`);
-    }
+    // In the queue like every other recomputation, so that a slow start cannot overwrite what an
+    // event computed meanwhile; startup does not wait for it (`idle()` does).
+    this.fire('start', () => this.refreshAll());
     this.timer = setInterval(() => this.fire('tick', () => this.refreshAll()), TICK_MS);
     this.timer.unref();
   }
@@ -135,7 +136,9 @@ export class AttentionService implements OnModuleInit, OnModuleDestroy {
     if (!state) return this.reload(householdId);
     const view = await this.devices.get(householdId, deviceId);
     const others = state.snapshot.devices.filter((device) => device.id !== deviceId);
-    const devices = view ? [...others, toDeviceSnapshot(view)] : others;
+    // A device of a gateway that is not active (revoked) is left out, as in `reload`.
+    const shown = view && state.snapshot.gateways.some((gateway) => gateway.id === view.gatewayId);
+    const devices = shown ? [...others, toDeviceSnapshot(view)] : others;
     this.apply(householdId, { ...state.snapshot, devices });
   }
 
@@ -193,9 +196,23 @@ export class AttentionService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
+  /**
+   * Stores the household's items for the snapshot. A household with nothing in it (no gateway,
+   * device or hardware) is not kept: `ensureComputed` makes it again when someone asks.
+   */
   private apply(householdId: string, snapshot: Snapshot): void {
     const now = this.clock();
     const previous = this.households.get(householdId);
+    this.forget(householdId);
+    if (
+      snapshot.gateways.length === 0 &&
+      snapshot.devices.length === 0 &&
+      snapshot.hardware.length === 0
+    ) {
+      return;
+    }
+    for (const device of snapshot.devices) this.deviceHouseholds.set(device.id, householdId);
+    for (const gateway of snapshot.gateways) this.gatewayHouseholds.set(gateway.id, householdId);
     const before = { items: previous?.items ?? [], contactOpenSince: previous?.contactOpenSince };
     this.households.set(householdId, {
       snapshot,
@@ -204,25 +221,20 @@ export class AttentionService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  private householdOfGateway(gatewayId: string): string | undefined {
-    for (const [id, state] of this.households) {
-      if (state.snapshot.gateways.some((gateway) => gateway.id === gatewayId)) return id;
-    }
-    return undefined;
-  }
-
-  private householdOfDevice(deviceId: string): string | undefined {
-    for (const [id, state] of this.households) {
-      if (state.snapshot.devices.some((device) => device.id === deviceId)) return id;
-    }
-    return undefined;
+  /** Drops the household's state and its entries in the lookups. */
+  private forget(householdId: string): void {
+    const state = this.households.get(householdId);
+    if (!state) return;
+    this.households.delete(householdId);
+    for (const device of state.snapshot.devices) this.deviceHouseholds.delete(device.id);
+    for (const gateway of state.snapshot.gateways) this.gatewayHouseholds.delete(gateway.id);
   }
 
   // The listeners run inside the emitter of the module that announces the event, often right
   // after it stored a change: whatever goes wrong here must never reach that module.
   private readonly onGatewayStatus = (event: GatewayStatusChanged): void =>
     this.listen(() => {
-      const householdId = this.householdOfGateway(event.gatewayId);
+      const householdId = this.gatewayHouseholds.get(event.gatewayId);
       if (householdId === undefined) this.fire('all', () => this.refreshAll());
       else this.fire(`h:${householdId}`, () => this.reload(householdId));
     });
@@ -232,7 +244,7 @@ export class AttentionService implements OnModuleInit, OnModuleDestroy {
 
   private readonly onDeviceState = (event: DeviceStateChanged): void =>
     this.listen(() => {
-      const householdId = this.householdOfDevice(event.deviceId);
+      const householdId = this.deviceHouseholds.get(event.deviceId);
       // A device not seen yet (just created) is found by the next tick.
       if (householdId === undefined) return;
       this.fire(`d:${event.deviceId}`, () => this.reloadDevice(householdId, event.deviceId));

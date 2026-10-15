@@ -99,7 +99,8 @@ describe('AttentionService', () => {
       deviceEvents,
       () => now,
     );
-    await service.onModuleInit();
+    service.onModuleInit();
+    await service.idle();
   });
 
   afterEach(() => {
@@ -205,6 +206,104 @@ describe('AttentionService', () => {
     expect(ids()).toEqual([]);
   });
 
+  it('does not let the start-up read overwrite a newer recomputation', async () => {
+    const first = new AttentionService(
+      {
+        list,
+        listActive,
+        crlNextUpdate: () => Promise.resolve(undefined),
+      } as unknown as GatewaysService,
+      { list: listDevices, get } as unknown as DevicesRepository,
+      { listUnassigned } as unknown as HardwareRepository,
+      new GatewayEvents(),
+      new DeviceEvents(),
+      () => now,
+    );
+    let release: (gateways: Gateway[]) => void = () => undefined;
+    list.mockReset();
+    list.mockImplementationOnce(() => new Promise((resolve) => (release = resolve)));
+    list.mockImplementation(() => Promise.resolve(gateways));
+    first.onModuleInit();
+    const recomputed = first.recomputeHousehold(HOUSEHOLD);
+    gateways = [
+      gateway({
+        bridgeStatus: 'offline',
+        statusChangedAt: new Date(START.getTime() - 9 * MINUTE).toISOString(),
+      }),
+    ];
+    await vi.advanceTimersByTimeAsync(0);
+    release([gateway()]);
+    await recomputed;
+    await first.idle();
+    expect(first.list(HOUSEHOLD, 'owner', false).map((item) => item.kind)).toEqual([
+      'gateway_offline',
+    ]);
+    first.onModuleDestroy();
+  });
+
+  it('ignores a device whose gateway is not active', async () => {
+    devices = [view('d1', { soil_moisture: 10 })];
+    await service.recomputeHousehold(HOUSEHOLD);
+    expect(ids()).toEqual(['soil_dry:d1']);
+    devices = [view('d1', { soil_moisture: 10 }, { gatewayId: 'gw-revoked' })];
+    await service.recomputeDevice(HOUSEHOLD, 'd1');
+    expect(ids()).toEqual([]);
+  });
+
+  it('keeps no state for a household that has nothing left, and does not reload it', async () => {
+    gateways = [gateway({ revokedAt: START.toISOString() })];
+    devices = [];
+    listActive.mockResolvedValue([]);
+    await service.recomputeHousehold(HOUSEHOLD);
+    expect(items()).toEqual([]);
+    expect((service as unknown as { households: Map<string, unknown> }).households.size).toBe(0);
+
+    list.mockClear();
+    await vi.advanceTimersByTimeAsync(TICK_MS);
+    await service.idle();
+    expect(list).not.toHaveBeenCalled();
+
+    // Asked for again, it is computed on demand.
+    gateways = [gateway()];
+    listActive.mockResolvedValue([
+      { id: GATEWAY, householdId: HOUSEHOLD, topicPrefix: `gw/${GATEWAY}/z2m` },
+    ]);
+    await service.ensureComputed(HOUSEHOLD);
+    expect(list).toHaveBeenCalledTimes(1);
+    expect((service as unknown as { households: Map<string, unknown> }).households.size).toBe(1);
+  });
+
+  it('finds the household of a device and a gateway without scanning, and forgets them', async () => {
+    devices = [view('d1', { soil_moisture: 60 })];
+    await service.recomputeHousehold(HOUSEHOLD);
+    const lookups = service as unknown as {
+      deviceHouseholds: Map<string, string>;
+      gatewayHouseholds: Map<string, string>;
+    };
+    expect(lookups.deviceHouseholds.get('d1')).toBe(HOUSEHOLD);
+    expect(lookups.gatewayHouseholds.get(GATEWAY)).toBe(HOUSEHOLD);
+
+    devices = [];
+    gateways = [];
+    await service.recomputeHousehold(HOUSEHOLD);
+    expect(lookups.deviceHouseholds.size).toBe(0);
+    expect(lookups.gatewayHouseholds.size).toBe(0);
+  });
+
+  it('says nothing for devices while their gateway is not offline for long enough', async () => {
+    gateways = [
+      gateway({
+        bridgeStatus: 'offline',
+        statusChangedAt: new Date(START.getTime() - 3 * MINUTE).toISOString(),
+      }),
+    ];
+    devices = Array.from({ length: 12 }, (_, index) =>
+      view(`d${index}`, { soil_moisture: 60 }, { availability: 'offline' }),
+    );
+    await service.recomputeHousehold(HOUSEHOLD);
+    expect(items()).toEqual([]);
+  });
+
   describe('a failing recomputation', () => {
     it('does not reach the emitter of a device event', async () => {
       get.mockRejectedValue(new Error('database down'));
@@ -229,8 +328,8 @@ describe('AttentionService', () => {
     it('does not reach the emitter when handling the event fails at once', () => {
       // Handled synchronously: the listener itself must not throw either.
       vi.spyOn(
-        service as unknown as { householdOfDevice: () => string },
-        'householdOfDevice',
+        (service as unknown as { deviceHouseholds: Map<string, string> }).deviceHouseholds,
+        'get',
       ).mockImplementation(() => {
         throw new Error('broken');
       });
@@ -259,7 +358,7 @@ describe('AttentionService', () => {
         new DeviceEvents(),
         () => now,
       );
-      await expect(fresh.onModuleInit()).resolves.toBeUndefined();
+      expect(() => fresh.onModuleInit()).not.toThrow();
       await vi.advanceTimersByTimeAsync(TICK_MS);
       await fresh.idle();
       fresh.onModuleDestroy();

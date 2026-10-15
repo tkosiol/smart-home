@@ -277,6 +277,34 @@ describe('evaluate', () => {
       ]);
     });
 
+    it('says nothing for devices behind a gateway that is not online yet (grace period)', () => {
+      const restarting = gateway({ bridgeStatus: 'offline', statusChangedAt: ago(3 * MINUTE) });
+      const devices = Array.from({ length: 12 }, (_, index) =>
+        device({
+          id: `dev-${index}`,
+          availability: 'offline',
+          lastSeenAt: ago(5 * HOUR),
+        }),
+      );
+      expect(run({ gateways: [restarting], devices })).toEqual([]);
+      const z2mDown = gateway({ z2mStatus: 'unknown', statusChangedAt: ago(3 * MINUTE) });
+      expect(run({ gateways: [z2mDown], devices })).toEqual([]);
+    });
+
+    it('yields nothing but the silence for a silent device, whose values are stale', () => {
+      const silent = withState(
+        { soil_moisture: 5, battery: 3, dry: true },
+        { availability: 'offline' },
+      );
+      expect(run({ devices: [silent] }).map((item) => item.id)).toEqual(['device_silent:dev-1']);
+      const quiet = device({
+        kind: 'contact',
+        state: { contact: false, battery: 3 },
+        lastSeenAt: ago(3 * HOUR),
+      });
+      expect(run({ devices: [quiet] }).map((item) => item.id)).toEqual(['device_silent:dev-1']);
+    });
+
     it('is the own item of a device behind an online gateway', () => {
       const items = run({
         devices: [device({ id: 'quiet', availability: 'offline' }), device({ id: 'fine' })],

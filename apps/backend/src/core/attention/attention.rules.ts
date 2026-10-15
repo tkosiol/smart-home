@@ -130,6 +130,7 @@ export function openContacts(snapshot: Snapshot, previous: Previous, now: Date):
  * The household's attention items for the state it is in at `now` (spec 4.1 to 4.4).
  *
  * - A gateway that is not online for 5 minutes yields one critical item; its devices yield none.
+ * - A device is silent only while its gateway is online, and then yields nothing else.
  * - An item keeps the `since` of the same item in `previous` while its condition holds, and the
  *   soil and battery items end only beyond the hysteresis margin.
  * - Otherwise `since` is when the condition's cause began: the gateway's last status change, the
@@ -169,10 +170,17 @@ export function evaluate(snapshot: Snapshot, previous: Previous, now: Date): Att
     });
   }
 
+  // Only a gateway that is online vouches for its devices' silence; during the grace period of a
+  // gateway that is not online yet (a restart) its devices say nothing.
+  const online = new Set(
+    snapshot.gateways
+      .filter((gateway) => gateway.bridgeStatus === 'online' && gateway.z2mStatus === 'online')
+      .map((gateway) => gateway.id),
+  );
   const open = openContacts(snapshot, previous, now);
   for (const device of snapshot.devices) {
     if (offline.has(device.gatewayId)) continue;
-    evaluateDevice(device, now, before, open.get(device.id), add);
+    evaluateDevice(device, now, before, open.get(device.id), online.has(device.gatewayId), add);
   }
 
   for (const hardware of snapshot.hardware) {
@@ -191,6 +199,7 @@ function evaluateDevice(
   now: Date,
   before: ReadonlyMap<string, AttentionItem>,
   openSince: Date | undefined,
+  gatewayOnline: boolean,
   add: Add,
 ): void {
   const { thresholds, state } = device;
@@ -202,7 +211,7 @@ function evaluateDevice(
   const silentFor = minutesBetween(lastHeard, now);
   const unavailable = device.availability === 'offline';
   const quiet = silentFor >= thresholds.silentMinutes;
-  if (unavailable || quiet) {
+  if (gatewayOnline && (unavailable || quiet)) {
     add('device_silent', device.id, earlier(lastHeard, now), {
       ...base,
       params: {
@@ -210,6 +219,8 @@ function evaluateDevice(
         silentMinutes: thresholds.silentMinutes,
       },
     });
+    // Its values are stale: the silence is the cause, like an offline gateway (spec 4.1, rule 3).
+    return;
   }
 
   const moisture = finite(state['soil_moisture']);
