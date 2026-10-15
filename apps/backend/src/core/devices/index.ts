@@ -3,6 +3,11 @@ export {
   type CreateDeviceOutcome,
   type DeviceView,
 } from './devices.repository.js';
+export {
+  DEVICE_THRESHOLDS_CHANGED,
+  DeviceEvents,
+  type DeviceThresholdsChanged,
+} from './device-events.js';
 export { DevicesModule } from './devices.module.js';
 export {
   capabilities,

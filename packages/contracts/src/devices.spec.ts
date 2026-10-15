@@ -7,6 +7,7 @@ import {
   deviceCreateSchema,
   deviceRenameSchema,
   deviceSchema,
+  deviceUpdateSchema,
   hardwareSchema,
   primaryCapability,
   deviceKind,
@@ -146,6 +147,14 @@ describe('deviceSchema', () => {
     lastSeenAt: '2026-10-14T08:00:00.000Z',
     state: { state: 'ON', brightness: 200 },
     capabilities: [lampState, brightness],
+    thresholds: {},
+    effectiveThresholds: {
+      soilMoistureMin: null,
+      soilMoistureMax: null,
+      batteryMin: 20,
+      contactOpenMinutes: 10,
+      silentMinutes: 120,
+    },
   };
 
   it('accepts a lamp with an icon', () => {
@@ -175,9 +184,31 @@ describe('deviceSchema', () => {
     expect(parsed.success).toBe(true);
   });
 
+  it('requires the own and the effective thresholds', () => {
+    expect(deviceSchema.safeParse({ ...device, thresholds: undefined }).success).toBe(false);
+    expect(deviceSchema.safeParse({ ...device, effectiveThresholds: undefined }).success).toBe(
+      false,
+    );
+    expect(
+      deviceSchema.safeParse({ ...device, thresholds: { batteryMin: 10, silentMinutes: null } })
+        .success,
+    ).toBe(true);
+  });
+
   it('rejects a missing name and an unknown availability', () => {
     expect(deviceSchema.safeParse({ ...device, name: undefined }).success).toBe(false);
     expect(deviceSchema.safeParse({ ...device, availability: 'away' }).success).toBe(false);
+  });
+});
+
+describe('deviceUpdateSchema', () => {
+  it('takes a name, thresholds or both, and nothing else alone', () => {
+    expect(deviceUpdateSchema.safeParse({ name: ' Bed ' }).success).toBe(true);
+    expect(deviceUpdateSchema.safeParse({ thresholds: { batteryMin: null } }).success).toBe(true);
+    expect(deviceUpdateSchema.safeParse({ name: 'Bed', thresholds: {} }).success).toBe(true);
+    expect(deviceUpdateSchema.safeParse({}).success).toBe(false);
+    expect(deviceUpdateSchema.safeParse({ name: '  ' }).success).toBe(false);
+    expect(deviceUpdateSchema.safeParse({ thresholds: { batteryMin: 101 } }).success).toBe(false);
   });
 });
 

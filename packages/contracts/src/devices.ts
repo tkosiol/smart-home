@@ -1,6 +1,9 @@
 import * as z from 'zod/mini';
 import { gatewayIdSchema } from './gateways.js';
 import { displayNameSchema } from './households.js';
+import { effectiveThresholdsSchema, LOW_BATTERY_PERCENT, thresholdsSchema } from './thresholds.js';
+
+export { LOW_BATTERY_PERCENT };
 
 export const CAPABILITY_KINDS = ['numeric', 'binary', 'enum', 'text', 'composite'] as const;
 export type CapabilityKind = (typeof CAPABILITY_KINDS)[number];
@@ -60,6 +63,10 @@ export const deviceSchema = z.object({
   state: z.record(z.string(), z.unknown()),
   /** Readable capabilities without settings. */
   capabilities: z.array(capabilitySchema),
+  /** The thresholds set on this device; a missing field uses the kind's default. */
+  thresholds: thresholdsSchema,
+  /** The thresholds in force: the device's own value, else the default of its kind. */
+  effectiveThresholds: effectiveThresholdsSchema,
 });
 export type Device = z.infer<typeof deviceSchema>;
 
@@ -71,6 +78,22 @@ export type DeviceCreate = z.infer<typeof deviceCreateSchema>;
 
 export const deviceRenameSchema = z.object({ name: displayNameSchema });
 export type DeviceRename = z.infer<typeof deviceRenameSchema>;
+
+/**
+ * A change to a device: its name and/or thresholds. A threshold that is set overwrites, `null`
+ * removes it (the kind's default applies again), a missing one stays.
+ */
+export const deviceUpdateSchema = z
+  .object({
+    name: z.optional(displayNameSchema),
+    thresholds: z.optional(thresholdsSchema),
+  })
+  .check(
+    z.refine(({ name, thresholds }) => name !== undefined || thresholds !== undefined, {
+      message: 'name or thresholds is required',
+    }),
+  );
+export type DeviceUpdate = z.infer<typeof deviceUpdateSchema>;
 
 /** Keys shown first, in this order. */
 const PRIMARY_KEYS = ['soil_moisture', 'temperature', 'humidity', 'state'] as const;
@@ -89,9 +112,6 @@ export function primaryCapability(capabilities: readonly Capability[]): Capabili
   }
   return readings.find((capability) => capability.kind === 'numeric');
 }
-
-/** A battery below this percentage counts as low. */
-export const LOW_BATTERY_PERCENT = 20;
 
 /** True for a finite battery percentage below {@link LOW_BATTERY_PERCENT}; anything else is not low. */
 export function isLowBattery(percent: unknown): boolean {

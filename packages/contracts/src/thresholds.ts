@@ -1,5 +1,8 @@
 import * as z from 'zod/mini';
-import { LOW_BATTERY_PERCENT, type DeviceKind } from './devices.js';
+import type { DeviceKind } from './devices.js';
+
+/** A battery below this percentage counts as low. */
+export const LOW_BATTERY_PERCENT = 20;
 
 const percent = z.nullable(z.number().check(z.gte(0), z.lte(100)));
 const minutes = z.nullable(z.int().check(z.gte(1), z.lte(10080)));
@@ -24,13 +27,14 @@ export const thresholdsSchema = z
   );
 export type Thresholds = z.infer<typeof thresholdsSchema>;
 
-export interface EffectiveThresholds {
-  soilMoistureMin: number | null;
-  soilMoistureMax: number | null;
-  batteryMin: number;
-  contactOpenMinutes: number;
-  silentMinutes: number;
-}
+export const effectiveThresholdsSchema = z.object({
+  soilMoistureMin: z.nullable(z.number()),
+  soilMoistureMax: z.nullable(z.number()),
+  batteryMin: z.number(),
+  contactOpenMinutes: z.number(),
+  silentMinutes: z.number(),
+});
+export type EffectiveThresholds = z.infer<typeof effectiveThresholdsSchema>;
 
 const BASE_THRESHOLDS: EffectiveThresholds = {
   soilMoistureMin: null,

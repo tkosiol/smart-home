@@ -361,10 +361,12 @@ describe('devices and telemetry data model', () => {
       ]);
       expect(await devices.list(await household())).toEqual([]);
 
-      expect((await devices.rename(householdId, one.device.id, 'Courgette'))?.name).toBe(
-        'Courgette',
-      );
-      expect(await devices.rename(await household(), one.device.id, 'Hijacked')).toBeUndefined();
+      expect(
+        (await devices.update(householdId, one.device.id, { name: 'Courgette' }))?.view.name,
+      ).toBe('Courgette');
+      expect(
+        await devices.update(await household(), one.device.id, { name: 'Hijacked' }),
+      ).toBeUndefined();
       expect((await devices.get(householdId, one.device.id))?.name).toBe('Courgette');
       expect(await devices.get(await household(), one.device.id)).toBeUndefined();
     });
