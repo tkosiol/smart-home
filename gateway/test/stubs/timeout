@@ -1,0 +1,10 @@
+#!/bin/sh
+# Test double for timeout (macOS has none): records the call and runs the command without a limit.
+# STUB_TIMEOUT_START=1: the limit of start.sh is "exceeded" (exit 124, start.sh does not run).
+printf 'timeout %s\n' "$*" >> "$STUB_CALLS"
+if [ "${STUB_TIMEOUT_START:-0}" = 1 ]; then
+  case "$*" in *"bash ./start.sh"*) exit 124 ;; esac
+fi
+if [ "$1" = -k ]; then shift 2; fi
+shift
+exec "$@"

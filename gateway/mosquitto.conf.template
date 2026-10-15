@@ -1,0 +1,34 @@
+# Mosquitto of the gateway (Raspberry Pi), ADR-0020. render.sh fills the three placeholders from
+# secrets/gateway.env and writes run/mosquitto.conf; nothing else in this file is configurable on purpose.
+persistence true
+persistence_location /mosquitto/data/
+autosave_interval 300
+queue_qos0_messages true
+max_queued_messages 75000
+max_queued_bytes 75497472
+
+listener 1883
+allow_anonymous false
+password_file /mosquitto/secrets/passwd
+acl_file /mosquitto/secrets/acl
+
+connection {{GATEWAY_ID}}-bridge
+address {{BROKER_HOST}}:{{BROKER_PORT}}
+bridge_cafile   /mosquitto/secrets/ca.crt
+bridge_certfile /mosquitto/secrets/gateway.crt
+bridge_keyfile  /mosquitto/secrets/gateway.key
+bridge_tls_version tlsv1.2
+bridge_protocol_version mqttv311
+cleansession false
+local_clientid  {{GATEWAY_ID}}-bridge-local
+remote_clientid {{GATEWAY_ID}}-bridge
+keepalive_interval 20
+start_type automatic
+restart_timeout 1 5
+notifications true
+notification_topic gw/{{GATEWAY_ID}}/bridge/connection
+# Default, prevents loops: do not change.
+try_private true
+topic # out 1 zigbee2mqtt/ gw/{{GATEWAY_ID}}/z2m/
+topic +/set in 0 zigbee2mqtt/ gw/{{GATEWAY_ID}}/z2m/
+topic bridge/request/# in 0 zigbee2mqtt/ gw/{{GATEWAY_ID}}/z2m/

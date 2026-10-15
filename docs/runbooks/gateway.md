@@ -2,7 +2,7 @@
 
 Dieses Runbook beschreibt, wie Gateways (der Raspberry Pi in Produktion, der Simulator auf Staging) an den Broker des VPS angebunden werden: die private Zertifizierungsstelle (CA), die Zertifikate auf dem VPS, Registrierung in der App, Sperren, Erneuern und die Prüfung nach der Inbetriebnahme. Konkrete Werte für `<…>` stehen in `.local/`. Die Architektur steht in `docs/superpowers/specs/2026-10-11-smart-home-architecture-design.md` (Abschnitt 4), die Entscheidungen in ADR-0002 und ADR-0020.
 
-Alle Schritte mit Schlüsseln führt Till selbst im eigenen Terminal aus. Schlüssel, Passphrasen und Passwörter gehen nie durch den Chat, nie in das Repository und nie in ein Ticket. Der Pi selbst (Ordner `gateway/`, `provision-gateway.sh`, `pnpm gateway:deploy`, Umzug, Pi-Backups) folgt mit Etappe 5b und wird hier ergänzt.
+Alle Schritte mit Schlüsseln führt Till selbst im eigenen Terminal aus. Schlüssel, Passphrasen und Passwörter gehen nie durch den Chat, nie in das Repository und nie in ein Ticket. Der Pi selbst (Ordner `gateway/`, `provision-gateway.sh`, `pnpm gateway:deploy`, Umzug, Backups und Wiederherstellung) steht in Abschnitt 11, die Checkliste für seine Inbetriebnahme in Abschnitt 12.
 
 ## Überblick
 
@@ -154,7 +154,7 @@ Ein Gateway mit abgelaufenem oder gesperrtem Zertifikat versucht immer wieder, s
    infra/pki/pki.sh issue-gateway
    ```
 
-   Ausgabe: die ID und die Dateien `~/.smart-pki/gateways/<id>.crt` und `<id>.key`. Der Schlüssel (`.key`) kommt nur auf das Gateway selbst (für den Pi über `provision-gateway.sh`, Etappe 5b) und sonst nirgendwohin.
+   Ausgabe: die ID und die Dateien `~/.smart-pki/gateways/<id>.crt` und `<id>.key`. Der Schlüssel (`.key`) kommt nur auf das Gateway selbst (für den Pi über `provision-gateway.sh`, Abschnitt 11) und sonst nirgendwohin.
 
 2. Backup von `~/.smart-pki` erneuern (Abschnitt 3).
 3. In der App als Plattform-Admin anmelden, den Haushalt wählen, dem das Gateway gehört (Till muss dort Eigentümer sein), „Mehr → Gateways“ öffnen. Unter „Gateway registrieren“ einen Namen eingeben und den **Text des Zertifikats** (`cat ~/.smart-pki/gateways/<id>.crt`, einschließlich der Zeilen mit `BEGIN` und `END`) einfügen. **Niemals den privaten Schlüssel einfügen.**
@@ -270,18 +270,184 @@ mqtt mosquitto_pub -q 1 -r -n -t gw/<id>/z2m/acl-test
 
 (`gw/gw-zzzzzzzz/z2m/acl-test` wurde nie gespeichert, die ACL hat es verworfen.) In der App zeigt das Gateway „Bridge: Online“.
 
+## 11. Pi: Stack installieren, umziehen, zurück
+
+Der Pi im Heimnetz führt den Ordner `gateway/` (Mosquitto mit Bridge zum Broker, Zigbee2MQTT, gepinnte Images) unter `/srv/smart-gateway` aus. Alles läuft vom Mac aus im Heimnetz; auf dem Pi ist nichts von Hand zu tun außer der einmaligen Voraussetzung unten. Aufbau und Befunde des Pakets: `gateway/README.md`.
+
+**Voraussetzungen**
+
+- Der Pi hat Docker mit dem Compose-Plugin, `rsync` und `timeout` (Raspberry Pi OS: vorhanden).
+- **Passwortloses `sudo` für den Betreiber-Benutzer.** Die Skripte laufen ohne Terminal (`sudo -n`) und scheitern sonst mit einer klaren Meldung, bevor etwas geändert wird. Einmalig auf dem Pi: `sudo visudo -f /etc/sudoers.d/smart-gateway` und die Zeile `<benutzer> ALL=(ALL) NOPASSWD:ALL` eintragen (Benutzername wie in `SMART_PI`).
+- Die Geheimnisse liegen auf dem Pi (`infra/deploy/provision-gateway.sh <gateway-id>`, Abschnitt 6 und `gateway/README.md`); fehlt eine Datei, bricht das Deploy vor jeder Änderung ab und nennt sie.
+- `SMART_PI=<benutzer>@<PI_HOST>` (Wert in `.local/pi.md`). Für den Umzug zusätzlich `SMART_PI_OLD_STACK=<Ordner des alten Stacks auf dem Pi>`: darin liegen `docker-compose.yml` (Dienste `mosquitto` und `zigbee2mqtt`) und `zigbee2mqtt-data`. Der Pfad steht nicht im Repository.
+- Memory-cgroup: Der Raspberry-Pi-Kernel hat sie standardmäßig aus; dann ignoriert Docker `mem_limit` (Mosquitto 256 MB, Zigbee2MQTT 384 MB). `gateway:deploy` warnt darüber (nur lesend geprüft). Abhilfe: in der Kernel-Kommandozeile des Pi (`cmdline.txt` unter `/boot/firmware/`, eine Zeile) `cgroup_enable=memory cgroup_memory=1` ergänzen und neu starten.
+
+**Installieren und aktualisieren**
+
+```bash
+SMART_PI=<benutzer>@<PI_HOST> pnpm gateway:deploy
+```
+
+**Der erste Lauf auf einem vorhandenen Pi muss `--migrate` sein** (Abschnitt „Einmaliger Umzug“). Ein normales Deploy startet nicht, wenn `/srv/smart-gateway/zigbee2mqtt-data` fehlt oder leer ist: Zigbee2MQTT würde mit einem leeren Zigbee-Netz starten, und die angelernten Geräte wären weg. Nur ein **neuer** Pi mit einem frischen Adapter nimmt `pnpm gateway:deploy --fresh` (erlaubt den ersten Start ohne Daten).
+
+Stufen (jede prüft vorher und bricht sauber ab, ssh nach höchstens 10 s, Pull, Render, Rechte und Compose mit Zeitlimit): Pi erreichbar, `sudo -n` geht, alle Geheimnisse vorhanden, kein unfertiges `zigbee2mqtt-data.partial`, kein zweites Zigbee2MQTT, Z2M-Daten vorhanden (oder `--fresh`), Speicher-cgroup und Uhr (`timedatectl show -p NTPSynchronized`; nur Warnungen: die TLS-Bridge braucht eine richtige Uhr, der Pi hat keine RTC) – `rsync` von `gateway/` nach `/srv/smart-gateway` (nie `secrets/`, `zigbee2mqtt-data/`, `run/`, `migration/`) – `render.sh` – `docker compose pull` – Rechte des Z2M-Datenordners – `start.sh` auf dem Pi: Start (Mosquitto wird immer neu erzeugt, weil die gerenderte Konfiguration und der Entrypoint Einzeldatei-Einbindungen sind), dann warten (bis 120 s), bis der Z2M-Container läuft, Mosquitto `healthy` ist und `zigbee2mqtt/bridge/state` `online` meldet (Zugriff über den Benutzer `health` des lokalen Brokers, ohne Passwort in der Kommandozeile). Ein übrig gebliebenes `online` zählt nicht: der Container muss von diesem Start stammen (oder von Compose unberührt und nicht neu gestartet sein), und zwei Abfragen nacheinander müssen denselben Start und dieselbe Zahl der Neustarts zeigen (eine Neustart-Schleife fällt so auf). Danach Backup-Timer und Status (Container, Bridge `1`/`0`, lokal von Mosquitto unter `gw/<id>/bridge/connection` veröffentlicht). Meldet Z2M nicht `online`, endet das Skript mit Exit 1 und lässt den Stack laufen (Logs: `sudo docker compose --env-file secrets/gateway.env logs zigbee2mqtt` in `/srv/smart-gateway`).
+
+Z2M schreibt Passwort und Frontend-Token bei jedem Start in `zigbee2mqtt-data/configuration.yaml`. Das Skript hält deshalb bei jedem Deploy den Ordner auf `700` und die Datei auf `600` (Eigentümer root; das Image läuft als root). Geheimnisse gehen nie über das Skript: kein Wert in Ausgabe oder Kommandozeile.
+
+**Einmaliger Umzug vom alten Stack**
+
+```bash
+SMART_PI=<benutzer>@<PI_HOST> SMART_PI_OLD_STACK=<alter-stack-ordner> pnpm gateway:deploy --migrate
+```
+
+Voraussetzung: der alte Stack läuft, und zwar der Dienst `zigbee2mqtt` (sonst kein Umzug, ein bekannt guter Rückweg fehlt), und `/srv/smart-gateway/zigbee2mqtt-data` ist leer oder fehlt (das Skript vermischt nie). Der Mac prüft, kopiert `gateway/` (`rsync`), rendert und zieht die Images; bis hierhin ist der alte Stack unberührt. Dann startet er **auf dem Pi** das Skript `migrate.sh`, **abgekoppelt von der ssh-Sitzung** (`systemd-run` als Einheit `smart-gateway-migrate`, sonst `setsid nohup`): Verbindungsabbruch, geschlossenes Terminal oder Strg+C am Mac stören den Pi nicht. Der Mac fragt nur den Stand ab (`migration/status`, ssh-Ausfälle werden wiederholt, höchstens 30 Minuten), zeigt zum Schluss das Ende des Logs und endet. Auf dem Pi:
+
+1. Prüfung und Sicherung von `<alt>/zigbee2mqtt-data` als Tarball `/srv/smart-gateway/migration/<UTC-Zeit>.tar.gz` (root, `600`, Ordner `700`; das Skript liest ihn zur Probe zurück). **Der Tarball entsteht aus dem laufenden alten Z2M** und kann daher mitten in einem Schreibvorgang liegen; die konsistente Kopie ist die nach dem Stopp (Schritt 3).
+2. Alter Stack: `docker compose -f <alt>/docker-compose.yml stop` (nicht `down`; Container und Daten bleiben), danach geprüft, dass nichts mehr läuft.
+3. **Restart-Policy des alten Stacks:** Die Container (`docker compose -f <alt>/docker-compose.yml ps -aq`) bleiben eine Weile gestoppt liegen. Hätten sie `restart: always`, liefen sie nach einem Neustart des Pi oder des Docker-Daemons wieder an, und zwei Zigbee2MQTT hielten den einen Adapter (der echte Pi hat `unless-stopped`, das ist sicher, aber die Skripte verlassen sich nicht darauf). Sobald der alte Stack nachweislich steht, speichert `migrate.sh` die Policy jedes Containers (`docker inspect`) in `/srv/smart-gateway/migration/old-restart-<UTC-Zeit>` (root, `600`, Zeilen `<Container> <Policy>`) und setzt sie mit `docker update --restart=no`; jede Änderung steht im Log. Lässt sich eine Policy nicht lesen oder setzen, ist das ein Fehler und der Umzug rollt zurück (nichts wird kopiert).
+4. Datenordner **kopieren** (nie verschieben) in `/srv/smart-gateway/zigbee2mqtt-data.partial`, Rechte `700`/`600`, und erst dann mit `mv` nach `/srv/smart-gateway/zigbee2mqtt-data` legen. Bleibt der Prozess dazwischen stehen (Stromausfall, `SIGKILL`), liegt höchstens ein halbvoller `.partial` da, nie ein halbvoller `zigbee2mqtt-data`.
+5. Direkt vor dem Start dieselbe Prüfung wie beim normalen Deploy: läuft ein Zigbee2MQTT, das nicht zum Projekt `smart-gateway` gehört (oder lässt sich die Liste nicht lesen), rollt der Umzug zurück, statt ein zweites zu starten.
+6. `start.sh`: neuen Stack starten, bis zu 120 s warten (Bedingungen wie oben).
+
+Stand und Log auf dem Pi: `sudo cat /srv/smart-gateway/migration/status` (eine Zeile `<Zustand> <Zeit> <PID> <Schritt>`; Zustand `running`, `done`, `rolled-back` oder `failed-manual`) und `sudo tail -f /srv/smart-gateway/migration/migrate-<Zeit>.log` (nur Befehle und Ergebnisse, keine Geheimnisse). Hat der Mac aufgegeben oder wurde unterbrochen, genügt ein Blick dorthin; der Pi macht allein weiter.
+
+**Mac meldet `UNKNOWN` („migrate.sh on the Pi ended without a final state“):** Der Prozess auf dem Pi ist ohne Endzustand verschwunden. Das passiert, wenn er hart beendet wurde (zum Beispiel `SIGKILL` nach `TimeoutStopSec`, weil ein Signal erst nach dem laufenden Kindprozess wie `start.sh` ausgewertet wird, der Pi wurde stromlos) und ist der bewusst nicht behobene Randfall. Dann ist der Zustand der Stacks unbekannt: auf dem Pi `sudo docker ps -a`, `sudo cat /srv/smart-gateway/migration/status`, `sudo tail -n 40 /srv/smart-gateway/migration/migrate-<Zeit>.log` und `sudo journalctl -u smart-gateway-migrate` ansehen und von Hand entscheiden: läuft der neue Stack und ist Z2M `online`, ist der Umzug im Ergebnis fertig; sonst wie bei `failed-manual` unten vorgehen (neuen Stack stoppen, **die Restart-Policy des alten Stacks zurücksetzen**, alten starten). Danach `sudo rm /srv/smart-gateway/migration/status`.
+
+Zwei Spuren im UNKNOWN-Fall:
+
+- **`/srv/smart-gateway/zigbee2mqtt-data.partial` existiert:** der Prozess wurde während der Kopie beendet; der Ordner ist **unvollständig und darf nie benutzt werden**. Das normale Deploy (auch `--fresh` und `--migrate`) verweigert deshalb den Start, solange er da ist, und nennt dasselbe. Der alte Datenordner ist unverändert (er wird nur gelesen). Vorgehen: (1) `sudo docker ps -a` ansehen; der alte Stack ist gestoppt und seine Container stehen auf `restart=no`, es läuft also meist nichts. (2) Den Rest beiseitelegen: `sudo mv /srv/smart-gateway/zigbee2mqtt-data.partial /srv/smart-gateway/migration/partial-data` (oder löschen; es ist nur eine Kopie, und die Sicherung `migration/<Zeit>.tar.gz` bleibt). (3) Den alten Stack wie unter „Weg zurück, von Hand“ wieder aufstellen (Policy zurücksetzen, `up -d`), prüfen, dass er läuft. (4) `sudo rm /srv/smart-gateway/migration/status` und den Umzug mit `--migrate` von vorn starten.
+- **`migration/old-restart-<Zeit>` existiert:** die alten Container wurden auf `restart=no` gesetzt (oder das war halb geschehen). In der Datei stehen ihre ursprünglichen Policies; beim Weg zurück von Hand müssen sie zurückgesetzt werden (unten).
+
+**Der Mac hat nach dem Start nichts gehört** („MAY still have started“, auch nach einem ssh-Abbruch beim Start): Die Verbindung kann abgebrochen sein, nachdem `migrate.sh` schon lief. Der alte Stack ist dann möglicherweise schon angefasst. Prüfen: `sudo cat /srv/smart-gateway/migration/status` und `sudo tail -n 40 /srv/smart-gateway/migration/migrate-<Zeit>.log` (die Zeit steht in der Meldung), `sudo systemctl status smart-gateway-migrate`, `sudo docker ps -a`. Solange der Zustand `running` ist, nichts anderes tun. Ein normales `gateway:deploy` (auch `--fresh`) startet nie neben einem alten oder unfertigen Zustand und verweigert den Start vor jeder Änderung, wenn:
+
+- ein **zweites Zigbee2MQTT läuft**, das nicht zum Projekt `smart-gateway` gehört (Dienst oder Image `zigbee2mqtt`; zum Beispiel der alte Stack nach `rolled-back`, im UNKNOWN-Fall oder nach einem Weg zurück von Hand). Zwei davon vertragen sich weder am Adapter noch am Bridge-Zertifikat. Die Meldung nennt die Container; Abhilfe: `sudo docker ps` ansehen und den alten Stack stoppen (`sudo docker compose -f <alter-stack-ordner>/docker-compose.yml stop`) oder entfernen (`down`), dann erneut. Lässt sich die Liste der Container nicht lesen (`docker ps` scheitert oder braucht länger als 30 s), verweigert das Skript ebenfalls: eine leere Antwort beweist nichts.
+- **`/srv/smart-gateway/zigbee2mqtt-data.partial` existiert** (eine unfertige Kopie eines abgebrochenen `--migrate`; in jedem Modus, auch wenn `migration/status` schon gelöscht ist): siehe oben, „Mac meldet `UNKNOWN`“.
+- `migration/status` existiert und der Zustand **nicht `done`** ist: `running` mit lebendem Prozess (Umzug läuft), `failed-manual`, `rolled-back` oder ein altes `running`, dessen Prozess weg ist (zum Beispiel nach einem Neustart des Pi). Die Meldung nennt den Zustand. Prüfen: `sudo cat /srv/smart-gateway/migration/status`, `sudo tail -n 40 /srv/smart-gateway/migration/migrate-*.log`, `sudo docker ps -a`. Zeigt das Log, dass der Umzug zu Ende ist und die Stacks so stehen, wie sie sollen, den Zustand löschen: `sudo rm /srv/smart-gateway/migration/status`. Ein neuer `--migrate`-Lauf nach `rolled-back` bleibt erlaubt.
+
+**Weg zurück, automatisch:** scheitert auf dem Pi nach dem Beginn der Sicherung irgendetwas (Sicherung, Stopp, Kopie, Rechte, Start, Z2M nicht `online`/stabil, Mosquitto nicht `healthy`, oder ein Signal wie ein `systemctl stop` der Einheit), macht `migrate.sh` Folgendes, in dieser Reihenfolge: den neuen Stack stoppen und **beweisen**, dass er steht (`docker compose ps --status running` leer und kein Container des Projekts `smart-gateway`; drei Versuche mit `compose stop`, dann `docker stop` und `docker rm -f` je Container) – erst dann die Kopie (`zigbee2mqtt-data.partial` oder den schon eingesetzten Ordner) als `migration/failed-data-<Zeit>` beiseitestellen (nicht löschen), die gespeicherten Restart-Policies der alten Container zurücksetzen (`docker update --restart=<gespeichert>`), den alten Stack mit `docker compose -f <alt>/docker-compose.yml up -d` starten und prüfen, dass sein Dienst `zigbee2mqtt` läuft. Lässt sich eine Policy nicht zurücksetzen, startet der alte Stack trotzdem (Zigbee2MQTT hat Vorrang), der Zustand ist aber `failed-manual` mit dem Befehl im Log: die Container blieben sonst auf `restart=no` und kämen nach einem Neustart nicht wieder. Zustand `rolled-back`, der Mac endet mit Exit 1. Der Datenordner des alten Stacks wird nie verändert, die Sicherung bleibt.
+
+**`failed-manual`:** Lässt sich der neue Stack nicht beweisbar stoppen, **startet das Skript den alten Stack nicht** (Adapter und Bridge-Zertifikat vertragen nur einen), und die Kopie bleibt liegen; Zustand `failed-manual`, im Log stehen die Befehle genau (Container ansehen und stoppen, dann den alten Stack starten). Dasselbe gilt, wenn der alte Stack nicht wieder anläuft; die Befehle im Log enthalten dann auch das Zurücksetzen der Restart-Policy (Datei `migration/old-restart-<Zeit>`). Danach `sudo rm /srv/smart-gateway/migration/status`, sonst verweigert ein neuer `--migrate`-Lauf den Start.
+
+**Weg zurück, von Hand** (auch nach einem erfolgreichen Umzug, solange der alte Stack nicht entfernt ist) auf dem Pi:
+
+```bash
+cd /srv/smart-gateway
+sudo docker compose --env-file secrets/gateway.env stop
+# Restart-Policy der alten Container zurücksetzen (gespeichert beim Umzug, Zeilen "<Container> <Policy>"):
+sudo cat migration/old-restart-<UTC-Zeit> | while read -r c p; do sudo docker update --restart="$p" "$c"; done
+sudo docker compose -f <alter-stack-ordner>/docker-compose.yml up -d
+```
+
+Ohne den zweiten Schritt liefe der alte Stack, bliebe aber auf `restart=no` und käme nach einem Neustart des Pi nicht mehr hoch. Die Zeit im Dateinamen steht im Ausgabetext des Deploys und in `ls /srv/smart-gateway/migration`.
+
+**Achtung:** Der alte Datenordner enthält nur den Stand vom Umzug. Geräte, die **seit dem Umzug** angelernt wurden, fehlen dort und gehen beim Zurückwechseln verloren (sie müssten neu angelernt werden); dasselbe gilt für geänderte Namen.
+
+Wiederherstellen aus der Sicherung (nur nötig, wenn der alte Ordner beschädigt wäre): Das Archiv enthält den Ordner mit dem Präfix `zigbee2mqtt-data/`, es wird deshalb in den **Elternordner** entpackt: `sudo tar -xzf /srv/smart-gateway/migration/<Zeit>.tar.gz -C <Elternordner>` (ergibt `<Elternordner>/zigbee2mqtt-data/`; einen vorhandenen Ordner vorher beiseitelegen). Zur Erinnerung: der Tarball stammt aus dem laufenden alten Z2M.
+
+**Nach dem Umzug**
+
+- Frontend `http://<PI_HOST>:8080` (Anmeldung mit dem Token aus `sudo cat /srv/smart-gateway/secrets/z2m.env`, nur im Heimnetz, Port nie ins Internet weiterleiten), alle Geräte vorhanden, Messwerte kommen an.
+- In der App (Abschnitt 6): Gateway „Bridge: Online“, „Zigbee2MQTT: Online“; danach die ACL-Prüfung aus Abschnitt 10.
+- Erst wenn alles geprüft ist, den alten Stack entfernen: `sudo docker compose -f <alter-stack-ordner>/docker-compose.yml down`. Bis dahin stehen die alten Container auf `restart=no` (die ursprüngliche Policy steht in `migration/old-restart-<Zeit>`), kommen also nach einem Neustart des Pi nicht von selbst wieder und streiten sich nicht mit dem neuen Stack um den Adapter; startest du sie von Hand für den Weg zurück, setze die Policy vorher zurück (siehe oben).
+
+**Pi-Backup (restic nach B2)**
+
+`gateway:deploy` installiert zwei systemd-Timer: nachts um 03:30 das Backup von `zigbee2mqtt-data/` (ohne `log/`) und `secrets/` und sonntags um 05:00 einen Wiederherstellungstest des letzten Snapshots (Einzelheiten und warum die Sicherung der laufenden Daten genügt: `gateway/README.md`, Abschnitt „Backups“). Beide Dienste starten erst nach Netz und Docker (`After=`); die Uhr prüfen die Skripte selbst: `backup.sh` und `restore-test.sh` warten vor jeder restic- oder S3-Arbeit bis zu 10 Minuten, dass `timedatectl` `NTPSynchronized=yes` meldet (der Pi hat keine Echtzeituhr; `After=time-sync.target` allein ordnet nur, das Target ist ohne `systemd-time-wait-sync` sofort erreicht), und enden sonst mit „clock not synchronized“ und dem `/fail`-Ping. Nach dem ersten Deploy **einmal von Hand sichern** und den Ping in healthchecks.io prüfen: `sudo bash /srv/smart-gateway/backup/backup.sh`. Das Log steht in `sudo journalctl -u smart-gateway-backup`; die Werte für den Check `HC_BACKUP_URL`(und optional`HC_RESTORE_URL`für den Wiederherstellungstest) stehen in`secrets/backup.env`.
+
+**Das restic-Passwort und alle Werte aus `secrets/backup.env` gehören zusätzlich außerhalb des Pi in den Passwortmanager** (`RESTIC_PASSWORD`, B2-Schlüssel `B2_KEY_ID`/`B2_APP_KEY`, Bucket, Endpoint, die Ping-URLs). Das Repository in B2 ist mit dem restic-Passwort verschlüsselt, und `secrets/` (also auch `backup.env` selbst) steckt im Backup: Ist der Pi verloren und das Passwort nur dort gespeichert, ist das Backup unbrauchbar, denn ohne Passwort lässt sich nichts wiederherstellen. Ein Wiederherstellungstest von einem anderen Rechner aus (restic mit den Werten aus dem Passwortmanager, wie unten) beweist, dass die Ablage außerhalb des Pi vollständig ist.
+
+**Wiederherstellen nach Verlust des Pi** (neue SD-Karte oder neuer Pi, **derselbe Zigbee-Adapter**; mit einem anderen Adapter siehe Abschnitt 12, „Später“):
+
+1. Auf dem Mac eine Datei außerhalb des Repositorys anlegen, zum Beispiel `~/.smart-pi-restore.env` (`chmod 600`), mit den Werten aus dem Passwortmanager:
+
+   ```text
+   RESTIC_REPOSITORY=s3:https://<B2_ENDPOINT>/<B2_BUCKET>/pi
+   AWS_ACCESS_KEY_ID=<B2_KEY_ID>
+   AWS_SECRET_ACCESS_KEY=<B2_APP_KEY>
+   RESTIC_PASSWORD=<RESTIC_PASSWORD>
+   ```
+
+2. Snapshots ansehen und den letzten wiederherstellen (gleiches Image wie auf dem Pi):
+
+   ```bash
+   docker run --rm --env-file ~/.smart-pi-restore.env restic/restic:0.19.1 snapshots --tag pi
+   mkdir -m 700 ~/pi-restore
+   docker run --rm --env-file ~/.smart-pi-restore.env -v ~/pi-restore:/restore restic/restic:0.19.1 \
+     restore latest --host <gateway-id> --tag pi --target /restore
+   ```
+
+   Ergebnis: `~/pi-restore/data/zigbee2mqtt-data/` und `~/pi-restore/data/secrets/`.
+
+3. Neuen Pi vorbereiten (Voraussetzungen oben: Docker, passwortloses `sudo`), dann `provision-gateway.sh <gateway-id>` (`--force` nur, wenn dort schon Geheimnisse liegen) mit **demselben** `RESTIC_PASSWORD` (sonst entsteht kein Anschluss an das vorhandene Repository) und denselben B2-Werten.
+4. Die Z2M-Daten auf den Pi bringen, bevor zum ersten Mal deployt wird:
+
+   ```bash
+   ssh <benutzer>@<PI_HOST> sudo install -d -m 700 /srv/smart-gateway/zigbee2mqtt-data
+   rsync -a --rsync-path="sudo rsync" ~/pi-restore/data/zigbee2mqtt-data/ \
+     <benutzer>@<PI_HOST>:/srv/smart-gateway/zigbee2mqtt-data/
+   ```
+
+5. `SMART_PI=<benutzer>@<PI_HOST> pnpm gateway:deploy` (ohne `--migrate` und ohne `--fresh`: die Daten sind jetzt da). Danach die Prüfungen aus Abschnitt 12, Schritte 5–7.
+6. Auf dem Mac aufräumen: `rm -rf ~/pi-restore ~/.smart-pi-restore.env` (enthält Geheimnisse).
+
+**Prüfungen auf dem Pi**
+
+```bash
+cd /srv/smart-gateway
+sudo docker compose --env-file secrets/gateway.env ps           # beide Container "running", Mosquitto "healthy"
+sudo stat -c '%a %U' zigbee2mqtt-data zigbee2mqtt-data/configuration.yaml   # 700 root, 600 root
+sudo docker stats --no-stream                                    # Speicherlimits (0 = Limit ignoriert, siehe Memory-cgroup)
+```
+
+## 12. Inbetriebnahme des Pi (Checkliste)
+
+Einmalig, wenn der Pi vom alten Stack auf `gateway/` wechselt. Erst nach Tills Freigabe; alle Schritte mit Schlüsseln führt Till im eigenen Terminal aus.
+
+0. **Vorher:** Produktion hat die Broker-Zertifikate und `MQTT_TLS=on` (Abschnitt 4), Port 8883 ist offen und Fail2ban eingerichtet (Abschnitt 5), `~/.smart-pki` ist gesichert (Abschnitt 3). Auf dem Pi: passwortloses `sudo` (Abschnitt 11, Voraussetzungen). Für das Pi-Backup existieren der B2-Schlüssel und der Check in healthchecks.io, das restic-Passwort liegt im Passwortmanager.
+1. **Zertifikat ausstellen:** `infra/pki/pki.sh issue-gateway`, die ID `gw-…` notieren, danach `~/.smart-pki` erneut sichern (Abschnitt 3).
+2. **In der Produktion registrieren:** „Mehr → Gateways“, Name und Zertifikat einfügen (Abschnitt 6). Status „Unbekannt“ ist hier richtig.
+3. **Geheimnisse auf den Pi:** `SMART_PI=<benutzer>@<PI_HOST> infra/deploy/provision-gateway.sh <gateway-id>` (fragt Serial-Pfad, B2-Werte und das restic-Passwort; `gateway/README.md`).
+4. **Umzug:** `SMART_PI=<benutzer>@<PI_HOST> SMART_PI_OLD_STACK=<alter-stack-ordner> pnpm gateway:deploy --migrate` (Abschnitt 11). Erwartet: Zustand `done`, Z2M `online`, Bridge `1`.
+5. **App:** Das Gateway zeigt „Bridge: Online“ und „Zigbee2MQTT: Online“.
+6. **Geräte:** Unter „Geräte → Neu erkannt“ erscheinen die Sensoren (und die Lampe) mit ihren Z2M-Namen; nach „Hinzufügen“ kommen Messwerte an. Im Z2M-Frontend (`http://<PI_HOST>:8080`) sind alle Geräte vorhanden.
+7. **ACL:** Prüfung aus Abschnitt 10 (Schreiben unter fremdem Präfix kommt nicht an, Befehl kommt an, ohne Client-Zertifikat keine Verbindung).
+8. **QoS des echten Z2M** (offen aus ADR-0020): im Stack-Verzeichnis der Produktion auf dem VPS, mit `read_topic` wie in Abschnitt 10, aber mit QoS 1 abonniert und für eine Sensormeldung (Name wie im Z2M-Frontend):
+
+   ```bash
+   docker compose -f compose.yaml --env-file .env --env-file deploy.env exec -T broker sh -c \
+     'mosquitto_sub -h localhost -u smart-api -P "$MQTT_PASSWORD" -q 1 -t "$0" -F "%q %t" -C 1 -W 600' 'gw/<id>/z2m/<sensor>'
+   ```
+
+   Erwartet `0 …`: Z2M 2.14 veröffentlicht Gerätemeldungen mit QoS 0. Dann gilt die Folge aus ADR-0020 (bei einem ungeplanten Netzausfall gehen die Meldungen der rund 30 s bis zur Erkennung verloren, alles danach puffert der Pi). Steht dort `1`, gilt der bessere Fall. Ergebnis im Plan festhalten („Ergebnis und Übertrag“).
+
+9. **Optional, Internet-Ausfall:** Den Router mindestens **10 min** vom Internet trennen (die Bodensensoren melden etwa alle 5 min; 2 min zeigen oft gar nichts). Nach dem Wiederverbinden kommen die Meldungen gebündelt an; ihr `last_seen` liegt in der Ausfallzeit. Beobachten auf dem VPS wie in Schritt 8, mit `-v -F '%I %p'` und `-C 20` statt `-F "%q %t"` und `-C 1` (Empfangszeit und Inhalt); in der App erscheinen die Messwerte mit ihrem Messzeitpunkt. Dabei auf das Backend achten (Log von `api`: keine Zeitüberschreitungen bei der Nachlieferung).
+10. **Pi-Backup:** einmal von Hand sichern (`sudo bash /srv/smart-gateway/backup/backup.sh` auf dem Pi), der Check in healthchecks.io meldet einen Erfolg. Am folgenden Tag: der nächtliche Lauf hat gepingt.
+11. **Aufräumen**, wenn alles geprüft ist: alten Stack entfernen (Abschnitt 11, „Nach dem Umzug“). Den Port 1883 des alten Mosquitto gibt es danach im Heimnetz nicht mehr (falls noch etwas anderes im Heimnetz ihn nutzt: vorher umstellen).
+
+**Später (bewusst nicht Teil der Inbetriebnahme):**
+
+- **Eigener Netzwerkschlüssel:** Die Spec sieht einen eigenen, generierten `network_key` mit `pan_id`/`ext_pan_id` vor (Abschnitt 4.5). Das ändert das Zigbee-Netz und verlangt, **alle Geräte vor Ort neu anzulernen**. Geplant zusammen mit dem Koordinator-Tausch.
+- **Koordinator-Tausch** (CC2531 gegen einen neueren Adapter, Spec Abschnitt 4.6): ebenfalls Neukopplung aller Geräte; die IEEE-Adressen bleiben, Verlauf und Zuordnungen in der App bleiben erhalten. Neuer Serial-Pfad über `provision-gateway.sh <gateway-id> --force`, danach `pnpm gateway:deploy`.
+
 ## Fehlerbilder
 
-| Symptom                                                                                   | Ursache / Abhilfe                                                                                                                                                                                                                      |
-| ----------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pki.sh`: „OpenSSL 3 or newer is required“                                                | macOS-LibreSSL: `brew install openssl@3` oder `SMART_OPENSSL=…`                                                                                                                                                                        |
-| `pki.sh`: „accessible to other users“                                                     | `chmod 700 ~/.smart-pki`; das Skript ändert vorhandene Rechte nie selbst                                                                                                                                                               |
-| `pki.sh`: „already exists“ bei `issue-server` / `issue-gateway`                           | Absicht: nie überschreiben; zum Erneuern alte Dateien beiseitelegen (Abschnitt 9)                                                                                                                                                      |
-| `broker-certs.sh`: „the CRL expires … run pki.sh crl first“                               | `pki.sh crl`, dann erneut ausführen                                                                                                                                                                                                    |
-| `broker-certs.sh`: „.env does not exist“                                                  | Umgebung nicht provisioniert (`docs/runbooks/provisioning.md`)                                                                                                                                                                         |
-| App: „Das Zertifikat ist ungültig, abgelaufen oder nicht von dieser Instanz ausgestellt.“ | falsche CA (die Umgebung hat eine andere `ca.crt`; `broker-certs.sh` für diese Umgebung ausführen), abgelaufen, kein Client-Zertifikat (z. B. das Server-Zertifikat eingefügt) oder die ID passt nicht zum Muster `gw-` plus 8 Zeichen |
-| App: „Auf dieser Instanz ist keine Zertifizierungsstelle eingerichtet.“                   | `broker-certs.sh` für diese Umgebung noch nicht ausgeführt (die API liest `ca.crt` aus `certs/public/`)                                                                                                                                |
-| App: „Dieses Gateway ist schon registriert.“                                              | die ID ist vergeben (auch in einem anderen Haushalt); ein gesperrtes Gateway bleibt in der Liste                                                                                                                                       |
-| Gateway „Offline“ oder „Unbekannt“                                                        | Broker-Log prüfen (Abschnitt 4); Zertifikat abgelaufen oder gesperrt, CRL abgelaufen (Abschnitt 9), Uhr des Gateways falsch (der Pi hat keine RTC), von Fail2ban gesperrt (Abschnitt 5), Port nicht erreichbar                         |
-| Alle Gateways „Offline“, Broker-Log voller `Protocol error`                               | CRL abgelaufen: `pki.sh crl` und `broker-certs.sh`                                                                                                                                                                                     |
-| Simulator „Unbekannt“ auf Staging                                                         | Dienst `simulator` läuft nicht (Profil, GHCR-Paket öffentlich? `docs/runbooks/deploy.md`) oder die registrierte ID ist nicht die aus der `.env`                                                                                        |
+| Symptom                                                                                                          | Ursache / Abhilfe                                                                                                                                                                                                                      |
+| ---------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pki.sh`: „OpenSSL 3 or newer is required“                                                                       | macOS-LibreSSL: `brew install openssl@3` oder `SMART_OPENSSL=…`                                                                                                                                                                        |
+| `pki.sh`: „accessible to other users“                                                                            | `chmod 700 ~/.smart-pki`; das Skript ändert vorhandene Rechte nie selbst                                                                                                                                                               |
+| `pki.sh`: „already exists“ bei `issue-server` / `issue-gateway`                                                  | Absicht: nie überschreiben; zum Erneuern alte Dateien beiseitelegen (Abschnitt 9)                                                                                                                                                      |
+| `broker-certs.sh`: „the CRL expires … run pki.sh crl first“                                                      | `pki.sh crl`, dann erneut ausführen                                                                                                                                                                                                    |
+| `broker-certs.sh`: „.env does not exist“                                                                         | Umgebung nicht provisioniert (`docs/runbooks/provisioning.md`)                                                                                                                                                                         |
+| App: „Das Zertifikat ist ungültig, abgelaufen oder nicht von dieser Instanz ausgestellt.“                        | falsche CA (die Umgebung hat eine andere `ca.crt`; `broker-certs.sh` für diese Umgebung ausführen), abgelaufen, kein Client-Zertifikat (z. B. das Server-Zertifikat eingefügt) oder die ID passt nicht zum Muster `gw-` plus 8 Zeichen |
+| App: „Auf dieser Instanz ist keine Zertifizierungsstelle eingerichtet.“                                          | `broker-certs.sh` für diese Umgebung noch nicht ausgeführt (die API liest `ca.crt` aus `certs/public/`)                                                                                                                                |
+| App: „Dieses Gateway ist schon registriert.“                                                                     | die ID ist vergeben (auch in einem anderen Haushalt); ein gesperrtes Gateway bleibt in der Liste                                                                                                                                       |
+| Gateway „Offline“ oder „Unbekannt“                                                                               | Broker-Log prüfen (Abschnitt 4); Zertifikat abgelaufen oder gesperrt, CRL abgelaufen (Abschnitt 9), Uhr des Gateways falsch (der Pi hat keine RTC), von Fail2ban gesperrt (Abschnitt 5), Port nicht erreichbar                         |
+| Alle Gateways „Offline“, Broker-Log voller `Protocol error`                                                      | CRL abgelaufen: `pki.sh crl` und `broker-certs.sh`                                                                                                                                                                                     |
+| Simulator „Unbekannt“ auf Staging                                                                                | Dienst `simulator` läuft nicht (Profil, GHCR-Paket öffentlich? `docs/runbooks/deploy.md`) oder die registrierte ID ist nicht die aus der `.env`                                                                                        |
+| `gateway:deploy`: „sudo on the Pi asks for a password“                                                           | passwortloses `sudo` für den Betreiber-Benutzer einrichten (Abschnitt 11); es gibt kein Terminal für eine Passwortabfrage                                                                                                              |
+| `gateway:deploy`: „zigbee2mqtt-data is missing or empty“                                                         | erster Lauf auf einem vorhandenen Pi: `--migrate` (Abschnitt 11); nur ein neuer Pi mit frischem Adapter nimmt `--fresh`                                                                                                                |
+| `gateway:deploy`: „another Zigbee2MQTT container is running on the Pi“ / „could not list the running containers“ | ein zweites Zigbee2MQTT (meist der alte Stack nach einem Rückweg) läuft: stoppen oder entfernen (Abschnitt 11), dann erneut; bei „could not list“ ist `docker ps` auf dem Pi gestört                                                   |
+| `gateway:deploy`: „zigbee2mqtt-data.partial exists on the Pi“                                                    | eine Kopie eines abgebrochenen `--migrate` ist unvollständig: beiseitelegen, alten Stack wieder aufstellen, `--migrate` neu (Abschnitt 11, „Mac meldet `UNKNOWN`“)                                                                     |
+| `gateway:deploy`: „the migration status on the Pi is not done“                                                   | `migration/status` steht auf `rolled-back` oder einem alten `running`: Log prüfen (`migrate-*.log`), dann `sudo rm /srv/smart-gateway/migration/status` (Abschnitt 11)                                                                 |
+| `gateway:deploy`: „secrets/… is missing“                                                                         | `provision-gateway.sh` für dieses Gateway ausführen (Abschnitt 6, `gateway/README.md`)                                                                                                                                                 |
+| `gateway:deploy`: Zigbee2MQTT meldet nicht `online`                                                              | Logs von `zigbee2mqtt` auf dem Pi lesen (Adapter-Pfad `Z2M_SERIAL_DEVICE`, Adapter angesteckt, Frontend-Port 8080 frei); bei `--migrate` ist der alte Stack schon wieder gestartet                                                     |

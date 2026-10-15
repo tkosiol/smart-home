@@ -1,6 +1,6 @@
 import { Logger } from '@nestjs/common';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { MqttConnection, MqttMessageHandler } from '../../platform/mqtt/index.js';
+import type { MqttConnection, MqttMessageHandler, Unsubscribe } from '../../platform/mqtt/index.js';
 import {
   GATEWAY_STATUS_CHANGED,
   GatewayEvents,
@@ -19,14 +19,15 @@ type Outcome = 'changed' | 'unchanged' | 'ignored';
 /** Like a broker: delivers a message to the handlers whose filter matches. */
 class FakeMqtt {
   readonly handlers: { filter: string; handler: MqttMessageHandler }[] = [];
-  readonly unsubscribed: string[] = [];
+  /** What was ended, and whether with `keepSession` (the broker's subscription stays). */
+  readonly unsubscribed: { filter: string; keepSession: boolean }[] = [];
 
-  subscribe(filter: string, handler: MqttMessageHandler): () => void {
+  subscribe(filter: string, handler: MqttMessageHandler): Unsubscribe {
     const entry = { filter, handler };
     this.handlers.push(entry);
-    return () => {
+    return (options) => {
       this.handlers.splice(this.handlers.indexOf(entry), 1);
-      this.unsubscribed.push(filter);
+      this.unsubscribed.push({ filter, keepSession: options?.keepSession === true });
     };
   }
 
@@ -92,6 +93,14 @@ describe('GatewayStatusConsumer', () => {
     ]);
     consumer.onModuleDestroy();
     expect(mqtt.handlers).toEqual([]);
+  });
+
+  it('only lets go of the handlers on shutdown: the broker keeps the shared session subscribed', () => {
+    // The session at the broker outlives the process (and a second process may share it): a plain
+    // unsubscribe would end the subscriptions for whoever is connected next.
+    consumer.onModuleDestroy();
+    expect(mqtt.unsubscribed).toHaveLength(3);
+    expect(mqtt.unsubscribed.every(({ keepSession }) => keepSession)).toBe(true);
   });
 
   describe('bridge/connection', () => {

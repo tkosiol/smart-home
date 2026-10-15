@@ -1,0 +1,8 @@
+#!/bin/sh
+# Test double for timedatectl (backup tests): "show -p NTPSynchronized --value" answers $STUB_TIMEDATECTL (yes or no,
+# default yes); STUB_TIMEDATECTL=fail exits 1 without output. Records the call in $STUB_CALLS when that is set.
+[ -z "${STUB_CALLS:-}" ] || printf 'timedatectl %s\n' "$*" >> "$STUB_CALLS"
+case "${STUB_TIMEDATECTL:-yes}" in
+  fail) exit 1 ;;
+  *) echo "${STUB_TIMEDATECTL:-yes}" ;;
+esac

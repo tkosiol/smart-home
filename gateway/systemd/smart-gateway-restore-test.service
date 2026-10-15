@@ -1,0 +1,14 @@
+# Installed by gateway/deploy.sh (the folder is replaced when SMART_GATEWAY_DIR is not /srv/smart-gateway).
+[Unit]
+Description=Restore test of the smart-gateway Pi backup (latest snapshot into a temporary folder)
+Wants=network-online.target
+After=network-online.target docker.service time-sync.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/srv/smart-gateway
+ExecStart=/usr/bin/env bash /srv/smart-gateway/backup/restore-test.sh
+# Includes the wait for a synchronised clock (up to 10 minutes, bk_wait_clock in backup/lib.sh).
+TimeoutStartSec=1h10min
+Nice=10

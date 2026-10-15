@@ -1,0 +1,29 @@
+#!/bin/sh
+# Test double for ssh in the deploy tests: counts the calls and can drop connections, then hands over to the shared
+# stub ssh ($STUB_REAL_SSH), which runs the remote command in the sandbox.
+#   STUB_SSH_DROP_AFTER_START=<n>: after the call that starts migrate.sh, the next n calls fail like a dead connection
+#   STUB_SSH_BREAK_START=1: the call that starts migrate.sh never reaches the Pi (exit 255);
+#   STUB_SSH_BREAK_AFTER_START=1: it runs on the Pi, but the connection breaks before ssh reports back (exit 255)
+#   STUB_SSH_BREAK_PLAIN_START=1: the call that runs start.sh of a plain deploy breaks (exit 255; it runs on the Pi)
+state=${STUB_STATE:?}
+for last; do :; done
+left=$(cat "$state/ssh_drop_left" 2> /dev/null || echo 0)
+if [ "$left" -gt 0 ]; then
+  echo $((left - 1)) > "$state/ssh_drop_left"
+  exit 255
+fi
+case "$last" in
+  *"bash ./start.sh"*)
+    if [ "${STUB_SSH_BREAK_PLAIN_START:-0}" = 1 ]; then
+      "${STUB_REAL_SSH:?}" "$@"
+      exit 255
+    fi ;;
+  *migrate.sh*)
+    [ "${STUB_SSH_BREAK_START:-0}" = 1 ] && exit 255
+    if [ "${STUB_SSH_BREAK_AFTER_START:-0}" = 1 ]; then
+      "${STUB_REAL_SSH:?}" "$@"
+      exit 255
+    fi
+    if [ -n "${STUB_SSH_DROP_AFTER_START:-}" ]; then echo "$STUB_SSH_DROP_AFTER_START" > "$state/ssh_drop_left"; fi ;;
+esac
+exec "${STUB_REAL_SSH:?}" "$@"

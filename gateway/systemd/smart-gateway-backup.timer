@@ -1,0 +1,12 @@
+# Installed by gateway/deploy.sh. Every night at 03:30 local time of the Pi; a run missed while the Pi was off
+# starts at the next boot.
+[Unit]
+Description=Nightly backup of the smart-gateway Pi
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+Persistent=true
+RandomizedDelaySec=120
+
+[Install]
+WantedBy=timers.target

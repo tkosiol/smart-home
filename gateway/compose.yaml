@@ -1,0 +1,110 @@
+# The gateway stack for a Raspberry Pi: Mosquitto (bridged to the platform broker, ADR-0020) and Zigbee2MQTT.
+# Lives in /srv/smart-gateway on the Pi and is started with the secrets as the project environment:
+#   docker compose --env-file secrets/gateway.env up -d
+# secrets/gateway.env: GATEWAY_ID, BROKER_HOST, BROKER_PORT, Z2M_SERIAL_DEVICE (host path of the adapter).
+# secrets/z2m.env (KEY=value lines, no quotes, no $): ZIGBEE2MQTT_CONFIG_MQTT_USER, ZIGBEE2MQTT_CONFIG_MQTT_PASSWORD,
+# ZIGBEE2MQTT_CONFIG_FRONTEND_AUTH_TOKEN. Also needed in secrets/: passwd, ca.crt, gateway.crt, gateway.key.
+# Run render.sh first: it writes run/mosquitto.conf. render.sh replaces the file (new inode) and the single-file bind
+# mount keeps the old one: recreate Mosquitto after every render (docker compose up -d --force-recreate mosquitto).
+name: smart-gateway
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: '3'
+
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2.1.2-alpine
+    restart: unless-stopped
+    # No published port: only Zigbee2MQTT (same network) talks to it; the bridge connects outwards.
+    entrypoint: ['sh', '/smart/mosquitto-entrypoint.sh']
+    command: ['mosquitto', '-c', '/mosquitto/config/mosquitto.conf']
+    mem_limit: 256m
+    # A large persisted buffer (queued messages while the bridge is down) is written on stop: Docker's 10 s default
+    # would kill Mosquitto in the middle of it.
+    stop_grace_period: 60s
+    volumes:
+      - ./mosquitto-entrypoint.sh:/smart/mosquitto-entrypoint.sh:ro
+      - ./run/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./secrets:/mosquitto/secrets-src:ro
+      - mosquitto-data:/mosquitto/data
+    tmpfs:
+      - /mosquitto/secrets:uid=1883,gid=1883,mode=0700
+    healthcheck:
+      # Logs in as the user "health" that mosquitto-entrypoint.sh adds: its password is public on purpose and it may
+      # only read the uptime, the bridge state and Z2M's bridge/state, so no secret ever appears in the health check (visible in ps and docker inspect).
+      test:
+        - CMD-SHELL
+        - mosquitto_sub -h 127.0.0.1 -u health -P health -t '$$SYS/broker/uptime' -C 1 -W 5 > /dev/null
+      interval: 15s
+      timeout: 8s
+      retries: 5
+      start_period: 10s
+    logging: *logging
+    networks: [gateway]
+
+  zigbee2mqtt:
+    image: koenkk/zigbee2mqtt:2.14.2
+    restart: unless-stopped
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    # Reachable in the home network, protected by the auth token. Never forward this port to the internet.
+    ports:
+      - '8080:8080'
+    # The adapter appears under a fixed path in the container, whatever the old setup called it.
+    devices:
+      - '${Z2M_SERIAL_DEVICE:?set Z2M_SERIAL_DEVICE in secrets/gateway.env}:/dev/zigbee'
+    mem_limit: 384m
+    volumes:
+      - ./zigbee2mqtt-data:/app/data
+    # User, password and token come from the secrets file. Z2M 2.14 applies ZIGBEE2MQTT_CONFIG_* at every start
+    # AND writes the result into configuration.yaml (see README.md), so devices and names stay where they are.
+    env_file:
+      - ./secrets/z2m.env
+    environment:
+      ZIGBEE2MQTT_CONFIG_MQTT_SERVER: mqtt://mosquitto:1883
+      ZIGBEE2MQTT_CONFIG_SERIAL_PORT: /dev/zigbee
+      # Z2M 2.x has the frontend off by default; the auth token only means something with it on.
+      ZIGBEE2MQTT_CONFIG_FRONTEND_ENABLED: 'true'
+      ZIGBEE2MQTT_CONFIG_FRONTEND_PORT: '8080'
+      ZIGBEE2MQTT_CONFIG_ADVANCED_LAST_SEEN: ISO_8601
+      ZIGBEE2MQTT_CONFIG_AVAILABILITY_ENABLED: 'true'
+      TZ: ${TZ:-Europe/Berlin}
+    logging: *logging
+    networks: [gateway]
+
+  # Nightly backup to B2 (restic). Only in the profile "backup": a plain "up" never starts it; the systemd service runs
+  #   docker compose --env-file secrets/gateway.env --profile backup run --rm -T backup backup | restore-test
+  # (backup/backup.sh and backup/restore-test.sh, installed by deploy.sh). The B2 key, the restic password and the
+  # ping URL come from secrets/backup.env as environment (never argv); the ping itself is sent by the scripts on the
+  # host (the restic image has no curl). The data are mounted read-only.
+  backup:
+    image: restic/restic:0.19.1
+    profiles: [backup]
+    entrypoint: ['sh', '/smart/backup/restic-job.sh']
+    mem_limit: 256m
+    env_file:
+      - ./secrets/backup.env
+    environment:
+      BACKUP_HOST_TAG: ${GATEWAY_ID:?set GATEWAY_ID in secrets/gateway.env}
+      RESTIC_CACHE_DIR: /cache
+      TZ: ${TZ:-Europe/Berlin}
+    volumes:
+      - ./backup:/smart/backup:ro
+      - ./zigbee2mqtt-data:/data/zigbee2mqtt-data:ro
+      - ./secrets:/data/secrets:ro
+      - backup-cache:/cache
+    logging: *logging
+    networks: [gateway]
+
+networks:
+  # Not "internal: true": the bridge in Mosquitto needs the way out, and Docker cannot publish a port from an
+  # internal network. Nothing is published except the Z2M frontend.
+  gateway:
+
+volumes:
+  mosquitto-data:
+  backup-cache:

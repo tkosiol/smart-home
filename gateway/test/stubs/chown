@@ -1,0 +1,5 @@
+#!/bin/sh
+# Test double for chown (the sandbox runs as an ordinary user): records the call only. STUB_FAIL_CHOWN=1 fails.
+printf 'chown %s\n' "$*" >> "$STUB_CALLS"
+[ "${STUB_FAIL_CHOWN:-0}" = 1 ] && exit 1
+exit 0

@@ -1,0 +1,8 @@
+#!/bin/sh
+# Test double for tar on the Pi (the rsync stub uses it too): the real tar, except that STUB_FAIL_TAR=1 fails the
+# backup (-czf) and STUB_FAIL_TAR_VERIFY=1 fails reading it back (-tzf).
+case "$*" in
+  *-czf*) [ "${STUB_FAIL_TAR:-0}" = 1 ] && exit 1 ;;
+  *-tzf*) [ "${STUB_FAIL_TAR_VERIFY:-0}" = 1 ] && exit 1 ;;
+esac
+exec /usr/bin/tar "$@"

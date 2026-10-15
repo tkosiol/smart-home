@@ -1,0 +1,18 @@
+#!/bin/sh
+# Test double for cut (deploy tests): the real cut. With STUB_CUT_FINISH="<status file>|<new content>" the first call
+# that reads the pid field (-f3) of that status file rewrites the file afterwards, like a run that writes its final
+# state and exits right after the poll read the old one (the race of the status poll).
+/usr/bin/cut "$@"
+rc=$?
+if [ -n "${STUB_CUT_FINISH:-}" ]; then
+  file=${STUB_CUT_FINISH%%|*}
+  content=${STUB_CUT_FINISH#*|}
+  case "$*" in
+    *-f3*"$file"*)
+      if [ ! -e "${STUB_STATE:?}/cut_finished" ]; then
+        : > "$STUB_STATE/cut_finished"
+        printf '%s\n' "$content" > "$file"
+      fi ;;
+  esac
+fi
+exit $rc

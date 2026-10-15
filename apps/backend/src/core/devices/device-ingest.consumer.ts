@@ -8,7 +8,7 @@ import {
 import type { Availability } from '@smart/contracts';
 import * as z from 'zod';
 import { describeError } from '../../platform/errors/index.js';
-import { MQTT_CONNECTION, MqttConnection } from '../../platform/mqtt/index.js';
+import { MQTT_CONNECTION, MqttConnection, type Unsubscribe } from '../../platform/mqtt/index.js';
 import {
   GATEWAY_REGISTERED,
   GATEWAY_REVOKED,
@@ -42,6 +42,8 @@ const MAX_DEVICES_BYTES = 4 * 1024 * 1024;
 const MAX_MESSAGE_BYTES = 64 * 1024;
 const MAX_AVAILABILITY_BYTES = 1024;
 const MAX_NAME_LOG = 80;
+/** Longest wait for the messages already taken when the app shuts down. */
+export const SHUTDOWN_DRAIN_MS = 10_000;
 
 const IEEE_ADDRESS = /^0x[0-9a-f]{16}$/i;
 const AVAILABILITY_SUFFIX = '/availability';
@@ -139,7 +141,7 @@ export class DeviceIngestConsumer implements OnModuleInit, OnModuleDestroy {
   private readonly names = new NameMap();
   private readonly notices = new Throttle(HOUR_MS, MEMORY_LIMIT);
   private readonly failures = new Throttle(MINUTE_MS, 3);
-  private readonly subscriptions = new Map<string, () => void>();
+  private readonly subscriptions = new Map<string, Unsubscribe>();
   /** A revoked gateway stays revoked; this keeps a `follow` that is still loading from undoing it. */
   private readonly revoked = new Set<string>();
   /** Availability heard for a name that the device list does not have (yet). */
@@ -149,6 +151,7 @@ export class DeviceIngestConsumer implements OnModuleInit, OnModuleDestroy {
   private queuedBytes = 0;
   private dropped = 0;
   private destroyed = false;
+  private destroying: Promise<void> | undefined;
   private retry: NodeJS.Timeout | undefined;
   private readonly onRegistered = (event: GatewayRegistered): void => {
     this.controlInBackground(() => this.follow(event.gatewayId, event.topicPrefix));
@@ -179,17 +182,41 @@ export class DeviceIngestConsumer implements OnModuleInit, OnModuleDestroy {
 
   /**
    * Stops taking messages and returns when those already taken are handled, so that nothing is
-   * written after the modules this depends on (the measurement writer, the database) are closed.
+   * written after the modules this depends on (the measurement writer, the database) are closed;
+   * at most {@link SHUTDOWN_DRAIN_MS}: what is still unhandled then was not acknowledged and the
+   * broker delivers it again to the next start.
    */
-  async onModuleDestroy(): Promise<void> {
+  onModuleDestroy(): Promise<void> {
+    this.destroying ??= this.shutDown();
+    return this.destroying;
+  }
+
+  private async shutDown(): Promise<void> {
     this.destroyed = true;
     clearTimeout(this.retry);
     this.events.off(GATEWAY_REGISTERED, this.onRegistered);
     this.events.off(GATEWAY_REVOKED, this.onRevoked);
     // The gateways stay followed until the queue is empty: messages waiting for a gateway whose
-    // subscription is gone are skipped as those of a revoked one.
-    for (const unsubscribe of this.subscriptions.values()) unsubscribe();
-    await this.idle();
+    // subscription is gone are skipped as those of a revoked one. The subscriptions at the broker
+    // stay (the session is persistent): it queues what arrives until the next start, while
+    // nothing more is taken here.
+    for (const unsubscribe of this.subscriptions.values()) unsubscribe({ keepSession: true });
+    let timer: NodeJS.Timeout | undefined;
+    const drained = await Promise.race([
+      this.idle().then(() => true),
+      new Promise<boolean>((resolve) => {
+        timer = setTimeout(() => {
+          resolve(false);
+        }, SHUTDOWN_DRAIN_MS);
+      }),
+    ]);
+    clearTimeout(timer);
+    if (!drained) {
+      this.logger.warn(
+        `Shutting down with messages not handled yet (${this.queuedBytes} bytes); ` +
+          'they are not acknowledged and arrive again after the restart',
+      );
+    }
     this.subscriptions.clear();
   }
 
@@ -202,16 +229,23 @@ export class DeviceIngestConsumer implements OnModuleInit, OnModuleDestroy {
       for (const gateway of await this.gateways.listActive()) {
         await this.follow(gateway.id, gateway.topicPrefix);
       }
-    }).catch((error: unknown) => {
-      if (this.failures.allow('start', this.clock())) {
-        this.logger.warn(`Cannot subscribe to the gateways yet: ${describeError(error)}`);
-      }
-      if (this.destroyed) return;
-      this.retry = setTimeout(() => {
-        this.subscribeToActiveGateways();
-      }, RETRY_MS);
-      this.retry.unref();
-    });
+    })
+      .then(() => {
+        // What the broker queued while the app was down is replayed on connecting, before the
+        // above: the connection holds it until the subscriptions are there.
+        // Not when shutting down meanwhile: the gateways are not all followed then.
+        if (!this.destroyed) this.mqtt.markSubscriptionsComplete();
+      })
+      .catch((error: unknown) => {
+        if (this.failures.allow('start', this.clock())) {
+          this.logger.warn(`Cannot subscribe to the gateways yet: ${describeError(error)}`);
+        }
+        if (this.destroyed) return;
+        this.retry = setTimeout(() => {
+          this.subscribeToActiveGateways();
+        }, RETRY_MS);
+        this.retry.unref();
+      });
   }
 
   /** Resolves when the messages and gateway changes received so far are processed. */

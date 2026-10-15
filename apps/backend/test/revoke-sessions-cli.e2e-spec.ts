@@ -1,7 +1,7 @@
 import type { INestApplicationContext } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { inject } from 'vitest';
-import { AppModule } from '../src/app.module.js';
+import { CliModule } from '../src/cli.module.js';
 import {
   CLOCK,
   type Clock,
@@ -44,7 +44,7 @@ describe('revoke-sessions command', () => {
     const url = await createFreshDatabase(originalUrl);
     await runMigrations(url);
     process.env.DATABASE_URL = url;
-    context = await NestFactory.createApplicationContext(AppModule, { logger: false });
+    context = await NestFactory.createApplicationContext(CliModule, { logger: false });
     users = context.get(UsersRepository);
     sessions = context.get(SessionService);
     deps = { users, sessions: context.get(SessionsRepository), clock: context.get<Clock>(CLOCK) };

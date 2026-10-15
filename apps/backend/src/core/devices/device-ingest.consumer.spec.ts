@@ -11,6 +11,7 @@ import type {
   MqttConnection,
   MqttMessageHandler,
   SubscribeOptions,
+  Unsubscribe,
 } from '../../platform/mqtt/index.js';
 import type { NameMap } from './name-map.js';
 import type { DeviceMessageHandler } from './device-message-handler.js';
@@ -34,14 +35,21 @@ class FakeMqtt {
   readonly handlers: { filter: string; handler: MqttMessageHandler }[] = [];
   readonly options: (SubscribeOptions | undefined)[] = [];
   readonly unsubscribed: string[] = [];
+  /** The filters that were let go of with `keepSession` (the broker still has them). */
+  readonly kept: string[] = [];
+  complete = 0;
 
-  subscribe(filter: string, handler: MqttMessageHandler, options?: SubscribeOptions): () => void {
+  markSubscriptionsComplete(): void {
+    this.complete += 1;
+  }
+
+  subscribe(filter: string, handler: MqttMessageHandler, options?: SubscribeOptions): Unsubscribe {
     const entry = { filter, handler };
     this.handlers.push(entry);
     this.options.push(options);
-    return () => {
+    return (ending) => {
       this.handlers.splice(this.handlers.indexOf(entry), 1);
-      this.unsubscribed.push(filter);
+      (ending?.keepSession ? this.kept : this.unsubscribed).push(filter);
     };
   }
 
@@ -164,6 +172,45 @@ describe('DeviceIngestConsumer', () => {
     await consumer.onModuleDestroy();
   });
 
+  describe('shutdown', () => {
+    it('leaves its subscriptions to the persistent session', async () => {
+      active = [{ id: GW, topicPrefix: prefix(GW) }];
+      await start();
+      await consumer.onModuleDestroy();
+      expect(mqtt.kept).toEqual([`${prefix(GW)}/#`]);
+      expect(mqtt.unsubscribed).toEqual([]);
+    });
+
+    it('waits at most 10 s for messages that are not done', async () => {
+      vi.useFakeTimers();
+      try {
+        active = [{ id: GW, topicPrefix: prefix(GW) }];
+        stored.set(GW, [{ id: 'hw-1', friendlyName: 'sensor-1' }]);
+        await start();
+        handle.mockImplementation(() => new Promise<void>(() => undefined));
+        mqtt.publish(`${prefix(GW)}/sensor-1`, '{"soil_moisture":40}');
+        await vi.advanceTimersByTimeAsync(0);
+        const destroyed = vi.fn();
+        void consumer.onModuleDestroy().then(destroyed);
+        await vi.advanceTimersByTimeAsync(9999);
+        expect(destroyed).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(1);
+        expect(destroyed).toHaveBeenCalledTimes(1);
+        expect(logged()).toContain('not handled');
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('does not wait when everything is handled', async () => {
+      active = [{ id: GW, topicPrefix: prefix(GW) }];
+      await start();
+      const started = Date.now();
+      await consumer.onModuleDestroy();
+      expect(Date.now() - started).toBeLessThan(1000);
+    });
+  });
+
   describe('subscriptions', () => {
     it('subscribes to the prefix of every active gateway on start', async () => {
       active = [
@@ -185,6 +232,54 @@ describe('DeviceIngestConsumer', () => {
       await consumer.idle();
       expect(mqtt.unsubscribed).toEqual([`${prefix(OTHER)}/#`]);
       expect(mqtt.filters).toEqual([`${prefix(GW)}/#`]);
+    });
+
+    it('tells the connection when the subscriptions are made, not before the gateways are known', async () => {
+      vi.useFakeTimers();
+      try {
+        const listActive = vi
+          .fn<GatewaysService['listActive']>()
+          .mockRejectedValueOnce(new Error('relation "gateways" does not exist'))
+          .mockResolvedValue(active);
+        consumer = new DeviceIngestConsumer(
+          { listActive } as unknown as GatewaysService,
+          events,
+          { listNames } as unknown as HardwareRepository,
+          { handle },
+          mqtt as unknown as MqttConnection,
+          () => now,
+        );
+        consumer.onModuleInit();
+        await consumer.idle();
+        expect(mqtt.complete).toBe(0);
+        await vi.advanceTimersByTimeAsync(5000);
+        await consumer.idle();
+        expect(mqtt.filters).toEqual([`${prefix(GW)}/#`]);
+        expect(mqtt.complete).toBe(1);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('does not tell the connection when it is shut down before the gateways are followed', async () => {
+      let release: (gateways: { id: string; topicPrefix: string }[]) => void = () => undefined;
+      consumer = new DeviceIngestConsumer(
+        {
+          listActive: () => new Promise((resolve) => (release = resolve)),
+        } as unknown as GatewaysService,
+        events,
+        { listNames } as unknown as HardwareRepository,
+        { handle },
+        mqtt as unknown as MqttConnection,
+        () => now,
+      );
+      consumer.onModuleInit();
+      await new Promise((resolve) => setImmediate(resolve));
+      const destroyed = consumer.onModuleDestroy();
+      release([{ id: GW, topicPrefix: prefix(GW) }]);
+      await destroyed;
+      await consumer.idle();
+      expect(mqtt.complete).toBe(0);
     });
 
     it('tries again when the database is not there on start', async () => {

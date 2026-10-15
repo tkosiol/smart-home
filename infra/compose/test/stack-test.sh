@@ -9,6 +9,9 @@ NETWORK=smart-stacktest-proxy
 GATEWAY_ID=gw-testpi01
 # The simulator's gateway: the broker ACL of the user smart-simulator and the certificate issued below belong to it.
 SIM_ID=gw-simtest1
+# The local user of the pi's Mosquitto (on the real pi: the Zigbee2MQTT user); the test publishes as this user.
+PI_LOCAL_USER=z2m
+PI_LOCAL_PASSWORD=stack-test-pi-local
 ENV_FILE=$(mktemp)
 WORK=$(mktemp -d)
 
@@ -69,12 +72,23 @@ export E2E_SIMULATOR_CERTIFICATE_FILE="$WORK/pki/gateways/$SIM_ID.crt"
 # Only what the stack needs goes into the volumes, never the CA key. The layout is the one of the stack directory
 # (certs/public for api and broker, certs/private with the server key for the broker only); the volumes
 # certs-public-test and certs-private-test replace those bind mounts (see compose.test.yaml). pi-test holds the
-# pi's configuration and gateway certificate.
+# pi's secrets as provision-gateway.sh leaves them on the Pi (CA, gateway certificate and key, password file of the
+# local user) and the configuration that gateway/render.sh renders from gateway/mosquitto.conf.template.
 mkdir "$WORK/stage-public" "$WORK/stage-private" "$WORK/stage-pi"
 for f in ca.crt server.crt crl.pem crl-next-update; do cp "$WORK/pki/$f" "$WORK/stage-public/$f"; done
 cp "$WORK/pki/server.key" "$WORK/stage-private/server.key"
-sed "s/@GATEWAY_ID@/$GATEWAY_ID/g" infra/compose/test/pi.mosquitto.conf > "$WORK/stage-pi/mosquitto.conf"
-cp "$WORK/pki/ca.crt" "$WORK/pki/gateways/$GATEWAY_ID.crt" "$WORK/pki/gateways/$GATEWAY_ID.key" "$WORK/stage-pi/"
+# The pi's Mosquitto configuration is the real template of the gateway package, rendered by the real render.sh.
+mkdir -p "$WORK/pi-dir/secrets"
+printf 'GATEWAY_ID=%s\nBROKER_HOST=broker\nBROKER_PORT=8883\n' "$GATEWAY_ID" > "$WORK/pi-dir/secrets/gateway.env"
+printf 'ZIGBEE2MQTT_CONFIG_MQTT_USER=%s\nZIGBEE2MQTT_CONFIG_FRONTEND_AUTH_TOKEN=stack-test-token\n' "$PI_LOCAL_USER" > "$WORK/pi-dir/secrets/z2m.env"
+SMART_GATEWAY_DIR="$WORK/pi-dir" bash gateway/render.sh > /dev/null
+cp "$WORK/pi-dir/run/mosquitto.conf" "$WORK/stage-pi/mosquitto.conf"
+cp "$WORK/pki/ca.crt" "$WORK/stage-pi/ca.crt"
+cp "$WORK/pki/gateways/$GATEWAY_ID.crt" "$WORK/stage-pi/gateway.crt"
+cp "$WORK/pki/gateways/$GATEWAY_ID.key" "$WORK/stage-pi/gateway.key"
+# The local user of the pi (Zigbee2MQTT's, here used by the test), made by mosquitto_passwd like on the Pi.
+docker run --rm -u "$(id -u):$(id -g)" -v "$WORK/stage-pi:/s" eclipse-mosquitto:2.1.2-alpine \
+  mosquitto_passwd -c -b /s/passwd "$PI_LOCAL_USER" "$PI_LOCAL_PASSWORD" > /dev/null 2>&1
 for volume in smart-stacktest-certs-public smart-stacktest-certs-private smart-stacktest-pi; do
   docker volume rm "$volume" > /dev/null 2>&1 || true
   docker volume create "$volume" > /dev/null
@@ -84,9 +98,10 @@ docker run --rm -v smart-stacktest-certs-public:/dst -v "$WORK/stage-public:/src
   sh -c 'cp /src/* /dst/ && chmod 755 /dst && chmod 644 /dst/*'
 docker run --rm -v smart-stacktest-certs-private:/dst -v "$WORK/stage-private:/src:ro" alpine:3.24.2 \
   sh -c 'cp /src/* /dst/ && chmod 700 /dst && chmod 600 /dst/*'
-# The pi's Mosquitto drops to user 1883 and reads the key as that user.
+# Like secrets/ on the Pi: owned by root, 700 and 600. The pi's Mosquitto drops to user 1883 and could not read the
+# password file or the key like this; gateway/mosquitto-entrypoint.sh copies them for it (see compose.test.yaml).
 docker run --rm -v smart-stacktest-pi:/dst -v "$WORK/stage-pi:/src:ro" alpine:3.24.2 \
-  sh -c 'cp /src/* /dst/ && chown -R 1883:1883 /dst && chmod 755 /dst && chmod 600 /dst/*.key'
+  sh -c 'cp /src/* /dst/ && chown -R 0:0 /dst && chmod 700 /dst && chmod 600 /dst/*'
 
 docker network inspect "$NETWORK" > /dev/null 2>&1 || docker network create "$NETWORK" > /dev/null
 docker volume rm smart-stacktest-config smart-stacktest-restic > /dev/null 2>&1 || true
@@ -154,10 +169,10 @@ expect_message() {
 }
 expect_message "gw/$GATEWAY_ID/bridge/connection" "1 1"
 # Z2M publishes zigbee2mqtt/bridge/state on the pi; the bridge hands it to the broker as gw/<id>/z2m/bridge/state.
-compose exec -T pi mosquitto_pub -h 127.0.0.1 -r -t zigbee2mqtt/bridge/state -m online
+compose exec -T pi mosquitto_pub -h 127.0.0.1 -u "$PI_LOCAL_USER" -P "$PI_LOCAL_PASSWORD" -r -t zigbee2mqtt/bridge/state -m online
 expect_message "gw/$GATEWAY_ID/z2m/bridge/state" "1 online"
 # A command of the backend reaches the pi as zigbee2mqtt/<device>/set (probed until the bridge subscription is active).
-compose exec -T pi mosquitto_sub -h 127.0.0.1 -t 'zigbee2mqtt/+/set' -C 1 -W 20 > "$WORK/command.out" &
+compose exec -T pi mosquitto_sub -h 127.0.0.1 -u "$PI_LOCAL_USER" -P "$PI_LOCAL_PASSWORD" -t 'zigbee2mqtt/+/set' -C 1 -W 20 > "$WORK/command.out" &
 command_pid=$!
 attempt=0
 while [ ! -s "$WORK/command.out" ] && [ "$attempt" -lt 20 ]; do

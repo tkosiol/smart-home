@@ -10,6 +10,27 @@ if [ -n "${STUB_ARGV_LOG:-}" ]; then
   printf '\n' >> "$STUB_ARGV_LOG"
 fi
 case "$*" in
+  *"mosquitto_passwd -U"*)
+    # Stands in for the mosquitto image: turns every user:password line of the mounted file into user:<hash>
+    # in place (-v <host dir>:<container dir>, the last argument is the file in the container).
+    [ "${STUB_FAIL_PASSWD:-0}" = 1 ] && exit 1
+    # STUB_PASSWD_PLAIN=1: succeeds but leaves the plain text file as it is; STUB_PASSWD_EMPTY=1: leaves it empty.
+    [ "${STUB_PASSWD_PLAIN:-0}" = 1 ] && exit 0
+    previous=''
+    for argument; do
+      [ "$previous" = -v ] && mount=$argument
+      previous=$argument
+      last=$argument
+    done
+    container_dir=${mount#*:}
+    plain="${mount%%:*}${last#"$container_dir"}"
+    while IFS=: read -r user password; do
+      # shellcheck disable=SC2016 # $7$ is the literal hash prefix
+      printf '%s:$7$101$stub$%s\n' "$user" "$(printf '%s' "$password" | cksum | cut -d' ' -f1)"
+    done < "$plain" > "$plain.hashed"
+    mv "$plain.hashed" "$plain"
+    [ "${STUB_PASSWD_EMPTY:-0}" = 1 ] && : > "$plain"
+    exit 0 ;;
   *"up -d --wait db broker"*)
     [ "${STUB_FAIL_INFRA:-0}" = 1 ] && exit 1 ;;
   *"run --rm --no-deps api node dist/migrate.js"*)

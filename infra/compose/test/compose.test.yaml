@@ -20,14 +20,19 @@ services:
     volumes:
       - certs-public-test:/mosquitto/certs:ro
       - certs-private-test:/mosquitto/certs-private:ro
-  # Test gateway: the Raspberry Pi's Mosquitto, bridged to the stack broker over mTLS with the
-  # gateway certificate. stack-test.sh renders pi.mosquitto.conf and the certificates into pi-test.
+  # Test gateway: the Raspberry Pi's Mosquitto, bridged to the stack broker over mTLS with the gateway
+  # certificate. It runs the gateway package's configuration (gateway/mosquitto.conf.template, rendered by
+  # gateway/render.sh) and entry point; stack-test.sh stages that file and the secrets in pi-test.
   pi:
     image: eclipse-mosquitto:2.1.2-alpine
     restart: 'no'
-    command: ['mosquitto', '-c', '/mosquitto/pi/mosquitto.conf']
+    entrypoint: ['sh', '/smart/mosquitto-entrypoint.sh']
+    command: ['mosquitto', '-c', '/mosquitto/secrets-src/mosquitto.conf']
     volumes:
-      - pi-test:/mosquitto/pi:ro
+      - ../../gateway/mosquitto-entrypoint.sh:/smart/mosquitto-entrypoint.sh:ro
+      - pi-test:/mosquitto/secrets-src:ro
+    tmpfs:
+      - /mosquitto/secrets:uid=1883,gid=1883,mode=0700
     depends_on:
       broker:
         condition: service_healthy

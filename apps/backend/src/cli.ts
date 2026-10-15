@@ -1,5 +1,5 @@
 import { NestFactory } from '@nestjs/core';
-import { AppModule } from './app.module.js';
+import { CliModule } from './cli.module.js';
 import {
   CLOCK,
   type Clock,
@@ -8,8 +8,9 @@ import {
   UsersRepository,
 } from './core/identity/index.js';
 
-// Administration commands (see docs/runbooks/provisioning.md); a context without an HTTP server.
-const context = await NestFactory.createApplicationContext(AppModule, { logger: false });
+// Administration commands (see docs/runbooks/provisioning.md); a context without an HTTP server
+// and without MQTT (see CliModule).
+const context = await NestFactory.createApplicationContext(CliModule, { logger: false });
 try {
   const deps = {
     users: context.get(UsersRepository),

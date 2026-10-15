@@ -1,0 +1,14 @@
+#!/bin/sh
+# Test double for systemd-run: records the call and starts the command detached (nohup, no terminal), like a
+# transient unit that outlives the ssh session. STUB_FAIL_SYSTEMD_RUN=1 fails, STUB_NO_START=1 starts nothing.
+printf 'systemd-run %s\n' "$*" >> "$STUB_CALLS"
+[ "${STUB_FAIL_SYSTEMD_RUN:-0}" = 1 ] && exit 1
+[ "${STUB_NO_START:-0}" = 1 ] && exit 0
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --*) shift ;;
+    *) break ;;
+  esac
+done
+nohup "$@" > /dev/null 2>&1 < /dev/null &
+exit 0

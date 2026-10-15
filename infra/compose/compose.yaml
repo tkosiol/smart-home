@@ -29,6 +29,8 @@ services:
     image: ${IMAGE_REGISTRY:-ghcr.io/tkosiol}/smart-home-api:${IMAGE_TAG:?IMAGE_TAG is required}
     read_only: true
     tmpfs: [/tmp]
+    # The shutdown waits up to 10 s for the messages being handled; docker's 10 s would kill it first.
+    stop_grace_period: 20s
     environment:
       NODE_ENV: production
       LOG_LEVEL: ${LOG_LEVEL:-info}
@@ -37,6 +39,9 @@ services:
       MQTT_URL: mqtt://broker:1883
       MQTT_USERNAME: smart-api
       MQTT_PASSWORD: ${MQTT_API_PASSWORD:?MQTT_API_PASSWORD is required}
+      # Fixed, so that the broker keeps the session (subscriptions, queued messages) across api
+      # restarts; one per stack, as staging and production have a broker each.
+      MQTT_CLIENT_ID: smart-api-${STACK_NAME}
       APP_ORIGIN: ${APP_ORIGIN:?APP_ORIGIN is required}
       # Proxies in front of the api whose X-Forwarded-For entries are trusted: web nginx (1); on the
       # VPS Nginx Proxy Manager sits in front as well (2).

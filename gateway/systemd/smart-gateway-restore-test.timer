@@ -1,0 +1,11 @@
+# Installed by gateway/deploy.sh. Weekly, Sunday 05:00 local time (well after the nightly backup at 03:30).
+[Unit]
+Description=Weekly restore test of the smart-gateway Pi backup
+
+[Timer]
+OnCalendar=Sun *-*-* 05:00:00
+Persistent=true
+RandomizedDelaySec=120
+
+[Install]
+WantedBy=timers.target

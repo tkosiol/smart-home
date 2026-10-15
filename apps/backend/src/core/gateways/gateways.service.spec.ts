@@ -11,7 +11,9 @@ import type { GatewaysRepository } from './gateways.repository.js';
 import type { GatewayRow, NewGatewayRow } from './gateways.schema.js';
 import { GatewaysService } from './gateways.service.js';
 
-const NOW = new Date('2026-10-14T12:00:00Z');
+// The throwaway PKI issues certificates around the real clock (valid from one day ago), so this
+// clock must follow the real one: a fixed date makes registration fail once a day has passed.
+const NOW = new Date();
 const row = (overrides: Partial<GatewayRow> = {}): GatewayRow => ({
   id: 'gw-a1b2c3d4',
   householdId: 'household',

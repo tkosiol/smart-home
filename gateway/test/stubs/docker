@@ -1,0 +1,123 @@
+#!/bin/sh
+# Test double for docker on the Pi (deploy.sh tests). Records every call and keeps the state of the two stacks
+# in $STUB_STATE (files old_running and new_running). STUB_* variables inject failures:
+#   STUB_FAIL_PULL, STUB_FAIL_NEW_UP, STUB_FAIL_OLD_UP, STUB_FAIL_OLD_STOP = 1
+#   STUB_FAIL_NEW_STOP = 1: "compose stop" of the new stack fails and stops nothing;
+#   STUB_FAIL_DOCKER_STOP = 1: "docker stop" / "docker rm" of a container by name fail too
+#   STUB_Z2M_OFFLINE = 1: bridge/state says offline; STUB_BRIDGE = 0: the bridge is down (default 1)
+#   STUB_Z2M_OLD_START = 1: the Z2M container "started long ago" (a retained online may be stale);
+#   STUB_Z2M_RESTARTS = 1: the restart count grows with every look (restart loop); STUB_MOSQ_UNHEALTHY = 1
+#   STUB_PS_FAIL = <exit code>: the "ps -q" probes of the NEW project (compose and docker ps) fail with that code and
+#   no output (124 = a timeout); STUB_OLD_PS_FAIL = <exit code>: the same for "ps -q" of the old stack
+#   STUB_LIST_OLD = 1: the old stack shows in the preflight listing of running containers; STUB_FOREIGN_Z2M = <name>:
+#   a zigbee2mqtt container of another compose project is running
+#   STUB_OLD_ONLY_MOSQ = 1: only the mosquitto service of the old stack runs; STUB_UP_DELAY = <s>: "up -d" of the
+#   new stack takes that long
+#   The old stack has two containers (old-stack-mosquitto-1, old-stack-zigbee2mqtt-1) whose restart policy lives in
+#   $STUB_STATE/policy_<name> (default "always", or $STUB_OLD_POLICY). STUB_OLD_PSA_FAIL = 1: "ps -aq" of the old
+#   stack fails; STUB_INSPECT_FAIL = 1: reading a restart policy fails; STUB_INSPECT_EMPTY = 1: it answers nothing;
+#   STUB_FAIL_UPDATE_NAME = <name>: "docker update --restart=no" of that container fails; STUB_FAIL_RESTORE = 1:
+#   "docker update" with any other policy than no fails
+#   STUB_FOREIGN_WHEN_OLD_STOPPED = <name>: a zigbee2mqtt container of another project shows in the listing as soon
+#   as the old stack is stopped (the old stack came back by itself); STUB_LIST_FAIL = 1: only that listing fails
+printf 'docker %s\n' "$*" >> "$STUB_CALLS"
+state=${STUB_STATE:?}
+case "$*" in
+  "compose -f "*)
+    # The old stack (its own compose file).
+    case "$*" in
+      *" config --services"*) printf 'mosquitto\nzigbee2mqtt\n' ;;
+      *" ps -aq"*)
+        [ "${STUB_OLD_PSA_FAIL:-0}" = 1 ] && exit 1
+        printf 'old-stack-mosquitto-1\nold-stack-zigbee2mqtt-1\n' ;;
+      *" ps "*)
+        case "$*" in
+          *--services*) ;;
+          *) [ -n "${STUB_OLD_PS_FAIL:-}" ] && exit "$STUB_OLD_PS_FAIL" ;;
+        esac
+        if [ -e "$state/old_running" ]; then
+          case "$*" in
+            *--services*) if [ "${STUB_OLD_ONLY_MOSQ:-0}" = 1 ]; then echo mosquitto; else printf 'mosquitto\nzigbee2mqtt\n'; fi ;;
+            *) echo oldcontainer ;;
+          esac
+        fi ;;
+      *" stop"*)
+        [ "${STUB_FAIL_OLD_STOP:-0}" = 1 ] && exit 1
+        rm -f "$state/old_running" ;;
+      *" up -d"*)
+        [ "${STUB_FAIL_OLD_UP:-0}" = 1 ] && exit 1
+        : > "$state/old_running" ;;
+    esac ;;
+  "compose --env-file secrets/gateway.env "*)
+    case "$*" in
+      *" pull"*)
+        printf 'pull-profiles COMPOSE_PROFILES=%s\n' "${COMPOSE_PROFILES:-}" >> "$STUB_CALLS"
+        [ "${STUB_FAIL_PULL:-0}" = 1 ] && exit 1 ;;
+      *" up -d"*)
+        [ -n "${STUB_UP_DELAY:-}" ] && sleep "$STUB_UP_DELAY"
+        [ "${STUB_FAIL_NEW_UP:-0}" = 1 ] && exit 1
+        : > "$state/new_running" ;;
+      *" stop"*)
+        [ "${STUB_FAIL_NEW_STOP:-0}" = 1 ] && exit 1
+        rm -f "$state/new_running" ;;
+      *"ps --status running -q zigbee2mqtt"*) if [ -e "$state/new_running" ]; then echo z2mcontainer; fi ;;
+      *"ps -q zigbee2mqtt"*) if [ -e "$state/new_running" ]; then echo z2mcontainer; fi ;;
+      *"ps -q mosquitto"*) if [ -e "$state/new_running" ]; then echo mosquittocontainer; fi ;;
+      *"ps --status running -q"*)
+        [ -n "${STUB_PS_FAIL:-}" ] && exit "$STUB_PS_FAIL"
+        if [ -e "$state/new_running" ]; then echo z2mcontainer; fi ;;
+      *"mosquitto_sub"*"bridge/state"*)
+        if [ "${STUB_Z2M_OFFLINE:-0}" = 1 ]; then echo '{"state":"offline"}'; else echo '{"state":"online"}'; fi ;;
+      *"mosquitto_sub"*"bridge/connection"*) echo "${STUB_BRIDGE:-1}" ;;
+      *" ps"*) printf 'NAME  STATUS\nmosquitto  Up (healthy)\nzigbee2mqtt  Up\n' ;;
+    esac ;;
+  "inspect -f "*)
+    case "$*" in
+      *RestartPolicy*)
+        [ "${STUB_INSPECT_FAIL:-0}" = 1 ] && exit 1
+        [ "${STUB_INSPECT_EMPTY:-0}" = 1 ] && exit 0
+        for last; do :; done
+        cat "$state/policy_$last" 2> /dev/null || echo "${STUB_OLD_POLICY:-always}" ;;
+      *StartedAt*)
+        count=0
+        if [ "${STUB_Z2M_RESTARTS:-0}" = 1 ]; then
+          count=$(($(cat "$state/restarts" 2> /dev/null || echo 0) + 1))
+          echo "$count" > "$state/restarts"
+        fi
+        if [ "${STUB_Z2M_OLD_START:-0}" = 1 ]; then started=2000-01-01T00:00:00.000000000Z; else started=2999-01-01T00:00:00.000000000Z; fi
+        echo "true $count $started" ;;
+      *RestartCount*) echo 0 ;;
+      *Health*) if [ "${STUB_MOSQ_UNHEALTHY:-0}" = 1 ]; then echo unhealthy; else echo healthy; fi ;;
+    esac ;;
+  "ps "*)
+    # docker ps of the new project (by label), running or all (names)
+    [ -n "${STUB_PS_FAIL:-}" ] && exit "$STUB_PS_FAIL"
+    case "$*" in
+      *com.docker.compose.service*)
+        # The preflight listing of every running container: project|service|image|name. The old stack shows only with
+        # STUB_LIST_OLD=1 (the sandbox starts with it running); STUB_FOREIGN_Z2M=<name> adds a Z2M of some other project.
+        if [ "${STUB_LIST_OLD:-0}" = 1 ] && [ -e "$state/old_running" ]; then echo "old-stack|zigbee2mqtt|koenkk/zigbee2mqtt:1.42.0|old-stack-zigbee2mqtt-1"; echo "old-stack|mosquitto|eclipse-mosquitto:2|old-stack-mosquitto-1"; fi
+        [ "${STUB_LIST_FAIL:-0}" = 1 ] && exit 1
+        if [ -n "${STUB_FOREIGN_Z2M:-}" ]; then echo "other||koenkk/zigbee2mqtt:latest|$STUB_FOREIGN_Z2M"; fi
+        if [ -n "${STUB_FOREIGN_WHEN_OLD_STOPPED:-}" ] && [ ! -e "$state/old_running" ]; then echo "other||koenkk/zigbee2mqtt:latest|$STUB_FOREIGN_WHEN_OLD_STOPPED"; fi
+        if [ -e "$state/new_running" ]; then echo "smart-gateway|zigbee2mqtt|koenkk/zigbee2mqtt:2.14.2|smart-gateway-zigbee2mqtt-1"; echo "unrelated|web|nginx:1|nginx-1"; fi
+        exit 0 ;;
+    esac
+    if [ -e "$state/new_running" ]; then
+      case "$*" in
+        *--format*) echo smart-gateway-zigbee2mqtt-1 ;;
+        *) echo z2mcontainer ;;
+      esac
+    fi ;;
+  "update --restart="*)
+    # docker update --restart=<policy> <container>
+    policy=${2#--restart=}
+    for last; do :; done
+    [ "$policy" = no ] && [ "${STUB_FAIL_UPDATE_NAME:-}" = "$last" ] && exit 1
+    [ "$policy" != no ] && [ "${STUB_FAIL_RESTORE:-0}" = 1 ] && exit 1
+    echo "$policy" > "$state/policy_$last" ;;
+  "stop "* | "rm "*)
+    [ "${STUB_FAIL_DOCKER_STOP:-0}" = 1 ] && exit 1
+    rm -f "$state/new_running" ;;
+esac
+exit 0
