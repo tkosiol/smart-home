@@ -2,17 +2,19 @@
 
 Der Ordner enthält alles, was auf einem Gateway läuft: Mosquitto (lokaler Broker mit Bridge zum Plattform-Broker, ADR-0020) und Zigbee2MQTT, beide mit gepinnten Images. Er ist allgemein gehalten: Gateway-ID, Broker-Adresse und Zugangsdaten stehen ausschließlich in `secrets/` auf dem Gateway, nie im Repository. Auf dem Pi liegt der Ordner unter `/srv/smart-gateway`.
 
-| Datei                     | Zweck                                                                                                             |
-| ------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `compose.yaml`            | Mosquitto 2.1.2 und Zigbee2MQTT 2.14.2, Speicherlimits, Log-Rotation                                              |
-| `mosquitto.conf.template` | Mosquitto-Konfiguration nach ADR-0020 mit den Platzhaltern `{{GATEWAY_ID}}`, `{{BROKER_HOST}}`, `{{BROKER_PORT}}` |
-| `render.sh`               | prüft `secrets/gateway.env`, füllt die Vorlage, schreibt `run/mosquitto.conf` (Modus 600, atomar)                 |
-| `mosquitto-entrypoint.sh` | kopiert die Geheimnisse beim Start für den Mosquitto-Benutzer lesbar in ein tmpfs und erzeugt die lokale ACL      |
-| `test/gateway-test.sh`    | Docker-Test des Pakets (`bash gateway/test/gateway-test.sh`, braucht Docker und OpenSSL 3)                        |
-| `deploy.sh`               | `SMART_PI=<user@pi-host> pnpm gateway:deploy [--migrate]`: installiert/aktualisiert den Stack auf dem Pi vom Mac  |
-| `test/deploy-tests.sh`    | Test von `deploy.sh` mit Stub-ssh/-rsync/-docker in einer Sandbox (`bash gateway/test/deploy-tests.sh`)           |
-| `backup/`, `systemd/`     | nächtliches restic-Backup nach B2, wöchentlicher Restore-Test, systemd-Timer (Abschnitt „Backups“)                |
-| `test/backup-tests.sh`    | Docker-Test der Backups mit lokalem restic-Repository und Stub-curl (`bash gateway/test/backup-tests.sh`)         |
+| Datei                     | Zweck                                                                                                                                |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `compose.yaml`            | Mosquitto 2.1.2 und Zigbee2MQTT 2.14.2, Speicherlimits, Log-Rotation                                                                 |
+| `mosquitto.conf.template` | Mosquitto-Konfiguration nach ADR-0020 mit den Platzhaltern `{{GATEWAY_ID}}`, `{{BROKER_HOST}}`, `{{BROKER_PORT}}`                    |
+| `render.sh`               | prüft `secrets/gateway.env`, füllt die Vorlage, schreibt `run/mosquitto.conf` (Modus 600, atomar)                                    |
+| `mosquitto-entrypoint.sh` | kopiert die Geheimnisse beim Start für den Mosquitto-Benutzer lesbar in ein tmpfs und erzeugt die lokale ACL                         |
+| `test/gateway-test.sh`    | Docker-Test des Pakets (`bash gateway/test/gateway-test.sh`, braucht Docker und OpenSSL 3)                                           |
+| `deploy.sh`               | `SMART_PI=<user@pi-host> pnpm gateway:deploy [--migrate]`: installiert/aktualisiert den Stack auf dem Pi vom Mac                     |
+| `migrate.sh`              | Pi-Teil des Umzugs (`--migrate`): Sicherung, Stopp, Kopie, Start, Rückweg; läuft abgekoppelt auf dem Pi, Stand in `migration/status` |
+| `start.sh`                | Start des Stacks auf dem Pi und Warten auf Z2M (online, stabil, Mosquitto healthy); von `deploy.sh` und `migrate.sh` genutzt         |
+| `test/deploy-tests.sh`    | Test von `deploy.sh` mit Stub-ssh/-rsync/-docker in einer Sandbox (`bash gateway/test/deploy-tests.sh`)                              |
+| `backup/`, `systemd/`     | nächtliches restic-Backup nach B2, wöchentlicher Restore-Test, systemd-Timer (Abschnitt „Backups“)                                   |
+| `test/backup-tests.sh`    | Docker-Test der Backups mit lokalem restic-Repository und Stub-curl (`bash gateway/test/backup-tests.sh`)                            |
 
 ## Dateien in `secrets/` (root `700`, Dateien `600`)
 

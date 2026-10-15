@@ -1,0 +1,5 @@
+#!/bin/sh
+# Test double for cp on the Pi: the real cp; STUB_FAIL_CP=1 copies and then fails (a half-finished copy).
+/bin/cp "$@" || exit $?
+[ "${STUB_FAIL_CP:-0}" = 1 ] && exit 1
+exit 0
