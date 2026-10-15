@@ -40,7 +40,9 @@
     "submit": "Gateway registrieren"
   },
   "block": {
-    "title": "Gateways",
+    "online": "Gateway online",
+    "offline": "Gateway offline",
+    "unknown": "Status unbekannt",
     "empty": "Noch kein Gateway registriert."
   }
 }

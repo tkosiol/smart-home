@@ -1,9 +1,13 @@
 @if (heading(); as heading) {
-  <div class="header">
-    <h1 class="heading" tabindex="-1">{{ heading }}</h1>
-    @if (description(); as description) {
-      <p class="description">{{ description }}</p>
-    }
-  </div>
+  @if (headingHidden()) {
+    <h1 class="heading heading--hidden" tabindex="-1">{{ heading }}</h1>
+  } @else {
+    <div class="header">
+      <h1 class="heading" tabindex="-1">{{ heading }}</h1>
+      @if (description(); as description) {
+        <p class="description">{{ description }}</p>
+      }
+    </div>
+  }
 }
 <ng-content />

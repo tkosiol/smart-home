@@ -7,7 +7,7 @@ import {
   UiEmptyStateActions,
   UiFormatContext,
   UiPodRow,
-  UiSection,
+  UiRoomCard,
 } from '@smart/ui';
 import { injectDeviceList } from './device-list';
 import { podOf } from './device-pod';
@@ -15,7 +15,8 @@ import { provideDevicesTexts } from './devices-texts';
 
 /**
  * The overview's block "Geräte": a pod for every device (a link to its page), wrapping rather than
- * scrolling (spec 3.1), kept up to date. Loaded lazily.
+ * scrolling (spec 3.1), kept up to date. Before rooms exist it takes the room card's place: the
+ * heading leads to the devices page, the head says how many devices there are. Loaded lazily.
  */
 @Component({
   selector: 'app-devices-block',
@@ -26,11 +27,24 @@ import { provideDevicesTexts } from './devices-texts';
     UiEmptyState,
     UiEmptyStateActions,
     UiPodRow,
-    UiSection,
+    UiRoomCard,
   ],
   providers: [provideDevicesTexts()],
   template: `
-    <ui-section [heading]="'devices.block.title' | transloco">
+    <ui-room-card
+      [heading]="'devices.block.title' | transloco"
+      route="/geraete"
+      [summary]="
+        pods().length === 0
+          ? null
+          : {
+              text:
+                pods().length === 1
+                  ? ('devices.block.countOne' | transloco)
+                  : ('devices.block.count' | transloco: { n: pods().length }),
+            }
+      "
+    >
       @if (pods().length > 0) {
         <ui-pod-row wrap>
           @for (pod of pods(); track pod.route) {
@@ -48,6 +62,7 @@ import { provideDevicesTexts } from './devices-texts';
       } @else if (devices.loaded()) {
         <ui-empty-state
           icon="devices"
+          [level]="3"
           [heading]="'devices.empty.heading' | transloco"
           [description]="'devices.empty.description' | transloco"
         >
@@ -56,7 +71,7 @@ import { provideDevicesTexts } from './devices-texts';
           </div>
         </ui-empty-state>
       }
-    </ui-section>
+    </ui-room-card>
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,
 })

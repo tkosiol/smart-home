@@ -5,6 +5,7 @@ export * from './shell';
 export { MemoryAppearanceStore } from './lib/theme/memory-appearance-store';
 export type { UiSpace } from './lib/layout/space';
 export { UiGrid } from './lib/layout/grid/grid';
+export { UiGridItem } from './lib/layout/grid/grid-item';
 export { UiPage } from './lib/layout/page/page';
 export { UiSection } from './lib/layout/section/section';
 export { UiStack } from './lib/layout/stack/stack';
@@ -22,7 +23,12 @@ export { UiDateTimePipe } from './lib/time/date-time.pipe';
 export type { UiDateTimeStyle } from './lib/time/formatters';
 export { UiRelativeTimePipe } from './lib/time/relative-time.pipe';
 export { UiStatusHero, type UiStatusHeroTone } from './lib/status-hero/status-hero';
-export { UiStatusEntry, type UiStatusEntryTone } from './lib/status-hero/status-entry';
+export {
+  UiStatusEntry,
+  type UiStatusEntryTone,
+  type UiStatusEntryVariant,
+} from './lib/status-hero/status-entry';
+export { UiRoomCard, type UiRoomCardSummary } from './lib/room-card/room-card';
 export {
   UiDevicePod,
   type UiDevicePodChip,

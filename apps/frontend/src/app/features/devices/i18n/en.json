@@ -58,6 +58,8 @@
     }
   },
   "block": {
-    "title": "Devices"
+    "title": "Devices",
+    "countOne": "1 device",
+    "count": "{{ n }} devices"
   }
 }

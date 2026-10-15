@@ -8,57 +8,67 @@ import {
   untracked,
 } from '@angular/core';
 import { TranslocoPipe } from '@jsverse/transloco';
-import type { Gateway } from '@smart/contracts';
-import { UiRelativeTimePipe, UiSection, UiStack } from '@smart/ui';
+import type { Gateway, GatewayStatus } from '@smart/contracts';
+import { UiRelativeTimePipe, UiStack, UiStatusEntry, type UiStatusEntryTone } from '@smart/ui';
 import { HouseholdContext, injectHouseholdErrorHandler, LoadedList } from '../../core/household';
 import { isNetworkFailure, refreshWhileVisible } from '../../core/refresh';
-import { GatewayStatusText } from './gateway-status';
 import { GatewaysApi } from './gateways.api';
 import { provideGatewaysTexts } from './gateways-texts';
 
 /**
- * The overview's block "Gateway" (owners): status and last message of every registered gateway,
- * kept up to date. Loaded lazily.
+ * One state for the row: online only while bridge and Zigbee2MQTT both are (the backend counts
+ * the gateway as offline otherwise); unknown when nothing says offline but one of them is unknown.
+ */
+function stateOf(gateway: Gateway): GatewayStatus {
+  const statuses = [gateway.bridgeStatus, gateway.z2mStatus];
+  if (statuses.every((status) => status === 'online')) return 'online';
+  return statuses.includes('offline') ? 'offline' : 'unknown';
+}
+
+/** The icon container per state (spec 3.6): online ok, offline the strong error, unknown grey. */
+const TONE: Record<GatewayStatus, UiStatusEntryTone> = {
+  online: 'ok-container',
+  offline: 'error',
+  unknown: 'offline-container',
+};
+
+/**
+ * The overview's block "Gateway" (owners): one row per registered gateway in the style of the
+ * hero's calm row, with its state in the icon container and in words, and its last message as
+ * relative time; the row leads to the gateways page. Kept up to date, loaded lazily.
  */
 @Component({
   selector: 'app-gateway-block',
-  imports: [TranslocoPipe, GatewayStatusText, UiRelativeTimePipe, UiSection, UiStack],
+  imports: [TranslocoPipe, UiRelativeTimePipe, UiStack, UiStatusEntry],
   providers: [provideGatewaysTexts()],
   template: `
-    <ui-section [heading]="'gateways.block.title' | transloco">
-      <ui-stack gap="md">
-        @for (gateway of active(); track gateway.id) {
-          <ui-section [level]="3" [heading]="gateway.name">
-            <ui-stack gap="sm">
-              <ui-stack direction="row" gap="lg" wrap>
-                <app-gateway-status
-                  [label]="'gateways.entry.bridge' | transloco"
-                  [status]="gateway.bridgeStatus"
-                />
-                <app-gateway-status
-                  [label]="'gateways.entry.z2m' | transloco"
-                  [status]="gateway.z2mStatus"
-                />
-              </ui-stack>
-              <p>
-                @if (gateway.lastMessageAt) {
-                  {{
-                    'gateways.entry.lastMessage'
-                      | transloco: { time: gateway.lastMessageAt | uiRelativeTime }
-                  }}
-                } @else {
-                  {{ 'gateways.entry.noMessage' | transloco }}
-                }
-              </p>
-            </ui-stack>
-          </ui-section>
-        } @empty {
-          @if (gateways.loaded()) {
-            <p>{{ 'gateways.block.empty' | transloco }}</p>
-          }
+    <ui-stack gap="sm">
+      @for (row of rows(); track row.gateway.id) {
+        <ui-status-entry
+          variant="row"
+          icon="router"
+          [kindTone]="row.tone"
+          [title]="row.gateway.name"
+          [subtitle]="
+            (row.state === 'online'
+              ? ('gateways.block.online' | transloco)
+              : row.state === 'offline'
+                ? ('gateways.block.offline' | transloco)
+                : ('gateways.block.unknown' | transloco)) +
+            ' · ' +
+            (row.gateway.lastMessageAt
+              ? ('gateways.entry.lastMessage'
+                | transloco: { time: row.gateway.lastMessageAt | uiRelativeTime })
+              : ('gateways.entry.noMessage' | transloco))
+          "
+          route="/mehr/gateways"
+        />
+      } @empty {
+        @if (gateways.loaded()) {
+          <p>{{ 'gateways.block.empty' | transloco }}</p>
         }
-      </ui-stack>
-    </ui-section>
+      }
+    </ui-stack>
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -76,8 +86,14 @@ export class GatewayBlock {
     },
   );
   /** A revoked gateway no longer reports: the block leaves it out. */
-  protected readonly active = computed(() =>
-    this.gateways.items().filter((gateway) => gateway.revokedAt === null),
+  protected readonly rows = computed(() =>
+    this.gateways
+      .items()
+      .filter((gateway) => gateway.revokedAt === null)
+      .map((gateway) => {
+        const state = stateOf(gateway);
+        return { gateway, state, tone: TONE[state] };
+      }),
   );
 
   constructor() {

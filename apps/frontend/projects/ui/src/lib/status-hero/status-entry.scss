@@ -5,6 +5,8 @@
   min-width: 0;
 }
 
+// Class names are short here on purpose: the ten tone rules of the icon container and the nine
+// of the accent each repeat theirs, and the component style budget is 4 kB.
 // A surface-container-lowest pod (spec 2.2) at least one touch target high.
 .entry {
   display: flex;
@@ -19,22 +21,44 @@
   text-decoration: none;
 }
 
-.entry--link {
+// Standing alone on the page: the look of the hero's calm row (rule 7), a 56 px pill on
+// surface-container-low; its subtitle may wrap.
+:host([data-variant='row']) .entry {
+  min-height: calc(var(--smart-size-touch) + var(--smart-space-sm));
+  padding: var(--smart-space-xs) var(--smart-space-lg) var(--smart-space-xs) var(--smart-space-sm);
+  border-radius: var(--smart-shape-control);
+  background: var(--mat-sys-surface-container-low);
+}
+
+// Inside a row that is a pod already (the reorder list of the customise sheet): no surface of
+// its own, md above and below (the 72 px of a two-line M3 list row together with the 48 px
+// handle), and the description wraps instead of being cut.
+:host([data-variant='bare']) .entry {
+  padding: var(--smart-space-md) 0;
+  background: transparent;
+}
+
+:host(:not([data-variant='entry'])) .subtitle {
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.link {
   cursor: pointer;
   transition: background-color var(--smart-motion-duration-short)
     var(--smart-motion-easing-standard);
 }
 
-.entry--link:hover {
+.link:hover {
   background: var(--mat-sys-surface-container-high);
 }
 
-.entry--link:focus-visible {
+.link:focus-visible {
   outline: var(--smart-focus-width) solid var(--mat-sys-primary);
   outline-offset: calc(var(--smart-focus-width) * -1);
 }
 
-.leading-container {
+.lead {
   display: inline-flex;
   flex: none;
   align-items: center;
@@ -75,11 +99,10 @@
   white-space: nowrap;
 }
 
-.value,
-.severity {
+// Value and label: one class for both, so the nine colour rules are written once (component
+// style budget); without a family they fall back to the colours below.
+.accent {
   flex: none;
-  color: var(--mat-sys-on-surface-variant);
-  font-weight: var(--smart-font-weight-semibold);
 
   @include tone.text;
 }
@@ -92,6 +115,7 @@
 }
 
 .severity {
+  color: var(--mat-sys-on-surface-variant);
   font: var(--mat-sys-label-small);
   font-weight: var(--smart-font-weight-semibold);
   letter-spacing: var(--smart-type-tracking-label);

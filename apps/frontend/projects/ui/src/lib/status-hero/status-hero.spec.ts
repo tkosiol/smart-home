@@ -100,18 +100,14 @@ describe('UiStatusHero', () => {
     ]);
     expect(entries[0]!.querySelector('.chevron')).toBeNull();
     expect(entries[1]!.querySelector('.chevron')).not.toBeNull();
-    expect(entries[0]!.querySelector('.leading-container')?.getAttribute('data-tone')).toBe(
-      'error',
-    );
+    expect(entries[0]!.querySelector('.lead')?.getAttribute('data-tone')).toBe('error');
     expect(entries[0]!.querySelector('.severity')?.textContent?.trim()).toBe('Kritisch');
     expect(entries[0]!.querySelector('.severity')?.getAttribute('data-tone')).toBe('error');
     expect(entries[0]!.querySelector('.value')).toBeNull();
     expect(entries[1]!.querySelector('.value')?.textContent?.trim()).toBe('18 %');
     expect(entries[1]!.querySelector('.value')?.getAttribute('data-tone')).toBe('dry');
     expect(entries[1]!.querySelector('.severity')).toBeNull();
-    expect(entries[1]!.querySelector('.leading-container')?.getAttribute('aria-hidden')).toBe(
-      'true',
-    );
+    expect(entries[1]!.querySelector('.lead')?.getAttribute('aria-hidden')).toBe('true');
   });
 
   it('shows the calm row with the projected detail and a link to all notices', async () => {

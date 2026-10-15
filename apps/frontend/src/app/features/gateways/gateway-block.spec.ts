@@ -80,21 +80,28 @@ describe('gateway overview block', () => {
     expect(usableOverviewBlocks(blocks, 'owner')).toHaveLength(1);
   });
 
-  it('shows status and last message of each gateway and leaves out revoked ones', async () => {
+  it('shows a row per gateway with state and last message and leaves out revoked ones', async () => {
     const page = await open([
       gateway('gw-aaaaaaaa', 'Flur'),
       gateway('gw-bbbbbbbb', 'Keller', { bridgeStatus: 'offline', lastMessageAt: null }),
+      gateway('gw-dddddddd', 'Dach', { z2mStatus: 'unknown' }),
       gateway('gw-cccccccc', 'Alt', { revokedAt: '2026-10-01T00:00:00Z' }),
     ]);
-    await shown(page, 'Flur');
-    const text = pageText(page.element);
-    expect(text).toContain('Bridge: Online');
-    expect(text).toContain('Zigbee2MQTT: Online');
-    expect(text).toContain('Letzte Nachricht vor 3 Minuten');
-    expect(text).toContain('Keller');
-    expect(text).toContain('Bridge: Offline');
-    expect(text).toContain('Noch keine Nachricht empfangen');
-    expect(text).not.toContain('Alt');
+    // The texts of the scope arrive after the names: wait for a translated one.
+    await shown(page, 'Gateway online · Letzte Nachricht vor 3 Minuten');
+    const rows = [...page.element.querySelectorAll('ui-status-entry')] as HTMLElement[];
+    expect(rows).toHaveLength(3);
+    const [flur, keller, dach] = rows as [HTMLElement, HTMLElement, HTMLElement];
+    expect(pageText(flur)).toContain('Flur');
+    expect(pageText(flur)).toContain('Gateway online · Letzte Nachricht vor 3 Minuten');
+    expect(flur.querySelector('.lead')?.getAttribute('data-tone')).toBe('ok-container');
+    expect(flur.querySelector('a')?.getAttribute('href')).toBe('/mehr/gateways');
+    expect(pageText(keller)).toContain('Keller');
+    expect(pageText(keller)).toContain('Gateway offline · Noch keine Nachricht empfangen');
+    expect(keller.querySelector('.lead')?.getAttribute('data-tone')).toBe('error');
+    expect(pageText(dach)).toContain('Status unbekannt');
+    expect(dach.querySelector('.lead')?.getAttribute('data-tone')).toBe('offline-container');
+    expect(pageText(page.element)).not.toContain('Alt');
   });
 
   it('says so when no gateway is registered', async () => {

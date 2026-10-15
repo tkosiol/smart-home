@@ -19,6 +19,7 @@ import {
   UiEmptyState,
   UiEmptyStateActions,
   UiGrid,
+  UiGridItem,
   UiPage,
 } from '@smart/ui';
 import { TopBarActions, type OverviewBlock } from '../../core/features';
@@ -54,10 +55,13 @@ interface Placed {
     UiEmptyState,
     UiEmptyStateActions,
     UiGrid,
+    UiGridItem,
     UiPage,
   ],
+  // The household name in the top app bar is the visible title (spec 3.1); the h1 stays for
+  // screen readers. From medium up the grid has two columns, the status block spans both.
   template: `
-    <ui-page [heading]="'dashboard.title' | transloco">
+    <ui-page [heading]="'dashboard.title' | transloco" headingHidden>
       @if (known().length === 0) {
         <ui-empty-state
           icon="home"
@@ -67,10 +71,12 @@ interface Placed {
       } @else if (ready()) {
         <ui-grid min="lg" gap="lg">
           @for (placed of blocks(); track placed.block.id) {
-            <ng-container
-              [ngComponentOutlet]="placed.component"
-              [ngComponentOutletInputs]="placed.inputs"
-            />
+            <ui-grid-item [span]="placed.block.span">
+              <ng-container
+                [ngComponentOutlet]="placed.component"
+                [ngComponentOutletInputs]="placed.inputs"
+              />
+            </ui-grid-item>
           }
         </ui-grid>
         @if (allHidden()) {

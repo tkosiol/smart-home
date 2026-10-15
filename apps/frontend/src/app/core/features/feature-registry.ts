@@ -53,6 +53,8 @@ export interface OverviewBlock {
    * whatever the layout says (spec 4.1, rule 7). The component must declare the input.
    */
   readonly surfaceWhenHidden?: boolean;
+  /** `full`: the block spans every column of the overview's grid (the status hero, spec 3.7). */
+  readonly span?: 'full';
 }
 
 /** What a feature contributes to the shared pages, so the shell never imports a feature. */

@@ -64,8 +64,9 @@ interface Row extends CustomizeBlock {
       <ui-reorder-list [items]="rows" (reordered)="order.set($event)">
         <ng-template [uiReorderRow]="rows" let-row>
           <ui-status-entry
+            variant="bare"
             [icon]="row.icon"
-            kindTone="primary-container"
+            [kindTone]="(visible()[row.id] ?? false) ? 'primary-container' : 'surface'"
             [title]="row.name"
             [subtitle]="row.descriptionKey | transloco"
           >

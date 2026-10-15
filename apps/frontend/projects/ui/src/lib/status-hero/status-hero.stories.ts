@@ -29,7 +29,7 @@ const criticalEntries = `
 /** Only warnings and infos: a single device is shown directly (rule 2). */
 const attentionEntries = `
     <ui-status-entry icon="water_drop" kindTone="dry-container" title="Ficus ist zu trocken" subtitle="Büro · vor 3 min" value="18 %" route="/geraete/ficus" />
-    <ui-status-entry icon="warning" kindTone="warning-container" title="Batterie Küche schwach" subtitle="Grünlilie · vor 12 min" value="9 %" route="/geraete/gruenlilie" />
+    <ui-status-entry icon="battery_alert" kindTone="warning-container" title="Batterie Küche schwach" subtitle="Grünlilie · vor 12 min" value="9 %" route="/geraete/gruenlilie" />
     <ui-status-entry icon="door_open" kindTone="secondary-container" title="Fenster Bad offen" subtitle="seit 25 min" route="/geraete/bad" />`;
 
 /**

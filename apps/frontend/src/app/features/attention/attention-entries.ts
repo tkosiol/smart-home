@@ -67,7 +67,7 @@ const KINDS: Record<AttentionKind, KindView> = {
     many: marker('app.attention.kind.soil_wet.many'),
   },
   battery_low: {
-    icon: 'warning',
+    icon: 'battery_alert',
     tone: 'warning-container',
     one: marker('app.attention.kind.battery_low.one'),
     many: marker('app.attention.kind.battery_low.many'),

@@ -1,0 +1,26 @@
+<div class="head">
+  @if (route(); as route) {
+    <a class="title title--link" [routerLink]="route">
+      <ng-container [ngTemplateOutlet]="headingTemplate" />
+      <ui-icon class="chevron" name="chevron_right" size="sm" />
+    </a>
+  } @else {
+    <span class="title"><ng-container [ngTemplateOutlet]="headingTemplate" /></span>
+  }
+  @if (summary(); as summary) {
+    @if (summary.tone; as tone) {
+      <span class="chip" [attr.data-tone]="tone + '-container'">{{ summary.text }}</span>
+    } @else {
+      <span class="summary">{{ summary.text }}</span>
+    }
+  }
+</div>
+<ng-content />
+
+<ng-template #headingTemplate>
+  @if (level() === 2) {
+    <h2 class="heading">{{ heading() }}</h2>
+  } @else {
+    <h3 class="heading">{{ heading() }}</h3>
+  }
+</ng-template>

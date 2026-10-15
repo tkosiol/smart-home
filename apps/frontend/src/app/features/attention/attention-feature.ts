@@ -15,6 +15,8 @@ export function provideAttentionFeature(): Provider {
         defaultOrder: 10,
         // A critical notice is shown whatever the layout says (spec 4.1, rule 7).
         surfaceWhenHidden: true,
+        // Over both columns from medium up (spec 3.7).
+        span: 'full',
         component: () => import('./status-block').then((m) => m.StatusBlock),
       },
     ],
