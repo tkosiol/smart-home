@@ -12,34 +12,60 @@ import {
 import { ActivatedRoute } from '@angular/router';
 import { TranslocoPipe } from '@jsverse/transloco';
 import { deviceRenameSchema, hasRole, isLowBattery, type Device } from '@smart/contracts';
-import { UiButton, UiEmptyState, UiPage, UiRelativeTimePipe, UiSection, UiStack } from '@smart/ui';
+import {
+  UiButton,
+  UiCard,
+  UiDevicePod,
+  UiEmptyState,
+  UiFormatContext,
+  UiPage,
+  UiPodRow,
+  UiProgressBand,
+  UiRelativeTimePipe,
+  UiSection,
+  UiStack,
+  UiValueDisplay,
+} from '@smart/ui';
 import { UiTextField } from '@smart/ui/forms';
 import { ApiError } from '../../core/api';
 import { HouseholdContext, injectHouseholdErrorHandler } from '../../core/household';
-import { DeviceReading } from './device-reading';
 import { isNetworkFailure, refreshWhileVisible } from '../../core/refresh';
-import { batteryPercent, readingsOf } from './device-values';
+import { CapabilityLabel } from './capability-label';
+import { heroOf, kindKey, sidePodsOf } from './device-hero';
+import { batteryPercent } from './device-values';
 import { DevicesApi } from './devices.api';
+import { ThresholdsCard } from './thresholds-card';
 
 /**
- * One device: all its readings with units (no settings), when it last reported, a hint while it is
- * offline or its battery is low; members can rename it. The values are fetched again every minute.
+ * One device (spec 3.3, without the chart): the hero with its main value, status and target range,
+ * the next readings as pods, when it last reported, a hint while it is offline or its battery is
+ * low, and the thresholds; members can rename it and change the thresholds. The values are fetched
+ * again every minute.
  */
 @Component({
   selector: 'app-device-page',
   imports: [
     TranslocoPipe,
-    DeviceReading,
+    CapabilityLabel,
+    ThresholdsCard,
     UiButton,
+    UiCard,
+    UiDevicePod,
     UiEmptyState,
     UiPage,
+    UiPodRow,
+    UiProgressBand,
     UiRelativeTimePipe,
     UiSection,
     UiStack,
     UiTextField,
+    UiValueDisplay,
   ],
   template: `
-    <ui-page [heading]="device()?.name ?? ('devices.title' | transloco)">
+    <ui-page
+      [heading]="device()?.name ?? ('devices.title' | transloco)"
+      [description]="kind() ? (kind()! | transloco) : undefined"
+    >
       <ui-stack gap="xl">
         <ui-stack direction="row" gap="sm">
           <ui-button variant="text" icon="arrow_back" route="/geraete">{{
@@ -63,29 +89,69 @@ import { DevicesApi } from './devices.api';
             }
           </ui-stack>
           <ui-section [heading]="'devices.detail.readings' | transloco">
-            <ui-stack gap="sm">
-              @for (capability of readings(); track capability.key) {
-                <p>
-                  <app-device-reading
-                    [capability]="capability"
-                    [value]="device.state[capability.key]"
-                  />
-                </p>
-              } @empty {
+            <ui-stack gap="md">
+              @if (hero(); as hero) {
+                <ui-card variant="filled">
+                  <ui-stack gap="md">
+                    @if (hero.capabilityKey; as key) {
+                      <p><app-capability-label [key]="key" /></p>
+                    }
+                    <span
+                      [attr.role]="hero.missing ? 'img' : null"
+                      [attr.aria-label]="hero.missing ? ('devices.reading.none' | transloco) : null"
+                    >
+                      <ui-value-display
+                        size="hero"
+                        [value]="hero.valueKey ? (hero.valueKey | transloco) : hero.value"
+                        [unit]="hero.unit"
+                      />
+                    </span>
+                    @if (hero.chip; as chip) {
+                      <p>{{ chip.key | transloco }}</p>
+                    }
+                    @if (hero.meter; as meter) {
+                      <ui-progress-band
+                        [value]="meter.value"
+                        [band]="meter.band"
+                        [label]="'app.devices.capability.soil_moisture' | transloco"
+                        [valueText]="meter.textKey | transloco: meter.textParams"
+                      />
+                    }
+                    <p>
+                      @if (device.lastSeenAt) {
+                        {{
+                          'devices.detail.updated'
+                            | transloco: { time: device.lastSeenAt | uiRelativeTime }
+                        }}
+                      } @else {
+                        {{ 'devices.card.neverSeen' | transloco }}
+                      }
+                    </p>
+                  </ui-stack>
+                </ui-card>
+              } @else {
                 <p>{{ 'devices.detail.noReadings' | transloco }}</p>
               }
-              <p>
-                @if (device.lastSeenAt) {
-                  {{
-                    'devices.card.lastSeen'
-                      | transloco: { time: device.lastSeenAt | uiRelativeTime }
-                  }}
-                } @else {
-                  {{ 'devices.card.neverSeen' | transloco }}
-                }
-              </p>
+              @if (sidePods().length > 0) {
+                <ui-pod-row wrap>
+                  @for (pod of sidePods(); track pod.key) {
+                    <ui-device-pod
+                      kind="climate"
+                      [icon]="pod.icon"
+                      [value]="pod.valueKey ? (pod.valueKey | transloco) : pod.value"
+                      [unit]="pod.unit"
+                      [label]="pod.labelKey ? (pod.labelKey | transloco) : pod.key"
+                    />
+                  }
+                </ui-pod-row>
+              }
             </ui-stack>
           </ui-section>
+          <app-thresholds-card
+            [device]="device"
+            [canEdit]="canRename()"
+            (saved)="updated($event)"
+          />
           <ui-section [heading]="'devices.detail.hardware' | transloco">
             <p>{{ device.hardware.vendor }} {{ device.hardware.model }}</p>
             @if (device.hardware.description) {
@@ -129,9 +195,20 @@ export class DevicePage {
   protected readonly device = signal<Device | null>(null);
   /** The server does not know this device in this household. */
   protected readonly notFound = signal(false);
-  protected readonly readings = computed(() => {
+  private readonly locale = inject(UiFormatContext).locale;
+  protected readonly kind = computed(() => {
     const device = this.device();
-    return device ? readingsOf(device) : [];
+    return device ? kindKey(device.kind) : null;
+  });
+  /** The main value; none for a device that has not reported a reading and has no readings. */
+  protected readonly hero = computed(() => {
+    const device = this.device();
+    const hero = device ? heroOf(device, this.locale()) : null;
+    return hero?.capabilityKey === undefined ? null : hero;
+  });
+  protected readonly sidePods = computed(() => {
+    const device = this.device();
+    return device ? sidePodsOf(device, this.locale()) : [];
   });
   protected readonly lowBattery = computed(() => {
     const device = this.device();
@@ -195,6 +272,10 @@ export class DevicePage {
     }
   }
 
+  protected updated(device: Device): void {
+    if (device.id === this.deviceId) this.device.set(device);
+  }
+
   protected async rename(event: Event): Promise<void> {
     event.preventDefault();
     const householdId = this.currentId();
@@ -206,7 +287,7 @@ export class DevicePage {
     }
     this.busy.set(true);
     try {
-      const device = await this.api.rename(householdId, this.deviceId, parsed.data);
+      const device = await this.api.update(householdId, this.deviceId, parsed.data);
       if (this.currentId() !== householdId) return;
       this.device.set(device);
       this.name.set(device.name);

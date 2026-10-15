@@ -1,8 +1,12 @@
+import type { Router, UrlTree } from '@angular/router';
 import { marker } from '@jsverse/transloco-keys-manager/marker';
 import type { AttentionItem, AttentionKind } from '@smart/contracts';
 import type { UiStatusEntryTone } from '@smart/ui';
 import type { IconName } from '@smart/ui/shell';
 import type { AttentionGroup } from './attention-model';
+
+/** Where "all notices" is; `?art=<kind>` preselects the notices of one kind. */
+export const ALL_NOTICES_ROUTE = '/hinweise';
 
 /** Where an entry leads. The page turns it into a route, because it depends on the user's role. */
 export type EntryTarget =
@@ -178,4 +182,26 @@ export function entryOf(group: AttentionGroup, locale: string): EntryView {
     subtitle: { text: group.items.map((item) => item.name).join(', ') },
     value: null,
   };
+}
+
+/**
+ * The route an entry leads to, unless the user may not open it (gateways and new hardware are for
+ * owners): the entry is then plain text.
+ */
+export function entryRoute(
+  target: EntryTarget,
+  { isOwner, router }: { isOwner: boolean; router: Router },
+): string | UrlTree | undefined {
+  switch (target.kind) {
+    case 'device':
+      return `/geraete/${target.deviceId}`;
+    case 'gateways':
+      return isOwner ? '/mehr/gateways' : undefined;
+    case 'devices':
+      return isOwner ? '/geraete' : undefined;
+    case 'group':
+      return router.createUrlTree([ALL_NOTICES_ROUTE], {
+        queryParams: { art: target.attentionKind },
+      });
+  }
 }

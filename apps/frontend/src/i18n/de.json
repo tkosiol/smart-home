@@ -23,7 +23,8 @@
       "household": "Haushalt",
       "members": "Mitglieder",
       "gateways": "Gateways",
-      "notFound": "Nicht gefunden"
+      "notFound": "Nicht gefunden",
+      "attention": "Alle Hinweise"
     },
     "overview": {
       "customize": "Übersicht anpassen",
@@ -109,6 +110,28 @@
           "one": "{{ name }}",
           "many": "{{ count }} Hinweise"
         }
+      },
+      "filter": {
+        "all": "Alle",
+        "critical": "Kritisch",
+        "warning": "Warnung",
+        "info": "Hinweis"
+      },
+      "section": {
+        "critical": "Kritisch",
+        "warning": "Warnungen",
+        "info": "Hinweise"
+      },
+      "group": {
+        "gateway_offline": "Gateway offline",
+        "device_silent": "Melden sich nicht",
+        "soil_dry": "Zu trocken",
+        "soil_wet": "Zu nass",
+        "battery_low": "Batterie schwach",
+        "contact_open": "Offene Kontakte",
+        "hardware_new": "Neue Geräte",
+        "cert_expiring": "Zertifikate",
+        "unknown": "Weitere Hinweise"
       }
     },
     "devices": {
@@ -120,6 +143,54 @@
         "ok": "OK",
         "offline": "Offline",
         "lowBattery": "Batterie"
+      },
+      "capability": {
+        "soil_moisture": "Bodenfeuchte",
+        "temperature": "Temperatur",
+        "humidity": "Luftfeuchte",
+        "battery": "Batterie",
+        "dry": "Trocken",
+        "linkquality": "Signalqualität",
+        "state": "Zustand",
+        "brightness": "Helligkeit",
+        "color_temp": "Farbtemperatur"
+      },
+      "kind": {
+        "light": "Lampe",
+        "soil": "Pflanze",
+        "climate": "Klimasensor",
+        "contact": "Kontakt",
+        "other": "Sensor"
+      },
+      "hero": {
+        "meter": {
+          "dry": "{{ value }}, zu trocken. Zielbereich {{ from }} bis {{ to }} Prozent.",
+          "wet": "{{ value }}, zu nass. Zielbereich {{ from }} bis {{ to }} Prozent.",
+          "ok": "{{ value }}, im Zielbereich von {{ from }} bis {{ to }} Prozent.",
+          "plain": "{{ value }}"
+        }
+      },
+      "thresholds": {
+        "field": {
+          "soilMoistureMin": "Feuchte unten",
+          "soilMoistureMax": "Feuchte oben",
+          "batteryMin": "Batterie unter",
+          "contactOpenMinutes": "Offen länger als",
+          "silentMinutes": "Stumm nach"
+        },
+        "unit": {
+          "percent": "%",
+          "minutes": "Minuten"
+        },
+        "value": {
+          "percent": "{{ value }} %",
+          "minutes": "{{ value }} Minuten"
+        },
+        "error": {
+          "invalid": "Bitte gib eine gültige Zahl ein (Prozent von 0 bis 100, Minuten ganzzahlig von 1 bis 10080).",
+          "range": "Die untere Feuchte muss unter der oberen liegen.",
+          "rejected": "Dieser Wert wurde abgelehnt. Prüfe ihn im Zusammenhang mit den anderen Grenzwerten."
+        }
       }
     },
     "household": {

@@ -1,0 +1,22 @@
+{
+  "title": "All notices",
+  "back": "Back to the overview",
+  "summary": "{{ count }} open · by urgency, then newest first",
+  "filter": {
+    "severity": "Filter by urgency",
+    "kind": "Filter by kind"
+  },
+  "card": {
+    "countOne": "1 notice",
+    "count": "{{ count }} notices"
+  },
+  "entry": {
+    "devicesOne": "1 device unreachable · {{ time }}",
+    "devices": "{{ count }} devices unreachable · {{ time }}"
+  },
+  "noMatch": "There are no notices for this selection.",
+  "empty": {
+    "heading": "Nothing to do",
+    "description": "There are no open notices. New ones show up here and on the overview."
+  }
+}

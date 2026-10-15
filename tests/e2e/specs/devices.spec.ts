@@ -42,11 +42,14 @@ const pod = (page: Page, name: string) =>
 const readingsOf = (page: Page) =>
   page.locator('ui-section').filter({ has: page.getByRole('heading', { name: 'Messwerte' }) });
 
-/** Reloads until the soil moisture of a report is on the page (the simulator reports often). */
+/** Reloads until the soil moisture of a report is the hero's value (the simulator reports often). */
 async function expectSoilMoisture(page: Page): Promise<void> {
   await expect(async () => {
     await page.reload();
-    await expect(readingsOf(page)).toContainText(/Bodenfeuchte:\s*\d/, { timeout: 5_000 });
+    await expect(readingsOf(page)).toContainText('Bodenfeuchte', { timeout: 5_000 });
+    await expect(page.locator('ui-value-display[data-size="hero"]')).toContainText(/\d/, {
+      timeout: 5_000,
+    });
   }).toPass({ timeout: REPORTS });
 }
 
@@ -121,6 +124,7 @@ test.describe.serial('devices from the simulator', () => {
     await expect(page.getByRole('heading', { name: 'Messwerte' })).toBeVisible();
     await expectSoilMoisture(page);
     const readings = readingsOf(page);
+    // The side values of the hero are pods: temperature, battery and signal.
     await expect(readings).toContainText('Batterie');
     // The settings of the sensor are no readings.
     await expect(readings).not.toContainText(/calibration|sampling|Kalibrierung/);
@@ -164,7 +168,8 @@ test.describe.serial('devices from the simulator', () => {
       await card(page, 'Pflanze 1').getByRole('link', { name: 'Details' }).click();
       await expect(page.getByRole('textbox', { name: 'Name' })).toHaveValue('Pflanze 1');
       await page.getByRole('textbox', { name: 'Name' }).fill('Basilikum');
-      await page.getByRole('button', { name: 'Speichern' }).click();
+      // Exact: the card "Grenzwerte" has a button "Grenzwerte speichern" too.
+      await page.getByRole('button', { name: 'Speichern', exact: true }).click();
       await expect(heading(page, 'Basilikum')).toBeVisible();
       await page.goto('/geraete');
       await expect(card(page, 'Basilikum')).toBeVisible();

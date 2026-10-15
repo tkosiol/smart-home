@@ -1,3 +1,4 @@
+import { marker } from '@jsverse/transloco-keys-manager/marker';
 import type { Capability, Device } from '@smart/contracts';
 
 /** How a reading is shown; binary words depend on the key, so the component picks the text. */
@@ -82,4 +83,22 @@ export function readingsOf(device: Pick<Device, 'capabilities'>): Capability[] {
 export function batteryPercent(device: Pick<Device, 'state'>): number | undefined {
   const value = device.state['battery'];
   return typeof value === 'number' ? value : undefined;
+}
+
+// Root keys (marked, so the key check finds them): the name is translated where it is shown.
+const CAPABILITY_LABELS: Readonly<Record<string, string>> = {
+  soil_moisture: marker('app.devices.capability.soil_moisture'),
+  temperature: marker('app.devices.capability.temperature'),
+  humidity: marker('app.devices.capability.humidity'),
+  battery: marker('app.devices.capability.battery'),
+  dry: marker('app.devices.capability.dry'),
+  linkquality: marker('app.devices.capability.linkquality'),
+  state: marker('app.devices.capability.state'),
+  brightness: marker('app.devices.capability.brightness'),
+  color_temp: marker('app.devices.capability.color_temp'),
+};
+
+/** The translation key for the name of a capability, or null for one the app has no name for. */
+export function capabilityLabelKey(key: string): string | null {
+  return Object.hasOwn(CAPABILITY_LABELS, key) ? (CAPABILITY_LABELS[key] ?? null) : null;
 }

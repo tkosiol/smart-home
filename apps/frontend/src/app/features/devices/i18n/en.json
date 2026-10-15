@@ -31,17 +31,6 @@
     "on": "on",
     "off": "off"
   },
-  "capability": {
-    "soil_moisture": "Soil moisture",
-    "temperature": "Temperature",
-    "humidity": "Humidity",
-    "battery": "Battery",
-    "dry": "Dry",
-    "linkquality": "Signal quality",
-    "state": "State",
-    "brightness": "Brightness",
-    "color_temp": "Color temperature"
-  },
   "detail": {
     "back": "All devices",
     "readings": "Readings",
@@ -55,11 +44,24 @@
       "title": "Rename",
       "name": "Name",
       "submit": "Save"
-    }
+    },
+    "updated": "Updated {{ time }}"
   },
   "block": {
     "title": "Devices",
     "countOne": "1 device",
     "count": "{{ n }} devices"
+  },
+  "thresholds": {
+    "title": "Thresholds",
+    "description": "From these values the app raises a notice. An empty field means the standard of the device kind.",
+    "emptyHint": "Leave empty for the standard.",
+    "off": "off",
+    "state": {
+      "standard": "Standard",
+      "custom": "Customised (standard: {{ standard }})"
+    },
+    "save": "Save thresholds",
+    "reset": "Reset to standard"
   }
 }

@@ -49,6 +49,59 @@ test.describe.serial('the overview of the simulator household', () => {
     await expect(page.locator('app-devices-block ui-device-pod').first()).toBeVisible();
   });
 
+  test('"Alle N Hinweise" opens the page with all notices, a group preselects its kind', async ({
+    page,
+  }) => {
+    await page.goto('/');
+    await expect(heading(page, 'Übersicht')).toBeVisible();
+    const hero = page.getByRole('region', { name: /Braucht Aufmerksamkeit/ });
+    await hero.getByRole('link', { name: /Alle \d+ Hinweise/ }).click();
+    await expect(page).toHaveURL(/\/hinweise$/);
+    await expect(heading(page, 'Alle Hinweise')).toBeVisible();
+    // The owner sees the hardware that nobody has added yet: a card of its kind.
+    const cards = page.locator('ui-card');
+    await expect(
+      cards.filter({ has: page.getByRole('heading', { name: 'Neue Geräte' }) }),
+    ).toBeVisible();
+    await expect(page.getByRole('listbox', { name: 'Nach Dringlichkeit filtern' })).toBeVisible();
+
+    // The group of the hero leads to the same page with its kind chosen.
+    await page.goto('/');
+    await hero.getByRole('link', { name: /neue Geräte erkannt/ }).click();
+    await expect(page).toHaveURL(/\/hinweise\?art=hardware_new$/);
+    await expect(heading(page, 'Alle Hinweise')).toBeVisible();
+    await expect(cards.locator('h3')).toHaveText(['Neue Geräte']);
+  });
+
+  test('a threshold of a simulated device is changed, saved and set back to the standard', async ({
+    page,
+  }) => {
+    await page.goto('/');
+    await page.locator('app-devices-block ui-device-pod').first().getByRole('link').click();
+    await expect(page).toHaveURL(/\/geraete\/[0-9a-f-]+$/);
+    const card = page.locator('app-thresholds-card');
+    await expect(card.getByRole('heading', { name: 'Grenzwerte' })).toBeVisible();
+    // A soil sensor: the lower moisture limit starts at the kind's standard.
+    const lower = card.getByRole('textbox', { name: 'Feuchte unten' });
+    await expect(lower).toHaveValue('25');
+    await expect(card.getByText('Angepasst')).toHaveCount(0);
+
+    await lower.fill('31');
+    await card.getByRole('button', { name: 'Grenzwerte speichern' }).click();
+    await expect(card.getByText('Angepasst (Standard: 25 %)')).toBeVisible();
+
+    await page.reload();
+    await expect(lower).toHaveValue('31');
+    await expect(card.getByText('Angepasst (Standard: 25 %)')).toBeVisible();
+
+    await card.getByRole('button', { name: 'Auf Standard zurücksetzen' }).click();
+    await expect(card.getByText('Angepasst')).toHaveCount(0);
+    await expect(lower).toHaveValue('25');
+    await page.reload();
+    await expect(lower).toHaveValue('25');
+    await expect(card.getByRole('button', { name: 'Auf Standard zurücksetzen' })).toHaveCount(0);
+  });
+
   test('a hidden block stays hidden after a reload', async ({ page }) => {
     await page.goto('/');
     await expect(page.locator('app-devices-block')).toBeVisible();

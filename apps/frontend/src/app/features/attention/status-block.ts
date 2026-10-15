@@ -18,12 +18,9 @@ import {
   UiStatusHero,
 } from '@smart/ui';
 import { HouseholdContext } from '../../core/household';
-import { entryOf, type EntryTarget, type EntryView } from './attention-entries';
+import { ALL_NOTICES_ROUTE, entryOf, entryRoute, type EntryView } from './attention-entries';
 import { attentionChange, groupAttention, heroModel } from './attention-model';
 import { injectAttention } from './attention';
-
-/** Where "all notices" is; the page itself comes with its own task. */
-export const ALL_NOTICES_ROUTE = '/hinweise';
 
 /**
  * The overview's status block (spec 4.1): the hero with at most three groups of notices, or the
@@ -126,7 +123,10 @@ export class StatusBlock {
   protected readonly rows = computed<Row[]>(() =>
     this.model().groups.map((group) => {
       const entry = entryOf(group, this.format.locale());
-      return { ...entry, route: this.routeOf(entry.target) };
+      return {
+        ...entry,
+        route: entryRoute(entry.target, { isOwner: this.isOwner(), router: this.router }),
+      };
     }),
   );
 
@@ -144,22 +144,6 @@ export class StatusBlock {
         previous = next;
       });
     });
-  }
-
-  /** A route, unless the user may not open it: the entry is then plain text. */
-  private routeOf(target: EntryTarget): string | UrlTree | undefined {
-    switch (target.kind) {
-      case 'device':
-        return `/geraete/${target.deviceId}`;
-      case 'gateways':
-        return this.isOwner() ? '/mehr/gateways' : undefined;
-      case 'devices':
-        return this.isOwner() ? '/geraete' : undefined;
-      case 'group':
-        return this.router.createUrlTree([ALL_NOTICES_ROUTE], {
-          queryParams: { art: target.attentionKind },
-        });
-    }
   }
 
   private announce(previous: readonly AttentionItem[], next: readonly AttentionItem[]): void {

@@ -23,7 +23,8 @@
       "household": "Household",
       "members": "Members",
       "gateways": "Gateways",
-      "notFound": "Not found"
+      "notFound": "Not found",
+      "attention": "All notices"
     },
     "overview": {
       "customize": "Customise overview",
@@ -109,6 +110,28 @@
           "one": "{{ name }}",
           "many": "{{ count }} notices"
         }
+      },
+      "filter": {
+        "all": "All",
+        "critical": "Critical",
+        "warning": "Warning",
+        "info": "Notice"
+      },
+      "section": {
+        "critical": "Critical",
+        "warning": "Warnings",
+        "info": "Notices"
+      },
+      "group": {
+        "gateway_offline": "Gateway offline",
+        "device_silent": "Not reporting",
+        "soil_dry": "Too dry",
+        "soil_wet": "Too wet",
+        "battery_low": "Battery low",
+        "contact_open": "Open contacts",
+        "hardware_new": "New devices",
+        "cert_expiring": "Certificates",
+        "unknown": "Other notices"
       }
     },
     "devices": {
@@ -120,6 +143,54 @@
         "ok": "OK",
         "offline": "Offline",
         "lowBattery": "Battery"
+      },
+      "capability": {
+        "soil_moisture": "Soil moisture",
+        "temperature": "Temperature",
+        "humidity": "Humidity",
+        "battery": "Battery",
+        "dry": "Dry",
+        "linkquality": "Signal quality",
+        "state": "State",
+        "brightness": "Brightness",
+        "color_temp": "Color temperature"
+      },
+      "kind": {
+        "light": "Lamp",
+        "soil": "Plant",
+        "climate": "Climate sensor",
+        "contact": "Contact",
+        "other": "Sensor"
+      },
+      "hero": {
+        "meter": {
+          "dry": "{{ value }}, too dry. Target range {{ from }} to {{ to }} percent.",
+          "wet": "{{ value }}, too wet. Target range {{ from }} to {{ to }} percent.",
+          "ok": "{{ value }}, within the target range of {{ from }} to {{ to }} percent.",
+          "plain": "{{ value }}"
+        }
+      },
+      "thresholds": {
+        "field": {
+          "soilMoistureMin": "Moisture lower limit",
+          "soilMoistureMax": "Moisture upper limit",
+          "batteryMin": "Battery below",
+          "contactOpenMinutes": "Open for longer than",
+          "silentMinutes": "Silent after"
+        },
+        "unit": {
+          "percent": "%",
+          "minutes": "minutes"
+        },
+        "value": {
+          "percent": "{{ value }} %",
+          "minutes": "{{ value }} minutes"
+        },
+        "error": {
+          "invalid": "Please enter a valid number (percent from 0 to 100, whole minutes from 1 to 10080).",
+          "range": "The lower moisture limit must be below the upper one.",
+          "rejected": "This value was rejected. Check it against the other thresholds."
+        }
       }
     },
     "household": {

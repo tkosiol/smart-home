@@ -31,17 +31,6 @@
     "on": "an",
     "off": "aus"
   },
-  "capability": {
-    "soil_moisture": "Bodenfeuchte",
-    "temperature": "Temperatur",
-    "humidity": "Luftfeuchte",
-    "battery": "Batterie",
-    "dry": "Trocken",
-    "linkquality": "Signalqualität",
-    "state": "Zustand",
-    "brightness": "Helligkeit",
-    "color_temp": "Farbtemperatur"
-  },
   "detail": {
     "back": "Alle Geräte",
     "readings": "Messwerte",
@@ -55,11 +44,24 @@
       "title": "Umbenennen",
       "name": "Name",
       "submit": "Speichern"
-    }
+    },
+    "updated": "Aktualisiert {{ time }}"
   },
   "block": {
     "title": "Geräte",
     "countOne": "1 Gerät",
     "count": "{{ n }} Geräte"
+  },
+  "thresholds": {
+    "title": "Grenzwerte",
+    "description": "Ab diesen Werten meldet die App einen Hinweis. Ein leeres Feld bedeutet: Standard der Geräteart.",
+    "emptyHint": "Leer lassen für den Standard.",
+    "off": "aus",
+    "state": {
+      "standard": "Standard",
+      "custom": "Angepasst (Standard: {{ standard }})"
+    },
+    "save": "Grenzwerte speichern",
+    "reset": "Auf Standard zurücksetzen"
   }
 }

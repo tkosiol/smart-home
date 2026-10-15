@@ -71,6 +71,8 @@ describe('devices overview block', () => {
     const page = await open();
     await shown(page, 'Basilikum');
     await shown(page, 'OK');
+    // The heading is a text of the feature's scope, which loads on its own.
+    await shown(page, '2 Geräte');
     const pods = [...page.element.querySelectorAll('ui-device-pod')] as HTMLElement[];
     expect(pods).toHaveLength(2);
     expect(pageText(pods[0]!)).toContain('41,3');
