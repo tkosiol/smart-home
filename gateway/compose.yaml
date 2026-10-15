@@ -98,7 +98,7 @@ services:
     networks: [gateway]
 
 networks:
-  # Not "internal": true": the bridge in Mosquitto needs the way out, and Docker cannot publish a port from an
+  # Not "internal: true": the bridge in Mosquitto needs the way out, and Docker cannot publish a port from an
   # internal network. Nothing is published except the Z2M frontend.
   gateway:
 

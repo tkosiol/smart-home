@@ -202,6 +202,7 @@ check "deploy reloads systemd and enables both timers with --now, after the stac
   'in_order "gateway.env up -d$" "bridge/state" "systemctl daemon-reload" "systemctl enable --now smart-gateway-backup.timer smart-gateway-restore-test.timer"'
 check "deploy pulls the images of the backup profile too (the restic image) without starting the backup service" \
   'grep -q "^pull-profiles COMPOSE_PROFILES=backup" "$CALLS" && ! grep -E "^docker .*up -d" "$CALLS" | grep -q "profile"'
+check "deploy ends with the hint to run the first backup by hand and to check the ping" 'grep -q "sudo bash $PI_DIR/backup/backup.sh" "$OUT" && grep -qi "healthchecks" "$OUT"'
 check "deploy never prints or sends the backup secrets" '! grep -q "invented backup.env" "$OUT" "$CALLS"'
 teardown
 setup; export STUB_FAIL_SYSTEMCTL=1

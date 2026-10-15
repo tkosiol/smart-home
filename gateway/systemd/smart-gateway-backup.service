@@ -2,7 +2,7 @@
 [Unit]
 Description=Back up the smart-gateway Pi (Zigbee2MQTT data and secrets) to B2 with restic
 Wants=network-online.target
-After=network-online.target docker.service
+After=network-online.target docker.service time-sync.target
 Requires=docker.service
 
 [Service]

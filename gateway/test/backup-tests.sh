@@ -141,6 +141,7 @@ check "the backup service mounts the Z2M data and the secrets read-only and take
 unit() { cat "$GATEWAY_DIR/systemd/$1"; }
 check "the backup timer fires every night at 03:30 and catches up after a missed run" 'unit smart-gateway-backup.timer | grep -q "^OnCalendar=\*-\*-\* 03:30:00$" && unit smart-gateway-backup.timer | grep -q "^Persistent=true$" && unit smart-gateway-backup.timer | grep -q "^WantedBy=timers.target$"'
 check "the backup service is a oneshot that runs backup.sh after the network and Docker are up" 'unit smart-gateway-backup.service | grep -q "^Type=oneshot$" && unit smart-gateway-backup.service | grep -q "^ExecStart=.*/srv/smart-gateway/backup/backup.sh$" && unit smart-gateway-backup.service | grep -q "^After=.*network-online.target.*docker.service"'
+check "both services wait for a synchronised clock (the Pi has no RTC) in addition to network and Docker" 'unit smart-gateway-backup.service | grep -q "^After=.*network-online.target.*docker.service.*time-sync.target" && unit smart-gateway-restore-test.service | grep -q "^After=.*network-online.target.*docker.service.*time-sync.target" && unit smart-gateway-backup.service | grep -q "^Requires=docker.service$" && unit smart-gateway-restore-test.service | grep -q "^Requires=docker.service$"'
 check "the restore test runs weekly (Sunday) through its own service" 'unit smart-gateway-restore-test.timer | grep -q "^OnCalendar=Sun " && unit smart-gateway-restore-test.service | grep -q "^ExecStart=.*/srv/smart-gateway/backup/restore-test.sh$"'
 teardown
 
@@ -213,7 +214,7 @@ run backup.sh > /dev/null
 : > "$PINGS"
 check "restore-test.sh passes on a good backup and says what it checked" '[ "$(run restore-test.sh)" = 0 ] && grep -q "restore test passed" "$OUT" && grep -q "configuration.yaml" "$OUT" && grep -q "database.db" "$OUT"'
 check "restore-test.sh without a restore URL sends no ping on success" '[ ! -s "$PINGS" ]'
-check "restore-test.sh logs no secret and restores no secrets to disk" 'no_secret_in_logs && ! grep -q "secrets" "$OUT"'
+check "restore-test.sh logs no secret, lists the restored Z2M files and restored nothing from secrets/" 'no_secret_in_logs && grep -q "^/data/zigbee2mqtt-data/database.db$" "$OUT" && grep -q "^/data/zigbee2mqtt-data/configuration.yaml$" "$OUT" && ! grep -q "^/data/secrets" "$OUT" && [ "$(grep -c "^/data/" "$OUT")" -ge 2 ]'
 write_backup_env with_restore_url
 check "restore-test.sh pings start and success on the restore URL when there is one" '[ "$(run restore-test.sh)" = 0 ] && pings_are "restore/start restore" && no_secret_in_logs'
 teardown
@@ -228,6 +229,13 @@ check "restore-test.sh fails when database.db is empty in the latest snapshot, a
 write_backup_env with_restore_url
 : > "$PINGS"
 check "restore-test.sh pings fail on the restore URL when there is one" '[ "$(run restore-test.sh)" = 1 ] && pings_are "restore/start restore/fail"'
+teardown
+
+setup
+run backup.sh > /dev/null
+printf '{"id":1,"type":"Coordinator"}\nnot a json object, a torn write\n' > "$GW/zigbee2mqtt-data/database.db"
+run backup.sh > /dev/null
+check "restore-test.sh fails when a line of database.db does not start with a brace" '[ "$(run restore-test.sh)" = 1 ] && grep -qi "not a JSON object" "$OUT" && ! grep -q "restore test passed" "$OUT" && no_secret_in_logs'
 teardown
 
 setup

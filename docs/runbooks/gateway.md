@@ -335,6 +335,12 @@ Wiederherstellen aus der Sicherung (nur nötig, wenn der alte Ordner beschädigt
 - In der App (Abschnitt 6): Gateway „Bridge: Online“, „Zigbee2MQTT: Online“; danach die ACL-Prüfung aus Abschnitt 10.
 - Erst wenn alles geprüft ist, den alten Stack entfernen: `sudo docker compose -f <alter-stack-ordner>/docker-compose.yml down`. Bis dahin startet ein alter Stack mit `restart: always` nach einem Neustart des Pi wieder und streitet sich mit dem neuen um den Adapter.
 
+**Pi-Backup (restic nach B2)**
+
+`gateway:deploy` installiert zwei systemd-Timer: nachts um 03:30 das Backup von `zigbee2mqtt-data/` (ohne `log/`) und `secrets/` und sonntags um 05:00 einen Wiederherstellungstest des letzten Snapshots (Einzelheiten und warum die Sicherung der laufenden Daten genügt: `gateway/README.md`, Abschnitt „Backups“). Beide Dienste warten auf Netz, Docker und eine synchronisierte Uhr (`time-sync.target`; der Pi hat keine Echtzeituhr). Nach dem ersten Deploy **einmal von Hand sichern** und den Ping in healthchecks.io prüfen: `sudo bash /srv/smart-gateway/backup/backup.sh`. Das Log steht in `sudo journalctl -u smart-gateway-backup`; die Werte für den Check `HC_BACKUP_URL` (und optional `HC_RESTORE_URL` für den Wiederherstellungstest) stehen in `secrets/backup.env`.
+
+**Das restic-Passwort und alle Werte aus `secrets/backup.env` gehören zusätzlich außerhalb des Pi in den Passwortmanager** (`RESTIC_PASSWORD`, B2-Schlüssel `B2_KEY_ID`/`B2_APP_KEY`, Bucket, Endpoint, die Ping-URLs). Das Repository in B2 ist mit dem restic-Passwort verschlüsselt, und `secrets/` (also auch `backup.env` selbst) steckt im Backup: Ist der Pi verloren und das Passwort nur dort gespeichert, ist das Backup unbrauchbar, denn ohne Passwort lässt sich nichts wiederherstellen. Ein Wiederherstellungstest von einem anderen Rechner aus (restic mit den Werten aus dem Passwortmanager) beweist, dass die Ablage außerhalb des Pi vollständig ist.
+
 **Prüfungen auf dem Pi**
 
 ```bash

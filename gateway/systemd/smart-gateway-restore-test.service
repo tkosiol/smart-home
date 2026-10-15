@@ -2,7 +2,7 @@
 [Unit]
 Description=Restore test of the smart-gateway Pi backup (latest snapshot into a temporary folder)
 Wants=network-online.target
-After=network-online.target docker.service
+After=network-online.target docker.service time-sync.target
 Requires=docker.service
 
 [Service]

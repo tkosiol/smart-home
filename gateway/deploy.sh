@@ -406,6 +406,10 @@ case "$bridge" in
   *) echo "warning: Bridge state unknown (no answer from the local broker)" ;;
 esac
 echo "Zigbee2MQTT: online"
+echo ""
+echo "Backup: run the first backup once by hand and check the ping on healthchecks.io (the nightly timer comes at 03:30):"
+echo "  sudo bash $dir/backup/backup.sh     (log: sudo journalctl -u smart-gateway-backup, or the output of the command)"
+echo "  then in healthchecks.io the check of the Pi backup must show a fresh success ping."
 
 if [ "$migrate" = 1 ]; then
   echo ""

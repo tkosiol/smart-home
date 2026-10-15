@@ -44,7 +44,16 @@ restore_test() {
   for f in configuration.yaml database.db; do
     [ -s "$tmp$data/$f" ] || { echo "restore test failed: $f is missing or empty in the restored snapshot" >&2; exit 1; }
   done
-  echo "restore test passed (configuration.yaml and database.db restored, not empty)"
+  # database.db holds one JSON object per line (zigbee-herdsman); a line that does not start with { means a torn or
+  # damaged file. busybox grep: -v selects the lines that do not match, -q succeeds if there is one.
+  if grep -qv '^{' "$tmp$data/database.db"; then
+    echo "restore test failed: database.db in the restored snapshot has a line that is not a JSON object (damaged or torn copy?)" >&2
+    exit 1
+  fi
+  [ ! -e "$tmp/data/secrets" ] || { echo "restore test failed: the restore brought back secrets/ (it must not)" >&2; exit 1; }
+  echo "restored files:"
+  (cd "$tmp" && find . -type f | head -n 100 | sed 's|^\.||')
+  echo "restore test passed (configuration.yaml and database.db restored, not empty, database.db is JSON lines, no secrets)"
 }
 
 case "${1:-}" in
