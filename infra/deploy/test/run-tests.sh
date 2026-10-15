@@ -11,15 +11,20 @@ OLD_SHA=89abcdef0123456789abcdef0123456789abcdef
 failures=0
 passed=0
 
+# gw_setup points TMPDIR into a WORK folder that teardown removes; every setup creates WORK in the original one.
+BASE_TMPDIR=${TMPDIR:-/tmp}
 setup() {
-  WORK=$(mktemp -d)
+  WORK=$(TMPDIR=$BASE_TMPDIR mktemp -d)
   export STUB_CALLS="$WORK/calls" STUB_REMOTE_FILE="$WORK/remote-env"
   export SMART_STACKS_DIR="$WORK/apps" SMART_READY_DELAY=0
   export PATH="$STUBS:$PATH"
   : > "$STUB_CALLS"
   unset STUB_FAIL_INFRA STUB_FAIL_MIGRATE STUB_FAIL_UP STUB_READY_FAILURES STUB_COMPARE_STATUS STUB_ENV_EXISTS STUB_SSH_DOWN STUB_EXISTING_ENV STUB_SSH_EXEC STUB_REMOTE_HOME STUB_ARGV_LOG STUB_STDIN_COPY STUB_SUDO_PASSWORD STUB_FAIL_PASSWD STUB_PASSWD_PLAIN STUB_PASSWD_EMPTY SSH_ORIGINAL_COMMAND
 }
-teardown() { rm -rf "$WORK"; }
+teardown() {
+  rm -rf "$WORK"
+  export TMPDIR=$BASE_TMPDIR
+}
 mode_of() { stat -c %a "$1" 2> /dev/null || stat -f %Lp "$1"; }
 check() {
   if eval "$2"; then passed=$((passed + 1)); else echo "FAIL: $1"; failures=$((failures + 1)); fi
