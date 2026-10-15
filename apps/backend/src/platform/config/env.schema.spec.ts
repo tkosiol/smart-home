@@ -17,7 +17,24 @@ describe('loadEnv', () => {
       PORT: 3000,
       LOG_LEVEL: 'info',
       TRUSTED_PROXY_HOPS: 1,
+      MQTT_CLIENT_ID: 'smart-api-local',
     });
+  });
+
+  it('names the MQTT client after the stack, unless told otherwise', () => {
+    expect(loadEnv({ ...valid, STACK_NAME: 'smart-staging' }).MQTT_CLIENT_ID).toBe(
+      'smart-api-smart-staging',
+    );
+    expect(loadEnv({ ...valid, STACK_NAME: 'smart-staging', MQTT_CLIENT_ID: 'x-1' })).toMatchObject(
+      {
+        MQTT_CLIENT_ID: 'x-1',
+      },
+    );
+    expect(loadEnv({ ...valid, MQTT_CLIENT_ID: '' }).MQTT_CLIENT_ID).toBe('smart-api-local');
+  });
+
+  it('rejects a client ID the broker may not accept', () => {
+    expect(() => loadEnv({ ...valid, MQTT_CLIENT_ID: 'has space' })).toThrowError(/MQTT_CLIENT_ID/);
   });
 
   it('reads the optional gateway files and treats empty values as unset', () => {

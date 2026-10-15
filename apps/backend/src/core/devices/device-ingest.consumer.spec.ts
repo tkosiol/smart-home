@@ -11,6 +11,7 @@ import type {
   MqttConnection,
   MqttMessageHandler,
   SubscribeOptions,
+  Unsubscribe,
 } from '../../platform/mqtt/index.js';
 import type { NameMap } from './name-map.js';
 import type { DeviceMessageHandler } from './device-message-handler.js';
@@ -34,14 +35,16 @@ class FakeMqtt {
   readonly handlers: { filter: string; handler: MqttMessageHandler }[] = [];
   readonly options: (SubscribeOptions | undefined)[] = [];
   readonly unsubscribed: string[] = [];
+  /** The filters that were let go of with `keepSession` (the broker still has them). */
+  readonly kept: string[] = [];
 
-  subscribe(filter: string, handler: MqttMessageHandler, options?: SubscribeOptions): () => void {
+  subscribe(filter: string, handler: MqttMessageHandler, options?: SubscribeOptions): Unsubscribe {
     const entry = { filter, handler };
     this.handlers.push(entry);
     this.options.push(options);
-    return () => {
+    return (ending) => {
       this.handlers.splice(this.handlers.indexOf(entry), 1);
-      this.unsubscribed.push(filter);
+      (ending?.keepSession ? this.kept : this.unsubscribed).push(filter);
     };
   }
 
@@ -162,6 +165,45 @@ describe('DeviceIngestConsumer', () => {
 
   afterEach(async () => {
     await consumer.onModuleDestroy();
+  });
+
+  describe('shutdown', () => {
+    it('leaves its subscriptions to the persistent session', async () => {
+      active = [{ id: GW, topicPrefix: prefix(GW) }];
+      await start();
+      await consumer.onModuleDestroy();
+      expect(mqtt.kept).toEqual([`${prefix(GW)}/#`]);
+      expect(mqtt.unsubscribed).toEqual([]);
+    });
+
+    it('waits at most 10 s for messages that are not done', async () => {
+      vi.useFakeTimers();
+      try {
+        active = [{ id: GW, topicPrefix: prefix(GW) }];
+        stored.set(GW, [{ id: 'hw-1', friendlyName: 'sensor-1' }]);
+        await start();
+        handle.mockImplementation(() => new Promise<void>(() => undefined));
+        mqtt.publish(`${prefix(GW)}/sensor-1`, '{"soil_moisture":40}');
+        await vi.advanceTimersByTimeAsync(0);
+        const destroyed = vi.fn();
+        void consumer.onModuleDestroy().then(destroyed);
+        await vi.advanceTimersByTimeAsync(9999);
+        expect(destroyed).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(1);
+        expect(destroyed).toHaveBeenCalledTimes(1);
+        expect(logged()).toContain('not handled');
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('does not wait when everything is handled', async () => {
+      active = [{ id: GW, topicPrefix: prefix(GW) }];
+      await start();
+      const started = Date.now();
+      await consumer.onModuleDestroy();
+      expect(Date.now() - started).toBeLessThan(1000);
+    });
   });
 
   describe('subscriptions', () => {

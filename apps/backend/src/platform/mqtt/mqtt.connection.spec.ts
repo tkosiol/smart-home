@@ -21,8 +21,16 @@ class FakeClient extends EventEmitter {
   };
 }
 
-const mocks = vi.hoisted(() => ({ client: undefined as FakeClient | undefined }));
-vi.mock('mqtt', () => ({ connect: () => mocks.client }));
+const mocks = vi.hoisted(() => ({
+  client: undefined as FakeClient | undefined,
+  options: undefined as Record<string, unknown> | undefined,
+}));
+vi.mock('mqtt', () => ({
+  connect: (_url: string, options: Record<string, unknown>) => {
+    mocks.options = options;
+    return mocks.client;
+  },
+}));
 
 const { MqttConnection } = await import('./mqtt.connection.js');
 
@@ -59,6 +67,7 @@ describe('MqttConnection acknowledgements', () => {
     });
 
   beforeEach(() => {
+    vi.useRealTimers();
     client = new FakeClient();
     mocks.client = client;
     errors = [];
@@ -186,5 +195,157 @@ describe('MqttConnection acknowledgements', () => {
     finish();
     await settle();
     expect(acked).toHaveBeenCalledTimes(1);
+  });
+
+  it('connects with the given client id and a persistent MQTT 5 session', () => {
+    expect(mocks.options).toMatchObject({
+      clientId: 'c',
+      protocolVersion: 5,
+      clean: false,
+      properties: { sessionExpiryInterval: 86_400 },
+    });
+  });
+
+  describe('subscription identifiers across restarts', () => {
+    const idsOf = (filters: string[]): Map<string, number> => {
+      const next = new FakeClient();
+      mocks.client = next;
+      const fresh = new MqttConnection(settings);
+      for (const filter of filters) fresh.subscribe(filter, () => undefined);
+      return new Map(
+        next.subscribe.mock.calls.map((call) => [
+          call[0] as string,
+          (call[1] as { properties: { subscriptionIdentifier: number } }).properties
+            .subscriptionIdentifier,
+        ]),
+      );
+    };
+
+    it('gives a filter the same identifier in every process, whatever the order', () => {
+      const first = idsOf(['gw/a/z2m/#', 'gw/b/z2m/#', 'gw/+/bridge/connection']);
+      const second = idsOf(['gw/+/bridge/connection', 'gw/b/z2m/#']);
+      expect(second.get('gw/b/z2m/#')).toBe(first.get('gw/b/z2m/#'));
+      expect(second.get('gw/+/bridge/connection')).toBe(first.get('gw/+/bridge/connection'));
+      expect(new Set(first.values()).size).toBe(3);
+      for (const id of first.values()) {
+        expect(id).toBeGreaterThanOrEqual(1);
+        expect(id).toBeLessThanOrEqual(268_435_455);
+      }
+    });
+
+    it('hands a copy queued by an earlier process to the handler of the same filter', async () => {
+      const first = idsOf(['gw/a/z2m/#']).get('gw/a/z2m/#');
+      const handler = vi.fn();
+      connection.subscribe('gw/a/z2m/#', handler, { ackAfterHandler: true });
+      await deliver('gw/a/z2m/x', first);
+      expect(handler).toHaveBeenCalledTimes(1);
+    });
+
+    it('acknowledges and drops a copy of a subscription this process does not have', async () => {
+      const handler = vi.fn();
+      connection.subscribe('gw/a/z2m/#', handler, { ackAfterHandler: true });
+      await deliver('gw/b/z2m/x', 12_345);
+      expect(handler).not.toHaveBeenCalled();
+    });
+
+    it('never gives a handler a copy of a topic that its filter does not match', async () => {
+      const handler = vi.fn();
+      connection.subscribe('gw/a/z2m/#', handler);
+      // A stale identifier of another filter that happens to equal this filter's identifier.
+      await deliver('gw/b/z2m/x', idOf(0));
+      expect(handler).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('acknowledgement time limit', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    it('acknowledges a gated handler that is not done after 30 s and says so without details', async () => {
+      connection.subscribe('gw/a/z2m/#', () => new Promise<void>(() => undefined), {
+        ackAfterHandler: true,
+      });
+      const acked = vi.fn();
+      void deliver('gw/a/z2m/secret-device', idOf(0)).then(acked);
+      await vi.advanceTimersByTimeAsync(29_999);
+      expect(acked).not.toHaveBeenCalled();
+      expect(errors).toHaveLength(0);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(acked).toHaveBeenCalledTimes(1);
+      expect(errors).toHaveLength(1);
+      expect(errors[0]?.message).toContain('gw/a/z2m/#');
+      expect(errors[0]?.message).not.toContain('secret-device');
+    });
+
+    it('goes on with the next message and acknowledges once only', async () => {
+      const finishers: (() => void)[] = [];
+      const seen: string[] = [];
+      connection.subscribe(
+        'a/#',
+        (topic) => {
+          seen.push(topic);
+          return new Promise<void>((resolve) => finishers.push(resolve));
+        },
+        { ackAfterHandler: true },
+      );
+      const first = vi.fn();
+      const second = vi.fn();
+      void deliver('a/1', idOf(0)).then(first);
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(first).toHaveBeenCalledTimes(1);
+      void deliver('a/2', idOf(0)).then(second);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(seen).toEqual(['a/1', 'a/2']);
+      finishers[0]?.();
+      finishers[1]?.();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(first).toHaveBeenCalledTimes(1);
+      expect(second).toHaveBeenCalledTimes(1);
+      expect(errors).toHaveLength(1);
+    });
+
+    it('does not time out a handler that is done in time', async () => {
+      connection.subscribe('a/#', () => Promise.resolve(), { ackAfterHandler: true });
+      await deliver('a/x', idOf(0));
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(errors).toHaveLength(0);
+    });
+
+    it('does not acknowledge on timeout once the connection is closed', async () => {
+      connection.subscribe('a/#', () => new Promise<void>(() => undefined), {
+        ackAfterHandler: true,
+      });
+      const acked = vi.fn();
+      void deliver('a/x', idOf(0)).then(acked);
+      await connection.close();
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(acked).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('keeping the subscription for the next process', () => {
+    it('stops delivering without unsubscribing at the broker', () => {
+      const handler = vi.fn();
+      const unsubscribe = connection.subscribe('a/#', handler);
+      unsubscribe({ keepSession: true });
+      expect(client.unsubscribe).not.toHaveBeenCalled();
+      void deliver('a/x', idOf(0));
+      expect(handler).not.toHaveBeenCalled();
+    });
+
+    it('does not acknowledge what arrives for it, so that the broker delivers it again', async () => {
+      const unsubscribe = connection.subscribe('a/#', vi.fn(), { ackAfterHandler: true });
+      unsubscribe({ keepSession: true });
+      const acked = vi.fn();
+      void deliver('a/x', idOf(0)).then(acked);
+      await settle();
+      expect(acked).not.toHaveBeenCalled();
+    });
+
+    it('still unsubscribes at the broker on a plain unsubscribe', () => {
+      connection.subscribe('a/#', vi.fn())();
+      expect(client.unsubscribe).toHaveBeenCalledWith('a/#');
+    });
   });
 });

@@ -16,6 +16,14 @@ export const envSchema = z
     MQTT_URL: z.url({ protocol: /^mqtts?$/ }),
     MQTT_USERNAME: z.string().min(1),
     MQTT_PASSWORD: z.string().min(1),
+    /**
+     * The MQTT client ID: fixed, so that the broker keeps the session (subscriptions, queued
+     * messages) while the app restarts. One per running instance; two with the same ID take the
+     * connection from each other. Default: `smart-api-<STACK_NAME>`, or `smart-api-local`.
+     */
+    MQTT_CLIENT_ID: optional(z.string().regex(/^[A-Za-z0-9._-]{1,128}$/)),
+    /** Names the stack (set by the compose file, which derives `MQTT_CLIENT_ID` from it). */
+    STACK_NAME: optional(z.string().regex(/^[A-Za-z0-9._-]{1,100}$/)),
     /** Public origin of the web app; it must equal what browsers send as `Origin` (no path). */
     APP_ORIGIN: z
       .url()
@@ -49,7 +57,11 @@ export const envSchema = z
   .refine((env) => env.SMTP_URL === undefined || env.MAIL_FROM !== undefined, {
     path: ['MAIL_FROM'],
     message: 'required when SMTP_URL is set',
-  });
+  })
+  .transform((env) => ({
+    ...env,
+    MQTT_CLIENT_ID: env.MQTT_CLIENT_ID ?? `smart-api-${env.STACK_NAME ?? 'local'}`,
+  }));
 export type Env = z.infer<typeof envSchema>;
 
 /** Validates the process environment once at startup; the error lists keys, never values. */

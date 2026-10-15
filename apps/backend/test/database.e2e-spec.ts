@@ -60,6 +60,26 @@ describe('createDatabaseConnection', () => {
   });
 });
 
+describe('statement timeout', () => {
+  it('sets 15 s per session and the server cancels a statement that runs longer', async () => {
+    const connection = createDatabaseConnection(DATABASE_URL);
+    try {
+      const rows = await connection.sql`show statement_timeout`;
+      expect(rows[0]?.statement_timeout).toBe('15s');
+      // Lowered on one connection only, to keep the test short: the server enforces it.
+      const reserved = await connection.sql.reserve();
+      try {
+        await reserved`set statement_timeout = '200ms'`;
+        await expect(reserved`select pg_sleep(5)`).rejects.toMatchObject({ code: '57014' });
+      } finally {
+        reserved.release();
+      }
+    } finally {
+      await connection.sql.end();
+    }
+  });
+});
+
 describe('DatabaseHealth', () => {
   it('reports up for a reachable database', async () => {
     const connection = createDatabaseConnection(DATABASE_URL);

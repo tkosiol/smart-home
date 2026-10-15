@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import {
   Global,
   Inject,
@@ -33,7 +32,7 @@ class MqttLifecycle implements OnApplicationShutdown {
           url: env.MQTT_URL,
           username: env.MQTT_USERNAME,
           password: env.MQTT_PASSWORD,
-          clientId: `smart-api-${randomUUID().slice(0, 8)}`,
+          clientId: env.MQTT_CLIENT_ID,
           onError: (error) => logger.warn(`broker connection error: ${error.message}`),
         });
       },
