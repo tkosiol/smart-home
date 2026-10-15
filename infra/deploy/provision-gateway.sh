@@ -10,9 +10,11 @@
 #   z2m.env      ZIGBEE2MQTT_CONFIG_MQTT_USER, ..._MQTT_PASSWORD, ..._FRONTEND_AUTH_TOKEN (generated)
 #   passwd       the password file of the local broker (hashed on the Pi with the pinned mosquitto image)
 #   backup.env   B2_ENDPOINT, B2_BUCKET, B2_KEY_ID, B2_APP_KEY, RESTIC_PASSWORD, HC_BACKUP_URL (for the backup, plan 5b task 5)
+#                (optional HC_RESTORE_URL: added by hand, then kept by --force)
 #   ca.crt, gateway.crt, gateway.key
 # --force replaces an existing set but keeps the generated Z2M password and frontend token and, when a prompt is
-# answered with Enter, the stored settings. Without a stored value a prompt stays required.
+# answered with Enter, the stored settings. Without a stored value a prompt stays required. A hand-added
+# HC_RESTORE_URL line of backup.env (the ping of the weekly restore test, no prompt) is kept too.
 # Everything travels in ONE ssh session as a tar stream on stdin, so no secret appears in a command line or in the
 # output; nothing on the Pi changes before all checks passed, and a failed transfer leaves the old files in place.
 # SMART_GATEWAY_DIR (default /srv/smart-gateway) and SMART_SERIAL_BY_ID_DIR (default /dev/serial/by-id) exist for tests.
@@ -154,6 +156,11 @@ fi
 # The ping URL contains a secret token: hidden, and without ? and & (nothing but a plain path).
 ask_or_keep hc_backup HC_BACKUP_URL "healthchecks.io ping URL for the nightly Pi backup, hidden (Enter keeps the stored one): " secret
 [[ "$hc_backup" =~ ^https://[A-Za-z0-9._~:/=%+-]+$ ]] || fail "HC_BACKUP_URL must be an https:// URL – nothing was written"
+hc_restore=$(existing_value HC_RESTORE_URL)
+if [ -n "$hc_restore" ] && ! [[ "$hc_restore" =~ ^https://[A-Za-z0-9._~:/=%+-]+$ ]]; then
+  echo "warning: the stored HC_RESTORE_URL is not a plain https:// URL (backup.sh would refuse it) and is not kept; add it again by hand" >&2
+  hc_restore=""
+fi
 
 # The Z2M password and the frontend token are generated (64 hex characters); --force keeps the stored ones.
 keep_or_generate() {
@@ -173,7 +180,10 @@ chmod 700 "$stage"
 write_file() { local name=$1; shift; printf '%s\n' "$@" > "$stage/$name"; chmod 600 "$stage/$name"; }
 write_file gateway.env "GATEWAY_ID=$gateway_id" "BROKER_HOST=$broker_host" "BROKER_PORT=$broker_port" "Z2M_SERIAL_DEVICE=$serial_device"
 write_file z2m.env "ZIGBEE2MQTT_CONFIG_MQTT_USER=$z2m_user" "ZIGBEE2MQTT_CONFIG_MQTT_PASSWORD=$z2m_password" "ZIGBEE2MQTT_CONFIG_FRONTEND_AUTH_TOKEN=$z2m_token"
-write_file backup.env "B2_ENDPOINT=$b2_endpoint" "B2_BUCKET=$b2_bucket" "B2_KEY_ID=$b2_key_id" "B2_APP_KEY=$b2_app_key" "RESTIC_PASSWORD=$restic_password" "HC_BACKUP_URL=$hc_backup"
+backup_lines=("B2_ENDPOINT=$b2_endpoint" "B2_BUCKET=$b2_bucket" "B2_KEY_ID=$b2_key_id" "B2_APP_KEY=$b2_app_key" "RESTIC_PASSWORD=$restic_password" "HC_BACKUP_URL=$hc_backup")
+# HC_RESTORE_URL has no prompt: a stored one stays (only a plain https URL, like backup.sh demands; the value is never printed).
+if [ -n "$hc_restore" ]; then backup_lines+=("HC_RESTORE_URL=$hc_restore"); fi
+write_file backup.env "${backup_lines[@]}"
 # Plain text for "mosquitto_passwd -U" on the Pi, which turns the file into a hashed password file in place: the
 # password never appears in a command line (mosquitto_passwd -b would put it in argv).
 write_file passwd.plain "$z2m_user:$z2m_password"
@@ -214,4 +224,5 @@ COPYFILE_DISABLE=1 tar -cf - -C "$stage" "${files[@]}" | ssh "$host" "sudo -n sh
 
 echo "wrote gateway.env, z2m.env, passwd, backup.env, ca.crt, gateway.crt and gateway.key for $gateway_id to $remote_dir/secrets on the Pi (root, directory 700, files 600)"
 echo "the Z2M frontend token is not shown here; read it on the Pi: sudo cat $remote_dir/secrets/z2m.env (line ZIGBEE2MQTT_CONFIG_FRONTEND_AUTH_TOKEN)"
-echo "next on the Pi: cd $remote_dir && sudo ./render.sh && sudo docker compose --env-file secrets/gateway.env up -d --force-recreate"
+echo "next, from the Mac: SMART_PI=<user@pi-host> pnpm gateway:deploy   (checks, renders, starts and waits for Zigbee2MQTT)"
+echo "the first time on a Pi that still runs the old setup: add --migrate (docs/runbooks/gateway.md, section 11); a new Pi with a fresh adapter: --fresh"

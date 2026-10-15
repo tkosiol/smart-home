@@ -406,6 +406,7 @@ check "provision-gateway archives every file with mode 600 and nothing else" '[ 
 check "provision-gateway archives the plain password file for the hashing step only" 'tar -tf "$STUB_STDIN_COPY" | grep -qx "passwd.plain" && ! tar -tf "$STUB_STDIN_COPY" | grep -qx "passwd"'
 check "provision-gateway never puts a secret on a command line or in the output" '! grep -q "$GW_KEY_MARKER" "$STUB_CALLS" "$WORK/out" && ! grep -q "$APP_KEY" "$STUB_CALLS" "$WORK/out" && ! grep -q "$GW_RESTIC" "$STUB_CALLS" "$WORK/out" && ! grep -q "$(gw_value z2m.env ZIGBEE2MQTT_CONFIG_MQTT_PASSWORD)" "$STUB_CALLS" "$WORK/out" && ! grep -q "$(gw_value z2m.env ZIGBEE2MQTT_CONFIG_FRONTEND_AUTH_TOKEN)" "$STUB_CALLS" "$WORK/out"'
 check "provision-gateway does not print the frontend token but says where it is" '! grep -Eq "[0-9a-f]{64}" "$WORK/out" && grep -q "sudo cat $GW_SECRETS/z2m.env" "$WORK/out"'
+check "provision-gateway points to pnpm gateway:deploy (and --migrate, runbook section 11), not to a manual render and compose up" 'grep -q "SMART_PI=.* pnpm gateway:deploy" "$WORK/out" && grep -q -- "--migrate" "$WORK/out" && grep -q "section 11" "$WORK/out" && ! grep -q "render.sh" "$WORK/out" && ! grep -q "compose" "$WORK/out"'
 teardown
 
 # Existing secrets and --force.
@@ -433,6 +434,19 @@ unset STUB_PASSWD_PLAIN
 check "provision-gateway aborts and keeps the previous secrets when a file is empty after unpacking" 'export STUB_PASSWD_EMPTY=1; ! (gw_empty_answers | bash "$DEPLOY_DIR/provision-gateway.sh" "$GW_ID" --force > "$WORK/out" 2>&1) && grep -q "missing or empty" "$WORK/out" && [ "$(cat "$GW_SECRETS/passwd")" = "$OLD_PASSWD" ] && [ ! -e "$GW_SECRETS/.new" ]'
 unset STUB_PASSWD_EMPTY
 check "provision-gateway hashes without network and takes ownership of the secrets directory" 'grep -q "mosquitto_passwd -U" "$STUB_CALLS" && grep -q -- "--network none" "$STUB_CALLS" && grep -q "chown" "$STUB_CALLS"'
+teardown
+# A hand-added HC_RESTORE_URL survives --force (it is read on the Pi and never printed).
+gw_setup
+provision_gw "$GW_ID"
+HC_RESTORE_LINE="HC_RESTORE_URL=https://hc.example.org/ping/restore-token"
+echo "$HC_RESTORE_LINE" >> "$GW_SECRETS/backup.env"
+: > "$STUB_CALLS"
+check "provision-gateway --force keeps a hand-added HC_RESTORE_URL once, in backup.env at mode 600" '(gw_empty_answers | bash "$DEPLOY_DIR/provision-gateway.sh" "$GW_ID" --force > "$WORK/out" 2>&1) && [ "$(grep -c "^HC_RESTORE_URL=" "$GW_SECRETS/backup.env")" = 1 ] && grep -qxF "$HC_RESTORE_LINE" "$GW_SECRETS/backup.env" && grep -qx "HC_BACKUP_URL=https://hc.example.org/ping/backup" "$GW_SECRETS/backup.env" && gw_all_modes_600'
+check "provision-gateway --force never prints the stored HC_RESTORE_URL nor puts it in a command line" '! grep -q "restore-token" "$WORK/out" "$STUB_CALLS"'
+check "provision-gateway --force keeps it again on the next run" '(gw_empty_answers | bash "$DEPLOY_DIR/provision-gateway.sh" "$GW_ID" --force > "$WORK/out" 2>&1) && [ "$(grep -c "^HC_RESTORE_URL=" "$GW_SECRETS/backup.env")" = 1 ] && grep -qxF "$HC_RESTORE_LINE" "$GW_SECRETS/backup.env"'
+sed -i.bak '/^HC_RESTORE_URL=/d' "$GW_SECRETS/backup.env" && rm -f "$GW_SECRETS/backup.env.bak"
+echo "HC_RESTORE_URL=http://insecure.example.org/x?y=1&z=2" >> "$GW_SECRETS/backup.env"
+check "provision-gateway --force drops a stored HC_RESTORE_URL that is not a plain https URL, with a warning that does not show it" '(gw_empty_answers | bash "$DEPLOY_DIR/provision-gateway.sh" "$GW_ID" --force > "$WORK/out" 2>&1) && ! grep -q "^HC_RESTORE_URL=" "$GW_SECRETS/backup.env" && grep -q "HC_RESTORE_URL" "$WORK/out" && ! grep -q "insecure" "$WORK/out"'
 teardown
 gw_setup
 check "provision-gateway --force on a Pi without secrets stops without stored values" '[ "$(gw_empty_answers | bash "$DEPLOY_DIR/provision-gateway.sh" "$GW_ID" --force > /dev/null 2>&1; echo $?)" != 0 ] && [ ! -e "$GW_DIR" ]'
