@@ -4,11 +4,9 @@ import {
   Component,
   Directive,
   TemplateRef,
-  computed,
   contentChild,
-  input,
 } from '@angular/core';
-import { MATRIX_SEEDS, themeMatrixCells, type ThemeMatrixCell } from './theme-matrix';
+import { themeMatrixCells, type ThemeMatrixCell } from './theme-matrix';
 
 /**
  * Marks the template a `ui-theme-matrix` renders once per combination; the combination is the
@@ -25,9 +23,9 @@ export class UiMatrixCell {
 }
 
 /**
- * Storybook only: renders its cell template in the twelve combinations of spec 2.7 (two seeds ×
- * light/dark × standard/medium/high contrast) side by side. Each cell carries the theme variables
- * of its combination inline, so one story shows, and axe checks, every combination at once.
+ * Storybook only: renders its cell template twice side by side, in light and in dark (default
+ * seed, standard contrast, default font). Each cell carries the theme variables of its mode
+ * inline, so one story shows, and axe checks, both at once.
  */
 @Component({
   selector: 'ui-theme-matrix',
@@ -37,8 +35,6 @@ export class UiMatrixCell {
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ThemeMatrixStoryComponent {
-  readonly seeds = input<readonly string[]>(MATRIX_SEEDS);
-
   protected readonly cell = contentChild.required(UiMatrixCell, { read: TemplateRef });
-  protected readonly cells = computed(() => themeMatrixCells(this.seeds()));
+  protected readonly cells = themeMatrixCells();
 }

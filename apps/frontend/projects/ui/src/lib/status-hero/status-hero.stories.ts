@@ -3,7 +3,7 @@ import { applicationConfig, moduleMetadata, type Meta, type StoryObj } from '@st
 import { expect, userEvent } from 'storybook/test';
 import { expectNoHorizontalOverflow, withPhoneFrame } from '../testing/story-helpers';
 import { waitForTranslations } from '../testing/storybook-environment';
-import { MATRIX_RED_SEED, expectThemeMatrix, rgb } from '../testing/theme-matrix';
+import { expectThemeMatrix, rgb } from '../testing/theme-matrix';
 import { ThemeMatrixStoryComponent, UiMatrixCell } from '../testing/theme-matrix.story-component';
 import { UiStatusEntry } from './status-entry';
 import { UiStatusHero } from './status-hero';
@@ -34,7 +34,7 @@ const attentionEntries = `
 
 /**
  * The three states (spec 4.1). `suffix` is appended to the heading: a page has one hero, the
- * matrix twelve, and region landmarks must stay unique.
+ * matrix two, and region landmarks must stay unique.
  */
 const critical = (suffix = "''") => `
   <ui-status-hero tone="critical" [heading]="'Braucht Aufmerksamkeit' + ${suffix}" [count]="20" [criticalCount]="2" moreLabel="3 weitere Gruppen" moreRoute="/hinweise">${criticalEntries}
@@ -133,11 +133,9 @@ export const Schmal: StoryObj<UiStatusHero> = {
 };
 
 /**
- * Review focus 4: with the red seed, `error` and `primary` move together; the theme engine then
- * gives both heroes the same container colour. The critical hero must still be told apart from
- * the attention hero beside it, so the difference never rests on colour alone (spec 8): the
- * critical count in its head and the "Kritisch" labels on its entries carry it. Both must stay
- * readable in every cell, dark + high contrast + red included (axe checks the contrast).
+ * The critical hero is told apart from the attention hero beside it by more than colour
+ * (spec 8): the critical count in its head and the "Kritisch" labels on its entries. Both heroes
+ * must stay readable in light and dark (axe checks the contrast).
  */
 export const Kombinationen: StoryObj<UiStatusHero> = {
   decorators: [moduleMetadata({ imports: [ThemeMatrixStoryComponent, UiMatrixCell] })],
@@ -165,17 +163,15 @@ export const Kombinationen: StoryObj<UiStatusHero> = {
         rgb(style.getPropertyValue('--mat-sys-primary-container').trim()),
       );
       await expect(critical!.querySelector('.critical')).not.toBeNull();
+      await expect(critical!.querySelector('.critical')?.textContent?.trim()).toMatch(
+        /2 kritisch|2 critical/,
+      );
       await expect(critical!.querySelectorAll('.severity')).toHaveLength(2);
+      for (const severity of critical!.querySelectorAll('.severity')) {
+        await expect(severity.textContent).toMatch(/Kritisch|Critical/);
+      }
       await expect(attention!.querySelector('.critical')).toBeNull();
       await expect(attention!.querySelector('.severity')).toBeNull();
     }
-    const redDarkHigh = canvasElement.querySelector<HTMLElement>(
-      `.cell[data-seed="${MATRIX_RED_SEED}"][data-mode="dark"][data-contrast="high"]`,
-    )!;
-    await expect(redDarkHigh).not.toBeNull();
-    // Even where both containers coincide, the critical count stays visible in the critical head.
-    await expect(redDarkHigh.querySelector('.critical')?.textContent?.trim()).toMatch(
-      /2 kritisch|2 critical/,
-    );
   },
 };

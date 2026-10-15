@@ -49,7 +49,7 @@ Designkonzept Abschnitt 2 (`docs/superpowers/specs/2026-10-15-designkonzept-desi
 
 Farbfamilien (`UiTone` in `src/lib/tone.ts`) rendern Komponenten als `data-tone`; die Regeln dazu liefert `src/lib/_tone.scss` (`tone.fill` für alle Flächen, `tone.strong` und `tone.container` für je eine Hälfte, `tone.text` für Text). Neue Bausteine nehmen diese Mixins statt eigener Farbtabellen; wer nur Container braucht (Chips, Icon-Container), nimmt `tone.container`, denn jede Verwendung von `fill` kostet rund 2,5 kB Komponenten-CSS (Budget 4 kB je Komponente). Ein Baustein mit fester Farbtabelle (die fünf Pod-Fills aus Designkonzept 2.4) schreibt seine Regeln aus.
 
-**Stories in allen Kombinationen:** Jeder neue oder geänderte Baustein hat eine Story „Kombinationen“ mit `ui-theme-matrix` (`src/lib/testing/theme-matrix.story-component.ts`): Sie rendert die Zelle in zwei Grundfarben (Standard und `#d32f2f`) × hell/dunkel × Standard/Mittel/Hoch, jede Zelle mit den Variablen der Theme-Engine, und axe prüft alle zwölf in einem Lauf (`expectThemeMatrix`).
+**Stories in hell und dunkel:** Jeder neue oder geänderte Baustein hat eine Story „Kombinationen“ mit `ui-theme-matrix` (`src/lib/testing/theme-matrix.story-component.ts`): Sie rendert die Zelle zweimal, hell und dunkel, mit der Standard-Grundfarbe, Standard-Kontrast und Standard-Schrift, jede Zelle mit den Variablen der Theme-Engine, und axe prüft beide in einem Lauf (`expectThemeMatrix`). Weitere Grundfarben, Kontraststufen und Schriften deckt die Matrix nicht ab.
 
 ## Verhalten
 
