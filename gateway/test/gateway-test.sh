@@ -270,6 +270,18 @@ wait_for sh -c '[ "$(docker inspect -f "{{.State.Running}}" '"$PREFIX"'-control)
 check "missing secrets stop the container with a message" \
   '[ "$(docker inspect -f "{{.State.Running}}" "$PREFIX-control")" = false ] && docker logs "$PREFIX-control" 2>&1 | grep -q "passwd is missing or empty"'
 docker rm -fv "$PREFIX-control" > /dev/null 2>&1
+# A password file that already has the user "health" is refused: that name is the entry point's restricted user.
+mkdir "$WORK/health-secrets"
+cp "$GW"/secrets/* "$WORK/health-secrets/"
+docker run --rm -u "$(id -u):$(id -g)" -v "$WORK/health-secrets:/s" "$MOSQUITTO_IMAGE" mosquitto_passwd -b /s/passwd health something > /dev/null 2>&1
+must docker run -d --name "$PREFIX-control" --network "$NET" --entrypoint sh \
+  -v "$WORK/health-secrets:/mosquitto/secrets-src:ro" --tmpfs /mosquitto/secrets \
+  -v "$GW/mosquitto-entrypoint.sh:/smart/mosquitto-entrypoint.sh:ro" "$MOSQUITTO_IMAGE" \
+  /smart/mosquitto-entrypoint.sh mosquitto -c /mosquitto/config/mosquitto.conf
+wait_for sh -c '[ "$(docker inspect -f "{{.State.Running}}" '"$PREFIX"'-control)" = false ]'
+check "a password file with the user health is refused with a message" \
+  '[ "$(docker inspect -f "{{.State.Running}}" "$PREFIX-control")" = false ] && docker logs "$PREFIX-control" 2>&1 | grep -q "must not contain the user health"'
+docker rm -fv "$PREFIX-control" > /dev/null 2>&1
 
 # --- the real stack: Mosquitto of the gateway, bridged to the VPS broker ---
 compose up -d --wait --no-deps mosquitto > "$WORK/up.log" 2>&1
@@ -281,6 +293,8 @@ check "the log rotates (10 MB x 3)" '[ "$(docker inspect -f "{{.HostConfig.LogCo
 check "the local listener refuses anonymous clients" '! quiet compose exec -T mosquitto mosquitto_pub -h 127.0.0.1 -t zigbee2mqtt/x -m 1'
 check "the local listener refuses a wrong password" '! quiet compose exec -T mosquitto mosquitto_pub -h 127.0.0.1 -u "$Z2M_USER" -P wrong -t zigbee2mqtt/x -m 1'
 check "the Zigbee2MQTT credentials work" 'quiet local_pub -t zigbee2mqtt/ping -m 1'
+check "no work directory with copies of the secrets stays in the container after the start" \
+  '[ -z "$(docker exec "$(compose ps -q mosquitto)" sh -c "ls -A /tmp")" ] && [ -z "$(docker exec "$(compose ps -q mosquitto)" find / -xdev -name "tmp.*" -not -path "/proc/*")" ]'
 # The health check logs in as "health" with a public password; the local broker's ACL lets that user read the
 # uptime topic and nothing else, and no secret is part of the container configuration or the health check.
 check "no secret is part of the Mosquitto container's configuration (health check, environment)" \

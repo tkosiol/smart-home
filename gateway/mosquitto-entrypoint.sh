@@ -35,7 +35,7 @@ printf '%s\n' 'user health' 'topic read $SYS/broker/uptime' >> "$WORKDIR/acl"
 users=0
 cut -d: -f1 "$SRC/passwd" > "$WORKDIR/users"
 while IFS= read -r user; do
-  [ "$user" = health ] && continue
+  [ "$user" != health ] || fail "$SRC/passwd must not contain the user health (the entry point adds it with its own restricted rights)"
   # A name from the password file ends up in the ACL: only plain characters.
   case "$user" in
     '' | *[!A-Za-z0-9._-]*) fail "user name in $SRC/passwd has characters other than A-Z a-z 0-9 . _ -" ;;
@@ -51,4 +51,7 @@ for f in ca.crt gateway.crt gateway.key; do
   install -o mosquitto -g mosquitto -m 600 "$SRC/$f" "$DST/$f"
 done
 
+# exec replaces this shell, so the EXIT trap would never run: the copies must not stay in the container.
+rm -rf "$WORKDIR"
+trap - EXIT
 exec /docker-entrypoint.sh "$@"
