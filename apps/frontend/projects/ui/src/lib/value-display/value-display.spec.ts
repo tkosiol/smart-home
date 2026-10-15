@@ -52,6 +52,17 @@ describe('UiValueDisplay', () => {
     expect(element.textContent?.trim()).toBe('21,8');
   });
 
+  it('reads the label after the value, except for the hero where it stands first', () => {
+    const fixture = render();
+    const order = () =>
+      [...host(fixture).querySelectorAll('.label, .value')].map((e) => e.className);
+    expect(order()).toEqual(['value', 'label']);
+    fixture.componentInstance.size.set('hero');
+    fixture.detectChanges();
+    expect(order()).toEqual(['label', 'value']);
+    expect(host(fixture).querySelectorAll('.label')).toHaveLength(1);
+  });
+
   it('exposes size and tone for the styles', () => {
     const fixture = render();
     expect(host(fixture).getAttribute('data-size')).toBe('medium');

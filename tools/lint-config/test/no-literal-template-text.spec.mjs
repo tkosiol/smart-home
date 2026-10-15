@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { RuleTester } from 'eslint';
 import {
   TEXT_ATTRIBUTES,
+  UI_TEXT_INPUTS,
   noLiteralTemplateText,
 } from '../eslint/rules/no-literal-template-text.mjs';
 
@@ -24,6 +25,12 @@ ruleTester.run('no-literal-template-text', noLiteralTemplateText, {
     { code: "<ui-x [label]=\"ok ? ('ui.a' | transloco) : ('ui.b' | transloco)\" />" },
     { code: "<p>{{ 'ui.x' | transloco: { color: name, tone: 'warm' } }}</p>" },
     { code: "@if (mode() === 'personal') { <p>{{ 'ui.x' | transloco }}</p> }" },
+    // `value` is text only on ui-* elements: a number is fine, and plain HTML keeps its value.
+    { code: '<ui-value-display value="18" unit="%" />' },
+    { code: '<ui-value-display [value]="reading()" [unit]="unit()" />' },
+    { code: '<option value="kitchen"></option>' },
+    { code: '<input type="hidden" value="token" />' },
+    { code: '<button type="submit" value="send"></button>' },
   ],
   invalid: [
     { code: '<p>Hallo</p>', errors: [{ messageId: 'literalText' }] },
@@ -53,6 +60,24 @@ ruleTester.run('no-literal-template-text', noLiteralTemplateText, {
       errors: [{ messageId: 'literalAttribute', data: { name: 'label' } }],
     },
     { code: "<p>{{ ok ? 'Ja' : 'Nein' }}</p>", errors: [{ messageId: 'literalText' }] },
+    {
+      code: '<ui-value-display value="Gut" />',
+      errors: [{ messageId: 'literalAttribute', data: { name: 'value' } }],
+    },
+    {
+      code: '<ui-value-display [value]="\'Aus\'" />',
+      errors: [{ messageId: 'literalAttribute', data: { name: 'value' } }],
+    },
+    // A unit is visible text too: "°C" or "min" belong to the reading (bound from the data) or to a
+    // key, since units like "h" or "Tage" differ by language.
+    {
+      code: '<ui-value-display unit="°C" />',
+      errors: [{ messageId: 'literalAttribute', data: { name: 'unit' } }],
+    },
+    {
+      code: '<ui-progress-band valueText="zu trocken" />',
+      errors: [{ messageId: 'literalAttribute', data: { name: 'valueText' } }],
+    },
     { code: "<p>{{ 'Hallo' }}</p>", errors: [{ messageId: 'literalText' }] },
     {
       code: "<ui-x [label]=\"ok ? 'Ja' : 'Nein'\" />",
@@ -86,11 +111,14 @@ describe('no-literal-template-text coverage of @smart/ui inputs', () => {
     // A renamed folder or regex would otherwise turn this into a test of nothing.
     expect(names.length).toBeGreaterThan(10);
     const unknown = [...new Set(names)].filter(
-      (name) => !TEXT_ATTRIBUTES.has(name) && !NON_TEXT_STRING_INPUTS.has(name),
+      (name) =>
+        !TEXT_ATTRIBUTES.has(name) &&
+        !UI_TEXT_INPUTS.has(name) &&
+        !NON_TEXT_STRING_INPUTS.has(name),
     );
     expect(
       unknown,
-      'add text inputs to TEXT_ATTRIBUTES, other ones to NON_TEXT_STRING_INPUTS',
+      'add text inputs to TEXT_ATTRIBUTES (or UI_TEXT_INPUTS when the name is a plain HTML attribute too), other ones to NON_TEXT_STRING_INPUTS',
     ).toEqual([]);
   });
 });

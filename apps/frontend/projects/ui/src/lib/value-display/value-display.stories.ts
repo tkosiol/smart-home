@@ -42,6 +42,12 @@ export const Groessen: StoryObj<UiValueDisplay> = {
     for (const value of canvasElement.querySelectorAll('.value')) {
       await expect(getComputedStyle(value).fontVariantNumeric).toBe('tabular-nums');
     }
+    // The label inherits the surface's on-colour, like the value, and precedes it in the hero.
+    const heroLabel = canvasElement.querySelector('[data-size="hero"] .label')!;
+    await expect(getComputedStyle(heroLabel).color).toBe(getComputedStyle(hero).color);
+    await expect(heroLabel.compareDocumentPosition(hero) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
   },
 };
 
@@ -91,6 +97,14 @@ export const Kombinationen: StoryObj<UiValueDisplay> = {
             <ui-value-display tone="dry" value="18" unit="%" label="zu trocken" />
             <ui-value-display tone="warning" value="9" unit="%" label="Batterie" />
             <ui-value-display value="21,8" unit="°C" label="Temperatur" />
+          </div>
+          <div style="display: flex; gap: 8px">
+            <div style="flex: 1; padding: 14px; border-radius: var(--smart-shape-pod); background: var(--mat-sys-primary); color: var(--mat-sys-on-primary)">
+              <ui-value-display value="80" unit="%" label="Deckenlampe · An" />
+            </div>
+            <div style="flex: 1; padding: 14px; border-radius: var(--smart-shape-pod); background: var(--mat-sys-secondary-container); color: var(--mat-sys-on-secondary-container)">
+              <ui-value-display value="21,4" unit="°C" label="Klima · 48 %" />
+            </div>
           </div>
         </ng-template>
       </ui-theme-matrix>`,

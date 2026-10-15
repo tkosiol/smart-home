@@ -1,8 +1,7 @@
 import type { StatusName } from '@smart/theme';
 
 /** Material roles that come as a strong fill with an on-colour and as a container pair. */
-export const UI_ROLE_TONES = ['primary', 'secondary', 'tertiary', 'error'] as const;
-export type UiRoleTone = (typeof UI_ROLE_TONES)[number];
+export type UiRoleTone = 'primary' | 'secondary' | 'tertiary' | 'error';
 
 /** A colour family: a Material role (`--mat-sys-*`) or a status colour (`--smart-status-*`). */
 export type UiToneName = UiRoleTone | StatusName;

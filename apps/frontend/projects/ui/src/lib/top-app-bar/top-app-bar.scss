@@ -33,12 +33,11 @@
   letter-spacing: var(--smart-type-tracking-tight);
 }
 
-:host([data-size='large']) .actions {
-  gap: var(--smart-space-sm);
-}
-
+// Actions keep a gap in both sizes: the 48 px touch targets of neighbouring 40 px icon buttons
+// would otherwise overlap, and the 48 px tonal discs would touch.
 .actions {
   display: flex;
   flex: none;
   align-items: center;
+  gap: var(--smart-space-sm);
 }

@@ -1,9 +1,18 @@
+@if (size() === 'hero') {
+  <ng-container [ngTemplateOutlet]="labelText" />
+}
 <span class="line">
   <span class="value">{{ value() }}</span>
   @if (unit(); as unit) {
     <span class="unit">{{ unit }}</span>
   }
 </span>
-@if (label(); as label) {
-  <span class="label">{{ label }}</span>
+@if (size() !== 'hero') {
+  <ng-container [ngTemplateOutlet]="labelText" />
 }
+
+<ng-template #labelText>
+  @if (label(); as label) {
+    <span class="label">{{ label }}</span>
+  }
+</ng-template>
