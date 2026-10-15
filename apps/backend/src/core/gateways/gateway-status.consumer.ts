@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { GATEWAY_ID_PATTERN, type GatewayStatus } from '@smart/contracts';
 import { describeError } from '../../platform/errors/index.js';
-import { MQTT_CONNECTION, MqttConnection } from '../../platform/mqtt/index.js';
+import { MQTT_CONNECTION, MqttConnection, type Unsubscribe } from '../../platform/mqtt/index.js';
 import { CLOCK, type Clock } from '../identity/index.js';
 import {
   GATEWAY_STATUS_CHANGED,
@@ -71,7 +71,7 @@ export class GatewayStatusConsumer implements OnModuleInit, OnModuleDestroy {
   private readonly touches = new Throttle(MINUTE_MS, STATUS_MEMORY_LIMIT);
   private readonly notices = new Throttle(HOUR_MS, STATUS_MEMORY_LIMIT);
   private readonly failures = new Throttle(MINUTE_MS, 1);
-  private readonly unsubscribes: (() => void)[] = [];
+  private readonly unsubscribes: Unsubscribe[] = [];
   private tail: Promise<void> = Promise.resolve();
 
   constructor(
@@ -98,7 +98,9 @@ export class GatewayStatusConsumer implements OnModuleInit, OnModuleDestroy {
   }
 
   onModuleDestroy(): void {
-    for (const unsubscribe of this.unsubscribes.splice(0)) unsubscribe();
+    // Only the handlers go. The session at the broker is shared with the next process (and with
+    // any other that uses this client ID): ending the subscriptions there would leave it deaf.
+    for (const unsubscribe of this.unsubscribes.splice(0)) unsubscribe({ keepSession: true });
   }
 
   /** Resolves when the messages received so far are processed. */

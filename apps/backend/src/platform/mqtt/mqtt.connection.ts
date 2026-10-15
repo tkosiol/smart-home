@@ -1,4 +1,4 @@
-import { connect, type IPublishPacket, type MqttClient } from 'mqtt';
+import { connect, type IPublishPacket, type ISubscriptionMap, type MqttClient } from 'mqtt';
 import { matchesFilter } from './topic-filter.js';
 
 export interface MqttSettings {
@@ -101,13 +101,22 @@ export class MqttConnection {
       protocolVersion: 5,
       // A persistent session: the broker keeps the subscriptions and queues what arrives while no
       // process is connected. mqtt.js subscribes again after a reconnect only when the broker
-      // has lost the session (`sessionPresent` false), so a kept session is not subscribed twice.
+      // has lost the session (`sessionPresent` false); for a kept session the 'connect' handler
+      // below checks that the subscriptions are still there.
       clean: false,
       properties: { sessionExpiryInterval: SESSION_EXPIRY_SECONDS },
       connectTimeout: 5000,
       reconnectPeriod: 2000,
     });
     this.client.on('error', this.onError);
+    // mqtt.js subscribes again only when the broker lost the session. A kept session may have lost
+    // subscriptions all the same (another process with this client ID took it over and ended
+    // them), and the broker does not say so: subscribe again, which costs nothing when they are
+    // there. The broker sends the retained messages once more then; handlers must (and do)
+    // tolerate that, as they do after a broker restart.
+    this.client.on('connect', (connack: { sessionPresent?: boolean }) => {
+      if (connack.sessionPresent) this.resubscribe();
+    });
     // What was held belongs to the connection that is gone: the broker delivers the unacknowledged
     // copies again on the next one, and a stale callback must not acknowledge on that.
     this.client.on('close', () => {
@@ -154,13 +163,7 @@ export class MqttConnection {
     // One subscription per filter at the broker, with the highest QoS any handler asked for.
     if (asked === undefined || qos > asked) {
       this.levels.set(filter, qos);
-      this.client.subscribe(
-        filter,
-        { qos, properties: { subscriptionIdentifier: id } },
-        (error) => {
-          if (error) this.onError(error);
-        },
-      );
+      this.sendSubscribe(filter, qos, id);
     }
     return (ending) => {
       if (ending?.keepSession) {
@@ -177,6 +180,35 @@ export class MqttConnection {
         this.onError(error instanceof Error ? error : new Error('unsubscribe failed'));
       }
     };
+  }
+
+  private sendSubscribe(filter: string, qos: 0 | 1 | 2, id: number): void {
+    this.client.subscribe(filter, { qos, properties: { subscriptionIdentifier: id } }, (error) => {
+      if (error) this.onError(error);
+    });
+  }
+
+  /**
+   * Subscribes again to every filter that has a live handler, with its identifier and QoS. The
+   * object form with `resubscribe` is what makes mqtt.js send it: for a filter it already knows
+   * at that QoS, a plain subscribe sends nothing.
+   */
+  private resubscribe(): void {
+    for (const [filter, qos] of this.levels) {
+      const id = this.identifiers.get(filter);
+      const live = [...this.subscriptions].some(
+        (subscription) => subscription.filter === filter && !subscription.released,
+      );
+      if (id === undefined || !live) continue;
+      const forced = { [filter]: { qos, nl: false, rap: false, rh: 0 }, resubscribe: true };
+      this.client.subscribe(
+        forced as ISubscriptionMap,
+        { properties: { subscriptionIdentifier: id } },
+        (error) => {
+          if (error) this.onError(error);
+        },
+      );
+    }
   }
 
   /**

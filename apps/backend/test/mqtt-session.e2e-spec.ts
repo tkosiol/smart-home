@@ -150,6 +150,43 @@ describe('MqttConnection session', () => {
   });
 });
 
+describe('MqttConnection session shared with another process', () => {
+  it('receives again after a second process with the same client id subscribed and unsubscribed', async () => {
+    const clientId = `test-session-${random()}`;
+    const base = `gw/test-${random()}/x`;
+    const source = writer();
+    const first = app(clientId);
+    try {
+      await first.waitUntilConnected(5000);
+      const { seen } = await subscribed(first, source, base);
+
+      // What the admin CLI did in the api container: takes the session over, subscribes, and on
+      // shutdown ends its subscriptions, which are the api's too.
+      const second = app(clientId);
+      await second.waitUntilConnected(5000);
+      const unsubscribe = second.subscribe(`${base}/#`, () => undefined);
+      unsubscribe();
+      // Time for the broker to have it before the connection goes (the CLI does other work first).
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      await second.close();
+
+      // The first reconnects with the kept session (the broker has no subscription left) and
+      // must subscribe again.
+      seen.length = 0;
+      await vi.waitFor(
+        async () => {
+          await source.publishAsync(`${base}/again`, 'after', { qos: 1 });
+          expect(seen).toContain('after');
+        },
+        { timeout: 15_000, interval: 500 },
+      );
+    } finally {
+      await first.close();
+      await source.endAsync(true);
+    }
+  });
+});
+
 describe('MqttConnection replay on start', () => {
   it('keeps the backlog until the app has subscribed, although the broker sends it first', async () => {
     const clientId = `test-session-${random()}`;

@@ -356,6 +356,127 @@ describe('MqttConnection acknowledgements', () => {
     });
   });
 
+  describe('a session that survived a reconnect', () => {
+    /** What a call to the client subscribed to, whether in the plain or the `resubscribe` form. */
+    const callOf = (call: number): { filter: string; qos: number; id: number; forced: boolean } => {
+      const [first, options] = client.subscribe.mock.calls[call] as [
+        string | Record<string, { qos: number } | boolean>,
+        { qos?: number; properties: { subscriptionIdentifier: number } },
+      ];
+      const properties = options.properties;
+      if (typeof first === 'string') {
+        return {
+          filter: first,
+          qos: options.qos ?? -1,
+          id: properties.subscriptionIdentifier,
+          forced: false,
+        };
+      }
+      const [filter] = Object.keys(first).filter((key) => key !== 'resubscribe');
+      return {
+        filter: filter ?? '',
+        qos: (first[filter ?? ''] as { qos: number }).qos,
+        id: properties.subscriptionIdentifier,
+        forced: first.resubscribe === true,
+      };
+    };
+    const callsSince = (before: number): ReturnType<typeof callOf>[] =>
+      client.subscribe.mock.calls.slice(before).map((_call, index) => callOf(before + index));
+
+    it('subscribes again to every filter, with the same identifier and QoS', () => {
+      connection.subscribe('a/#', vi.fn());
+      connection.subscribe('b/+', vi.fn(), { qos: 0 });
+      const before = client.subscribe.mock.calls.length;
+      client.emit('connect', { sessionPresent: true });
+      const again = callsSince(before);
+      expect(again.map(({ filter, qos }) => [filter, qos])).toEqual([
+        ['a/#', 1],
+        ['b/+', 0],
+      ]);
+      expect(again.map(({ id }) => id)).toEqual([callOf(0).id, callOf(1).id]);
+    });
+
+    it('forces mqtt.js to send it, which it does not for a filter it already knows', () => {
+      connection.subscribe('a/#', vi.fn());
+      const before = client.subscribe.mock.calls.length;
+      client.emit('connect', { sessionPresent: true });
+      expect(callsSince(before).every(({ forced }) => forced)).toBe(true);
+    });
+
+    it('subscribes once per filter, at the highest QoS asked for', () => {
+      connection.subscribe('a/#', vi.fn(), { qos: 0 });
+      connection.subscribe('a/#', vi.fn(), { qos: 1 });
+      const before = client.subscribe.mock.calls.length;
+      client.emit('connect', { sessionPresent: true });
+      expect(callsSince(before).map(({ filter, qos }) => [filter, qos])).toEqual([['a/#', 1]]);
+    });
+
+    it('leaves it to mqtt.js when the broker lost the session', () => {
+      connection.subscribe('a/#', vi.fn());
+      const before = client.subscribe.mock.calls.length;
+      client.emit('connect', { sessionPresent: false });
+      expect(client.subscribe.mock.calls).toHaveLength(before);
+    });
+
+    it('does not subscribe again to what was unsubscribed or let go of for the next process', () => {
+      connection.subscribe('gone/#', vi.fn())();
+      connection.subscribe('kept/#', vi.fn())({ keepSession: true });
+      connection.subscribe('live/#', vi.fn());
+      const before = client.subscribe.mock.calls.length;
+      client.emit('connect', { sessionPresent: true });
+      expect(callsSince(before).map(({ filter }) => filter)).toEqual(['live/#']);
+    });
+
+    it('reports a failed subscription and goes on', () => {
+      connection.subscribe('a/#', vi.fn());
+      client.subscribe.mockImplementation(
+        (_filter: string, _options: unknown, callback: (error?: Error) => void) => {
+          callback(new Error('refused'));
+        },
+      );
+      client.emit('connect', { sessionPresent: true });
+      expect(errors.map((error) => error.message)).toEqual(['refused']);
+    });
+
+    it('does not disturb the gate for replayed copies: held ones stay held, then go to the new handler', async () => {
+      client = new FakeClient();
+      mocks.client = client;
+      const gate = new MqttConnection({
+        ...settings,
+        awaitSubscriptions: true,
+        onError: (error) => errors.push(error),
+      });
+      const wanted = new FakeClient();
+      mocks.client = wanted;
+      new MqttConnection(settings).subscribe('gw/a/z2m/#', () => undefined);
+      const id = (
+        wanted.subscribe.mock.calls[0]?.[1] as {
+          properties: { subscriptionIdentifier: number };
+        }
+      ).properties.subscriptionIdentifier;
+
+      const acked = vi.fn();
+      void deliver('gw/a/z2m/x', id).then(acked);
+      client.emit('connect', { sessionPresent: true });
+      await settle();
+      expect(acked).not.toHaveBeenCalled();
+
+      const handler = vi.fn();
+      gate.subscribe('gw/a/z2m/#', handler);
+      const before = client.subscribe.mock.calls.length;
+      // A reconnect right after: the filter is subscribed again, the held copy is not lost.
+      client.emit('connect', { sessionPresent: true });
+      expect(client.subscribe.mock.calls.length).toBeGreaterThan(before);
+      await settle();
+      expect(handler).toHaveBeenCalledTimes(1);
+      expect(acked).toHaveBeenCalledTimes(1);
+
+      gate.markSubscriptionsComplete();
+      await settle();
+      expect(handler).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('replayed messages before the subscriptions are made', () => {
     const gated = (): InstanceType<typeof MqttConnection> => {
       client = new FakeClient();
