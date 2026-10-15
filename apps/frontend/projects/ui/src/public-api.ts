@@ -35,6 +35,8 @@ export {
   type UiDevicePodTone,
 } from './lib/device-pod/device-pod';
 export { UiPodRow } from './lib/device-pod/pod-row';
+export { UiDeviceHero, type UiDeviceHeroTone } from './lib/device-hero/device-hero';
+export { UiStatusChip, type UiStatusChipTone } from './lib/status-chip/status-chip';
 export { UiBottomSheet } from './lib/sheet/bottom-sheet';
 export { UiSheet, UiSheetActions } from './lib/sheet/sheet';
 export { UI_SHEET_DATA, UiSheetRef, type UiSheetPresentation } from './lib/sheet/sheet-ref';

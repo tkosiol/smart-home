@@ -5,6 +5,15 @@
   min-width: 0;
 }
 
+// xs: pods that fill their cells (the side values of the device page, spec 3.3). A pod may shrink
+// to seven tenths of its width, which puts three across a 360 px phone and two across a 320 px one.
+:host([data-min='xs']) {
+  grid-template-columns: repeat(
+    auto-fill,
+    minmax(min(calc(var(--smart-size-pod-width) * 0.7), 100%), 1fr)
+  );
+}
+
 :host([data-min='sm']) {
   grid-template-columns: repeat(auto-fill, minmax(min(var(--smart-size-grid-sm), 100%), 1fr));
 }

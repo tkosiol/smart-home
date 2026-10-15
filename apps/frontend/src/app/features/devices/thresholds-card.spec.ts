@@ -118,8 +118,8 @@ describe('thresholds card', () => {
         devices: [customised({ soilMoistureMin: 30, soilMoistureMax: 70 })],
       });
       // The state of each value, in the order of the fields; battery and silence stay the kind's.
-      const states = [...card(page).querySelectorAll('ui-stack[gap="sm"] > p')].map((p) =>
-        p.textContent?.trim(),
+      const states = [...card(page).querySelectorAll('ui-status-chip')].map((chip) =>
+        chip.textContent?.trim(),
       );
       expect(states).toEqual([
         'Angepasst (Standard: 25 %)',
@@ -317,12 +317,18 @@ describe('thresholds card', () => {
       expect(
         card(page).querySelector('input, button, ui-text-field, form [type="submit"]'),
       ).toBeNull();
+      // Label and value of each row (the parts have no space between them in the DOM).
+      const rows = [...card(page).querySelectorAll('ui-list-item')].map((row) =>
+        ['.headline', '.trailing'].map((part) => row.querySelector(part)?.textContent?.trim()),
+      );
+      expect(rows).toEqual([
+        ['Feuchte unten', expect.stringMatching(/^30\s%$/)],
+        ['Feuchte oben', 'aus'],
+        ['Batterie unter', expect.stringMatching(/^20\s%$/)],
+        ['Stumm nach', '120 Minuten'],
+      ]);
       const text = cardText(page);
-      expect(text).toContain('Feuchte unten: 30 %');
       expect(text).toContain('Angepasst (Standard: 25 %)');
-      expect(text).toContain('Feuchte oben: aus');
-      expect(text).toContain('Batterie unter: 20 %');
-      expect(text).toContain('Stumm nach: 120 Minuten');
       expect(text).not.toContain('Grenzwerte speichern');
       expect(text).not.toContain('Auf Standard zurücksetzen');
     });

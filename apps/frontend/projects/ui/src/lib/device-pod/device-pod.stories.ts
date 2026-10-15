@@ -2,6 +2,7 @@ import { signal } from '@angular/core';
 import { provideRouter, withDisabledInitialNavigation } from '@angular/router';
 import { applicationConfig, moduleMetadata, type Meta, type StoryObj } from '@storybook/angular';
 import { expect, userEvent, waitFor } from 'storybook/test';
+import { UiGrid } from '../layout/grid/grid';
 import { expectNoHorizontalOverflow, withPhoneFrame } from '../testing/story-helpers';
 import { waitForTranslations } from '../testing/storybook-environment';
 import { expectThemeMatrix, rgb } from '../testing/theme-matrix';
@@ -16,7 +17,7 @@ const meta: Meta<UiDevicePod> = {
     // Storybook's iframe path matches no route; without this the router's initial navigation fails
     // and rewrites the URL, which breaks the second-theme check of the test runner.
     applicationConfig({ providers: [provideRouter([], withDisabledInitialNavigation())] }),
-    moduleMetadata({ imports: [UiPodRow] }),
+    moduleMetadata({ imports: [UiGrid, UiPodRow] }),
   ],
 };
 export default meta;
@@ -147,6 +148,26 @@ export const Pfeile: StoryObj<UiDevicePod> = {
   },
 };
 
+/** The side values of the device page (spec 3.3): static pods that fill a grid, three across. */
+const sideValues = `
+  <ui-grid min="xs" gap="sm">
+    <ui-device-pod fill kind="climate" icon="thermostat" value="21,8" unit="°C" label="Temperatur" />
+    <ui-device-pod fill kind="climate" icon="battery_alert" value="72" unit="%" label="Batterie" />
+    <ui-device-pod fill kind="climate" icon="sensors" value="120" label="Signalqualität" />
+  </ui-grid>`;
+
+export const Nebenwerte: StoryObj<UiDevicePod> = {
+  render: () => ({ template: `<div style="width: 358px">${sideValues}</div>` }),
+  play: async ({ canvasElement }) => {
+    const pods = canvasElement.querySelectorAll<HTMLElement>('ui-device-pod');
+    await expect(pods).toHaveLength(3);
+    const tops = new Set([...pods].map((pod) => Math.round(pod.getBoundingClientRect().top)));
+    await expect(tops.size).toBe(1);
+    await expect(pods[0]!.getBoundingClientRect().width).toBeGreaterThan(100);
+    await expect(pods[0]!.getBoundingClientRect().height).toBe(116);
+  },
+};
+
 export const Kombinationen: StoryObj<UiDevicePod> = {
   decorators: [moduleMetadata({ imports: [ThemeMatrixStoryComponent, UiMatrixCell] })],
   render: () => ({
@@ -158,6 +179,7 @@ export const Kombinationen: StoryObj<UiDevicePod> = {
             <ui-device-pod kind="light" icon="lightbulb" value="80" unit="%" label="Flurlampe" [pressed]="true" [pending]="true" />
             <ui-device-pod kind="climate" icon="thermostat" value="21,8" unit="°C" label="Temperatur" />
           </ui-pod-row>
+          ${sideValues}
         </ng-template>
       </ui-theme-matrix>`,
   }),

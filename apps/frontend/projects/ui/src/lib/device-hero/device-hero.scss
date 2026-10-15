@@ -1,0 +1,65 @@
+// A card with extra-large corners, lg at the sides and xl above and below (spec 2.1, 2.5). The
+// colour change of the kind fades (spec 2.6); a fade is no movement, so it stays under
+// prefers-reduced-motion. The four fills of spec 2.4 are written out, like the pod's.
+:host {
+  display: flex;
+  flex-direction: column;
+  gap: var(--smart-space-lg);
+  box-sizing: border-box;
+  min-width: 0;
+  padding: var(--smart-space-xl) var(--smart-space-lg);
+  border-radius: var(--smart-shape-card);
+  transition:
+    background-color var(--smart-motion-duration-medium) var(--smart-motion-easing-standard),
+    color var(--smart-motion-duration-medium) var(--smart-motion-easing-standard);
+}
+
+:host([data-tone='primary-container']) {
+  background: var(--mat-sys-primary-container);
+  color: var(--mat-sys-on-primary-container);
+}
+
+:host([data-tone='secondary-container']) {
+  background: var(--mat-sys-secondary-container);
+  color: var(--mat-sys-on-secondary-container);
+}
+
+:host([data-tone='tertiary-container']) {
+  background: var(--mat-sys-tertiary-container);
+  color: var(--mat-sys-on-tertiary-container);
+}
+
+:host([data-tone='surface']) {
+  background: var(--mat-sys-surface-container-high);
+  color: var(--mat-sys-on-surface);
+}
+
+.top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--smart-space-md);
+  min-width: 0;
+}
+
+// The section label of spec 2.3 (BODENFEUCHTE).
+.label {
+  min-width: 0;
+  font: var(--mat-sys-label-small);
+  font-weight: var(--smart-font-weight-semibold);
+  letter-spacing: var(--smart-type-tracking-label);
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+}
+
+.chip {
+  display: inline-flex;
+  flex: none;
+  max-width: 50%;
+}
+
+.note {
+  margin: 0;
+  font: var(--mat-sys-body-small);
+  overflow-wrap: anywhere;
+}

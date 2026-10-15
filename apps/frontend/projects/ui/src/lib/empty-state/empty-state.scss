@@ -1,3 +1,5 @@
+@use '../tone';
+
 :host {
   display: flex;
   flex-direction: column;
@@ -10,6 +12,16 @@
 
 .icon {
   color: var(--mat-sys-primary);
+}
+
+// The lg icon with lg padding all round: a 72 px disc.
+.disc {
+  display: inline-flex;
+  flex: none;
+  padding: var(--smart-space-lg);
+  border-radius: var(--smart-shape-control);
+
+  @include tone.container;
 }
 
 .heading {

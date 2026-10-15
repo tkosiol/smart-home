@@ -47,6 +47,7 @@ const POD_TONE: Record<DeviceKind, UiTone> = {
   templateUrl: './device-pod.html',
   styleUrl: './device-pod.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  host: { '[attr.data-fill]': 'fill() ? "" : null' },
 })
 export class UiDevicePod {
   readonly kind = input.required<DeviceKind>();
@@ -62,6 +63,8 @@ export class UiDevicePod {
   readonly pressed = input<boolean | undefined>(undefined);
   /** A switch waiting for the device to confirm: dimmed, with a ring, and blocked. */
   readonly pending = input(false, { transform: booleanAttribute });
+  /** Fills its cell instead of the fixed pod width: the side values of the device page in a grid. */
+  readonly fill = input(false, { transform: booleanAttribute });
   readonly toggled = output<void>();
 
   protected readonly mode = computed<'link' | 'switch' | 'static'>(() => {

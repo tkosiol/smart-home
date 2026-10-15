@@ -2,11 +2,22 @@
   @if (headingHidden()) {
     <h1 class="heading heading--hidden" tabindex="-1">{{ heading }}</h1>
   } @else {
-    <div class="header">
-      <h1 class="heading" tabindex="-1">{{ heading }}</h1>
-      @if (description(); as description) {
-        <p class="description">{{ description }}</p>
+    <div class="header" [class.header--back]="backRoute()">
+      @if (backRoute(); as backRoute) {
+        <ui-icon-button
+          class="back"
+          variant="tonal"
+          icon="arrow_back"
+          [route]="backRoute"
+          [label]="backLabel() ?? ''"
+        />
       }
+      <div class="titles">
+        <h1 class="heading" tabindex="-1">{{ heading }}</h1>
+        @if (description(); as description) {
+          <p class="description">{{ description }}</p>
+        }
+      </div>
     </div>
   }
 }

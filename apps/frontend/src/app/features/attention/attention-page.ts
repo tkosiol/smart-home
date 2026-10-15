@@ -9,9 +9,8 @@ import {
 } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { TranslocoPipe, TranslocoService } from '@jsverse/transloco';
-import { hasRole, type AttentionKind } from '@smart/contracts';
+import { hasRole, type AttentionKind, type AttentionSeverity } from '@smart/contracts';
 import {
-  UiButton,
   UiCard,
   UiEmptyState,
   UiFormatContext,
@@ -20,6 +19,7 @@ import {
   UiSection,
   UiStack,
   UiStatusEntry,
+  type UiToneName,
 } from '@smart/ui';
 import { UiChipSet, type UiChipOption } from '@smart/ui/forms';
 import { HouseholdContext } from '../../core/household';
@@ -35,6 +35,13 @@ import {
   type SeverityFilter,
 } from './attention-page-model';
 
+/** The colour of a severity's section label (spec 3.4): critical in error, warning in dry. */
+const SECTION_TONES: Record<AttentionSeverity, UiToneName> = {
+  critical: 'error',
+  warning: 'dry',
+  info: 'secondary',
+};
+
 /**
  * "Alle Hinweise" (spec 3.4): every open notice, a section per severity with a card per kind and an
  * entry per notice that leads to its device or gateway. Chips filter by severity and by kind
@@ -45,7 +52,6 @@ import {
   selector: 'app-attention-page',
   imports: [
     TranslocoPipe,
-    UiButton,
     UiCard,
     UiChipSet,
     UiEmptyState,
@@ -56,22 +62,26 @@ import {
     UiStatusEntry,
   ],
   template: `
-    <ui-page [heading]="'attention.title' | transloco">
+    <ui-page
+      [heading]="'attention.title' | transloco"
+      [description]="
+        attention.loaded() && attention.items().length > 0
+          ? ('attention.summary' | transloco: { count: attention.items().length })
+          : undefined
+      "
+      backRoute="/"
+      [backLabel]="'attention.back' | transloco"
+    >
       <ui-stack gap="xl">
-        <ui-stack direction="row" gap="sm">
-          <ui-button variant="text" icon="arrow_back" route="/">{{
-            'attention.back' | transloco
-          }}</ui-button>
-        </ui-stack>
         @if (attention.loaded()) {
           @if (attention.items().length === 0) {
             <ui-empty-state
               icon="check"
+              tone="ok"
               [heading]="'attention.empty.heading' | transloco"
               [description]="'attention.empty.description' | transloco"
             />
           } @else {
-            <p>{{ 'attention.summary' | transloco: { count: attention.items().length } }}</p>
             <ui-stack gap="sm">
               <!-- A new chip set when a press changed nothing: Material keeps its own chip state. -->
               @for (version of [severityChips()]; track version) {
@@ -91,11 +101,14 @@ import {
               }
             </ui-stack>
             @for (section of sections(); track section.severity) {
-              <ui-section [heading]="section.titleKey | transloco">
+              <ui-section
+                [heading]="section.titleKey | transloco"
+                [tone]="sectionTones[section.severity]"
+              >
                 <ui-stack gap="md">
                   @for (card of section.cards; track card.kind) {
                     <ui-card
-                      variant="filled"
+                      variant="low"
                       [heading]="card.titleKey | transloco"
                       [description]="
                         card.notices.length === 1
@@ -147,6 +160,7 @@ import {
 })
 export class AttentionPage {
   protected readonly attention = injectAttention(signal(false));
+  protected readonly sectionTones = SECTION_TONES;
 
   private readonly transloco = inject(TranslocoService);
   private readonly router = inject(Router);

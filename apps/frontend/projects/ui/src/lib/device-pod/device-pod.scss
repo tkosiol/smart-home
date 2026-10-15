@@ -9,6 +9,11 @@
   scroll-snap-align: start;
 }
 
+// In a grid of side values (spec 3.3) the pod takes the width of its cell.
+:host([data-fill]) {
+  width: auto;
+}
+
 .pod {
   position: relative;
   display: flex;
@@ -18,7 +23,6 @@
   box-sizing: border-box;
   width: 100%;
   height: var(--smart-size-pod-height);
-  margin: 0;
   padding: var(--smart-space-md);
   overflow: hidden;
   border: 0;
@@ -73,7 +77,6 @@
   background: currentcolor;
   opacity: 0;
   transition: opacity var(--smart-motion-duration-short) var(--smart-motion-easing-standard);
-  pointer-events: none;
 }
 
 .pod--action:hover::before {

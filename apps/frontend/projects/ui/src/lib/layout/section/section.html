@@ -1,8 +1,8 @@
 <div class="header">
   @if (level() === 2) {
-    <h2 class="heading">{{ heading() }}</h2>
+    <h2 class="heading" [attr.data-tone]="tone() ?? null">{{ heading() }}</h2>
   } @else {
-    <h3 class="heading heading--small">{{ heading() }}</h3>
+    <h3 class="heading heading--small" [attr.data-tone]="tone() ?? null">{{ heading() }}</h3>
   }
   @if (description(); as description) {
     <p class="description">{{ description }}</p>

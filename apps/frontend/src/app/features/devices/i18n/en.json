@@ -55,7 +55,6 @@
   "thresholds": {
     "title": "Thresholds",
     "description": "From these values the app raises a notice. An empty field means the standard of the device kind.",
-    "emptyHint": "Leave empty for the standard.",
     "off": "off",
     "state": {
       "standard": "Standard",

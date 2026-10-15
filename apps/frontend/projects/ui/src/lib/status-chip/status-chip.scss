@@ -1,0 +1,18 @@
+@use '../tone';
+
+// The pill of a device pod (same font, shape and colours) with sm above and below: 32 px, the
+// height of an assist chip, so it holds its own beside a hero value or under a field.
+:host {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  box-sizing: border-box;
+  max-width: 100%;
+  padding: var(--smart-space-sm) var(--smart-space-md);
+  border-radius: var(--smart-shape-control);
+  font: var(--mat-sys-label-medium);
+  font-weight: var(--smart-font-weight-semibold);
+  overflow-wrap: anywhere;
+
+  @include tone.container;
+}

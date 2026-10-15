@@ -1,6 +1,25 @@
+@use '@angular/material' as mat;
+
 :host {
   display: block;
   min-width: 0;
+}
+
+// The card of the design concept (spec 2.1, 2.2, 3.6): a filled card on surface-container-low with
+// extra-large corners and the heading in title-large, weight 600.
+:host([data-variant='low']) {
+  @include mat.card-overrides(
+    (
+      filled-container-color: var(--mat-sys-surface-container-low),
+      filled-container-shape: var(--smart-shape-card),
+    )
+  );
+}
+
+:host([data-variant='low']) .title {
+  font: var(--mat-sys-title-large);
+  font-weight: var(--smart-font-weight-semibold);
+  letter-spacing: var(--smart-type-tracking-tight);
 }
 
 .title,

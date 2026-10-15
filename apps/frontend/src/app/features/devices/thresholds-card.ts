@@ -10,7 +10,7 @@ import {
 } from '@angular/core';
 import { TranslocoPipe } from '@jsverse/transloco';
 import type { Device, Thresholds } from '@smart/contracts';
-import { UiButton, UiCard, UiStack } from '@smart/ui';
+import { UiButton, UiCard, UiGrid, UiList, UiListItem, UiStack, UiStatusChip } from '@smart/ui';
 import { UiTextField } from '@smart/ui/forms';
 import { ApiError } from '../../core/api';
 import { HouseholdContext, injectHouseholdErrorHandler } from '../../core/household';
@@ -32,57 +32,59 @@ import {
  */
 @Component({
   selector: 'app-thresholds-card',
-  imports: [TranslocoPipe, UiButton, UiCard, UiStack, UiTextField],
+  imports: [
+    TranslocoPipe,
+    UiButton,
+    UiCard,
+    UiGrid,
+    UiList,
+    UiListItem,
+    UiStack,
+    UiStatusChip,
+    UiTextField,
+  ],
   template: `
     <ui-card
-      variant="filled"
+      variant="low"
+      [level]="2"
       [heading]="'devices.thresholds.title' | transloco"
       [description]="'devices.thresholds.description' | transloco"
     >
-      <form (submit)="save($event)" novalidate>
-        <ui-stack gap="lg">
-          @for (row of rows(); track row.key) {
-            <ui-stack gap="sm">
-              @if (canEdit()) {
-                <ui-text-field
-                  [name]="row.key"
-                  autocomplete="off"
-                  inputmode="decimal"
-                  [label]="(row.labelKey | transloco) + ' (' + (row.unitKey | transloco) + ')'"
-                  [hint]="'devices.thresholds.emptyHint' | transloco"
-                  [error]="errors()[row.key] ? (errors()[row.key] ?? '' | transloco) : null"
-                  [value]="texts()[row.key] ?? row.initial"
-                  (valueChange)="type(row.key, $event)"
-                />
-              } @else {
-                <p>
-                  {{ row.labelKey | transloco }}:
-                  @if (row.value === null) {
-                    {{ 'devices.thresholds.off' | transloco }}
-                  } @else {
-                    {{ row.valueKey | transloco: { value: row.value } }}
-                  }
-                </p>
+      @if (canEdit()) {
+        <form (submit)="save($event)" novalidate>
+          <ui-stack gap="lg">
+            <ui-grid min="md" gap="lg">
+              @for (row of rows(); track row.key) {
+                <ui-stack gap="xs">
+                  <ui-text-field
+                    [name]="row.key"
+                    autocomplete="off"
+                    inputmode="decimal"
+                    [label]="(row.labelKey | transloco) + ' (' + (row.unitKey | transloco) + ')'"
+                    [error]="errors()[row.key] ? (errors()[row.key] ?? '' | transloco) : null"
+                    [value]="texts()[row.key] ?? row.initial"
+                    (valueChange)="type(row.key, $event)"
+                  />
+                  <ui-stack direction="row" gap="sm" wrap>
+                    <ui-status-chip
+                      [tone]="row.custom ? 'primary' : 'surface'"
+                      [text]="
+                        row.custom
+                          ? ('devices.thresholds.state.custom'
+                            | transloco
+                              : {
+                                  standard:
+                                    row.standard === null
+                                      ? ('devices.thresholds.off' | transloco)
+                                      : (row.valueKey | transloco: { value: row.standard }),
+                                })
+                          : ('devices.thresholds.state.standard' | transloco)
+                      "
+                    />
+                  </ui-stack>
+                </ui-stack>
               }
-              <p>
-                @if (row.custom) {
-                  {{
-                    'devices.thresholds.state.custom'
-                      | transloco
-                        : {
-                            standard:
-                              row.standard === null
-                                ? ('devices.thresholds.off' | transloco)
-                                : (row.valueKey | transloco: { value: row.standard }),
-                          }
-                  }}
-                } @else {
-                  {{ 'devices.thresholds.state.standard' | transloco }}
-                }
-              </p>
-            </ui-stack>
-          }
-          @if (canEdit()) {
+            </ui-grid>
             <ui-stack direction="row" gap="sm" wrap>
               <ui-button type="submit" [disabled]="busy()">{{
                 'devices.thresholds.save' | transloco
@@ -93,9 +95,34 @@ import {
                 }}</ui-button>
               }
             </ui-stack>
+          </ui-stack>
+        </form>
+      } @else {
+        <ui-list>
+          @for (row of rows(); track row.key) {
+            <ui-list-item
+              [headline]="row.labelKey | transloco"
+              [supporting]="
+                row.custom
+                  ? ('devices.thresholds.state.custom'
+                    | transloco
+                      : {
+                          standard:
+                            row.standard === null
+                              ? ('devices.thresholds.off' | transloco)
+                              : (row.valueKey | transloco: { value: row.standard }),
+                        })
+                  : ('devices.thresholds.state.standard' | transloco)
+              "
+              [trailingText]="
+                row.value === null
+                  ? ('devices.thresholds.off' | transloco)
+                  : (row.valueKey | transloco: { value: row.value })
+              "
+            />
           }
-        </ui-stack>
-      </form>
+        </ui-list>
+      }
     </ui-card>
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,
