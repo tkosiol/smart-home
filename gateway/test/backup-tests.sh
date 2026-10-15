@@ -154,7 +154,12 @@ check "backup.sh succeeds against a local repository" '[ "$(run backup.sh)" = 0 
 check "backup.sh pings start and then success on the backup URL, nothing else" 'pings_are "backup/start backup"'
 check "the snapshot holds the Z2M data and the secrets, but not the Z2M log" \
   'l=$(restic ls latest 2>&1) && echo "$l" | grep -q "/data/zigbee2mqtt-data/configuration.yaml" && echo "$l" | grep -q "/data/zigbee2mqtt-data/database.db" && echo "$l" | grep -q "/data/secrets/passwd" && echo "$l" | grep -q "/data/secrets/backup.env" && ! echo "$l" | grep -q "z2m.log"'
-check "the repository is encrypted: the plain data and the passwords appear nowhere in its files" '! grep -rq -e "$DATA_MARKER" -e "$PASSWD_MARKER" -e "$B2_KEY_MARKER" "$GW/repo"'
+# The container wrote the repository as root (on Linux not readable for the test user), so search it as root in a
+# container: grep exits 1 (nothing found) only after it read the files; 2 (unreadable) must not count as clean.
+repo_grep() { docker run --rm --entrypoint grep -v "$GW/repo:/repo:ro" "$RESTIC_IMAGE" -r "$@" /repo > /dev/null 2>&1; echo $?; }
+repo_files() { docker run --rm --entrypoint find -v "$GW/repo:/repo:ro" "$RESTIC_IMAGE" /repo/data -type f | wc -l; }
+check "the repository is encrypted: the plain data and the passwords appear nowhere in its files" \
+  '[ "$(repo_files)" -gt 0 ] && [ "$(repo_grep -q -e "$DATA_MARKER" -e "$PASSWD_MARKER" -e "$B2_KEY_MARKER")" = 1 ]'
 check "restoring the snapshot gives back the data byte for byte" \
   'restic restore latest --target /restore > /dev/null 2>&1 && cmp -s "$WORK/restore/data/zigbee2mqtt-data/configuration.yaml" "$GW/zigbee2mqtt-data/configuration.yaml" && cmp -s "$WORK/restore/data/zigbee2mqtt-data/database.db" "$GW/zigbee2mqtt-data/database.db" && cmp -s "$WORK/restore/data/secrets/passwd" "$GW/secrets/passwd"'
 check "backup.sh logs no secret, no ping URL and passes none in the curl arguments" 'no_secret_in_logs'

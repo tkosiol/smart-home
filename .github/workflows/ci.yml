@@ -98,36 +98,55 @@ jobs:
       - run: pnpm --filter @smart/frontend build-storybook
       - run: pnpm --filter @smart/frontend test-storybook:ci
 
-  ops:
-    name: ops
+  # The shell suites run in parallel (each needs only Docker); the job "ops" is the required check and is green only if
+  # every suite is.
+  ops-suite:
+    name: ops (${{ matrix.suite }})
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - suite: shellcheck
+            run: >
+              docker run --rm -v "$PWD:/mnt" -w /mnt koalaman/shellcheck:v0.11.0
+              infra/deploy/smart-deploy infra/deploy/deploy.sh infra/deploy/provision.sh infra/deploy/admin.sh
+              infra/deploy/broker-certs.sh infra/deploy/provision-gateway.sh infra/pki/pki.sh infra/pki/test/run-tests.sh
+              infra/deploy/test/run-tests.sh infra/deploy/test/stubs/docker infra/deploy/test/stubs/curl infra/deploy/test/stubs/ssh infra/deploy/test/stubs/sudo
+              infra/backup/backup.sh infra/backup/restore-test.sh infra/broker/entrypoint.sh
+              infra/local/smoke-test.sh infra/compose/test/stack-test.sh infra/broker/test/broker-test.sh
+              gateway/render.sh gateway/mosquitto-entrypoint.sh gateway/test/gateway-test.sh
+              gateway/deploy.sh gateway/test/deploy-tests.sh gateway/test/stubs/docker gateway/test/stubs/rsync
+              gateway/migrate.sh gateway/start.sh gateway/test/stubs/timeout gateway/test/stubs/chown gateway/test/stubs/systemctl
+              gateway/test/stubs/curl gateway/test/stubs/ssh gateway/test/stubs/systemd-run gateway/test/stubs/tar gateway/test/stubs/cp gateway/test/stubs/cut gateway/test/stubs/timedatectl
+              gateway/backup/lib.sh gateway/backup/backup.sh gateway/backup/restore-test.sh gateway/backup/restic-job.sh
+              gateway/test/backup-tests.sh
+          - suite: scripts
+            run: bash infra/deploy/test/run-tests.sh && bash infra/pki/test/run-tests.sh
+          - suite: broker
+            run: bash infra/broker/test/broker-test.sh
+          - suite: gateway
+            run: bash gateway/test/gateway-test.sh
+          - suite: gateway-deploy
+            run: bash gateway/test/deploy-tests.sh
+          - suite: gateway-backup
+            run: bash gateway/test/backup-tests.sh
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: shellcheck
-        run: >
-          docker run --rm -v "$PWD:/mnt" -w /mnt koalaman/shellcheck:v0.11.0
-          infra/deploy/smart-deploy infra/deploy/deploy.sh infra/deploy/provision.sh infra/deploy/admin.sh
-          infra/deploy/broker-certs.sh infra/deploy/provision-gateway.sh infra/pki/pki.sh infra/pki/test/run-tests.sh
-          infra/deploy/test/run-tests.sh infra/deploy/test/stubs/docker infra/deploy/test/stubs/curl infra/deploy/test/stubs/ssh infra/deploy/test/stubs/sudo
-          infra/backup/backup.sh infra/backup/restore-test.sh infra/broker/entrypoint.sh
-          infra/local/smoke-test.sh infra/compose/test/stack-test.sh infra/broker/test/broker-test.sh
-          gateway/render.sh gateway/mosquitto-entrypoint.sh gateway/test/gateway-test.sh
-          gateway/deploy.sh gateway/test/deploy-tests.sh gateway/test/stubs/docker gateway/test/stubs/rsync
-          gateway/migrate.sh gateway/start.sh gateway/test/stubs/timeout gateway/test/stubs/chown gateway/test/stubs/systemctl
-          gateway/test/stubs/curl gateway/test/stubs/ssh gateway/test/stubs/systemd-run gateway/test/stubs/tar gateway/test/stubs/cp gateway/test/stubs/cut gateway/test/stubs/timedatectl
-          gateway/backup/lib.sh gateway/backup/backup.sh gateway/backup/restore-test.sh gateway/backup/restic-job.sh
-          gateway/test/backup-tests.sh
-      - name: deploy script tests
-        run: bash infra/deploy/test/run-tests.sh
-      - name: pki script tests
-        run: bash infra/pki/test/run-tests.sh
-      - name: broker tests
-        run: bash infra/broker/test/broker-test.sh
-      - name: gateway tests
-        run: bash gateway/test/gateway-test.sh
-      - name: gateway deploy tests
-        run: bash gateway/test/deploy-tests.sh
-      - name: gateway backup tests
-        run: bash gateway/test/backup-tests.sh
+      - name: ${{ matrix.suite }}
+        env:
+          SUITE_RUN: ${{ matrix.run }}
+        run: bash -ec "$SUITE_RUN"
+
+  ops:
+    name: ops
+    if: always()
+    needs: ops-suite
+    runs-on: ubuntu-24.04
+    steps:
+      - name: all ops suites passed
+        env:
+          RESULT: ${{ needs.ops-suite.result }}
+        run: '[ "$RESULT" = success ] || { echo "ops suites: $RESULT"; exit 1; }'
