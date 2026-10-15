@@ -5,8 +5,9 @@ import { MqttConnection } from '../src/platform/mqtt/index.js';
 const env = inject('testEnv');
 const random = (): string => Math.random().toString(16).slice(2);
 
-function app(clientId: string, errors: Error[] = []): MqttConnection {
+function app(clientId: string, errors: Error[] = [], awaitSubscriptions = false): MqttConnection {
   return new MqttConnection({
+    awaitSubscriptions,
     url: env.MQTT_URL,
     username: env.MQTT_USERNAME,
     password: env.MQTT_PASSWORD,
@@ -140,6 +141,51 @@ describe('MqttConnection session', () => {
           expect(seen).toContain('in-progress');
           expect(seen).toContain('after');
         });
+      } finally {
+        await second.close();
+      }
+    } finally {
+      await source.endAsync(true);
+    }
+  });
+});
+
+describe('MqttConnection replay on start', () => {
+  it('keeps the backlog until the app has subscribed, although the broker sends it first', async () => {
+    const clientId = `test-session-${random()}`;
+    const base = `gw/test-${random()}/x`;
+    const source = writer();
+    const first = app(clientId);
+    try {
+      await first.waitUntilConnected(5000);
+      await subscribed(first, source, base);
+      await first.close();
+      for (let index = 0; index < 50; index += 1) {
+        await source.publishAsync(`${base}/a`, `m${index}`, { qos: 1 });
+      }
+
+      const second = app(clientId, [], true);
+      try {
+        const seen: string[] = [];
+        // The app looks up its gateways first: the broker's replay is there before the subscription.
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        // A subscription of another filter that matches the topics must not take the backlog.
+        const wide: string[] = [];
+        second.subscribe(`gw/+/x/#`, (_topic, payload) => {
+          wide.push(payload.toString());
+        });
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        expect(seen).toEqual([]);
+        second.subscribe(`${base}/#`, (_topic, payload) => {
+          seen.push(payload.toString());
+        });
+        second.markSubscriptionsComplete();
+        const wanted = Array.from({ length: 50 }, (_, index) => `m${index}`);
+        await vi.waitFor(() => expect(seen.filter((value) => value !== 'probe')).toEqual(wanted), {
+          timeout: 10_000,
+        });
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        expect(seen.filter((value) => value !== 'probe')).toEqual(wanted);
       } finally {
         await second.close();
       }

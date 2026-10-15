@@ -229,16 +229,22 @@ export class DeviceIngestConsumer implements OnModuleInit, OnModuleDestroy {
       for (const gateway of await this.gateways.listActive()) {
         await this.follow(gateway.id, gateway.topicPrefix);
       }
-    }).catch((error: unknown) => {
-      if (this.failures.allow('start', this.clock())) {
-        this.logger.warn(`Cannot subscribe to the gateways yet: ${describeError(error)}`);
-      }
-      if (this.destroyed) return;
-      this.retry = setTimeout(() => {
-        this.subscribeToActiveGateways();
-      }, RETRY_MS);
-      this.retry.unref();
-    });
+    })
+      .then(() => {
+        // What the broker queued while the app was down is replayed on connecting, before the
+        // above: the connection holds it until the subscriptions are there.
+        this.mqtt.markSubscriptionsComplete();
+      })
+      .catch((error: unknown) => {
+        if (this.failures.allow('start', this.clock())) {
+          this.logger.warn(`Cannot subscribe to the gateways yet: ${describeError(error)}`);
+        }
+        if (this.destroyed) return;
+        this.retry = setTimeout(() => {
+          this.subscribeToActiveGateways();
+        }, RETRY_MS);
+        this.retry.unref();
+      });
   }
 
   /** Resolves when the messages and gateway changes received so far are processed. */

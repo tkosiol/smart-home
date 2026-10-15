@@ -37,6 +37,11 @@ class FakeMqtt {
   readonly unsubscribed: string[] = [];
   /** The filters that were let go of with `keepSession` (the broker still has them). */
   readonly kept: string[] = [];
+  complete = 0;
+
+  markSubscriptionsComplete(): void {
+    this.complete += 1;
+  }
 
   subscribe(filter: string, handler: MqttMessageHandler, options?: SubscribeOptions): Unsubscribe {
     const entry = { filter, handler };
@@ -227,6 +232,33 @@ describe('DeviceIngestConsumer', () => {
       await consumer.idle();
       expect(mqtt.unsubscribed).toEqual([`${prefix(OTHER)}/#`]);
       expect(mqtt.filters).toEqual([`${prefix(GW)}/#`]);
+    });
+
+    it('tells the connection when the subscriptions are made, not before the gateways are known', async () => {
+      vi.useFakeTimers();
+      try {
+        const listActive = vi
+          .fn<GatewaysService['listActive']>()
+          .mockRejectedValueOnce(new Error('relation "gateways" does not exist'))
+          .mockResolvedValue(active);
+        consumer = new DeviceIngestConsumer(
+          { listActive } as unknown as GatewaysService,
+          events,
+          { listNames } as unknown as HardwareRepository,
+          { handle },
+          mqtt as unknown as MqttConnection,
+          () => now,
+        );
+        consumer.onModuleInit();
+        await consumer.idle();
+        expect(mqtt.complete).toBe(0);
+        await vi.advanceTimersByTimeAsync(5000);
+        await consumer.idle();
+        expect(mqtt.filters).toEqual([`${prefix(GW)}/#`]);
+        expect(mqtt.complete).toBe(1);
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it('tries again when the database is not there on start', async () => {

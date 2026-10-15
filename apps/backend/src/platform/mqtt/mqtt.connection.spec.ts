@@ -255,6 +255,13 @@ describe('MqttConnection acknowledgements', () => {
       await deliver('gw/b/z2m/x', idOf(0));
       expect(handler).not.toHaveBeenCalled();
     });
+
+    it('delivers by topic a copy with an identifier of no subscription when a filter matches', async () => {
+      const handler = vi.fn();
+      connection.subscribe('gw/+/z2m/#', handler);
+      await deliver('gw/b/z2m/x', 12_345);
+      expect(handler).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('acknowledgement time limit', () => {
@@ -346,6 +353,123 @@ describe('MqttConnection acknowledgements', () => {
     it('still unsubscribes at the broker on a plain unsubscribe', () => {
       connection.subscribe('a/#', vi.fn())();
       expect(client.unsubscribe).toHaveBeenCalledWith('a/#');
+    });
+  });
+
+  describe('replayed messages before the subscriptions are made', () => {
+    const gated = (): InstanceType<typeof MqttConnection> => {
+      client = new FakeClient();
+      mocks.client = client;
+      return new MqttConnection({
+        ...settings,
+        awaitSubscriptions: true,
+        onError: (error) => errors.push(error),
+      });
+    };
+    /** The identifier a filter gets, as a process that has subscribed to it would use. */
+    const idFor = (filter: string): number => {
+      const other = new FakeClient();
+      mocks.client = other;
+      new MqttConnection(settings).subscribe(filter, () => undefined);
+      const options = other.subscribe.mock.calls[0]?.[1] as {
+        properties: { subscriptionIdentifier: number };
+      };
+      return options.properties.subscriptionIdentifier;
+    };
+
+    it('holds a copy of a subscription that is not made yet, and hands it over when it is', async () => {
+      const id = idFor('gw/a/z2m/#');
+      const gate = gated();
+      const acked = vi.fn();
+      void deliver('gw/a/z2m/x', id).then(acked);
+      await settle();
+      expect(acked).not.toHaveBeenCalled();
+
+      const handler = vi.fn();
+      gate.subscribe('gw/a/z2m/#', handler, { ackAfterHandler: true });
+      await settle();
+      expect(handler).toHaveBeenCalledTimes(1);
+      expect(acked).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not give a held copy to another filter that matches the topic', async () => {
+      const id = idFor('gw/a/z2m/#');
+      const gate = gated();
+      const wide = vi.fn();
+      gate.subscribe('gw/+/z2m/#', wide);
+      const acked = vi.fn();
+      void deliver('gw/a/z2m/x', id).then(acked);
+      await settle();
+      expect(wide).not.toHaveBeenCalled();
+      expect(acked).not.toHaveBeenCalled();
+    });
+
+    it('acknowledges and drops what no subscription is made for once the application is ready', async () => {
+      const id = idFor('gw/revoked/z2m/#');
+      const gate = gated();
+      const acked = vi.fn();
+      void deliver('gw/revoked/z2m/x', id).then(acked);
+      await settle();
+      expect(acked).not.toHaveBeenCalled();
+
+      gate.markSubscriptionsComplete();
+      await settle();
+      expect(acked).toHaveBeenCalledTimes(1);
+
+      // From now on at once.
+      await deliver('gw/revoked/z2m/y', id);
+    });
+
+    it('still delivers by identifier while the gate is closed', async () => {
+      const gate = gated();
+      const handler = vi.fn();
+      gate.subscribe('gw/a/z2m/#', handler);
+      await deliver('gw/a/z2m/x', idOf(0));
+      expect(handler).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not hold anything unless asked to', async () => {
+      await deliver('gw/a/z2m/x', 4711);
+    });
+  });
+
+  describe('identifier collisions', () => {
+    // Two filters whose identifiers are the same number (found by search): the second gets the next.
+    const first = 'gw/c9755/z2m/#';
+    const second = 'gw/c28751/z2m/#';
+
+    it('gives colliding filters different identifiers and warns once per filter', () => {
+      connection.subscribe(first, () => undefined);
+      connection.subscribe(second, () => undefined);
+      connection.subscribe(second, () => undefined);
+      expect(idOf(1)).not.toBe(idOf(0));
+      expect(errors).toHaveLength(1);
+      expect(errors[0]?.message).toContain('identifier');
+      expect(errors[0]?.message).toContain(second);
+    });
+
+    it('delivers a copy whose identifier belongs to another filter by topic instead of dropping it', async () => {
+      const handler = vi.fn();
+      connection.subscribe(first, vi.fn());
+      connection.subscribe(second, handler, { ackAfterHandler: true });
+      // Queued by an earlier process, where the second filter had the first one's identifier.
+      await deliver('gw/c28751/z2m/x', idOf(0));
+      expect(handler).toHaveBeenCalledTimes(1);
+    });
+
+    it('waits for the gating handler of such a copy', async () => {
+      let finish: () => void = () => undefined;
+      connection.subscribe(first, vi.fn());
+      connection.subscribe(second, () => new Promise<void>((resolve) => (finish = resolve)), {
+        ackAfterHandler: true,
+      });
+      const acked = vi.fn();
+      void deliver('gw/c28751/z2m/x', idOf(0)).then(acked);
+      await settle();
+      expect(acked).not.toHaveBeenCalled();
+      finish();
+      await settle();
+      expect(acked).toHaveBeenCalledTimes(1);
     });
   });
 });

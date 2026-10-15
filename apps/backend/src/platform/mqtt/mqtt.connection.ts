@@ -6,6 +6,15 @@ export interface MqttSettings {
   username: string;
   password: string;
   clientId: string;
+  /**
+   * With a persistent session the broker replays what it queued right after connecting, before
+   * the application has made its subscriptions (it may have to look them up first). With this
+   * set, a copy that no subscription is there for yet is held (not acknowledged: mqtt.js handles
+   * one message at a time, so what follows waits too, and the broker keeps all of it) until a
+   * matching subscription appears or `markSubscriptionsComplete()` is called. Without it, such
+   * a copy is dealt with at once.
+   */
+  awaitSubscriptions?: boolean;
   onError?: (error: Error) => void;
 }
 
@@ -75,10 +84,15 @@ export class MqttConnection {
   /** Timers of the copies that wait for their gating handlers, cleared on close. */
   private readonly ackTimers = new Set<NodeJS.Timeout>();
   private closed = false;
+  private subscriptionsComplete: boolean;
+  private held: { packet: IPublishPacket; callback: () => void }[] = [];
+  /** Filters whose identifier collided with another's, so that the warning comes once. */
+  private readonly collided = new Set<string>();
   private readonly onError: (error: Error) => void;
 
   constructor(settings: MqttSettings) {
     this.onError = (error) => settings.onError?.(error);
+    this.subscriptionsComplete = !settings.awaitSubscriptions;
     this.client = connect(settings.url, {
       username: settings.username,
       password: settings.password,
@@ -129,6 +143,8 @@ export class MqttConnection {
       released: false,
     };
     this.subscriptions.add(subscription);
+    // A held copy may be waiting for this one.
+    if (this.held.length > 0) queueMicrotask(() => this.releaseHeld());
     const asked = this.levels.get(filter);
     // One subscription per filter at the broker, with the highest QoS any handler asked for.
     if (asked === undefined || qos > asked) {
@@ -167,8 +183,33 @@ export class MqttConnection {
   private identifierFor(filter: string): number {
     const used = new Set(this.identifiers.values());
     let id = (hash(filter) % MAX_IDENTIFIER) + 1;
-    while (used.has(id)) id = (id % MAX_IDENTIFIER) + 1;
+    let probed = false;
+    while (used.has(id)) {
+      probed = true;
+      id = (id % MAX_IDENTIFIER) + 1;
+    }
+    // Copies queued by an earlier process may carry the other number; they are found by topic.
+    if (probed && !this.collided.has(filter)) {
+      this.collided.add(filter);
+      this.onError(new Error(`subscription identifier collision for filter ${filter}`));
+    }
     return id;
+  }
+
+  /**
+   * Tells that the application has made the subscriptions it makes on start. Copies held for
+   * lack of a subscription are dealt with now, and from here on copies of subscriptions nobody
+   * has (a gateway revoked while the app was down) are acknowledged and dropped.
+   */
+  markSubscriptionsComplete(): void {
+    this.subscriptionsComplete = true;
+    this.releaseHeld();
+  }
+
+  private releaseHeld(): void {
+    const waiting = this.held;
+    this.held = [];
+    for (const { packet, callback } of waiting) this.dispatch(packet, callback);
   }
 
   /**
@@ -184,12 +225,24 @@ export class MqttConnection {
     const gating: PromiseLike<unknown>[] = [];
     const gatingFilters = new Set<string>();
     let held = false;
-    for (const { filter, id, handler, ackAfterHandler, released } of [...this.subscriptions]) {
-      // The topic is checked as well: an identifier that an earlier process gave to another filter
-      // (the broker keeps those) must not send a message to the wrong handler.
-      const matches =
-        matchesFilter(filter, topic) && (identifiers === undefined || identifiers.includes(id));
-      if (!matches) continue;
+    const current = [...this.subscriptions];
+    // The topic is checked as well: an identifier that an earlier process gave to another filter
+    // (the broker keeps those) must not send a message to the wrong handler.
+    let targets = current.filter(
+      ({ filter, id }) =>
+        matchesFilter(filter, topic) && (identifiers === undefined || identifiers.includes(id)),
+    );
+    if (targets.length === 0 && identifiers !== undefined) {
+      if (!this.subscriptionsComplete) {
+        // Perhaps the subscription it is for is not made yet: wait for it, unacknowledged.
+        this.held.push({ packet, callback });
+        return;
+      }
+      // Its identifier is nobody's (a subscription of an earlier process, or a collision that went
+      // the other way there): by topic, rather than lose it.
+      targets = current.filter(({ filter }) => matchesFilter(filter, topic));
+    }
+    for (const { filter, handler, ackAfterHandler, released } of targets) {
       if (released) {
         held = true;
         continue;

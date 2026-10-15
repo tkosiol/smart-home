@@ -33,6 +33,8 @@ class MqttLifecycle implements OnApplicationShutdown {
           username: env.MQTT_USERNAME,
           password: env.MQTT_PASSWORD,
           clientId: env.MQTT_CLIENT_ID,
+          // The device ingest says when its subscriptions are made (it looks the gateways up first).
+          awaitSubscriptions: true,
           onError: (error) => logger.warn(`broker connection error: ${error.message}`),
         });
       },
