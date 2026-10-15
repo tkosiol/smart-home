@@ -62,6 +62,11 @@ async function shown(page: OpenedHouseholdPage, text: string) {
 }
 
 describe('gateway overview block', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
   it('is registered as a hidden, lazy block for owners', async () => {
     TestBed.configureTestingModule({ providers: [provideGatewaysFeature()] });
     const blocks = TestBed.runInInjectionContext(() => injectOverviewBlocks());
@@ -107,5 +112,23 @@ describe('gateway overview block', () => {
   it('says so when no gateway is registered', async () => {
     const page = await open([]);
     await shown(page, 'Noch kein Gateway registriert.');
+  });
+
+  it('asks once when the tick and the tab coming back meet a slow refresh', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    const page = await open([gateway('gw-aaaaaaaa', 'Flur')]);
+    const gets = () => page.calls.filter((call) => call.path.endsWith('/gateways'));
+    await flush(page);
+    expect(gets()).toHaveLength(1);
+    const release = page.hold();
+    await vi.advanceTimersByTimeAsync(60_500);
+    document.dispatchEvent(new Event('visibilitychange'));
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(gets()).toHaveLength(2);
+    release();
+    await flush(page);
+    document.dispatchEvent(new Event('visibilitychange'));
+    await flush(page);
+    expect(gets()).toHaveLength(3);
   });
 });

@@ -13,7 +13,7 @@
       [attr.spellcheck]="verbatim() ? 'false' : null"
       [attr.autocapitalize]="verbatim() ? 'off' : null"
       [attr.autocorrect]="verbatim() ? 'off' : null"
-      [attr.name]="name() ?? null"
+      [name]="name() ?? ''"
       (input)="onInput($event)"
     ></textarea>
   } @else {
@@ -30,7 +30,7 @@
       [attr.autocapitalize]="verbatim() ? 'off' : null"
       [attr.autocorrect]="verbatim() ? 'off' : null"
       [attr.inputmode]="inputmode() ?? null"
-      [attr.name]="name() ?? null"
+      [name]="name() ?? ''"
       (input)="onInput($event)"
     />
   }

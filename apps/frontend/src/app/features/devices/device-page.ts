@@ -29,7 +29,7 @@ import {
 import { UiTextField } from '@smart/ui/forms';
 import { ApiError } from '../../core/api';
 import { HouseholdContext, injectHouseholdErrorHandler } from '../../core/household';
-import { isNetworkFailure, refreshWhileVisible } from '../../core/refresh';
+import { RefreshGuard, isNetworkFailure, refreshWhileVisible } from '../../core/refresh';
 import { CapabilityLabel } from './capability-label';
 import { heroOf, kindKey, sidePodsOf } from './device-hero';
 import { batteryPercent } from './device-values';
@@ -232,7 +232,7 @@ export class DevicePage {
   protected readonly busy = signal(false);
 
   private requests = 0;
-  private refreshing = false;
+  private readonly refresh = new RefreshGuard();
 
   constructor() {
     inject(DestroyRef).onDestroy(() => this.requests++);
@@ -244,10 +244,7 @@ export class DevicePage {
         void this.load(id);
       });
     });
-    refreshWhileVisible(() => {
-      this.refreshing = true;
-      void this.load(this.currentId()).finally(() => (this.refreshing = false));
-    });
+    refreshWhileVisible(this.refresh, () => this.load(this.currentId()));
   }
 
   private async load(householdId: string | undefined): Promise<void> {
@@ -266,7 +263,7 @@ export class DevicePage {
         // The household path answers 404 for an unknown device too: the page says so itself.
         this.device.set(null);
         this.notFound.set(true);
-      } else if (!(this.refreshing && isNetworkFailure(error))) {
+      } else if (!(this.refresh.refreshing() && isNetworkFailure(error))) {
         this.handleError(error);
       }
     }

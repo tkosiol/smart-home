@@ -238,6 +238,23 @@ describe('devices page', () => {
       expect(requests(page, 'GET', '/devices')).toHaveLength(2);
     });
 
+    it('asks once when the tick and the tab coming back meet a slow refresh', async () => {
+      vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+      const page = await open({ devices: [sensor], hardware: [newSensor] });
+      await flush(page);
+      const release = page.hold();
+      await vi.advanceTimersByTimeAsync(60_500);
+      document.dispatchEvent(new Event('visibilitychange'));
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(requests(page, 'GET', '/devices')).toHaveLength(2);
+      expect(requests(page, 'GET', '/hardware?state=unassigned')).toHaveLength(2);
+      release();
+      await flush(page);
+      document.dispatchEvent(new Event('visibilitychange'));
+      await flush(page);
+      expect(requests(page, 'GET', '/devices')).toHaveLength(3);
+    });
+
     it('keeps the values and stays quiet when a refresh finds no connection', async () => {
       vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
       const page = await open({ devices: [sensor] });

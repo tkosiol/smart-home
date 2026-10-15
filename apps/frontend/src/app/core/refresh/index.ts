@@ -1,1 +1,6 @@
-export { REFRESH_MS, isNetworkFailure, refreshWhileVisible } from './refresh-while-visible';
+export {
+  REFRESH_MS,
+  RefreshGuard,
+  isNetworkFailure,
+  refreshWhileVisible,
+} from './refresh-while-visible';

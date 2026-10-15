@@ -1,6 +1,6 @@
 import { DestroyRef, computed, effect, inject, untracked, type Signal } from '@angular/core';
 import type { AttentionItem } from '@smart/contracts';
-import { isNetworkFailure, refreshWhileVisible } from '../../core/refresh';
+import { RefreshGuard, refreshWhileVisible } from '../../core/refresh';
 import { HouseholdContext, injectHouseholdErrorHandler, LoadedList } from '../../core/household';
 import { AttentionApi, type DeviceSummary } from './attention.api';
 
@@ -24,10 +24,8 @@ export function injectAttention(wantSummary: Signal<boolean>): Attention {
   const api = inject(AttentionApi);
   const handleError = injectHouseholdErrorHandler();
   const currentId = computed(() => household.current()?.id);
-  let refreshing = false;
-  const onError = (error: unknown) => {
-    if (!(refreshing && isNetworkFailure(error))) handleError(error);
-  };
+  const refresh = new RefreshGuard();
+  const onError = refresh.quietNetworkFailure(handleError);
 
   const notices = new LoadedList<AttentionItem>((id) => api.list(id), onError);
   const devices = new LoadedList<DeviceSummary>(
@@ -53,10 +51,7 @@ export function injectAttention(wantSummary: Signal<boolean>): Attention {
     const id = currentId();
     if (calm && wantSummary()) untracked(() => void devices.load(id, true));
   });
-  refreshWhileVisible(() => {
-    refreshing = true;
-    void notices.load(currentId(), true).finally(() => (refreshing = false));
-  });
+  refreshWhileVisible(refresh, () => notices.load(currentId(), true));
 
   const summary = computed(() => (devices.loaded() ? (devices.items()[0] ?? null) : null));
   return { items: notices.items, loaded: notices.loaded, summary };

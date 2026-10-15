@@ -49,7 +49,9 @@
     var(--smart-motion-easing-standard);
 }
 
-.link:hover {
+// With the host in the selector: the variants above set a background on `.entry` too, and the
+// hover of a linked row or bare entry must outrank them.
+:host([data-variant]) .link:hover {
   background: var(--mat-sys-surface-container-high);
 }
 

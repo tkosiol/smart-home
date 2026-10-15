@@ -279,6 +279,22 @@ describe('device page', () => {
       ).toBe('Thymian');
     });
 
+    it('asks once when the tick and the tab coming back meet a slow refresh', async () => {
+      vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+      const page = await open();
+      await flush(page);
+      const release = page.hold();
+      await vi.advanceTimersByTimeAsync(60_500);
+      document.dispatchEvent(new Event('visibilitychange'));
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(gets(page)).toHaveLength(2);
+      release();
+      await flush(page);
+      document.dispatchEvent(new Event('visibilitychange'));
+      await flush(page);
+      expect(gets(page)).toHaveLength(3);
+    });
+
     it('does not load while the tab is hidden', async () => {
       vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
       const page = await open();

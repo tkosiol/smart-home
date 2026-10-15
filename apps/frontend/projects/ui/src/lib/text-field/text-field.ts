@@ -23,6 +23,7 @@ export class UiTextField {
   readonly autocomplete = input<string>();
   /** Keyboard hint on touch devices, e.g. `numeric` for a code of digits. */
   readonly inputmode = input<'text' | 'numeric' | 'decimal' | 'email' | 'tel' | 'search' | 'url'>();
+  /** The native control's `name`. (Bound to `MatInput`, whose own host binding owns the attribute.) */
   readonly name = input<string>();
   /** A textarea instead of a single-line input, for text with line breaks (e.g. a pasted PEM). */
   readonly multiline = input(false, { transform: booleanAttribute });

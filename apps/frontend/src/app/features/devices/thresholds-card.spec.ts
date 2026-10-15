@@ -48,10 +48,12 @@ const card = (page: OpenedHouseholdPage) =>
 const cardText = (page: OpenedHouseholdPage) => pageText(card(page));
 const field = (page: OpenedHouseholdPage, key: string) =>
   page.element.querySelector<HTMLInputElement>(
-    `app-thresholds-card ui-text-field[name="${key}"] input`,
+    `app-thresholds-card ui-text-field input[name="${key}"]`,
   );
 const fields = (page: OpenedHouseholdPage) =>
-  [...card(page).querySelectorAll('ui-text-field')].map((field) => field.getAttribute('name'));
+  [...card(page).querySelectorAll('ui-text-field input')].map((field) =>
+    field.getAttribute('name'),
+  );
 const patches = (page: OpenedHouseholdPage) => page.calls.filter((call) => call.method === 'PATCH');
 
 function type(page: OpenedHouseholdPage, key: string, value: string) {

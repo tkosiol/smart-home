@@ -11,7 +11,7 @@ import { TranslocoPipe } from '@jsverse/transloco';
 import type { Gateway, GatewayStatus } from '@smart/contracts';
 import { UiRelativeTimePipe, UiStack, UiStatusEntry, type UiStatusEntryTone } from '@smart/ui';
 import { HouseholdContext, injectHouseholdErrorHandler, LoadedList } from '../../core/household';
-import { isNetworkFailure, refreshWhileVisible } from '../../core/refresh';
+import { RefreshGuard, refreshWhileVisible } from '../../core/refresh';
 import { GatewaysApi } from './gateways.api';
 import { provideGatewaysTexts } from './gateways-texts';
 
@@ -50,16 +50,20 @@ const TONE: Record<GatewayStatus, UiStatusEntryTone> = {
           [kindTone]="row.tone"
           [title]="row.gateway.name"
           [subtitle]="
-            (row.state === 'online'
-              ? ('gateways.block.online' | transloco)
-              : row.state === 'offline'
-                ? ('gateways.block.offline' | transloco)
-                : ('gateways.block.unknown' | transloco)) +
-            ' · ' +
-            (row.gateway.lastMessageAt
-              ? ('gateways.entry.lastMessage'
-                | transloco: { time: row.gateway.lastMessageAt | uiRelativeTime })
-              : ('gateways.entry.noMessage' | transloco))
+            'gateways.block.subtitle'
+              | transloco
+                : {
+                    state:
+                      row.state === 'online'
+                        ? ('gateways.block.online' | transloco)
+                        : row.state === 'offline'
+                          ? ('gateways.block.offline' | transloco)
+                          : ('gateways.block.unknown' | transloco),
+                    message: row.gateway.lastMessageAt
+                      ? ('gateways.entry.lastMessage'
+                        | transloco: { time: row.gateway.lastMessageAt | uiRelativeTime })
+                      : ('gateways.entry.noMessage' | transloco),
+                  }
           "
           route="/mehr/gateways"
         />
@@ -77,13 +81,11 @@ export class GatewayBlock {
   private readonly api = inject(GatewaysApi);
   private readonly handleError = injectHouseholdErrorHandler();
   private readonly currentId = computed(() => this.household.current()?.id);
-  private refreshing = false;
+  private readonly refresh = new RefreshGuard();
 
   protected readonly gateways = new LoadedList<Gateway>(
     (id) => this.api.list(id),
-    (error) => {
-      if (!(this.refreshing && isNetworkFailure(error))) this.handleError(error);
-    },
+    this.refresh.quietNetworkFailure((error) => this.handleError(error)),
   );
   /** A revoked gateway no longer reports: the block leaves it out. */
   protected readonly rows = computed(() =>
@@ -103,9 +105,6 @@ export class GatewayBlock {
       const id = this.currentId();
       untracked(() => void this.gateways.load(id));
     });
-    refreshWhileVisible(() => {
-      this.refreshing = true;
-      void this.gateways.load(this.currentId(), true).finally(() => (this.refreshing = false));
-    });
+    refreshWhileVisible(this.refresh, () => this.gateways.load(this.currentId(), true));
   }
 }

@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { stateFile } from '../helpers/accounts';
+import { resetOverviewLayout } from '../helpers/households';
 
 // The overview of `theme`, in the household where `devices.spec.ts` registered the simulator (that
 // spec has finished: this one runs in its own project after it, see `playwright.config.ts`, so
@@ -20,22 +21,11 @@ const blocks = (page: Page) =>
 test.describe.serial('the overview of the simulator household', () => {
   test.describe.configure({ timeout: 90_000 });
 
-  test.afterAll(async ({ browser }) => {
-    // Whatever failed, leave the layout as a new user has it.
-    const context = await browser.newContext({ storageState: stateFile('theme') });
-    try {
-      const page = await context.newPage();
-      await page.goto('/');
-      await expect(heading(page, 'Übersicht')).toBeVisible();
-      await openSheet(page);
-      await sheet(page).getByRole('button', { name: 'Zurücksetzen' }).click();
-      await expect(sheet(page)).toBeHidden();
-      // Closing the context too early would cancel the request that deletes the layout.
-      await expect(blocks(page).first()).toHaveJSProperty('localName', 'app-status-block');
-    } finally {
-      await context.close();
-    }
-  });
+  // A layout left by an earlier run or a failed test must not decide what these tests see, and
+  // whatever failed, the layout is left as a new user has it. Through the API, not the page: the
+  // sheet may be the thing that is broken.
+  test.beforeAll(() => resetOverviewLayout('theme'));
+  test.afterAll(() => resetOverviewLayout('theme'));
 
   test('shows the hero with the notices of the simulator', async ({ page }) => {
     await page.goto('/');

@@ -33,6 +33,8 @@ export async function openHouseholdPage(
 ) {
   const calls: RecordedCall[] = [];
   const state = { me };
+  // While a gate is up, answers to every request but `GET /me` wait for it (a slow server).
+  let gate: Promise<void> | undefined;
   const snackbar = { show: vi.fn().mockResolvedValue(undefined) };
   const harness = await setupPage([...routes, { path: '**', children: [] }], language, [
     {
@@ -45,6 +47,7 @@ export async function openHouseholdPage(
         };
         calls.push(call);
         if (call.method === 'GET' && call.path === '/api/v1/me') return json(state.me);
+        await gate;
         return respond(call);
       },
     },
@@ -64,6 +67,15 @@ export async function openHouseholdPage(
     router: TestBed.inject(Router),
     auth: TestBed.inject(AuthService),
     household: TestBed.inject(HouseholdContext),
+    /** Makes the server slow from now on; the returned function lets the waiting answers go. */
+    hold(): () => void {
+      let open!: () => void;
+      gate = new Promise<void>((resolve) => (open = resolve));
+      return () => {
+        gate = undefined;
+        open();
+      };
+    },
   };
 }
 

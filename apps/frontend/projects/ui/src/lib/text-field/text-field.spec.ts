@@ -57,6 +57,21 @@ class VerbatimHost {
   readonly text = signal('');
 }
 
+@Component({
+  imports: [UiTextField],
+  template: `<ui-text-field
+    label="Name"
+    [name]="name()"
+    [multiline]="multiline()"
+    [(value)]="text"
+  />`,
+})
+class NamedHost {
+  readonly name = signal<string | undefined>('threshold');
+  readonly multiline = signal(false);
+  readonly text = signal('');
+}
+
 function render() {
   const fixture = TestBed.createComponent(Host);
   fixture.detectChanges();
@@ -65,6 +80,28 @@ function render() {
 }
 
 describe('UiTextField', () => {
+  it('puts name on the native input, so a form and the browser see it', () => {
+    const fixture = TestBed.createComponent(NamedHost);
+    fixture.detectChanges();
+    const input = fixture.nativeElement.querySelector('input') as HTMLInputElement;
+    expect(input.getAttribute('name')).toBe('threshold');
+    expect(input.name).toBe('threshold');
+    fixture.componentInstance.name.set('other');
+    fixture.detectChanges();
+    expect(input.getAttribute('name')).toBe('other');
+    fixture.componentInstance.name.set(undefined);
+    fixture.detectChanges();
+    expect(input.hasAttribute('name')).toBe(false);
+  });
+
+  it('puts name on the textarea of a multiline field too', () => {
+    const fixture = TestBed.createComponent(NamedHost);
+    fixture.componentInstance.multiline.set(true);
+    fixture.detectChanges();
+    const area = fixture.nativeElement.querySelector('textarea') as HTMLTextAreaElement;
+    expect(area.getAttribute('name')).toBe('threshold');
+  });
+
   it('labels the input and passes type and autocomplete', () => {
     const { fixture, input } = render();
     const label = fixture.nativeElement.querySelector('label') as HTMLLabelElement;

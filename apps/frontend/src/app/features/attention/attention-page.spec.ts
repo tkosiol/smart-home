@@ -9,7 +9,7 @@ import {
   pageText,
   type OpenedHouseholdPage,
 } from '../../testing/household-page-testing';
-import { attentionRoutes } from './attention.routes';
+import { attentionRoutes } from '.';
 import { attentionItem, attentionServer, manyNotices } from './attention-testing';
 
 const routes = [{ path: 'hinweise', loadChildren: () => attentionRoutes }];
@@ -267,6 +267,21 @@ describe('attention page', () => {
       await flush(page);
       expect(gets(page)).toHaveLength(2);
       expect(pageText(page.element)).toContain('Nichts zu tun');
+    });
+
+    it('asks once when the tick and the tab coming back meet a slow refresh', async () => {
+      vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+      const page = await open({ items: mixed() });
+      const release = page.hold();
+      await vi.advanceTimersByTimeAsync(60_500);
+      document.dispatchEvent(new Event('visibilitychange'));
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(gets(page)).toHaveLength(2);
+      release();
+      await flush(page);
+      document.dispatchEvent(new Event('visibilitychange'));
+      await flush(page);
+      expect(gets(page)).toHaveLength(3);
     });
 
     it('does not load while the tab is hidden', async () => {

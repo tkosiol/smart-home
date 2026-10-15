@@ -45,7 +45,7 @@ import {
             <ui-stack gap="sm">
               @if (canEdit()) {
                 <ui-text-field
-                  [attr.name]="row.key"
+                  [name]="row.key"
                   autocomplete="off"
                   inputmode="decimal"
                   [label]="(row.labelKey | transloco) + ' (' + (row.unitKey | transloco) + ')'"

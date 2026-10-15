@@ -16,7 +16,7 @@ import { UiTextField } from '@smart/ui/forms';
 import { ApiError } from '../../core/api';
 import { HouseholdContext, injectHouseholdErrorHandler, LoadedList } from '../../core/household';
 import { DeviceReading } from './device-reading';
-import { isNetworkFailure, refreshWhileVisible } from '../../core/refresh';
+import { RefreshGuard, refreshWhileVisible } from '../../core/refresh';
 import { isReading } from './device-values';
 import { DevicesApi } from './devices.api';
 
@@ -100,12 +100,10 @@ export class NewHardware {
   readonly added = output();
 
   private readonly currentId = computed(() => this.household.current()?.id);
-  private refreshing = false;
+  private readonly refresh = new RefreshGuard();
   protected readonly hardware = new LoadedList<Hardware>(
     (id) => this.api.unassignedHardware(id),
-    (error) => {
-      if (!(this.refreshing && isNetworkFailure(error))) this.handleError(error);
-    },
+    this.refresh.quietNetworkFailure((error) => this.handleError(error)),
   );
   /** Names the owner typed, by hardware id; hardware without an entry shows its own name. */
   private readonly names = signal<Readonly<Record<string, string>>>({});
@@ -122,10 +120,7 @@ export class NewHardware {
         void this.hardware.load(id);
       });
     });
-    refreshWhileVisible(() => {
-      this.refreshing = true;
-      void this.hardware.load(this.currentId(), true).finally(() => (this.refreshing = false));
-    });
+    refreshWhileVisible(this.refresh, () => this.hardware.load(this.currentId(), true));
   }
 
   protected readings(item: Hardware) {

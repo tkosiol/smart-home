@@ -131,6 +131,8 @@ export class DashboardPage {
   });
   private readonly components = signal<ReadonlyMap<string, Type<unknown>>>(new Map());
   private resolveRequests = 0;
+  /** The customise sheet is being opened or is open (or its answer is being saved). */
+  private customizing = false;
 
   protected readonly blocks = computed<Placed[]>(() => {
     const components = this.components();
@@ -160,8 +162,10 @@ export class DashboardPage {
       const id = this.currentId();
       untracked(() => void this.loadLayout(id));
     });
-    // Only blocks that are on show load their code: a hidden block stays out of the browser.
+    // Only blocks that are on show load their code: a hidden block stays out of the browser. Until
+    // the stored layout has arrived the defaults would decide, and load a block the user hid.
     effect(() => {
+      if (!this.ready()) return;
       const wanted = this.wanted().map(({ block }) => block);
       untracked(() => void this.resolve(wanted));
     });
@@ -205,7 +209,16 @@ export class DashboardPage {
   /** Opens "Übersicht anpassen"; "Fertig" saves, "Zurücksetzen" deletes, closing discards. */
   protected async customize(): Promise<void> {
     const householdId = this.currentId();
-    if (!householdId || !this.ready()) return;
+    if (!householdId || !this.ready() || this.customizing) return;
+    this.customizing = true;
+    try {
+      await this.runCustomize(householdId);
+    } finally {
+      this.customizing = false;
+    }
+  }
+
+  private async runCustomize(householdId: string): Promise<void> {
     const byId = new Map(this.known().map((block) => [block.id, block]));
     const blocks: CustomizeData['blocks'] = this.layout().blocks.flatMap((entry) => {
       const block = byId.get(entry.id);

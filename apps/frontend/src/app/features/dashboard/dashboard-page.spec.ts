@@ -90,6 +90,8 @@ interface Options {
   /** What the sheet answers, in order; the default is "closed without a result". */
   sheet?: (CustomizeResult | undefined)[];
   language?: Language;
+  /** The layout's GET answers only after this settles; `open` then does not wait for the page. */
+  gate?: Promise<void>;
 }
 
 async function open({
@@ -99,6 +101,7 @@ async function open({
   sheet = [],
   save,
   language = 'de',
+  gate,
 }: Options = {}) {
   const openSheet = vi.fn(() => Promise.resolve(sheet.shift()));
   TestBed.configureTestingModule({
@@ -115,9 +118,10 @@ async function open({
     {
       language,
       me: meWith([household], household.id),
-      respond: (call) => {
+      respond: async (call) => {
         if (call.path !== layoutPath) return new Response(null, { status: 204 });
         if (call.method === 'GET') {
+          await gate;
           return typeof stored === 'function' ? stored(call) : json(stored);
         }
         if (call.method === 'PUT') return save ? save(call) : json(call.body);
@@ -125,7 +129,7 @@ async function open({
       },
     },
   );
-  await rendered(page);
+  if (!gate) await rendered(page);
   return { ...page, openSheet, layoutPath };
 }
 
@@ -166,6 +170,30 @@ describe('dashboard page with blocks', () => {
     const loader = vi.fn(() => Promise.resolve(GatewayStub as Type<unknown>));
     const page = await open({ blocks: [STATUS, DEVICES, { ...GATEWAY, component: loader }] });
     expect(shown(page)).toEqual(['status', 'devices']);
+    expect(loader).not.toHaveBeenCalled();
+  });
+
+  it('loads no block before the stored layout has arrived', async () => {
+    // A block the user hid but that is visible by default must not load its code in the meantime.
+    const loader = vi.fn(() => Promise.resolve(DevicesStub as Type<unknown>));
+    let arrive!: () => void;
+    const gate = new Promise<void>((resolve) => (arrive = resolve));
+    const page = await open({
+      blocks: [STATUS, { ...DEVICES, component: loader }],
+      stored: {
+        blocks: [
+          { id: 'status', visible: true },
+          { id: 'devices', visible: false },
+        ],
+      },
+      gate,
+    });
+    await flush(page, 6);
+    expect(loader).not.toHaveBeenCalled();
+    expect(shown(page)).toEqual([]);
+    arrive();
+    await rendered(page);
+    expect(shown(page)).toEqual(['status']);
     expect(loader).not.toHaveBeenCalled();
   });
 
@@ -342,6 +370,25 @@ describe('the customise icon in the top bar', () => {
     // The page follows what was saved: the new order, `status` hidden but still asked to surface.
     expect(shown(page)).toEqual(['devices', 'status', 'gateway']);
     expect(page.element.querySelector('app-test-status')?.textContent).toBe('status visible=false');
+  });
+
+  it('opens the sheet once and saves once when the icon is pressed twice in a row', async () => {
+    const layout: OverviewLayout = { blocks: [{ id: 'devices', visible: true }] };
+    const page = await open({
+      sheet: [
+        { kind: 'save', layout },
+        { kind: 'save', layout },
+      ],
+    });
+    const action = TestBed.inject(TopBarActions).action();
+    action?.run();
+    action?.run();
+    await sheetOpened(page);
+    // Pressed again after the first one has ended: works as before.
+    expect(page.openSheet).toHaveBeenCalledTimes(1);
+    expect(page.calls.filter((call) => call.method === 'PUT')).toHaveLength(1);
+    action?.run();
+    await vi.waitFor(() => expect(page.openSheet).toHaveBeenCalledTimes(2));
   });
 
   it('deletes the stored layout on "Zurücksetzen" and shows the defaults', async () => {

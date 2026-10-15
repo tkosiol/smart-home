@@ -32,6 +32,35 @@ export const Standard: StoryObj<UiPage> = {
   },
 };
 
+/**
+ * The overview: the top app bar carries the title, so the h1 is for screen readers only. It stays
+ * in the accessibility tree and takes no room: the content starts at the page's top padding.
+ */
+export const UeberschriftVersteckt: StoryObj<UiPage> = {
+  render: () => ({
+    template: `
+      <ui-page heading="Übersicht" headingHidden>
+        <ui-section heading="Geräte"><p data-testid="content">Inhalt</p></ui-section>
+      </ui-page>`,
+  }),
+  play: async ({ canvas, canvasElement }) => {
+    const heading = canvas.getByRole('heading', { level: 1, name: 'Übersicht' });
+    await expect(heading).toBeInTheDocument();
+    // Clipped to nothing, out of the flow, and still focusable for the app's focus move.
+    await expect(getComputedStyle(heading).position).toBe('absolute');
+    await expect(getComputedStyle(heading).clipPath).not.toBe('none');
+    heading.focus();
+    await expect(heading).toHaveFocus();
+    const page = canvasElement.querySelector('ui-page')!;
+    const padding = parseFloat(getComputedStyle(page).paddingTop);
+    const section = canvas.getByRole('heading', { level: 2, name: 'Geräte' });
+    await expect(
+      Math.round(section.getBoundingClientRect().top - page.getBoundingClientRect().top),
+    ).toBeLessThan(Math.round(padding) + 8);
+    await expect(canvas.getByTestId('content')).toBeVisible();
+  },
+};
+
 export const SchmalMitLangenWoertern: StoryObj<UiPage> = {
   decorators: [withNarrowFrame],
   render: () => ({

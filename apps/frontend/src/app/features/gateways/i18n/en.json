@@ -43,6 +43,7 @@
     "online": "Gateway online",
     "offline": "Gateway offline",
     "unknown": "Status unknown",
+    "subtitle": "{{ state }} · {{ message }}",
     "empty": "No gateway registered yet."
   }
 }
