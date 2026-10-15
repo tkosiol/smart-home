@@ -2,7 +2,7 @@
 
 |        |                                                                                                                                                                                                   |
 | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Status | Entwurf (zur Prüfung durch Till)                                                                                                                                                                  |
+| Status | Freigegeben (Till, 2026-10-15)                                                                                                                                                                    |
 | Datum  | 2026-10-15                                                                                                                                                                                        |
 | Bezug  | Architektur-Spec Abschnitte 8.7, 8.8, 10; Spec Etappe 3 (Design-System); Spec Etappe 6a (Sensoren sehen); ADR-0011, ADR-0012; Design-Canvas (privat, bei Till), Richtung B und Zeile „B · Status“ |
 
