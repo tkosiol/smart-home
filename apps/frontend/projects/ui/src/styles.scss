@@ -18,6 +18,22 @@ body {
   font: var(--mat-sys-body-large);
 }
 
+// The live region of `UiAnnouncer`: present for screen readers, invisible on screen.
+.ui-announcer {
+  position: absolute;
+  width: var(--smart-border-width);
+  height: var(--smart-border-width);
+  margin: calc(var(--smart-border-width) * -1);
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+// The page behind an open sheet or dialog (`UiBottomSheet`) does not scroll.
+html:has(dialog:modal) {
+  overflow: hidden;
+}
+
 // Keeps a focused control scrolled into view clear of the fixed bottom bar (WCAG 2.4.11).
 :root:has(ui-adaptive-shell[data-window-class='compact']) {
   scroll-padding-bottom: var(--smart-size-nav-bar);

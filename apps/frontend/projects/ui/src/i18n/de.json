@@ -1,6 +1,8 @@
 {
   "ui": {
-    "snackbar": { "close": "Schließen" },
+    "snackbar": {
+      "close": "Schließen"
+    },
     "themeEditor": {
       "seed": "Grundfarbe",
       "seedPicker": "Grundfarbe auswählen",
@@ -41,7 +43,11 @@
       "derived": "Abgeleitet: {{hex}}",
       "display": "Darstellung",
       "mode": "Modus",
-      "modes": { "system": "System", "light": "Hell", "dark": "Dunkel" },
+      "modes": {
+        "system": "System",
+        "light": "Hell",
+        "dark": "Dunkel"
+      },
       "contrast": "Kontrast",
       "contrasts": {
         "system": "System",
@@ -55,7 +61,11 @@
       "installationColors": "Es gelten die Farben der Installation.",
       "shapeAndFont": "Formen und Schrift",
       "shape": "Formen",
-      "shapes": { "kantig": "Kantig", "standard": "Standard", "weich": "Weich" },
+      "shapes": {
+        "kantig": "Kantig",
+        "standard": "Standard",
+        "weich": "Weich"
+      },
       "font": "Schrift",
       "fonts": {
         "roboto-flex": "Roboto Flex",
@@ -63,6 +73,18 @@
         "atkinson": "Atkinson Hyperlegible Next"
       },
       "reset": "Auf Standard zurücksetzen"
+    },
+    "statusHero": {
+      "calm": "Alles in Ordnung",
+      "more": "Alle {{n}} Hinweise",
+      "criticalCount": "{{k}} kritisch"
+    },
+    "podRow": {
+      "previous": "Zurück blättern",
+      "next": "Weiter blättern"
+    },
+    "reorderList": {
+      "moved": "{{label}} an Position {{position}} von {{count}}"
     }
   }
 }

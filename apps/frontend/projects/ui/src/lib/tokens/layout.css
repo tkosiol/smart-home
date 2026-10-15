@@ -41,6 +41,14 @@
   --smart-line-height-icon: 1;
   /* Opacity of disabled content (M3 uses 38%) */
   --smart-opacity-disabled: 0.38;
+  /* M3 state layers on hover and while pressed; a pod waiting for its switch to be confirmed */
+  --smart-opacity-hover: 0.08;
+  --smart-opacity-pressed: 0.12;
+  --smart-opacity-pending: 0.6;
+  /* Drag handle of the bottom sheet (M3: 32 x 4 px) and the width of a dialog from medium up */
+  --smart-size-sheet-handle-width: 32px;
+  --smart-size-sheet-handle-height: 4px;
+  --smart-size-dialog-max: 560px;
   /* Motion */
   --smart-motion-duration-short: 150ms;
   --smart-motion-duration-medium: 300ms;

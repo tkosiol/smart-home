@@ -8,11 +8,21 @@ import {
   contentChild,
   input,
 } from '@angular/core';
-import { MATRIX_SEEDS, themeMatrixCells } from './theme-matrix';
+import { MATRIX_SEEDS, themeMatrixCells, type ThemeMatrixCell } from './theme-matrix';
 
-/** Marks the template a `ui-theme-matrix` renders once per combination. */
+/**
+ * Marks the template a `ui-theme-matrix` renders once per combination; the combination is the
+ * template's implicit context (`let-cell`), e.g. to keep landmark names unique across cells.
+ */
 @Directive({ selector: 'ng-template[uiMatrixCell]' })
-export class UiMatrixCell {}
+export class UiMatrixCell {
+  static ngTemplateContextGuard(
+    _directive: UiMatrixCell,
+    context: unknown,
+  ): context is { $implicit: ThemeMatrixCell } {
+    return typeof context === 'object' && context !== null;
+  }
+}
 
 /**
  * Storybook only: renders its cell template in the twelve combinations of spec 2.7 (two seeds ×

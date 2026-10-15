@@ -8,6 +8,11 @@
     [attr.aria-label]="combination.title"
   >
     <span class="caption">{{ combination.title }}</span>
-    <div class="content"><ng-container [ngTemplateOutlet]="cell()" /></div>
+    <div class="content">
+      <ng-container
+        [ngTemplateOutlet]="cell()"
+        [ngTemplateOutletContext]="{ $implicit: combination }"
+      />
+    </div>
   </section>
 }

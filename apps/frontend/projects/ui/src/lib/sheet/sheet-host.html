@@ -1,0 +1,5 @@
+<dialog #dialog class="dialog" [attr.data-presentation]="presentation()" (close)="onClosed()">
+  <div class="surface">
+    <ng-container *ngComponentOutlet="component()" />
+  </div>
+</dialog>

@@ -1,0 +1,31 @@
+@if (route(); as route) {
+  <a class="entry entry--link" [routerLink]="route">
+    <ng-container [ngTemplateOutlet]="content" />
+    @if (!severityLabel()) {
+      <ui-icon class="chevron" name="chevron_right" size="sm" />
+    }
+  </a>
+} @else {
+  <div class="entry">
+    <ng-container [ngTemplateOutlet]="content" />
+  </div>
+}
+
+<ng-template #content>
+  <span class="leading-container" [attr.data-tone]="kindTone()" aria-hidden="true">
+    <ui-icon [name]="icon()" />
+  </span>
+  <span class="texts">
+    <span class="title">{{ title() }}</span>
+    @if (subtitle(); as subtitle) {
+      <span class="subtitle">{{ subtitle }}</span>
+    }
+  </span>
+  @if (value(); as value) {
+    <span class="value" [attr.data-tone]="familyTone()">{{ value }}</span>
+  }
+  @if (severityLabel(); as severityLabel) {
+    <span class="severity" [attr.data-tone]="familyTone()">{{ severityLabel }}</span>
+  }
+  <ng-content />
+</ng-template>

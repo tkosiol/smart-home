@@ -1,6 +1,8 @@
 {
   "ui": {
-    "snackbar": { "close": "Close" },
+    "snackbar": {
+      "close": "Close"
+    },
     "themeEditor": {
       "seed": "Seed color",
       "seedPicker": "Choose seed color",
@@ -41,7 +43,11 @@
       "derived": "Derived: {{hex}}",
       "display": "Display",
       "mode": "Mode",
-      "modes": { "system": "System", "light": "Light", "dark": "Dark" },
+      "modes": {
+        "system": "System",
+        "light": "Light",
+        "dark": "Dark"
+      },
       "contrast": "Contrast",
       "contrasts": {
         "system": "System",
@@ -55,7 +61,11 @@
       "installationColors": "The installation's colors apply.",
       "shapeAndFont": "Shapes and font",
       "shape": "Shapes",
-      "shapes": { "kantig": "Sharp", "standard": "Standard", "weich": "Soft" },
+      "shapes": {
+        "kantig": "Sharp",
+        "standard": "Standard",
+        "weich": "Soft"
+      },
       "font": "Font",
       "fonts": {
         "roboto-flex": "Roboto Flex",
@@ -63,6 +73,18 @@
         "atkinson": "Atkinson Hyperlegible Next"
       },
       "reset": "Reset to default"
+    },
+    "statusHero": {
+      "calm": "All is well",
+      "more": "All {{n}} notices",
+      "criticalCount": "{{k}} critical"
+    },
+    "podRow": {
+      "previous": "Scroll back",
+      "next": "Scroll forward"
+    },
+    "reorderList": {
+      "moved": "{{label}} at position {{position}} of {{count}}"
     }
   }
 }

@@ -1,0 +1,165 @@
+@use '../tone';
+
+// Pods are 140 x 116 px (spec 2.5); in a `ui-pod-row` they snap to its start edge.
+:host {
+  display: block;
+  flex: none;
+  width: var(--smart-size-pod-width);
+  min-width: 0;
+  scroll-snap-align: start;
+}
+
+.pod {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: var(--smart-space-sm);
+  box-sizing: border-box;
+  width: 100%;
+  height: var(--smart-size-pod-height);
+  margin: 0;
+  padding: var(--smart-space-md);
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--smart-shape-pod);
+  font: var(--mat-sys-body-medium);
+  text-align: start;
+  text-decoration: none;
+  transition-property: background-color, color, opacity, transform;
+  transition-duration: var(--smart-motion-duration-medium);
+  transition-timing-function: var(--smart-motion-easing-standard);
+}
+
+// The fills of spec 2.4, one per device kind: a lit lamp primary, an unlit one (`off`) the
+// highest surface container, soil tertiary, climate and contact secondary, other the neutral
+// surface. Written out instead of the tone mixin: five rules instead of nineteen.
+.pod[data-tone='primary'] {
+  background: var(--mat-sys-primary);
+  color: var(--mat-sys-on-primary);
+}
+
+.pod[data-tone='off'] {
+  background: var(--mat-sys-surface-container-highest);
+  color: var(--mat-sys-on-surface);
+}
+
+.pod[data-tone='tertiary-container'] {
+  background: var(--mat-sys-tertiary-container);
+  color: var(--mat-sys-on-tertiary-container);
+}
+
+.pod[data-tone='secondary-container'] {
+  background: var(--mat-sys-secondary-container);
+  color: var(--mat-sys-on-secondary-container);
+}
+
+.pod[data-tone='surface'] {
+  background: var(--mat-sys-surface-container-high);
+  color: var(--mat-sys-on-surface);
+}
+
+// Link and switch: state layer in the pod's own text colour, press scales to 0.98 (spec 2.6).
+// The focus ring sits inside the pod in its text colour, so it shows on every fill and is never
+// clipped by a scrolling row.
+.pod--action {
+  cursor: pointer;
+}
+
+.pod--action::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: currentcolor;
+  opacity: 0;
+  transition: opacity var(--smart-motion-duration-short) var(--smart-motion-easing-standard);
+  pointer-events: none;
+}
+
+.pod--action:hover::before {
+  opacity: var(--smart-opacity-hover);
+}
+
+.pod--action:active::before {
+  opacity: var(--smart-opacity-pressed);
+}
+
+.pod--action:active {
+  transform: scale(var(--smart-motion-scale-pressed));
+  transition-duration: var(--smart-motion-duration-short);
+}
+
+.pod--action:focus-visible {
+  outline: var(--smart-focus-width) solid currentcolor;
+  outline-offset: calc(var(--smart-focus-width) * -1);
+}
+
+// Waiting for the device: blocked, the icon dimmed, a pulsing ring (spec 3.1). The texts keep
+// their full opacity, so the value stays readable (and passes the contrast check) meanwhile.
+.pod--pending {
+  cursor: progress;
+}
+
+.pod--pending .icon {
+  opacity: var(--smart-opacity-pending);
+}
+
+.pod--pending::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: var(--smart-focus-width) solid currentcolor;
+  border-radius: inherit;
+  animation: pending var(--smart-motion-duration-long) var(--smart-motion-easing-standard) infinite;
+  pointer-events: none;
+}
+
+@keyframes pending {
+  50% {
+    opacity: 0.3;
+  }
+}
+
+.top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--smart-space-sm);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  padding: 0 var(--smart-space-sm);
+  overflow: hidden;
+  border-radius: var(--smart-shape-control);
+  font: var(--mat-sys-label-small);
+  font-weight: var(--smart-font-weight-semibold);
+  line-height: var(--mat-sys-label-medium-line-height);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  @include tone.container;
+}
+
+// One line each for value and label; a long name is cut with an ellipsis (ui-value-display).
+.reading {
+  max-width: 100%;
+  white-space: nowrap;
+}
+
+// Nothing moves: no press scale, no pulse; colours and opacity still fade.
+@media (prefers-reduced-motion: reduce) {
+  .pod {
+    transition-property: background-color, color, opacity;
+  }
+
+  .pod--action:active {
+    transform: none;
+  }
+
+  .pod--pending::after {
+    animation: none;
+  }
+}

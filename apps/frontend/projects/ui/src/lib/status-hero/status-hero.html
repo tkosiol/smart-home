@@ -1,0 +1,37 @@
+<section class="hero" role="region" [attr.aria-labelledby]="labelledBy()">
+  @if (tone() === 'calm') {
+    <a class="calm" [routerLink]="moreRoute()">
+      <span class="leading-container" data-tone="ok-container" aria-hidden="true">
+        <ui-icon name="check" />
+      </span>
+      <span class="texts">
+        <h2 class="heading heading--calm" [id]="headingId">
+          {{ 'ui.statusHero.calm' | transloco }}
+        </h2>
+        <span class="detail" [id]="detailId"><ng-container [ngTemplateOutlet]="projected" /></span>
+      </span>
+      <ui-icon class="chevron" name="chevron_right" size="sm" />
+    </a>
+  } @else {
+    <div class="head">
+      <h2 class="heading" [id]="headingId">{{ heading() }} · {{ count() }}</h2>
+      @if (criticalCount() > 0) {
+        <span class="critical">
+          {{ 'ui.statusHero.criticalCount' | transloco: { k: criticalCount() } }}
+        </span>
+      }
+    </div>
+    <div class="entries"><ng-container [ngTemplateOutlet]="projected" /></div>
+    <a class="more" [routerLink]="moreRoute()">
+      <span class="more-label">{{ 'ui.statusHero.more' | transloco: { n: count() } }}</span>
+      <span class="more-trailing">
+        @if (moreLabel(); as moreLabel) {
+          <span class="more-detail">{{ moreLabel }}</span>
+        }
+        <ui-icon name="arrow_forward" size="sm" />
+      </span>
+    </a>
+  }
+</section>
+
+<ng-template #projected><ng-content /></ng-template>

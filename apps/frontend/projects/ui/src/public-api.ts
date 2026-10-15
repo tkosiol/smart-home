@@ -21,3 +21,14 @@ export { UiClock } from './lib/time/clock';
 export { UiDateTimePipe } from './lib/time/date-time.pipe';
 export type { UiDateTimeStyle } from './lib/time/formatters';
 export { UiRelativeTimePipe } from './lib/time/relative-time.pipe';
+export { UiStatusHero, type UiStatusHeroTone } from './lib/status-hero/status-hero';
+export { UiStatusEntry, type UiStatusEntryTone } from './lib/status-hero/status-entry';
+export {
+  UiDevicePod,
+  type UiDevicePodChip,
+  type UiDevicePodTone,
+} from './lib/device-pod/device-pod';
+export { UiPodRow } from './lib/device-pod/pod-row';
+export { UiBottomSheet } from './lib/sheet/bottom-sheet';
+export { UiSheet, UiSheetActions } from './lib/sheet/sheet';
+export { UI_SHEET_DATA, UiSheetRef, type UiSheetPresentation } from './lib/sheet/sheet-ref';

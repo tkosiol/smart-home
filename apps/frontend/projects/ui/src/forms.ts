@@ -11,3 +11,9 @@ export { UiColorField } from './lib/color-field/color-field';
 export { normalizeHexColor } from './lib/color-field/hex-color';
 export { UiTextField } from './lib/text-field/text-field';
 export { UiThemeEditor, type UiThemeEditorMode } from './lib/theme-editor/theme-editor';
+export {
+  UiReorderList,
+  UiReorderRow,
+  type UiReorderItem,
+  type UiReorderRowContext,
+} from './lib/reorder-list/reorder-list';

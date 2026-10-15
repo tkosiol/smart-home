@@ -1,0 +1,103 @@
+@use '../tone';
+
+:host {
+  display: block;
+  min-width: 0;
+}
+
+// A surface-container-lowest pod (spec 2.2) at least one touch target high.
+.entry {
+  display: flex;
+  align-items: center;
+  gap: var(--smart-space-md);
+  box-sizing: border-box;
+  min-height: var(--smart-size-touch);
+  padding: var(--smart-space-sm) var(--smart-space-md) var(--smart-space-sm) var(--smart-space-sm);
+  border-radius: var(--smart-shape-pod);
+  background: var(--mat-sys-surface-container-lowest);
+  color: var(--mat-sys-on-surface);
+  text-decoration: none;
+}
+
+.entry--link {
+  cursor: pointer;
+  transition: background-color var(--smart-motion-duration-short)
+    var(--smart-motion-easing-standard);
+}
+
+.entry--link:hover {
+  background: var(--mat-sys-surface-container-high);
+}
+
+.entry--link:focus-visible {
+  outline: var(--smart-focus-width) solid var(--mat-sys-primary);
+  outline-offset: calc(var(--smart-focus-width) * -1);
+}
+
+.leading-container {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--smart-size-icon-container);
+  height: var(--smart-size-icon-container);
+  border-radius: var(--smart-shape-control);
+
+  @include tone.container;
+
+  // The one strong fill of a notice: critical entries (spec 4.1 rule 6).
+  &[data-tone='error'] {
+    background: var(--mat-sys-error);
+    color: var(--mat-sys-on-error);
+  }
+}
+
+.texts {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.title {
+  font: var(--mat-sys-body-medium);
+  font-weight: var(--smart-font-weight-semibold);
+  overflow-wrap: anywhere;
+  hyphens: auto;
+}
+
+// The subtitle lists devices, newest first, and is cut rather than wrapped (spec 4.1 rule 2).
+.subtitle {
+  overflow: hidden;
+  color: var(--mat-sys-on-surface-variant);
+  font: var(--mat-sys-body-small);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.value,
+.severity {
+  flex: none;
+  color: var(--mat-sys-on-surface-variant);
+  font-weight: var(--smart-font-weight-semibold);
+
+  @include tone.text;
+}
+
+.value {
+  color: var(--mat-sys-on-surface);
+  font: var(--mat-sys-title-medium);
+  font-weight: var(--smart-font-weight-semibold);
+  font-variant-numeric: tabular-nums;
+}
+
+.severity {
+  font: var(--mat-sys-label-small);
+  font-weight: var(--smart-font-weight-semibold);
+  letter-spacing: var(--smart-type-tracking-label);
+  text-transform: uppercase;
+}
+
+.chevron {
+  color: var(--mat-sys-on-surface-variant);
+}

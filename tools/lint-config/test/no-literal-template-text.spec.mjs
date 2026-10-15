@@ -92,7 +92,7 @@ ruleTester.run('no-literal-template-text', noLiteralTemplateText, {
 });
 
 /** String inputs of @smart/ui that never carry text for people: identifiers, URLs, form hints. */
-const NON_TEXT_STRING_INPUTS = new Set(['autocomplete', 'name', 'route']);
+const NON_TEXT_STRING_INPUTS = new Set(['autocomplete', 'moreRoute', 'name', 'route']);
 
 const UI_LIB = join(import.meta.dirname, '../../../apps/frontend/projects/ui/src/lib');
 const STRING_INPUT = /readonly (\w+) = input(?:\.required)?<string\b/g;

@@ -1,0 +1,164 @@
+// The calm row's icon container is always ok-container, so no tone mixin is needed here.
+:host {
+  display: block;
+  min-width: 0;
+}
+
+// Hero card (spec 2.1, 2.5): extra-large corners, lg at the sides and xl above and below. The
+// colour change between attention and critical fades (spec 2.6); a fade is no movement, so it
+// stays under prefers-reduced-motion.
+.hero {
+  display: flex;
+  flex-direction: column;
+  gap: var(--smart-space-sm);
+  box-sizing: border-box;
+  padding: var(--smart-space-xl) var(--smart-space-lg);
+  border-radius: var(--smart-shape-card);
+  transition:
+    background-color var(--smart-motion-duration-medium) var(--smart-motion-easing-standard),
+    color var(--smart-motion-duration-medium) var(--smart-motion-easing-standard);
+}
+
+:host([data-tone='attention']) .hero {
+  background: var(--mat-sys-primary-container);
+  color: var(--mat-sys-on-primary-container);
+}
+
+:host([data-tone='critical']) .hero {
+  background: var(--mat-sys-error-container);
+  color: var(--mat-sys-on-error-container);
+}
+
+:host([data-tone='calm']) .hero {
+  padding: 0;
+}
+
+.head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--smart-space-md);
+  padding-inline: var(--smart-space-xs);
+}
+
+.heading {
+  margin: 0;
+  font: var(--mat-sys-label-small);
+  font-weight: var(--smart-font-weight-semibold);
+  letter-spacing: var(--smart-type-tracking-label);
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+}
+
+.critical {
+  flex: none;
+  font: var(--mat-sys-label-small);
+  font-weight: var(--smart-font-weight-medium);
+}
+
+.entries {
+  display: flex;
+  flex-direction: column;
+  gap: var(--smart-space-sm);
+}
+
+// "Alle N Hinweise": a pill in the card's text colour with the card colour as text, so it reads
+// as the card's own button; the pair is the card's on-colour pair reversed.
+.more {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--smart-space-md);
+  box-sizing: border-box;
+  min-height: var(--smart-size-touch);
+  padding: var(--smart-space-sm) var(--smart-space-lg) var(--smart-space-sm) var(--smart-space-xl);
+  border-radius: var(--smart-shape-control);
+  font: var(--mat-sys-body-medium);
+  font-weight: var(--smart-font-weight-semibold);
+  text-decoration: none;
+}
+
+:host([data-tone='attention']) .more {
+  background: var(--mat-sys-on-primary-container);
+  color: var(--mat-sys-primary-container);
+}
+
+:host([data-tone='critical']) .more {
+  background: var(--mat-sys-on-error-container);
+  color: var(--mat-sys-error-container);
+}
+
+.more:focus-visible,
+.calm:focus-visible {
+  outline: var(--smart-focus-width) solid currentcolor;
+  outline-offset: calc(var(--smart-focus-width) * -1);
+}
+
+.more-label {
+  overflow-wrap: anywhere;
+}
+
+.more-trailing {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--smart-space-sm);
+  font: var(--mat-sys-label-medium);
+  font-weight: var(--smart-font-weight-medium);
+}
+
+// The calm row (rule 7): 56 px, surface-container-low, one link to all notices.
+.calm {
+  display: flex;
+  align-items: center;
+  gap: var(--smart-space-md);
+  box-sizing: border-box;
+  min-height: calc(var(--smart-size-touch) + var(--smart-space-sm));
+  padding: var(--smart-space-xs) var(--smart-space-lg) var(--smart-space-xs) var(--smart-space-sm);
+  border-radius: var(--smart-shape-control);
+  background: var(--mat-sys-surface-container-low);
+  color: var(--mat-sys-on-surface);
+  text-decoration: none;
+  transition: background-color var(--smart-motion-duration-short)
+    var(--smart-motion-easing-standard);
+}
+
+.calm:hover {
+  background: var(--mat-sys-surface-container-high);
+}
+
+.leading-container {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--smart-size-icon-container);
+  height: var(--smart-size-icon-container);
+  border-radius: var(--smart-shape-control);
+  background: var(--smart-status-ok-container);
+  color: var(--smart-status-on-ok-container);
+}
+
+.texts {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.heading--calm {
+  font: var(--mat-sys-body-medium);
+  font-weight: var(--smart-font-weight-semibold);
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.detail {
+  color: var(--mat-sys-on-surface-variant);
+  font: var(--mat-sys-body-small);
+  overflow-wrap: anywhere;
+}
+
+.chevron {
+  color: var(--mat-sys-on-surface-variant);
+}

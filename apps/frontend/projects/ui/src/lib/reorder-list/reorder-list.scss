@@ -1,0 +1,68 @@
+@use '@angular/material' as mat;
+
+:host {
+  display: block;
+  min-width: 0;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--smart-space-xs);
+}
+
+// Rows are surface-container-lowest pods (spec 2.2); the handle is a 48 px tonal-free icon
+// button at the start, the row's own content fills the rest.
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--smart-space-xs);
+  box-sizing: border-box;
+  min-height: var(--smart-size-touch);
+  padding-inline-end: var(--smart-space-sm);
+  border-radius: var(--smart-shape-pod);
+  background: var(--mat-sys-surface-container-lowest);
+  color: var(--mat-sys-on-surface);
+}
+
+// The handle is the whole 48 px touch target, not Material's 40 px icon button (spec 8).
+.handle {
+  flex: none;
+  cursor: grab;
+
+  @include mat.icon-button-overrides(
+    (
+      state-layer-size: var(--smart-size-touch),
+    )
+  );
+}
+
+.content {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  min-width: 0;
+}
+
+// Dragging: the preview floats with M3 elevation, the gap it left stays empty, the other rows
+// slide out of the way; nothing slides under prefers-reduced-motion.
+.cdk-drag-preview {
+  box-shadow: var(--mat-sys-level3);
+  cursor: grabbing;
+}
+
+.cdk-drag-placeholder {
+  opacity: 0;
+}
+
+.cdk-drag-animating,
+.list.cdk-drop-list-dragging .row:not(.cdk-drag-placeholder) {
+  transition: transform var(--smart-motion-duration-medium) var(--smart-motion-easing-standard);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cdk-drag-animating,
+  .list.cdk-drop-list-dragging .row:not(.cdk-drag-placeholder) {
+    transition: none;
+  }
+}

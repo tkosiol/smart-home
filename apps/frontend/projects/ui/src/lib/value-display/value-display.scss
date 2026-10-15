@@ -33,10 +33,13 @@
 }
 
 // The label inherits its colour like the value: one family per display, whatever surface it is on.
+// Where the host keeps it on one line (pods), it ends with an ellipsis instead of overflowing.
 .label {
+  overflow: hidden;
   font: var(--mat-sys-body-small);
   overflow-wrap: anywhere;
   hyphens: auto;
+  text-overflow: ellipsis;
 }
 
 // medium: pods and side values (headline-small, weight 600; spec 2.3)
