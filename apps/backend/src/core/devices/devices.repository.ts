@@ -28,6 +28,8 @@ export interface DeviceView {
   icon: string | null;
   createdAt: Date;
   hardware: { id: string; vendor: string; model: string; description: string | null };
+  /** The gateway the device's hardware belongs to. */
+  gatewayId: string;
   availability: Availability;
   lastSeenAt: Date | null;
   state: Record<string, unknown>;
@@ -225,6 +227,7 @@ export class DevicesRepository {
           model: hardware.model,
           description: hardware.description,
         },
+        gatewayId: hardware.gatewayId,
         state: deviceState,
       })
       .from(devices)
@@ -259,6 +262,7 @@ export class DevicesRepository {
         icon: row.device.icon,
         createdAt: row.device.createdAt,
         hardware: row.hardware,
+        gatewayId: row.gatewayId,
         availability: row.state?.availability ?? 'unknown',
         lastSeenAt: row.state?.lastSeenAt ?? null,
         state: row.state?.state ?? {},

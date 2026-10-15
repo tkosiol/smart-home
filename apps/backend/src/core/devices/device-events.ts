@@ -2,6 +2,12 @@ import { EventEmitter } from 'node:events';
 
 export const DEVICE_THRESHOLDS_CHANGED = 'device.thresholds-changed';
 
+export const DEVICE_STATE_CHANGED = 'device.state-changed';
+
+export interface DeviceStateChanged {
+  deviceId: string;
+}
+
 export interface DeviceThresholdsChanged {
   householdId: string;
   deviceId: string;

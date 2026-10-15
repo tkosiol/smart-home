@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import type { Capability } from '@smart/contracts';
 import { Throttle } from '../gateways/index.js';
 import { MeasurementWriter, type NewMeasurementRow } from '../telemetry/index.js';
+import { DEVICE_STATE_CHANGED, DeviceEvents, type DeviceStateChanged } from './device-events.js';
 import type { DeviceMessageHandler } from './device-message-handler.js';
 import { DevicesRepository } from './devices.repository.js';
 import { HardwareRepository } from './hardware.repository.js';
@@ -89,6 +90,7 @@ export class DeviceMessageProcessor implements DeviceMessageHandler {
     private readonly hardware: HardwareRepository,
     private readonly devices: DevicesRepository,
     private readonly writer: MeasurementWriter,
+    private readonly events: DeviceEvents,
   ) {}
 
   async handle(
@@ -114,7 +116,7 @@ export class DeviceMessageProcessor implements DeviceMessageHandler {
 
     const binding = await this.devices.activeBindingForHardware(hardwareId);
     if (!binding) return;
-    await this.devices.recordState(binding.deviceId, state, time);
+    const updated = await this.devices.recordState(binding.deviceId, state, time);
 
     const rows: NewMeasurementRow[] = [];
     for (const capability of capabilities) {
@@ -131,6 +133,10 @@ export class DeviceMessageProcessor implements DeviceMessageHandler {
       }
     }
     this.writer.add(rows);
+    if (updated) {
+      const changed: DeviceStateChanged = { deviceId: binding.deviceId };
+      this.events.emit(DEVICE_STATE_CHANGED, changed);
+    }
   }
 
   /**

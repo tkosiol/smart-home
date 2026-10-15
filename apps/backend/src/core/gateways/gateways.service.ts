@@ -27,6 +27,7 @@ const HOUR_MS = 3_600_000;
 
 export interface ActiveGateway {
   id: string;
+  householdId: string;
   topicPrefix: string;
 }
 
@@ -113,7 +114,11 @@ export class GatewaysService {
   /** The gateways that are registered and not revoked, with the topic prefix they publish under. */
   async listActive(): Promise<ActiveGateway[]> {
     const rows = await this.gateways.listActive();
-    return rows.map((row) => ({ id: row.id, topicPrefix: row.topicPrefix }));
+    return rows.map((row) => ({
+      id: row.id,
+      householdId: row.householdId,
+      topicPrefix: row.topicPrefix,
+    }));
   }
 
   private toGateway(row: GatewayRow, crlNextUpdate: Date | undefined, now: Date): Gateway {

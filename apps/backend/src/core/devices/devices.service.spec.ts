@@ -13,6 +13,7 @@ describe('the contract shapes of devices and hardware', () => {
       icon: null,
       createdAt: SEEN,
       hardware: { id: 'h1', vendor: 'Acme', model: 'AY', description: null },
+      gatewayId: 'gw-a1b2c3d4',
       availability: 'online',
       lastSeenAt: SEEN,
       state: { soil_moisture: 41 },
