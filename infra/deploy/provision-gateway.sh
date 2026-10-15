@@ -87,7 +87,8 @@ env_unsafe='[$#"'\''\\`[:space:]]'
 host_pattern='^([A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)*[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$'
 
 # Reads a line into the variable named $1; Enter keeps the stored value of the variable named $2, then the default $5,
-# and without any the run stops. With "secret" as $4 the input is hidden; the value is never printed.
+# and without any the run stops. $typed tells whether the value was typed (yes) or not. With "secret" as $4 the input is hidden; the value is never printed.
+typed=no
 ask_or_keep() {
   local var=$1 name=$2 text=$3 mode=${4:-} default=${5:-} value
   if [ "$mode" = secret ]; then
@@ -96,7 +97,8 @@ ask_or_keep() {
   else
     read -r -p "$text" value
   fi
-  if [ -z "$value" ]; then value=$(existing_value "$name"); fi
+  typed=yes
+  if [ -z "$value" ]; then typed=no; value=$(existing_value "$name"); fi
   if [ -z "$value" ]; then value=$default; fi
   if [ -z "$value" ]; then fail "$name is required – nothing was written"; fi
   if [[ "$value" =~ $env_unsafe ]]; then
@@ -123,7 +125,12 @@ ask_or_keep broker_port BROKER_PORT "Port of the platform broker (Enter keeps th
 { [[ "$broker_port" =~ ^[0-9]{1,5}$ ]] && [ "$((10#$broker_port))" -ge 1 ] && [ "$((10#$broker_port))" -le 65535 ]; } || fail "BROKER_PORT must be a port number (1-65535) – nothing was written"
 broker_port=$((10#$broker_port))
 ask_or_keep serial_device Z2M_SERIAL_DEVICE "Zigbee adapter, path of the device on the Pi${serial_default:+ [$serial_default]} (Enter keeps the stored one or the shown one): " "" "$serial_default"
-[[ "$serial_device" =~ ^/[A-Za-z0-9._/:+@-]+$ ]] || fail "Z2M_SERIAL_DEVICE is not a plain absolute path – nothing was written"
+# Only plain path characters (no colon: Compose reads ...:/dev/zigbee as host:container) inside /dev, no "..".
+[[ "$serial_device" =~ ^/[A-Za-z0-9._/+@-]+$ ]] && [[ "$serial_device" != *..* ]] || fail "Z2M_SERIAL_DEVICE is not a plain device path – nothing was written"
+case "$serial_device" in
+  /dev/* | "$serial_dir"/*) ;;
+  *) fail "Z2M_SERIAL_DEVICE must be a path below /dev – nothing was written" ;;
+esac
 # shellcheck disable=SC2029 # see above
 present=$(ssh -n "$host" "if test -e $serial_device; then echo yes; else echo no; fi") || fail "could not check $serial_device on the Pi – nothing was written"
 [ "$present" = yes ] || fail "$serial_device does not exist on the Pi (adapter not plugged in?) – nothing was written"
@@ -132,14 +139,21 @@ ask_or_keep b2_endpoint B2_ENDPOINT "B2 S3 endpoint, host only, e.g. s3.eu-centr
 [[ "$b2_endpoint" =~ $host_pattern ]] || fail "B2_ENDPOINT must be a host name without https:// – nothing was written"
 ask_or_keep b2_bucket B2_BUCKET "B2 bucket for the gateway backups (Enter keeps the stored one): "
 [[ "$b2_bucket" =~ ^[A-Za-z0-9-]{6,50}$ ]] || fail "B2_BUCKET is not a bucket name (6-50 letters, digits, hyphens) – nothing was written"
-ask_or_keep b2_key_id B2_KEY_ID "B2 keyID of the key smart-pi-restic, 25 characters starting with 00 (Enter keeps the stored one): "
+ask_or_keep b2_key_id B2_KEY_ID "B2 keyID of the key smart-pi-restic, 25 characters starting with 00, hidden (Enter keeps the stored one): " secret
 # Guard against swapping the two: the rejected value is never echoed, it may be the secret.
 [[ "$b2_key_id" =~ ^00[0-9a-f]{23}$ ]] || fail "that is not a B2 keyID (expected 25 hex characters starting with 00) – nothing was written"
 ask_or_keep b2_app_key B2_APP_KEY "B2 application key of smart-pi-restic, secret, starts with K (Enter keeps the stored one): " secret
 [[ "$b2_app_key" =~ ^K[0-9A-Za-z+/]{30}$ ]] || fail "that is not a B2 application key (expected 31 characters starting with K) – nothing was written"
 ask_or_keep restic_password RESTIC_PASSWORD "restic repository password of the Pi backup, from your password manager (Enter keeps the stored one): " secret
-ask_or_keep hc_backup HC_BACKUP_URL "healthchecks.io ping URL for the nightly Pi backup (Enter keeps the stored one): "
-[[ "$hc_backup" =~ ^https://[A-Za-z0-9._~:/?\&=%+-]+$ ]] || fail "HC_BACKUP_URL must be an https:// URL – nothing was written"
+if [ "$typed" = yes ]; then
+  read -r -s -p "restic repository password again: " restic_again
+  echo >&2
+  [ "$restic_again" = "$restic_password" ] || fail "the two restic passwords differ – nothing was written"
+  unset restic_again
+fi
+# The ping URL contains a secret token: hidden, and without ? and & (nothing but a plain path).
+ask_or_keep hc_backup HC_BACKUP_URL "healthchecks.io ping URL for the nightly Pi backup, hidden (Enter keeps the stored one): " secret
+[[ "$hc_backup" =~ ^https://[A-Za-z0-9._~:/=%+-]+$ ]] || fail "HC_BACKUP_URL must be an https:// URL – nothing was written"
 
 # The Z2M password and the frontend token are generated (64 hex characters); --force keeps the stored ones.
 keep_or_generate() {
@@ -179,13 +193,18 @@ d=$1
 if [ ! -d "$d" ]; then mkdir -p "$d"; chmod 755 "$d"; fi
 mkdir -p "$d/secrets"
 chmod 700 "$d/secrets"
+chown "$(id -u):$(id -g)" "$d/secrets"
 cd "$d/secrets"
 rm -rf .new
 mkdir .new
 trap "rm -rf .new" EXIT
 tar -xf - --no-same-owner -C .new '"${files[*]}"'
-docker run --rm -v "$PWD/.new:/work" "$2" mosquitto_passwd -U /work/passwd.plain
+docker run --rm --network none -v "$PWD/.new:/work" "$2" mosquitto_passwd -U /work/passwd.plain
 mv .new/passwd.plain .new/passwd
+for f in gateway.env z2m.env backup.env passwd ca.crt gateway.crt gateway.key; do
+  [ -s ".new/$f" ] || { echo "provision-gateway: $f is missing or empty after unpacking" >&2; exit 1; }
+done
+grep -q "^z2m:[$]7[$]" .new/passwd || { echo "provision-gateway: passwd is not a hashed password file" >&2; exit 1; }
 chmod 600 .new/*
 mv -f .new/gateway.env .new/z2m.env .new/backup.env .new/passwd .new/ca.crt .new/gateway.crt .new/gateway.key .'
 # COPYFILE_DISABLE keeps macOS tar from adding ._ metadata entries.
