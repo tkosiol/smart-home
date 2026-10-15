@@ -113,9 +113,12 @@ jobs:
           infra/deploy/test/run-tests.sh infra/deploy/test/stubs/docker infra/deploy/test/stubs/curl infra/deploy/test/stubs/ssh
           infra/backup/backup.sh infra/backup/restore-test.sh infra/broker/entrypoint.sh
           infra/local/smoke-test.sh infra/compose/test/stack-test.sh infra/broker/test/broker-test.sh
+          gateway/render.sh gateway/mosquitto-entrypoint.sh gateway/test/gateway-test.sh
       - name: deploy script tests
         run: bash infra/deploy/test/run-tests.sh
       - name: pki script tests
         run: bash infra/pki/test/run-tests.sh
       - name: broker tests
         run: bash infra/broker/test/broker-test.sh
+      - name: gateway tests
+        run: bash gateway/test/gateway-test.sh
