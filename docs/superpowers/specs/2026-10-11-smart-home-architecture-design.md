@@ -164,14 +164,15 @@ Schleifen zwischen ein- und ausgehenden Topics verhindert `try_private true` an 
 
 - Compose-Datei und Konfigurations-Vorlagen für Mosquitto und Zigbee2MQTT; Image-Versionen gepinnt.
 - **Mosquitto lokal:** nicht mehr im LAN veröffentlicht; nur über das Docker-Netz für Z2M erreichbar; Passwort-Authentifizierung; `persistence true`, `autosave_interval 300`, `queue_qos0_messages true` (Z2M publiziert QoS 0), **Puffer für 72 h** (`max_queued_messages 75000`, `max_queued_bytes 75497472`; Speicherlimit des Containers als Schutz, weil die Limits die QoS-0-Queue nicht begrenzen); Bridge mit `cleansession false`, `try_private true`, `keepalive_interval 20`, `notification_topic gw/<gatewayId>/bridge/connection` (ADR-0020).
-- **Zigbee2MQTT:**
+- **Zigbee2MQTT:** Die Einstellungen kommen als Umgebungsvariablen `ZIGBEE2MQTT_CONFIG_*` aus `gateway/compose.yaml` (Benutzer, Passwort und Token aus `secrets/z2m.env`); Z2M 2.14 übernimmt sie bei jedem Start und schreibt sie in `configuration.yaml`, Geräte und Namen bleiben dort erhalten (Ordner `700`, Datei `600`).
   - `advanced.last_seen: ISO_8601` (Messzeitpunkt in jeder Nachricht)
   - `availability.enabled: true` (Online-/Offline-Status pro Gerät)
-  - eigener, generierter `network_key`, `pan_id`, `ext_pan_id` (Neukopplung der vorhandenen Geräte nötig)
+  - eigener, generierter `network_key`, `pan_id`, `ext_pan_id` (Neukopplung der vorhandenen Geräte nötig): **zurückgestellt** (Entscheidung 2026-10-14), zusammen mit Neukopplung und Koordinator-Wechsel (Abschnitt 4.6) vor Ort; bis dahin läuft das vorhandene Zigbee-Netz weiter
   - Frontend im Heimnetz (Port 8080), geschützt durch `auth_token`; nicht aus dem Internet erreichbar
   - **Namen:** Die Regel „`friendly_name` ist immer die IEEE-Adresse“ entfällt (Entscheidung 2026-10-14): Die Sensoren heißen in Z2M schon nach ihren Pflanzen. Das Backend ordnet Nachrichten über `bridge/devices` (`friendly_name` ↔ IEEE-Adresse) zu und folgt Umbenennungen; stabil ist die IEEE-Adresse. In Etappe 6 schlägt die App den Z2M-Namen vor, wenn aus neu erkannter Hardware ein Gerät wird; danach gilt der Name in der App.
 - **Zertifikate** auf dem Pi in einem Verzeichnis mit Rechten `600/700`.
-- **Deploy:** `pnpm gateway:deploy` vom Mac aus im Heimnetz (rsync + `docker compose up -d` per SSH). Nicht über GitHub Actions, da der Pi von außen nicht erreichbar ist.
+- **Ablage und Deploy:** Der Stack liegt auf dem Pi unter `/srv/smart-gateway` (Geheimnisse in `secrets/`, root `700`/`600`, über `infra/deploy/provision-gateway.sh`). `pnpm gateway:deploy` vom Mac aus im Heimnetz (rsync, Render der Mosquitto-Konfiguration, `docker compose up -d` per SSH, Warten auf Z2M `online`); der einmalige Umzug vom alten Stack (`--migrate`) läuft auf dem Pi selbst mit eigenem Rückweg. Nicht über GitHub Actions, da der Pi von außen nicht erreichbar ist. Ablauf: `docs/runbooks/gateway.md`, Abschnitte 11 und 12.
+- **Backups:** nachts restic nach B2 (Z2M-Daten und `secrets/`), wöchentlicher Wiederherstellungstest, beide als systemd-Timer mit Ping an healthchecks.io.
 - **Zeit:** `systemd-timesyncd` aktiv. Der Pi hat keine RTC; siehe Abschnitt 9.
 
 ### 4.6 Koordinator-Wechsel

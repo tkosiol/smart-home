@@ -2,7 +2,7 @@
 
 Dieses Runbook beschreibt, wie Gateways (der Raspberry Pi in Produktion, der Simulator auf Staging) an den Broker des VPS angebunden werden: die private Zertifizierungsstelle (CA), die Zertifikate auf dem VPS, Registrierung in der App, Sperren, Erneuern und die Prüfung nach der Inbetriebnahme. Konkrete Werte für `<…>` stehen in `.local/`. Die Architektur steht in `docs/superpowers/specs/2026-10-11-smart-home-architecture-design.md` (Abschnitt 4), die Entscheidungen in ADR-0002 und ADR-0020.
 
-Alle Schritte mit Schlüsseln führt Till selbst im eigenen Terminal aus. Schlüssel, Passphrasen und Passwörter gehen nie durch den Chat, nie in das Repository und nie in ein Ticket. Der Pi selbst (Ordner `gateway/`, `provision-gateway.sh`, `pnpm gateway:deploy`, Umzug) steht in Abschnitt 11; die Pi-Backups folgen mit Etappe 5b und werden dort ergänzt.
+Alle Schritte mit Schlüsseln führt Till selbst im eigenen Terminal aus. Schlüssel, Passphrasen und Passwörter gehen nie durch den Chat, nie in das Repository und nie in ein Ticket. Der Pi selbst (Ordner `gateway/`, `provision-gateway.sh`, `pnpm gateway:deploy`, Umzug, Backups und Wiederherstellung) steht in Abschnitt 11, die Checkliste für seine Inbetriebnahme in Abschnitt 12.
 
 ## Überblick
 
@@ -154,7 +154,7 @@ Ein Gateway mit abgelaufenem oder gesperrtem Zertifikat versucht immer wieder, s
    infra/pki/pki.sh issue-gateway
    ```
 
-   Ausgabe: die ID und die Dateien `~/.smart-pki/gateways/<id>.crt` und `<id>.key`. Der Schlüssel (`.key`) kommt nur auf das Gateway selbst (für den Pi über `provision-gateway.sh`, Etappe 5b) und sonst nirgendwohin.
+   Ausgabe: die ID und die Dateien `~/.smart-pki/gateways/<id>.crt` und `<id>.key`. Der Schlüssel (`.key`) kommt nur auf das Gateway selbst (für den Pi über `provision-gateway.sh`, Abschnitt 11) und sonst nirgendwohin.
 
 2. Backup von `~/.smart-pki` erneuern (Abschnitt 3).
 3. In der App als Plattform-Admin anmelden, den Haushalt wählen, dem das Gateway gehört (Till muss dort Eigentümer sein), „Mehr → Gateways“ öffnen. Unter „Gateway registrieren“ einen Namen eingeben und den **Text des Zertifikats** (`cat ~/.smart-pki/gateways/<id>.crt`, einschließlich der Zeilen mit `BEGIN` und `END`) einfügen. **Niemals den privaten Schlüssel einfügen.**
@@ -339,7 +339,41 @@ Wiederherstellen aus der Sicherung (nur nötig, wenn der alte Ordner beschädigt
 
 `gateway:deploy` installiert zwei systemd-Timer: nachts um 03:30 das Backup von `zigbee2mqtt-data/` (ohne `log/`) und `secrets/` und sonntags um 05:00 einen Wiederherstellungstest des letzten Snapshots (Einzelheiten und warum die Sicherung der laufenden Daten genügt: `gateway/README.md`, Abschnitt „Backups“). Beide Dienste warten auf Netz, Docker und eine synchronisierte Uhr (`time-sync.target`; der Pi hat keine Echtzeituhr). Nach dem ersten Deploy **einmal von Hand sichern** und den Ping in healthchecks.io prüfen: `sudo bash /srv/smart-gateway/backup/backup.sh`. Das Log steht in `sudo journalctl -u smart-gateway-backup`; die Werte für den Check `HC_BACKUP_URL` (und optional `HC_RESTORE_URL` für den Wiederherstellungstest) stehen in `secrets/backup.env`.
 
-**Das restic-Passwort und alle Werte aus `secrets/backup.env` gehören zusätzlich außerhalb des Pi in den Passwortmanager** (`RESTIC_PASSWORD`, B2-Schlüssel `B2_KEY_ID`/`B2_APP_KEY`, Bucket, Endpoint, die Ping-URLs). Das Repository in B2 ist mit dem restic-Passwort verschlüsselt, und `secrets/` (also auch `backup.env` selbst) steckt im Backup: Ist der Pi verloren und das Passwort nur dort gespeichert, ist das Backup unbrauchbar, denn ohne Passwort lässt sich nichts wiederherstellen. Ein Wiederherstellungstest von einem anderen Rechner aus (restic mit den Werten aus dem Passwortmanager) beweist, dass die Ablage außerhalb des Pi vollständig ist.
+**Das restic-Passwort und alle Werte aus `secrets/backup.env` gehören zusätzlich außerhalb des Pi in den Passwortmanager** (`RESTIC_PASSWORD`, B2-Schlüssel `B2_KEY_ID`/`B2_APP_KEY`, Bucket, Endpoint, die Ping-URLs). Das Repository in B2 ist mit dem restic-Passwort verschlüsselt, und `secrets/` (also auch `backup.env` selbst) steckt im Backup: Ist der Pi verloren und das Passwort nur dort gespeichert, ist das Backup unbrauchbar, denn ohne Passwort lässt sich nichts wiederherstellen. Ein Wiederherstellungstest von einem anderen Rechner aus (restic mit den Werten aus dem Passwortmanager, wie unten) beweist, dass die Ablage außerhalb des Pi vollständig ist.
+
+**Wiederherstellen nach Verlust des Pi** (neue SD-Karte oder neuer Pi, **derselbe Zigbee-Adapter**; mit einem anderen Adapter siehe Abschnitt 12, „Später“):
+
+1. Auf dem Mac eine Datei außerhalb des Repositorys anlegen, zum Beispiel `~/.smart-pi-restore.env` (`chmod 600`), mit den Werten aus dem Passwortmanager:
+
+   ```text
+   RESTIC_REPOSITORY=s3:https://<B2_ENDPOINT>/<B2_BUCKET>/pi
+   AWS_ACCESS_KEY_ID=<B2_KEY_ID>
+   AWS_SECRET_ACCESS_KEY=<B2_APP_KEY>
+   RESTIC_PASSWORD=<RESTIC_PASSWORD>
+   ```
+
+2. Snapshots ansehen und den letzten wiederherstellen (gleiches Image wie auf dem Pi):
+
+   ```bash
+   docker run --rm --env-file ~/.smart-pi-restore.env restic/restic:0.19.1 snapshots --tag pi
+   mkdir -m 700 ~/pi-restore
+   docker run --rm --env-file ~/.smart-pi-restore.env -v ~/pi-restore:/restore restic/restic:0.19.1 \
+     restore latest --host <gateway-id> --tag pi --target /restore
+   ```
+
+   Ergebnis: `~/pi-restore/data/zigbee2mqtt-data/` und `~/pi-restore/data/secrets/`.
+
+3. Neuen Pi vorbereiten (Voraussetzungen oben: Docker, passwortloses `sudo`), dann `provision-gateway.sh <gateway-id>` (`--force` nur, wenn dort schon Geheimnisse liegen) mit **demselben** `RESTIC_PASSWORD` (sonst entsteht kein Anschluss an das vorhandene Repository) und denselben B2-Werten.
+4. Die Z2M-Daten auf den Pi bringen, bevor zum ersten Mal deployt wird:
+
+   ```bash
+   ssh <benutzer>@<PI_HOST> sudo install -d -m 700 /srv/smart-gateway/zigbee2mqtt-data
+   rsync -a --rsync-path="sudo rsync" ~/pi-restore/data/zigbee2mqtt-data/ \
+     <benutzer>@<PI_HOST>:/srv/smart-gateway/zigbee2mqtt-data/
+   ```
+
+5. `SMART_PI=<benutzer>@<PI_HOST> pnpm gateway:deploy` (ohne `--migrate` und ohne `--fresh`: die Daten sind jetzt da). Danach die Prüfungen aus Abschnitt 12, Schritte 5–7.
+6. Auf dem Mac aufräumen: `rm -rf ~/pi-restore ~/.smart-pi-restore.env` (enthält Geheimnisse).
 
 **Prüfungen auf dem Pi**
 
@@ -349,6 +383,36 @@ sudo docker compose --env-file secrets/gateway.env ps           # beide Containe
 sudo stat -c '%a %U' zigbee2mqtt-data zigbee2mqtt-data/configuration.yaml   # 700 root, 600 root
 sudo docker stats --no-stream                                    # Speicherlimits (0 = Limit ignoriert, siehe Memory-cgroup)
 ```
+
+## 12. Inbetriebnahme des Pi (Checkliste)
+
+Einmalig, wenn der Pi vom alten Stack auf `gateway/` wechselt. Erst nach Tills Freigabe; alle Schritte mit Schlüsseln führt Till im eigenen Terminal aus.
+
+0. **Vorher:** Produktion hat die Broker-Zertifikate und `MQTT_TLS=on` (Abschnitt 4), Port 8883 ist offen und Fail2ban eingerichtet (Abschnitt 5), `~/.smart-pki` ist gesichert (Abschnitt 3). Auf dem Pi: passwortloses `sudo` (Abschnitt 11, Voraussetzungen). Für das Pi-Backup existieren der B2-Schlüssel und der Check in healthchecks.io, das restic-Passwort liegt im Passwortmanager.
+1. **Zertifikat ausstellen:** `infra/pki/pki.sh issue-gateway`, die ID `gw-…` notieren, danach `~/.smart-pki` erneut sichern (Abschnitt 3).
+2. **In der Produktion registrieren:** „Mehr → Gateways“, Name und Zertifikat einfügen (Abschnitt 6). Status „Unbekannt“ ist hier richtig.
+3. **Geheimnisse auf den Pi:** `SMART_PI=<benutzer>@<PI_HOST> infra/deploy/provision-gateway.sh <gateway-id>` (fragt Serial-Pfad, B2-Werte und das restic-Passwort; `gateway/README.md`).
+4. **Umzug:** `SMART_PI=<benutzer>@<PI_HOST> SMART_PI_OLD_STACK=<alter-stack-ordner> pnpm gateway:deploy --migrate` (Abschnitt 11). Erwartet: Zustand `done`, Z2M `online`, Bridge `1`.
+5. **App:** Das Gateway zeigt „Bridge: Online“ und „Zigbee2MQTT: Online“.
+6. **Geräte:** Unter „Geräte → Neu erkannt“ erscheinen die Sensoren (und die Lampe) mit ihren Z2M-Namen; nach „Hinzufügen“ kommen Messwerte an. Im Z2M-Frontend (`http://<PI_HOST>:8080`) sind alle Geräte vorhanden.
+7. **ACL:** Prüfung aus Abschnitt 10 (Schreiben unter fremdem Präfix kommt nicht an, Befehl kommt an, ohne Client-Zertifikat keine Verbindung).
+8. **QoS des echten Z2M** (offen aus ADR-0020): im Stack-Verzeichnis der Produktion auf dem VPS, mit `read_topic` wie in Abschnitt 10, aber mit QoS 1 abonniert und für eine Sensormeldung (Name wie im Z2M-Frontend):
+
+   ```bash
+   docker compose -f compose.yaml --env-file .env --env-file deploy.env exec -T broker sh -c \
+     'mosquitto_sub -h localhost -u smart-api -P "$MQTT_PASSWORD" -q 1 -t "$0" -F "%q %t" -C 1 -W 600' 'gw/<id>/z2m/<sensor>'
+   ```
+
+   Erwartet `0 …`: Z2M 2.14 veröffentlicht Gerätemeldungen mit QoS 0. Dann gilt die Folge aus ADR-0020 (bei einem ungeplanten Netzausfall gehen die Meldungen der rund 30 s bis zur Erkennung verloren, alles danach puffert der Pi). Steht dort `1`, gilt der bessere Fall. Ergebnis im Plan festhalten („Ergebnis und Übertrag“).
+
+9. **Optional, Internet-Ausfall:** Den Router mindestens **10 min** vom Internet trennen (die Bodensensoren melden etwa alle 5 min; 2 min zeigen oft gar nichts). Nach dem Wiederverbinden kommen die Meldungen gebündelt an; ihr `last_seen` liegt in der Ausfallzeit. Beobachten auf dem VPS wie in Schritt 8, mit `-v -F '%I %p'` und `-C 20` statt `-F "%q %t"` und `-C 1` (Empfangszeit und Inhalt); in der App erscheinen die Messwerte mit ihrem Messzeitpunkt. Dabei auf das Backend achten (Log von `api`: keine Zeitüberschreitungen bei der Nachlieferung).
+10. **Pi-Backup:** einmal von Hand sichern (`sudo bash /srv/smart-gateway/backup/backup.sh` auf dem Pi), der Check in healthchecks.io meldet einen Erfolg. Am folgenden Tag: der nächtliche Lauf hat gepingt.
+11. **Aufräumen**, wenn alles geprüft ist: alten Stack entfernen (Abschnitt 11, „Nach dem Umzug“). Den Port 1883 des alten Mosquitto gibt es danach im Heimnetz nicht mehr (falls noch etwas anderes im Heimnetz ihn nutzt: vorher umstellen).
+
+**Später (bewusst nicht Teil der Inbetriebnahme):**
+
+- **Eigener Netzwerkschlüssel:** Die Spec sieht einen eigenen, generierten `network_key` mit `pan_id`/`ext_pan_id` vor (Abschnitt 4.5). Das ändert das Zigbee-Netz und verlangt, **alle Geräte vor Ort neu anzulernen**. Geplant zusammen mit dem Koordinator-Tausch.
+- **Koordinator-Tausch** (CC2531 gegen einen neueren Adapter, Spec Abschnitt 4.6): ebenfalls Neukopplung aller Geräte; die IEEE-Adressen bleiben, Verlauf und Zuordnungen in der App bleiben erhalten. Neuer Serial-Pfad über `provision-gateway.sh <gateway-id> --force`, danach `pnpm gateway:deploy`.
 
 ## Fehlerbilder
 
