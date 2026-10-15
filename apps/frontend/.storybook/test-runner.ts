@@ -15,8 +15,11 @@ const AXE_OPTIONS = {
   },
 };
 
-/** A second, demanding theme: every story is also checked dark, high contrast, amber seed, English. */
-const SECOND_THEME = 'mode:dark;contrast:high;seed:!hex(8a5a00);locale:en';
+/**
+ * A second pass: every story is also checked dark and in English, with the default seed and
+ * contrast. Seeds, variants and contrast levels come from the generator (Till, 2026-10-15).
+ */
+const SECOND_THEME = 'mode:dark;locale:en';
 
 /** Storybook preview events that end a story: success, or one of the error paths. */
 const DONE_EVENT = 'storyRendered';
