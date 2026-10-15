@@ -134,3 +134,80 @@ topic bridge/request/# in 0 zigbee2mqtt/ gw/{{GATEWAY_ID}}/z2m/
 **Files:** `docs/runbooks/gateway.md` (Pi: Voraussetzungen, Zertifikat ausstellen, in der App registrieren, `provision-gateway.sh`, `gateway:deploy --migrate`, Prüfungen, Rückweg, Backups und Restore, später: Netzwerkschlüssel/Koordinator-Tausch), Architektur-Spec 4.5 (Z2M-Einstellungen per Umgebung, `/srv/smart-gateway`), `CLAUDE.md` (Befehle `pnpm gateway:deploy`, Gateway-Tests).
 
 **Inbetriebnahme (im Runbook, ausgeführt erst nach Tills Freigabe):** (1) `pki.sh issue-gateway` → ID notieren; (2) in der Produktion unter „Mehr → Gateways“ registrieren; (3) `provision-gateway.sh <id>`; (4) `pnpm gateway:deploy --migrate`; (5) in der App: Gateway „online“, Z2M „online“; (6) unter „Geräte → Neu erkannt“ erscheinen die Sensoren; (7) ACL-Test (Schreiben unter fremdem Präfix kommt nicht an); (8) Z2M-QoS prüfen; (9) optional: Router 2 min vom Internet trennen → Werte kommen nach. Commit `docs: describe connecting the pi`.
+
+## Ergebnis und Übertrag
+
+Umgesetzt subagent-gestützt: Sonnet hat umgesetzt und geprüft, Haiku hat kleine Nachbesserungen nachgeprüft, Opus das Gesamt-Review gemacht, mit einer Nachbesserungsrunde. Task 4 und 5 liefen teils parallel. Task 6 (nur Doku) hat der Controller selbst geschrieben. Reine Kleinfund-Runden bekamen kein eigenes Review, das Gesamt-Review deckt sie ab. Dieser Abschnitt hält fest, wo die Umsetzung vom Plan abweicht und was die nächsten Etappen übernehmen müssen.
+
+### Abweichungen vom Plan (Entscheidungen)
+
+**Backend und MQTT-Sitzung**
+
+- **Dauerhafte MQTT-Sitzung des Backends:**
+  - Subscription-Identifier werden aus dem Filter abgeleitet und sind damit über Prozesse hinweg stabil.
+  - Eine Freigabesperre hält nachgelieferte Kopien unquittiert zurück, bis der Ingest abonniert hat.
+  - Eine spät eintreffende Quittung nach einem Reconnect ist zulässig, weil der Broker die Paket-ID behält.
+  - Steht die Sitzung beim Verbinden noch, abonniert das Backend alle Filter neu; ein verlorenes Abo heilt sich so selbst.
+- **Admin-CLI ohne MQTT** (`CliModule`): Sonst übernimmt sie die feste Client-ID der laufenden API, und beim Beenden kündigt sie deren Status-Abos.
+
+**Zigbee2MQTT und Mosquitto auf dem Pi**
+
+- **Z2M 2.14.2 schreibt `ZIGBEE2MQTT_CONFIG_*` in `configuration.yaml`**, einschließlich Passwort und Token. Die Annahme des Plans, die Datei bleibe unverändert, stimmt nicht. Geräte, Namen und Schlüssel bleiben aber erhalten, und das Ergebnis ist bei jedem Start gleich. Deshalb hält jeder Deploy den Datenordner auf `700` und die Datei auf `600`.
+- **Healthcheck über einen Benutzer `health`** mit öffentlichem Passwort. Er darf nur drei Topics lesen. Der lokale Bridge-Zustand kommt aus `gw/<id>/bridge/connection`.
+
+**Provisionieren und Deploy**
+
+- **`provision-gateway.sh`:**
+  - Die `passwd` wird auf dem Pi mit `mosquitto_passwd -U` gehasht, mit `--network none`.
+  - Das Skript braucht passwortloses `sudo` (`sudo -n`).
+  - Ein mit `--force` erneutes Provisionieren behält ein von Hand ergänztes `HC_RESTORE_URL`.
+- **Umzug läuft auf dem Pi** (`gateway/migrate.sh`, abgekoppelt per `systemd-run`), mit eigenem Rückweg. Ergänzt nach den Reviews:
+  - Prüfungen ohne Antwort gelten als „läuft noch“; dann endet der Umzug in `failed-manual` statt den alten Stack zu starten.
+  - Der alte Stack bekommt für die Dauer des Umzugs `restart=no`; das Zurücksetzen stellt die gespeicherte Richtlinie wieder her.
+  - Die Kopie entsteht als `.partial` und wird erst am Ende umbenannt.
+  - Normaler Deploy und `--fresh` brechen ab, solange ein fremder Z2M läuft, ein Umzugsstatus außer `done` vorliegt oder eine `.partial` übrig ist.
+  - `--fresh` ist nur für einen neuen Pi.
+
+**Backups**
+
+- **Pings an healthchecks.io sendet das Host-Skript**, denn das restic-Image hat kein curl.
+- **Eigener Timer für den Wiederherstellungstest**; `HC_RESTORE_URL` ist optional.
+- **Backup und Wiederherstellungstest warten bis zu 10 min auf eine synchronisierte Uhr** (`timedatectl`). `After=time-sync.target` legt allein nur die Reihenfolge fest.
+- **Die Sicherung läuft auf die laufenden Daten:**
+  - `database.db` und `coordinator_backup.json` schreibt Z2M atomar.
+  - `state.json` und `configuration.yaml` schreibt Z2M nicht atomar; das ist hingenommen und in `gateway/README.md` begründet.
+
+**Inbetriebnahme**
+
+- **Internet-Trennung mindestens 10 min statt 2 min.** Die Sensoren melden nur etwa alle 5 min.
+- **Zusätzlich beschrieben: Wiederherstellung nach Verlust des Pi** (Runbook, Abschnitt 11). Die Befehle sind noch ungeprüft.
+
+### Übertrag
+
+- **Inbetriebnahme des Pi:** Runbook Abschnitt 12, erst nach Tills Freigabe. Dabei festhalten:
+  - QoS des echten Z2M (erwartet 0)
+  - Nachliefer-Spitze
+  - retained `bridge/connection` nach einem Neustart des Brokers
+- **Eigene Gateways (nach 6b):** Gateway-Assistent; die App erzeugt Zugangsdaten je Gateway und eine fertige Bridge-Konfiguration. Die Skripte sind schon auf fremde alte Stacks ausgelegt (Neustart-Richtlinie, fremder Z2M).
+- **Zertifikat erneuern in der App:** fehlt noch, weil `gateway.exists` greift. Die Zertifikate gelten 2 Jahre.
+- **Später vor Ort:** eigener Netzwerkschlüssel und Tausch des CC2531, beides mit Neukopplung aller Geräte (Runbook Abschnitt 12, „Später“).
+
+### Bewusst zurückgestellt (klein)
+
+**Backups**
+
+- echter Test der Aufbewahrung mit rückdatierten Snapshots
+- Container nach einem `SIGKILL` von `docker compose run` aufräumen (`--name`, `ExecStopPost`)
+- `RESTIC_PASSWORD_FILE` statt Umgebungsvariable (bisher wie bei Z2M per `env_file`)
+- Hinweise zum Umzug, wenn die Installation der Timer scheitert
+
+**Umzug und Gateway-Test**
+
+- Signal-Latenz während `start.sh`: Der Mac meldet dann `UNKNOWN`; das Vorgehen steht im Runbook.
+- Die Richtlinie `on-failure` wird ohne ihre Zahl der Wiederholungen wiederhergestellt.
+- Kein Gateway-Test mit beim Start nicht auflösbarem `BROKER_HOST`.
+
+**Backend**
+
+- Ein während eines Ausfalls der API gesperrtes Gateway behält sein Ingest-Abo in der Sitzung. Seine Kopien werden quittiert und verworfen.
+- Ein veraltetes Status-Abo nach einem Absturz zählt nachgelieferte Kopien als frische Aktivität.
