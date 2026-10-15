@@ -3,7 +3,11 @@ import { MailModule } from '../../platform/mail/index.js';
 import { IdentityModule, ME_HOUSEHOLDS } from '../identity/index.js';
 import { HouseholdsCleanupJob } from './cleanup.job.js';
 import { HouseholdGuard } from './household.guard.js';
-import { HouseholdController, HouseholdsController } from './households.controller.js';
+import {
+  HouseholdController,
+  HouseholdMeController,
+  HouseholdsController,
+} from './households.controller.js';
 import { HouseholdsRepository } from './households.repository.js';
 import { InstanceController } from './instance.controller.js';
 import { InstanceSettingsRepository } from './instance-settings.repository.js';
@@ -23,6 +27,7 @@ import { MembershipsRepository } from './memberships.repository.js';
   controllers: [
     HouseholdsController,
     HouseholdController,
+    HouseholdMeController,
     MembersController,
     InvitationsController,
     InvitationAcceptController,

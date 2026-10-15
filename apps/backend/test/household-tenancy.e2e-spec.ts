@@ -30,7 +30,7 @@ interface Ids {
   hardwareId: string;
   deviceId: string;
 }
-type Method = 'get' | 'post' | 'patch' | 'delete';
+type Method = 'get' | 'post' | 'put' | 'patch' | 'delete';
 
 /**
  * Every endpoint below `v1/households/:householdId`. Adding a route without a row fails the
@@ -84,6 +84,12 @@ const ENDPOINTS: {
     body: { name: 'Hijacked' },
     crossIds: true,
   },
+  { route: 'GET /v1/households/:householdId/me/overview-layout' },
+  {
+    route: 'PUT /v1/households/:householdId/me/overview-layout',
+    body: { blocks: [{ id: 'status', visible: false }] },
+  },
+  { route: 'DELETE /v1/households/:householdId/me/overview-layout' },
 ];
 
 const METHOD_NAMES: Partial<Record<RequestMethod, string>> = {
@@ -121,9 +127,11 @@ describe('household tenancy', () => {
         ? base.get(path)
         : method === 'post'
           ? base.post(path)
-          : method === 'patch'
-            ? base.patch(path)
-            : base.delete(path);
+          : method === 'put'
+            ? base.put(path)
+            : method === 'patch'
+              ? base.patch(path)
+              : base.delete(path);
     test.set('Origin', origin);
     if (cookie) test.set('Cookie', cookie);
     return body ? test.send(body) : test;
@@ -289,7 +297,7 @@ describe('household tenancy', () => {
           return [`${METHOD_NAMES[method] ?? String(method)} ${joinPath(path, sub)}`];
         }),
       );
-      expect(routes.length).toBeGreaterThanOrEqual(16);
+      expect(routes.length).toBeGreaterThanOrEqual(19);
       expect(routes.sort()).toEqual(ENDPOINTS.map(({ route }) => route).sort());
     });
   });

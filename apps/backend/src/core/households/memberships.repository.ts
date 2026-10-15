@@ -1,5 +1,5 @@
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
-import type { HouseholdRole } from '@smart/contracts';
+import type { HouseholdRole, OverviewLayout } from '@smart/contracts';
 import { and, eq } from 'drizzle-orm';
 import { DATABASE, type DatabaseConnection } from '../../platform/database/index.js';
 import { ApiError } from '../../platform/http/index.js';
@@ -24,6 +24,20 @@ export class MembershipsRepository {
       .from(memberships)
       .where(and(eq(memberships.householdId, householdId), eq(memberships.userId, userId)));
     return row;
+  }
+
+  /** Stores (or, with null, clears) the member's overview layout; false if there is no such member. */
+  async setOverviewLayout(
+    householdId: string,
+    userId: string,
+    overviewLayout: OverviewLayout | null,
+  ): Promise<boolean> {
+    const rows = await this.connection.db
+      .update(memberships)
+      .set({ overviewLayout })
+      .where(and(eq(memberships.householdId, householdId), eq(memberships.userId, userId)))
+      .returning({ userId: memberships.userId });
+    return rows.length > 0;
   }
 
   /** The members of the household by name. */

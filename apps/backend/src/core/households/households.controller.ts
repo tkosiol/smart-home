@@ -1,12 +1,27 @@
-import { Body, Controller, Patch, Post, Put, Req, UseGuards } from '@nestjs/common';
-import { HttpStatus } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Patch,
+  Post,
+  Put,
+  Req,
+  Res,
+  UseGuards,
+} from '@nestjs/common';
 import {
   currentHouseholdUpdateSchema,
   householdCreateSchema,
   householdUpdateSchema,
+  overviewLayoutSchema,
   type HouseholdSummary,
   type Me,
+  type OverviewLayout,
 } from '@smart/contracts';
+import type { Response } from 'express';
 import { ApiError } from '../../platform/http/index.js';
 import {
   type AuthenticatedUser,
@@ -74,5 +89,45 @@ export class HouseholdController {
     if (!household) throw new ApiError(HttpStatus.NOT_FOUND, 'household.notFound');
     const { id, name, timezone } = household;
     return { id, name, timezone, role: membership.role };
+  }
+}
+
+/** The signed-in member's own settings in one household; any role may change them. */
+@Controller('v1/households/:householdId/me')
+@UseGuards(HouseholdGuard)
+export class HouseholdMeController {
+  constructor(private readonly memberships: MembershipsRepository) {}
+
+  /** The stored layout, or JSON `null`: the app normalises it against its known blocks. */
+  @Get('overview-layout')
+  @RequireRole('viewer')
+  overviewLayout(@Req() request: HouseholdRequest, @Res() response: Response): void {
+    response.json(membershipOf(request).overviewLayout);
+  }
+
+  @Put('overview-layout')
+  @RequireRole('viewer')
+  async saveOverviewLayout(
+    @Req() request: HouseholdRequest,
+    @Body() body: unknown,
+  ): Promise<OverviewLayout> {
+    const layout = overviewLayoutSchema.parse(body);
+    await this.store(request, layout);
+    return layout;
+  }
+
+  @Delete('overview-layout')
+  @RequireRole('viewer')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async resetOverviewLayout(@Req() request: HouseholdRequest): Promise<void> {
+    await this.store(request, null);
+  }
+
+  private async store(request: HouseholdRequest, layout: OverviewLayout | null): Promise<void> {
+    const { householdId, userId } = membershipOf(request);
+    // The membership may have been removed since the guard looked it up.
+    if (!(await this.memberships.setOverviewLayout(householdId, userId, layout))) {
+      throw new ApiError(HttpStatus.NOT_FOUND, 'household.notFound');
+    }
   }
 }
