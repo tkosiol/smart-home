@@ -49,6 +49,7 @@ setup() {
   cp "$GATEWAY_DIR/compose.yaml" "$GW/"
   cp -R "$GATEWAY_DIR/backup" "$GW/backup"
   ln -s "$GATEWAY_DIR/test/stubs/curl" "$WORK/bin/curl"
+  ln -s "$GATEWAY_DIR/test/stubs/timedatectl" "$WORK/bin/timedatectl"
   printf 'GATEWAY_ID=gw-testpi01\nBROKER_HOST=mqtt.example.org\nBROKER_PORT=8883\nZ2M_SERIAL_DEVICE=/dev/null\n' > "$GW/secrets/gateway.env"
   printf 'ZIGBEE2MQTT_CONFIG_MQTT_USER=z2m\nZIGBEE2MQTT_CONFIG_MQTT_PASSWORD=x\nZIGBEE2MQTT_CONFIG_FRONTEND_AUTH_TOKEN=y\n' > "$GW/secrets/z2m.env"
   write_backup_env
@@ -85,9 +86,11 @@ setup() {
   PINGS="$WORK/pings"
   : > "$CALLS"
   : > "$PINGS"
-  unset STUB_CURL_FAIL
+  unset STUB_CURL_FAIL STUB_TIMEDATECTL SMART_TIMEDATECTL
   export PATH="$WORK/bin:$PATH"
   export STUB_CALLS="$CALLS" STUB_PING_LOG="$PINGS" SMART_GATEWAY_DIR="$GW"
+  # The clock wait is short here (the real one is 10 minutes); the stub timedatectl says the clock is synchronised.
+  export SMART_CLOCK_WAIT_SECONDS=2 SMART_CLOCK_POLL_SECONDS=1
 }
 write_backup_env() {
   {
@@ -206,6 +209,27 @@ teardown
 setup
 { echo "# comment"; echo; sed 's/^B2_BUCKET=.*/B2_BUCKET=smart-pi-restic-test/' "$GW/secrets/backup.env"; } > "$WORK/be" && cp "$WORK/be" "$GW/secrets/backup.env"
 check "backup.sh accepts comments and blank lines in backup.env" '[ "$(run backup.sh)" = 0 ]'
+teardown
+
+# --- the clock wait (the Pi has no RTC) ---
+setup
+check "backup.sh asks timedatectl before any restic work and then backs up" '[ "$(run backup.sh)" = 0 ] && grep -q "^timedatectl show -p NTPSynchronized --value$" "$CALLS" && grep -q "backup completed" "$OUT"'
+check "both services leave room for the clock wait in their timeouts" 'unit smart-gateway-backup.service | grep -q "^TimeoutStartSec=3h10min$" && unit smart-gateway-restore-test.service | grep -q "^TimeoutStartSec=1h10min$"'
+teardown
+setup; export STUB_TIMEDATECTL=no
+check "backup.sh does not back up while the clock is not synchronised: exit 1, says so, start and fail pings, no repository" '[ "$(run backup.sh)" = 1 ] && grep -q "clock not synchronized" "$OUT" && pings_are "backup/start backup/fail" && [ -z "$(ls -A "$GW/repo")" ] && no_secret_in_logs'
+teardown
+setup; export STUB_TIMEDATECTL=fail
+check "a failing timedatectl counts as not synchronised" '[ "$(run backup.sh)" = 1 ] && grep -q "clock not synchronized" "$OUT" && pings_are "backup/start backup/fail"'
+teardown
+setup; export STUB_TIMEDATECTL=no SMART_TIMEDATECTL=no-such-timedatectl-tool
+check "without timedatectl the backup carries on" '[ "$(run backup.sh)" = 0 ] && grep -q "backup completed" "$OUT"'
+teardown
+setup
+run backup.sh > /dev/null
+: > "$PINGS"
+export STUB_TIMEDATECTL=no
+check "restore-test.sh does not run while the clock is not synchronised, and pings fail" '[ "$(run restore-test.sh)" = 1 ] && grep -q "clock not synchronized" "$OUT" && pings_are "backup/fail" && ! grep -q "restore test passed" "$OUT"'
 teardown
 
 # --- restore-test.sh ---

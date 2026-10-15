@@ -25,6 +25,7 @@ on_exit() {
 }
 trap on_exit EXIT
 ping_start
+bk_wait_clock || bk_die "clock not synchronized (timedatectl does not report NTPSynchronized=yes) - the restore test did not run"
 bk_run restore-test
 trap - EXIT
 ping_success

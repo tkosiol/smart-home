@@ -9,5 +9,6 @@ Requires=docker.service
 Type=oneshot
 WorkingDirectory=/srv/smart-gateway
 ExecStart=/usr/bin/env bash /srv/smart-gateway/backup/backup.sh
-TimeoutStartSec=3h
+# Includes the wait for a synchronised clock (up to 10 minutes, bk_wait_clock in backup/lib.sh).
+TimeoutStartSec=3h10min
 Nice=10

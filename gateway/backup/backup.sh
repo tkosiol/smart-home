@@ -22,6 +22,7 @@ on_exit() {
 }
 trap on_exit EXIT
 bk_ping "$bk_hc_url" /start
+bk_wait_clock || bk_die "clock not synchronized (timedatectl does not report NTPSynchronized=yes) - nothing was backed up"
 bk_run backup
 trap - EXIT
 bk_ping "$bk_hc_url" ""

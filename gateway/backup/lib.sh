@@ -82,6 +82,25 @@ bk_load_env() {
   [ -z "$bk_error" ]
 }
 
+# bk_wait_clock: the Pi has no real-time clock, so right after a boot the time can be far off, and S3 requests
+# signed with a wrong time fail (or restic writes snapshots with a wrong date). After=time-sync.target only orders the
+# units (that target passes at once unless systemd-time-wait-sync is enabled), so the scripts wait themselves, before any
+# restic or S3 work: up to SMART_CLOCK_WAIT_SECONDS (default 600) until timedatectl reports NTPSynchronized=yes.
+# Returns 1 when the clock did not synchronize. Without timedatectl (SMART_TIMEDATECTL overrides the name, for tests)
+# it returns 0 at once: there is nothing to ask.
+bk_wait_clock() {
+  local tool="${SMART_TIMEDATECTL:-timedatectl}" limit="${SMART_CLOCK_WAIT_SECONDS:-600}" poll="${SMART_CLOCK_POLL_SECONDS:-5}" deadline synced
+  command -v "$tool" > /dev/null 2>&1 || return 0
+  [[ "$limit" =~ ^[0-9]{1,5}$ && "$poll" =~ ^[0-9]{1,3}$ ]] || bk_die "SMART_CLOCK_WAIT_SECONDS and SMART_CLOCK_POLL_SECONDS must be whole seconds"
+  deadline=$((SECONDS + limit))
+  while :; do
+    synced=$("$tool" show -p NTPSynchronized --value 2> /dev/null) || synced=""
+    [ "$synced" = yes ] && return 0
+    [ "$SECONDS" -lt "$deadline" ] || return 1
+    sleep "$poll"
+  done
+}
+
 # bk_ping <base url> <suffix>: start, fail or success ("") ping. The URL is handed to curl as a config on stdin.
 bk_ping() {
   [ -n "$1" ] || return 0
