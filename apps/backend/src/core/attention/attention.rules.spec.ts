@@ -291,18 +291,26 @@ describe('evaluate', () => {
       expect(run({ gateways: [z2mDown], devices })).toEqual([]);
     });
 
-    it('yields nothing but the silence for a silent device, whose values are stale', () => {
+    it('keeps only the low battery next to the silence: other values are stale (Till, #36)', () => {
       const silent = withState(
         { soil_moisture: 5, battery: 3, dry: true },
         { availability: 'offline' },
       );
-      expect(run({ devices: [silent] }).map((item) => item.id)).toEqual(['device_silent:dev-1']);
+      expect(run({ devices: [silent] }).map((item) => item.id)).toEqual([
+        'device_silent:dev-1',
+        'battery_low:dev-1',
+      ]);
       const quiet = device({
         kind: 'contact',
         state: { contact: false, battery: 3 },
         lastSeenAt: ago(3 * HOUR),
       });
-      expect(run({ devices: [quiet] }).map((item) => item.id)).toEqual(['device_silent:dev-1']);
+      expect(run({ devices: [quiet] }).map((item) => item.id)).toEqual([
+        'device_silent:dev-1',
+        'battery_low:dev-1',
+      ]);
+      const charged = withState({ soil_moisture: 5, battery: 80 }, { availability: 'offline' });
+      expect(run({ devices: [charged] }).map((item) => item.id)).toEqual(['device_silent:dev-1']);
     });
 
     it('is the own item of a device behind an online gateway', () => {

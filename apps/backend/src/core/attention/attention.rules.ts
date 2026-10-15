@@ -220,6 +220,8 @@ function evaluateDevice(
       },
     });
     // Its values are stale: the silence is the cause, like an offline gateway (spec 4.1, rule 3).
+    // Only a low battery stays, because an empty battery is the likely reason (Till, #36).
+    evaluateBattery(device, before, reported, base, add);
     return;
   }
 
@@ -254,25 +256,36 @@ function evaluateDevice(
     });
   }
 
-  const battery = finite(state['battery']);
-  const wasLow = before.has(`battery_low:${device.id}`);
-  if (
-    battery !== undefined &&
-    (battery < thresholds.batteryMin ||
-      (wasLow && battery < thresholds.batteryMin + BATTERY_HYSTERESIS))
-  ) {
-    add('battery_low', device.id, reported, {
-      ...base,
-      value: battery,
-      unit: '%',
-      params: { threshold: thresholds.batteryMin },
-    });
-  }
+  evaluateBattery(device, before, reported, base, add);
 
   if (openSince !== undefined && minutesBetween(openSince, now) >= thresholds.contactOpenMinutes) {
     add('contact_open', device.id, openSince, {
       ...base,
       params: { openMinutes: Math.floor(minutesBetween(openSince, now)) },
+    });
+  }
+}
+
+/** `battery_low` from the last known battery value, with hysteresis. */
+function evaluateBattery(
+  device: DeviceSnapshot,
+  before: ReadonlyMap<string, AttentionItem>,
+  since: Date,
+  base: { deviceId: string; gatewayId: string; name: string },
+  add: Add,
+): void {
+  const battery = finite(device.state['battery']);
+  const { batteryMin } = device.thresholds;
+  const wasLow = before.has(`battery_low:${device.id}`);
+  if (
+    battery !== undefined &&
+    (battery < batteryMin || (wasLow && battery < batteryMin + BATTERY_HYSTERESIS))
+  ) {
+    add('battery_low', device.id, since, {
+      ...base,
+      value: battery,
+      unit: '%',
+      params: { threshold: batteryMin },
     });
   }
 }
