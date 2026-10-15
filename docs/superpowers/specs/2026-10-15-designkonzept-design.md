@@ -6,7 +6,9 @@
 | Datum  | 2026-10-15                                                                                                                                                                                        |
 | Bezug  | Architektur-Spec Abschnitte 8.7, 8.8, 10; Spec Etappe 3 (Design-System); Spec Etappe 6a (Sensoren sehen); ADR-0011, ADR-0012; Design-Canvas (privat, bei Till), Richtung B und Zeile „B · Status“ |
 
-## 0. Zu prüfen (Entscheidungen, die Till bestätigen soll)
+## 0. Entscheidungen (von Till bestätigt am 2026-10-15)
+
+Alle sechs Punkte sind so bestätigt. Ergänzung von Till: Schwellen sind je Geräteart voreingestellt und pro Gerät anpassbar (Abschnitt 4.3).
 
 1. **Etappe 6b wird geteilt.** 6b = Designsprache (Tokens, neue `ui-*`-Bausteine, Übersicht mit Status-Hero, „Alle Hinweise“, „Übersicht anpassen“, Umbau der bestehenden Seiten, Hinweise im Backend). 6c = Räume, Verläufe, SSE, Befehle und Kopplungsmodus, von Anfang an in der neuen Sprache (Abschnitt 9). Empfehlung: ja, damit 6c nichts zweimal baut.
 2. **Hinweise rechnet das Backend** (`core/attention`), nicht die App (Abschnitt 4.2). Empfehlung: ja; Benachrichtigungen (Etappe 7) brauchen dieselben Regeln.
@@ -112,7 +114,7 @@ Seite `/raeume/:id`: Top App Bar mit Zurück und Raumname, Status-Hero nur für 
 - Hero-Karte in der Farbe der Geräteart: Label, Hauptwert (`--smart-type-value-hero`), Status-Chip, Fortschrittsleiste mit markiertem Zielbereich, „aktualisiert vor n min“.
 - Nebenwerte als drei Pods (`secondary-container`): Temperatur, Batterie, Signal; bei anderen Geräten die nächsten Messwerte nach `primaryCapability`.
 - Diagrammkarte (6c): Titel „Verlauf“, Segment „24 h | 7 Tage“, `ui-chart` mit Balken je Stunde (24 h) oder je Tag (7 Tage), Bereich „zu trocken“ als Band in `dry-container`, Balken unterhalb der Schwelle in `dry`; Legende als Text.
-- Darunter Pillen „Raum: …“ und „Grenzwerte“ (Grenzwerte erst mit dem Pflanzenmodul änderbar, bis dahin nur Anzeige).
+- Darunter Pillen „Raum: …“ und „Grenzwerte“ (führt zur Karte „Grenzwerte“, Abschnitt 4.3).
 - Lampe: Hero mit Schalter, Schieberegler für Helligkeit, Chips für Farbtemperatur.
 
 ### 3.4 Alle Hinweise
@@ -152,20 +154,27 @@ Fensterklassen aus `ui-adaptive-shell`: **Medium** (Rail): Übersicht zweispalti
 
 ### 4.2 Arten, Bedingungen und Sichtbarkeit
 
-| Art (`kind`)      | Dringlichkeit | Bedingung                                                                                                                            | Sichtbar für           |
-| ----------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ---------------------- |
-| `gateway_offline` | `critical`    | `bridge_status` oder `z2m_status` länger als 5 min nicht `online` (Benachrichtigung in Etappe 7 nach 15 min, Architektur-Spec 8.8)   | alle                   |
-| `device_silent`   | `critical`    | Gateway online und `availability` `offline`, oder keine Meldung seit mehr als 2 h                                                    | alle                   |
-| `soil_dry`        | `warning`     | das Gerät meldet „trocken“ (Flag der Fähigkeit); sonst `soil_moisture` unter 25 %. Das Pflanzenmodul (Etappe 8) ersetzt die Schwelle | alle                   |
-| `soil_wet`        | `warning`     | nur, wenn das Gerät es meldet; eigene Schwellen erst mit dem Pflanzenmodul                                                           | alle                   |
-| `battery_low`     | `warning`     | `isLowBattery` (unter `LOW_BATTERY_PERCENT`, 20 %)                                                                                   | alle                   |
-| `contact_open`    | `info`        | `contact` offen seit mehr als 10 min                                                                                                 | alle                   |
-| `hardware_new`    | `info`        | erkannte, nicht zugeordnete Hardware                                                                                                 | owner                  |
-| `cert_expiring`   | `info`        | Zertifikat oder CRL läuft in weniger als 30 Tagen ab                                                                                 | owner, Plattform-Admin |
+| Art (`kind`)      | Dringlichkeit | Bedingung                                                                                                                          | Sichtbar für           |
+| ----------------- | ------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ---------------------- |
+| `gateway_offline` | `critical`    | `bridge_status` oder `z2m_status` länger als 5 min nicht `online` (Benachrichtigung in Etappe 7 nach 15 min, Architektur-Spec 8.8) | alle                   |
+| `device_silent`   | `critical`    | Gateway online und `availability` `offline`, oder keine Meldung länger als die Schwelle (Abschnitt 4.3, Standard 2 h)              | alle                   |
+| `soil_dry`        | `warning`     | das Gerät meldet „trocken“ (Flag der Fähigkeit) oder `soil_moisture` unter der unteren Schwelle (Abschnitt 4.3, Standard 25 %)     | alle                   |
+| `soil_wet`        | `warning`     | `soil_moisture` über der oberen Schwelle (Abschnitt 4.3; Standard: keine, also aus, bis sie gesetzt ist)                           | alle                   |
+| `battery_low`     | `warning`     | Batterie unter der Schwelle (Abschnitt 4.3, Standard 20 % = `LOW_BATTERY_PERCENT`)                                                 | alle                   |
+| `contact_open`    | `info`        | `contact` offen länger als die Schwelle (Abschnitt 4.3, Standard 10 min)                                                           | alle                   |
+| `hardware_new`    | `info`        | erkannte, nicht zugeordnete Hardware                                                                                               | owner                  |
+| `cert_expiring`   | `info`        | Zertifikat oder CRL läuft in weniger als 30 Tagen ab                                                                               | owner, Plattform-Admin |
 
-Ein Eintrag entsteht, sobald die Bedingung gilt, und verschwindet, sobald sie nicht mehr gilt; `since` ist der Zeitpunkt, ab dem sie gilt. Hysterese nur dort, wo Werte flattern: `soil_dry` endet erst 3 Prozentpunkte über der Schwelle, `battery_low` erst bei 25 %.
+Ein Eintrag entsteht, sobald die Bedingung gilt, und verschwindet, sobald sie nicht mehr gilt; `since` ist der Zeitpunkt, ab dem sie gilt. Hysterese nur dort, wo Werte flattern: `soil_dry` endet erst 3 Prozentpunkte über der unteren Schwelle, `soil_wet` 3 Prozentpunkte unter der oberen, `battery_low` 5 Prozentpunkte über ihrer Schwelle.
 
-### 4.3 Berechnung im Backend
+### 4.3 Schwellen: je Geräteart voreingestellt, pro Gerät anpassbar
+
+- **Standardwerte je Geräteart** (`deviceKind`, Abschnitt 2.4) stehen in `@smart/contracts` (`DEFAULT_THRESHOLDS`), zum Beispiel `soil`: Feuchte unten 25 %, oben aus; alle batteriebetriebenen Arten: Batterie 20 %; `contact`: offen länger als 10 min; alle Arten: stumm nach 2 h. Für Gateways gilt fest 5 min (keine Anpassung in 6b).
+- **Je Gerät überschreibbar:** `devices.thresholds` (JSON, nur gesetzte Werte; fehlender Wert = Standard der Art). Die effektive Schwelle ist `Gerät ?? Art`. Ändern dürfen `owner` und `member` (wie Umbenennen); `viewer` sieht die Werte. `PATCH /api/v1/households/:id/devices/:deviceId` nimmt `thresholds` mit zod-Grenzen (Prozent 0–100, untere < obere Feuchte, Dauer 1 min–7 Tage); `null` für einen Wert setzt ihn auf den Standard zurück.
+- **Oberfläche:** auf der Geräteseite eine Karte „Grenzwerte“ mit den Werten, die für die Fähigkeiten des Geräts gelten (Feuchte unten/oben, Batterie, offen länger als, stumm nach); jeder Wert zeigt, ob er der Standard der Art ist („Standard“) oder angepasst, mit „Auf Standard zurücksetzen“. Das Band „zu trocken“ im Diagramm (6c) folgt der effektiven unteren Schwelle.
+- `core/attention` liest die effektiven Schwellen; eine Änderung wirkt sofort (neu berechnen für das Gerät). Das Pflanzenmodul (Etappe 8) kann später Standardwerte je Pflanzenart liefern; eine Anpassung am Gerät hat weiter Vorrang.
+
+### 4.4 Berechnung im Backend
 
 Neues Core-Modul `core/attention` berechnet die Einträge je Haushalt aus `gateways`, `devices`, `device_state` und `hardware` (über deren `index.ts`), hält sie im Speicher und schreibt sie nicht in die Datenbank (sie sind aus dem Zustand ableitbar). Gründe: Die Unterdrückung (Regel 3) und die Zeitbedingungen brauchen den Gesamtzustand des Haushalts und eine Uhr, die unabhängig vom offenen Browser läuft; Etappe 7 verschickt Benachrichtigungen für dieselben Bedingungen (Architektur-Spec 8.8, Core-Meldungen) und darf nicht zu anderen Ergebnissen kommen als die App; Feature-Module (Pflanzen) registrieren später eigene Arten, ohne dass die App sie kennt. Die App gruppiert, sortiert und begrenzt nur für die Darstellung (Regeln 2, 4, 5).
 
@@ -224,13 +233,13 @@ Feature-Code enthält weiterhin kein CSS; was fehlt, wird ein `ui-*`-Baustein. M
 
 ## 9. Reihenfolge und Umfang
 
-| Etappe                            | Inhalt                                                                                                                                                                                                                                                                                                                      | Sichtbares Ergebnis                                                                                     |
-| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| 6b Designsprache                  | Tokens (2.1–2.6), Warnfarben-Spike (6), `deviceKind` in Contracts, Bausteine aus 7 (ohne `ui-chart`, `ui-room-card`), `core/attention` mit den Arten aus 4.2 (ohne `soil_wet`), Übersicht mit Hero und Block „Geräte“, „Alle Hinweise“, „Übersicht anpassen“ mit Speicherung, Umbau der bestehenden Seiten (3.6), Storybook | Die App sieht aus wie Richtung B; der Status-Block zeigt echte Hinweise des Simulators und der Sensoren |
-| 6c Räume, Verläufe, Live, Befehle | Räume (Modell, Seiten, Block `rooms`, Pods je Raum), Stundenaggregat und `ui-chart`, SSE inklusive `attention.changed`, Befehle mit Lampen-Pod und Geräteseite der Lampe, Kopplungsmodus – alles in der Sprache aus 6b                                                                                                      | Räume mit Pods, Verläufe mit Band, Lampe schaltbar aus der Übersicht                                    |
+| Etappe                            | Inhalt                                                                                                                                                                                                                                                                                                                                                                                      | Sichtbares Ergebnis                                                                                     |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| 6b Designsprache                  | Tokens (2.1–2.6), Warnfarben-Spike (6), `deviceKind` in Contracts, Bausteine aus 7 (ohne `ui-chart`, `ui-room-card`), `core/attention` mit den Arten aus 4.2 und den Schwellen aus 4.3 (Standardwerte, Anpassung je Gerät, Karte „Grenzwerte“), Übersicht mit Hero und Block „Geräte“, „Alle Hinweise“, „Übersicht anpassen“ mit Speicherung, Umbau der bestehenden Seiten (3.6), Storybook | Die App sieht aus wie Richtung B; der Status-Block zeigt echte Hinweise des Simulators und der Sensoren |
+| 6c Räume, Verläufe, Live, Befehle | Räume (Modell, Seiten, Block `rooms`, Pods je Raum), Stundenaggregat und `ui-chart`, SSE inklusive `attention.changed`, Befehle mit Lampen-Pod und Geräteseite der Lampe, Kopplungsmodus – alles in der Sprache aus 6b                                                                                                                                                                      | Räume mit Pods, Verläufe mit Band, Lampe schaltbar aus der Übersicht                                    |
 
 Tests: Storybook-Stories je Baustein in den sechs Kombinationen mit axe; Unit-Tests für Gruppierung, Zählung und Hero-Limit (App) und für die Regeln 1–4 und Hysterese (`core/attention`, Integrationstest mit dem Simulator: Gateway offline erzeugt genau einen Eintrag); E2E: Übersicht zeigt Hero mit Simulator-Hinweisen, Anpassung bleibt nach Neuladen erhalten.
 
 ## 10. Nicht-Ziele und später
 
-Quittieren und Stummschalten von Hinweisen; Favoriten (Block `favorites`, braucht eine Markierung je User und Gerät); Wetter (keine Datenquelle); Szenen; Theme je Haushalt; eigene Grenzwerte für Bodenfeuchte (Pflanzenmodul, Etappe 8); Benachrichtigungen und Web-Push (Etappe 7); eine zweite Display-Schrift (Richtung C, verworfen).
+Quittieren und Stummschalten von Hinweisen; Favoriten (Block `favorites`, braucht eine Markierung je User und Gerät); Wetter (keine Datenquelle); Szenen; Theme je Haushalt; Standardwerte je Pflanzenart (Pflanzenmodul, Etappe 8); anpassbare Gateway-Schwelle; Benachrichtigungen und Web-Push (Etappe 7); eine zweite Display-Schrift (Richtung C, verworfen).

@@ -8,7 +8,7 @@
 
 ## 0. Zu prüfen (Entscheidungen, die Till bestätigen soll)
 
-1. **Etappe 6 in zwei Teilen:** 6a = Geräte erkennen, zuordnen, Messwerte speichern und aktuelle Werte anzeigen; 6b = Verlaufsdiagramme, Räume, Live-Aktualisierung (SSE), Befehle (Lampe), Kopplungsmodus.
+1. **Etappe 6 in zwei Teilen:** 6a = Geräte erkennen, zuordnen, Messwerte speichern und aktuelle Werte anzeigen; 6b = Verlaufsdiagramme, Räume, Live-Aktualisierung (SSE), Befehle (Lampe), Kopplungsmodus. _Nachtrag 2026-10-15: Dieser Teil heißt jetzt 6c; 6b ist die Designsprache (`2026-10-15-designkonzept-design.md`). Spätere Verweise auf „6b“ in dieser Spec meinen 6c._
 2. **Aus Hardware wird ein Gerät nur durch einen owner** (Architektur-Spec 7.1: Hardware-Zuordnung ist owner-Recht). Alle Mitglieder sehen die Geräte und ihre Werte.
 3. **Angezeigt werden nur Messwerte**, also lesbare Werte, die das Gerät selbst meldet (z. B. Bodenfeuchte, Temperatur, Luftfeuchte, Batterie, „trocken“). Einstellungen des Sensors (Kalibrierung, Messintervall, Warnschwelle) erscheinen in 6a nicht.
 4. **Ohne Live-Verbindung:** Die Seiten laden die Werte beim Öffnen und alle 60 s neu, solange sie sichtbar sind. Live-Updates per SSE kommen in 6b.
