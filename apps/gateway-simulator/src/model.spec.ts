@@ -141,7 +141,9 @@ describe('GatewaySimulation messages', () => {
   });
 });
 
-describe('GatewaySimulation over 30 days', () => {
+// Three seeds over 30 days take about 0.5 s alone, but well over 5 s on a busy CI runner that runs
+// every workspace's tests at once.
+describe('GatewaySimulation over 30 days', { timeout: 30_000 }, () => {
   const runs = new Map<number, Report[]>();
   function run(seed: number): { reports: Report[] } {
     const known = runs.get(seed);

@@ -384,7 +384,7 @@ Neu entdeckte Hardware ist „nicht zugeordnet“ und kann einem bestehenden log
 | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `device_state`        | `device_id` (PK), `state` (JSON, letzter Gesamtstand), `last_seen_at`, `availability`                                                                                |
 | `measurements`        | Hypertable: `time`, `device_id`, `capability`, `value_num` (double), `value_text`, `flags` (z. B. „Zeitstempel ersetzt“); Unique (`device_id`, `capability`, `time`) |
-| `measurements_hourly` | Continuous Aggregate (UTC-Stunden): `avg`, `min`, `max`, `last`, `sum`, `count` für numerische Werte (**ab Etappe 6b**; 6a speichert nur `measurements`)             |
+| `measurements_hourly` | Continuous Aggregate (UTC-Stunden): `avg`, `min`, `max`, `last`, `sum`, `count` für numerische Werte (**ab Etappe 6c**; 6a speichert nur `measurements`)             |
 
 - Chunk-Intervall 7 Tage; Kompression nach 7 Tagen (`segmentby device_id, capability`); Rohdaten-Retention 1 Jahr; Stundenaggregat unbegrenzt.
 - Refresh-Policy des Aggregats mit `start_offset` von 7 Tagen, damit nachgelieferte Pufferdaten berücksichtigt werden.
@@ -549,7 +549,7 @@ M3-Fensterklassen (Compact < 600 px, Medium 600–839 px, Expanded ≥ 840 px). 
 
 ### 10.7 Erweiterbarkeit
 
-Feature-Module registrieren sich über `provideFeature({ moreEntries, overviewCards })`: Einträge der „Mehr“-Seite und Karten der Übersicht. Die Routen bleiben lazy in `app.routes.ts`. Die Gerätedetailseite des Cores rendert registrierte Widgets passend zu den Capabilities des Geräts, ohne die Module zu kennen; das Registrieren von `deviceWidgets` kommt mit Etappe 6. Module importieren sich nicht gegenseitig.
+Feature-Module registrieren sich über `provideFeature({ moreEntries, overviewCards })`: Einträge der „Mehr“-Seite und Karten der Übersicht. Ab Etappe 6b ersetzen anpassbare Blöcke (`overviewBlocks`) die Karten (`docs/superpowers/specs/2026-10-15-designkonzept-design.md`, Abschnitt 5). Die Routen bleiben lazy in `app.routes.ts`. Die Gerätedetailseite des Cores rendert registrierte Widgets passend zu den Capabilities des Geräts, ohne die Module zu kennen; das Registrieren von `deviceWidgets` kommt mit Etappe 6. Module importieren sich nicht gegenseitig.
 
 ### 10.8 Daten und Zustand
 
@@ -633,6 +633,8 @@ Reihenfolge ab Etappe 4 (Entscheidung 2026-10-13): 4a → 4c → 5 → 6 → 7 �
 | 7   | Benachrichtigungen        | Inbox, Web-Push, Einstellungen, Core-Meldungen                                                                                                               |
 | 8   | Pflanzenmodul             | eigenes Brainstorming und eigene Spec, sobald die Sensoren in Betrieb sind                                                                                   |
 | 9   | Self-Hosting-Paket        | Compose-Profile für die Szenarien, Installationsskript, Multi-Arch-Images, Releases, englische README; eigene Spec                                           |
+
+Etappe 6 ist geteilt: **6a** Geräte erkennen, Messwerte speichern und anzeigen; **6b** Designsprache, Hinweise (`core/attention`) und anpassbare Übersicht (`docs/superpowers/specs/2026-10-15-designkonzept-design.md`); **6c** Räume, Verläufe, SSE, Befehle und Kopplungsmodus in der neuen Sprache.
 
 ---
 

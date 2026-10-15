@@ -31,6 +31,12 @@ const buttonNamed = (name: string) =>
   );
 
 describe('UiSnackbar', () => {
+  // UiSnackbar loads Material's snack bar and its content with import() on first use. Loading them
+  // here once keeps that cold load (well over a second on a busy CI runner) out of vi.waitFor's 1 s.
+  beforeAll(async () => {
+    await Promise.all([import('@angular/material/snack-bar'), import('./snackbar-content')]);
+  }, 30_000);
+
   it('closes plain messages after four seconds, politely', async () => {
     const { snackbar, material } = setup();
     const open = vi.spyOn(material, 'openFromComponent');
