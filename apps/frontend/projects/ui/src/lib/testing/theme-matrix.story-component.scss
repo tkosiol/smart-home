@@ -1,0 +1,31 @@
+:host {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--smart-size-grid-lg), 1fr));
+  gap: var(--smart-space-md);
+}
+
+// Each cell is a page of its own combination: surface background, on-surface text, its font.
+.cell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--smart-space-md);
+  min-width: 0;
+  padding: var(--smart-space-lg);
+  border-radius: var(--smart-shape-card);
+  background: var(--mat-sys-surface);
+  color: var(--mat-sys-on-surface);
+  font: var(--mat-sys-body-medium);
+  font-family: var(--smart-font-family);
+}
+
+.caption {
+  color: var(--mat-sys-on-surface-variant);
+  font: var(--mat-sys-label-medium);
+}
+
+.content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--smart-space-md);
+  min-width: 0;
+}

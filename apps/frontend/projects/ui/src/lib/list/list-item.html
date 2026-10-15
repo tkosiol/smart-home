@@ -11,7 +11,13 @@
 
 <ng-template #content>
   @if (icon(); as icon) {
-    <ui-icon class="leading" [name]="icon" />
+    @if (leadingTone(); as tone) {
+      <span class="leading-container" [attr.data-tone]="tone" aria-hidden="true">
+        <ui-icon [name]="icon" />
+      </span>
+    } @else {
+      <ui-icon class="leading" [name]="icon" />
+    }
   }
   <span class="texts">
     <span class="headline">{{ headline() }}</span>

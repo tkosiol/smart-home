@@ -21,6 +21,9 @@ export const TEXT_ATTRIBUTES = new Set([
   'supporting',
   'title',
   'trailingText',
+  'unit',
+  'value',
+  'valueText',
 ]);
 
 /** Operators whose operands end up in the output (`a ?? 'x'`, `'Hello ' + name`); comparisons do not. */

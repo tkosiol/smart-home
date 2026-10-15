@@ -4,7 +4,7 @@
 // used anywhere is bundled with whoever imports the barrel. Material's select, toggles and forms
 // would then land in the initial chunk instead of the lazy pages that use them.
 export { UiSegmentedButton } from './lib/segmented-button/segmented-button';
-export { UiChipSet } from './lib/chip-set/chip-set';
+export { UiChipSet, type UiChipOption } from './lib/chip-set/chip-set';
 export { UiSelect } from './lib/select/select';
 export { UiSwitch } from './lib/switch/switch';
 export { UiColorField } from './lib/color-field/color-field';

@@ -1,0 +1,9 @@
+@if (bandBox(); as box) {
+  <span
+    class="band"
+    [attr.data-tone]="box.tone + '-container'"
+    [style.inset-inline-start.%]="box.start"
+    [style.width.%]="box.width"
+  ></span>
+}
+<span class="fill" [attr.data-tone]="fillTone()" [style.width.%]="fillPercent()"></span>

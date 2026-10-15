@@ -6,9 +6,11 @@
 
   // Material's filter chip is 32px high and has no separate touch target; the whole chip is the
   // target, so it is raised to the 48px touch size.
+  // Chips are pills in the new design (spec 2.1).
   @include mat.chips-overrides(
     (
       container-height: var(--smart-size-touch),
+      container-shape-radius: var(--smart-shape-control),
     )
   );
 }
@@ -23,4 +25,13 @@ mat-chip-option {
 .label {
   white-space: normal;
   overflow-wrap: anywhere;
+}
+
+// The count is part of the option's name ("Alle 20"): as an inline-block it gets a word separator
+// in the accessible name (browsers and dom-accessibility-api agree on that, not on a space
+// character). It keeps the label's colour, so no extra contrast pair is needed.
+.count {
+  display: inline-block;
+  margin-inline-start: var(--smart-space-xs);
+  font-variant-numeric: tabular-nums;
 }

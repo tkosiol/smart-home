@@ -7,6 +7,8 @@
 @use './lib/tokens/material';
 @use './lib/tokens/default-theme';
 @use './lib/tokens/layout';
+@use './lib/tokens/typography';
+@use './lib/tokens/shape';
 @include material.core;
 
 body {

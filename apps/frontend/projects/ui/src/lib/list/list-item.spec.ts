@@ -1,6 +1,7 @@
 import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
+import type { UiTone } from '../tone';
 import { UiList } from './list';
 import { UiListItem } from './list-item';
 
@@ -63,5 +64,46 @@ describe('UiListItem', () => {
     fixture.componentInstance.disabled.set(false);
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelectorAll('a')).toHaveLength(2);
+  });
+});
+
+@Component({
+  imports: [UiList, UiListItem],
+  template: `<ui-list>
+    <ui-list-item
+      icon="router"
+      headline="Gateway Garten"
+      [leadingTone]="tone()"
+      route="/gateways/1"
+    />
+  </ui-list>`,
+})
+class ToneHost {
+  readonly tone = signal<UiTone | undefined>('ok-container');
+}
+
+describe('UiListItem leading tone', () => {
+  function renderTone() {
+    TestBed.configureTestingModule({ providers: [provideRouter([])] });
+    const fixture = TestBed.createComponent(ToneHost);
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  it('wraps the icon in a container of the given tone', () => {
+    const fixture = renderTone();
+    const container = fixture.nativeElement.querySelector('.leading-container') as HTMLElement;
+    expect(container.getAttribute('data-tone')).toBe('ok-container');
+    expect(container.querySelector('ui-icon')).not.toBeNull();
+    expect(container.getAttribute('aria-hidden')).toBe('true');
+    expect(fixture.nativeElement.querySelector('ui-icon.leading')).toBeNull();
+  });
+
+  it('shows the plain icon without a tone', () => {
+    const fixture = renderTone();
+    fixture.componentInstance.tone.set(undefined);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.leading-container')).toBeNull();
+    expect(fixture.nativeElement.querySelector('ui-icon.leading')).not.toBeNull();
   });
 });

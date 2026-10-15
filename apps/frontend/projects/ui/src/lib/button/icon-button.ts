@@ -5,6 +5,9 @@ import { RouterLink } from '@angular/router';
 import { UiIcon } from '../icon/icon';
 import type { IconName } from '../icon/icon-codepoints';
 
+/** `standard` is Material's plain icon button; `tonal` sits on a surface-container-high disc. */
+export type UiIconButtonVariant = 'standard' | 'tonal';
+
 /**
  * Icon-only button; `label` is its accessible name (and must come translated from the caller).
  * Projected content replaces the plain icon, e.g. an icon inside a `ui-badge`. With a `route` it
@@ -14,9 +17,12 @@ import type { IconName } from '../icon/icon-codepoints';
   selector: 'ui-icon-button',
   imports: [MatIconButton, NgTemplateOutlet, RouterLink, UiIcon],
   templateUrl: './icon-button.html',
+  styleUrl: './icon-button.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  host: { '[attr.data-variant]': 'variant()' },
 })
 export class UiIconButton {
+  readonly variant = input<UiIconButtonVariant>('standard');
   readonly icon = input.required<IconName>();
   readonly label = input.required<string>();
   readonly type = input<'button' | 'submit'>('button');

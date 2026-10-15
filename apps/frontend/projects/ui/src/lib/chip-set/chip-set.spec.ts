@@ -1,7 +1,7 @@
 import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import type { UiOption } from '../option';
-import { UiChipSet } from './chip-set';
+import { UiChipSet, type UiChipOption } from './chip-set';
 
 type Room = 'kitchen' | 'bath' | 'office';
 
@@ -74,5 +74,46 @@ describe('UiChipSet', () => {
     options(fixture)[0]!.click();
     fixture.detectChanges();
     expect(fixture.componentInstance.selected()).toEqual(['bath']);
+  });
+});
+
+type Severity = 'all' | 'critical' | 'warning' | 'info';
+
+@Component({
+  imports: [UiChipSet],
+  template: `<ui-chip-set
+    label="Nach Dringlichkeit filtern"
+    [options]="options()"
+    [(selected)]="selected"
+  />`,
+})
+class CountHost {
+  readonly options = signal<readonly UiChipOption<Severity>[]>([
+    { value: 'all', label: 'Alle', count: 20 },
+    { value: 'critical', label: 'Kritisch', count: 0 },
+    { value: 'info', label: 'Hinweis' },
+  ]);
+  readonly selected = signal<readonly Severity[]>(['all']);
+}
+
+describe('UiChipSet counts', () => {
+  // The accessible name "Alle 20" (label, separator, count) is checked in the story: jsdom has no
+  // layout, and the separator comes from the count being an inline-block.
+  it('shows a count after the label, including zero', () => {
+    const fixture = TestBed.createComponent(CountHost);
+    fixture.detectChanges();
+    const chips = options(fixture);
+    expect(chips[0]!.querySelector('.label')?.textContent).toBe('Alle');
+    expect(chips[0]!.querySelector('.count')?.textContent?.trim()).toBe('20');
+    expect(chips[1]!.querySelector('.count')?.textContent?.trim()).toBe('0');
+    expect(chips[2]!.querySelector('.count')).toBeNull();
+  });
+
+  it('updates the count when the options change', () => {
+    const fixture = TestBed.createComponent(CountHost);
+    fixture.detectChanges();
+    fixture.componentInstance.options.set([{ value: 'all', label: 'Alle', count: 3 }]);
+    fixture.detectChanges();
+    expect(options(fixture)[0]!.querySelector('.count')?.textContent?.trim()).toBe('3');
   });
 });

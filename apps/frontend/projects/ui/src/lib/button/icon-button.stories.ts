@@ -3,6 +3,8 @@ import { applicationConfig, moduleMetadata, type Meta, type StoryObj } from '@st
 import { expect, fn, userEvent } from 'storybook/test';
 import { UiBadge } from '../badge/badge';
 import { UiIcon } from '../icon/icon';
+import { expectThemeMatrix, rgb } from '../testing/theme-matrix';
+import { ThemeMatrixStoryComponent, UiMatrixCell } from '../testing/theme-matrix.story-component';
 import { UiIconButton } from './icon-button';
 
 const meta: Meta<UiIconButton> = {
@@ -54,5 +56,61 @@ export const Link: StoryObj<UiIconButton> = {
     const target = link.querySelector('.mat-mdc-button-touch-target')!.getBoundingClientRect();
     await expect(target.width).toBeGreaterThanOrEqual(48);
     await expect(canvas.getByRole('link', { name: '3 neue Benachrichtigungen' })).toBeVisible();
+  },
+};
+
+/** The tonal buttons of the top app bar and the device page (spec 3.1, 3.3). */
+const tonalRow = `
+  <div style="display: flex; gap: 8px; align-items: center">
+    <ui-icon-button variant="tonal" icon="arrow_back" label="Zurück" />
+    <ui-icon-button variant="tonal" icon="settings" label="Übersicht anpassen" />
+    <ui-icon-button variant="tonal" icon="more_horiz" label="Weitere Optionen" disabled />
+    <ui-icon-button variant="tonal" route="/mehr" icon="notifications" label="Benachrichtigungen" />
+  </div>`;
+
+export const Tonal: StoryObj<UiIconButton> = {
+  decorators: [
+    applicationConfig({ providers: [provideRouter([], withDisabledInitialNavigation())] }),
+  ],
+  render: () => ({ template: tonalRow }),
+  play: async ({ canvas }) => {
+    const button = canvas.getByRole('button', { name: 'Übersicht anpassen' });
+    const root = getComputedStyle(document.documentElement);
+    await expect(getComputedStyle(button).backgroundColor).toBe(
+      rgb(root.getPropertyValue('--mat-sys-surface-container-high').trim()),
+    );
+    await expect(getComputedStyle(button).borderRadius).toBe('9999px');
+    await expect(getComputedStyle(button.querySelector('ui-icon')!).color).toBe(
+      rgb(root.getPropertyValue('--mat-sys-on-surface-variant').trim()),
+    );
+    // The tonal disc itself is the 48 px touch target.
+    await expect(button.getBoundingClientRect().width).toBe(48);
+    await expect(button.getBoundingClientRect().height).toBe(48);
+    await expect(canvas.getByRole('button', { name: 'Weitere Optionen' })).toBeDisabled();
+    await expect(canvas.getByRole('link', { name: 'Benachrichtigungen' })).toBeVisible();
+    await userEvent.tab();
+    await expect(canvas.getByRole('button', { name: 'Zurück' })).toHaveFocus();
+  },
+};
+
+export const Kombinationen: StoryObj<UiIconButton> = {
+  decorators: [
+    applicationConfig({ providers: [provideRouter([], withDisabledInitialNavigation())] }),
+    moduleMetadata({ imports: [ThemeMatrixStoryComponent, UiMatrixCell] }),
+  ],
+  render: () => ({
+    template: `
+      <ui-theme-matrix>
+        <ng-template uiMatrixCell>
+          ${tonalRow}
+          <div style="display: flex; gap: 8px; align-items: center">
+            <ui-icon-button icon="settings" label="Einstellungen" />
+            <ui-icon-button icon="close" label="Schließen" disabled />
+          </div>
+        </ng-template>
+      </ui-theme-matrix>`,
+  }),
+  play: async ({ canvasElement }) => {
+    await expectThemeMatrix(canvasElement);
   },
 };

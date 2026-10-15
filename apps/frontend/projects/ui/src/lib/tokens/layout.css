@@ -11,6 +11,8 @@
   /* Sizes */
   --smart-size-touch: 48px;
   --smart-size-top-app-bar: 64px;
+  /* Top app bar with the large title (compact windows) */
+  --smart-size-top-app-bar-large: 72px;
   /* Adaptive navigation: bottom bar (compact), rail (medium), drawer (expanded) */
   --smart-size-nav-bar: 80px;
   --smart-size-nav-rail: 80px;
@@ -29,6 +31,12 @@
   --smart-size-grid-lg: 320px;
   --smart-size-content-max: 1200px;
   --smart-size-skeleton-block: 96px;
+  /* Device pods (design spec 2.5) and the tonal icon container of list entries (spec 3.6) */
+  --smart-size-pod-width: 140px;
+  --smart-size-pod-height: 116px;
+  --smart-size-icon-container: 40px;
+  /* Track height of ui-progress-band */
+  --smart-size-progress-band: 12px;
   --smart-focus-width: 3px;
   --smart-line-height-icon: 1;
   /* Opacity of disabled content (M3 uses 38%) */
@@ -38,4 +46,6 @@
   --smart-motion-duration-medium: 300ms;
   --smart-motion-duration-long: 1500ms;
   --smart-motion-easing-standard: cubic-bezier(0.2, 0, 0, 1);
+  /* Pressed pods shrink to this scale (spec 2.6); nothing moves under prefers-reduced-motion */
+  --smart-motion-scale-pressed: 0.98;
 }

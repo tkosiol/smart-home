@@ -1,0 +1,97 @@
+@use '../tone';
+
+:host {
+  display: inline-flex;
+  flex-direction: column;
+  gap: var(--smart-space-xs);
+  min-width: 0;
+  max-width: 100%;
+  font-variant-numeric: tabular-nums;
+
+  @include tone.text;
+}
+
+.line {
+  display: flex;
+  align-items: baseline;
+  gap: var(--smart-space-xs);
+  min-width: 0;
+}
+
+.value {
+  overflow-wrap: anywhere;
+}
+
+.unit {
+  flex: none;
+  font-weight: var(--smart-font-weight-medium);
+}
+
+.label {
+  color: var(--mat-sys-on-surface-variant);
+  font: var(--mat-sys-body-small);
+  overflow-wrap: anywhere;
+  hyphens: auto;
+}
+
+// A toned value keeps its label in the same colour: one family per display, not two.
+:host([data-tone]) .label {
+  color: inherit;
+}
+
+// medium: pods and side values (headline-small, weight 600; spec 2.3)
+:host([data-size='medium']) .value {
+  font: var(--mat-sys-headline-small);
+  font-weight: var(--smart-font-weight-semibold);
+}
+
+:host([data-size='medium']) .unit {
+  font: var(--mat-sys-title-large);
+  font-weight: var(--smart-font-weight-medium);
+}
+
+// large: a headline value, e.g. a room or the lamp's brightness
+:host([data-size='large']) .value {
+  font: var(--mat-sys-display-small);
+  font-weight: var(--smart-font-weight-semibold);
+  letter-spacing: var(--smart-type-tracking-tight);
+}
+
+:host([data-size='large']) .unit {
+  font: var(--mat-sys-title-large);
+  font-weight: var(--smart-font-weight-medium);
+}
+
+:host([data-size='large']) .label {
+  font: var(--mat-sys-body-medium);
+}
+
+// hero: the main value of the device page; its label stands above it as a section label
+:host([data-size='hero']) {
+  flex-direction: column-reverse;
+  gap: var(--smart-space-sm);
+}
+
+:host([data-size='hero']) .value {
+  font: var(--smart-type-value-hero);
+  letter-spacing: var(--smart-type-tracking-hero);
+}
+
+:host([data-size='hero']) .unit {
+  font: var(--mat-sys-headline-large);
+  font-weight: var(--smart-font-weight-medium);
+}
+
+:host([data-size='hero']) .label {
+  color: inherit;
+  font: var(--mat-sys-label-small);
+  font-weight: var(--smart-font-weight-semibold);
+  letter-spacing: var(--smart-type-tracking-label);
+  text-transform: uppercase;
+}
+
+// The `font` shorthands above reset the numeric variant, so tabular digits are set after them.
+:host([data-size]) .value,
+:host([data-size]) .unit {
+  font-variant-numeric: tabular-nums;
+}

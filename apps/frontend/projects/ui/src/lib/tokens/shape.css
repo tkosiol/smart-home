@@ -1,0 +1,11 @@
+/* Shape assignment (design spec 2.1): which Material corner each kind of element takes. */
+:root {
+  /* Cards: status hero, room card, chart card, sheet */
+  --smart-shape-card: var(--mat-sys-corner-extra-large);
+  /* Pods and entries inside the hero and in lists */
+  --smart-shape-pod: var(--mat-sys-corner-large);
+  /* Chips, pills, switches, icon buttons, segments */
+  --smart-shape-control: var(--mat-sys-corner-full);
+  /* Chart bars */
+  --smart-shape-bar: var(--mat-sys-corner-extra-small);
+}

@@ -1,0 +1,9 @@
+<span class="line">
+  <span class="value">{{ value() }}</span>
+  @if (unit(); as unit) {
+    <span class="unit">{{ unit }}</span>
+  }
+</span>
+@if (label(); as label) {
+  <span class="label">{{ label }}</span>
+}

@@ -14,6 +14,9 @@ export { UiEmptyState, UiEmptyStateActions } from './lib/empty-state/empty-state
 export { UiSkeleton } from './lib/skeleton/skeleton';
 export { UiList } from './lib/list/list';
 export { UiListItem } from './lib/list/list-item';
+export type { UiRoleTone, UiTone, UiToneName } from './lib/tone';
+export { UiValueDisplay, type UiValueDisplaySize } from './lib/value-display/value-display';
+export { UiProgressBand, type UiProgressBandRange } from './lib/progress-band/progress-band';
 export { UiClock } from './lib/time/clock';
 export { UiDateTimePipe } from './lib/time/date-time.pipe';
 export type { UiDateTimeStyle } from './lib/time/formatters';

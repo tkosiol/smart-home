@@ -27,7 +27,7 @@ Hintergrund: `docs/superpowers/specs/2026-10-11-etappe-3-design-system-design.md
 | Layout      | `ui-page`, `ui-section`, `ui-stack`, `ui-grid`                                                                                  |
 | Rahmen      | `ui-adaptive-shell` (Slots `uiShellTopBar`, `uiShellBanner`), `ui-top-app-bar` (Aktionen über `uiTopAppBarActions`), `ui-badge` |
 | Bedienung   | `ui-button`, `ui-icon-button`, `ui-switch`, `ui-segmented-button`, `ui-select`, `ui-chip-set`, `ui-color-field`                 |
-| Inhalt      | `ui-card`, `ui-list`, `ui-list-item`, `ui-empty-state`, `ui-skeleton`, `ui-icon`                                                |
+| Inhalt      | `ui-card`, `ui-list`, `ui-list-item`, `ui-empty-state`, `ui-skeleton`, `ui-icon`, `ui-value-display`, `ui-progress-band`        |
 | Formular    | `ui-text-field`                                                                                                                 |
 | Theme       | `ui-theme-editor` (Modi personal/instance), ThemeService, provideTheme                                                          |
 | Rückmeldung | `ui-banner`, `UiSnackbar`, `UiAnnouncer` (Services)                                                                             |
@@ -35,12 +35,32 @@ Hintergrund: `docs/superpowers/specs/2026-10-11-etappe-3-design-system-design.md
 
 Neues Symbol: Namen in `src/lib/icon/icons.json` eintragen, dann `pnpm icons:build`.
 
+## Tokens der Designsprache
+
+Designkonzept Abschnitt 2 (`docs/superpowers/specs/2026-10-15-designkonzept-design.md`); feste Längen nur in `src/lib/tokens/`.
+
+| Datei            | Tokens                                                                                                                                                                                                                                            |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `shape.css`      | Formzuordnung: `--smart-shape-card` (Karten, extra-large), `--smart-shape-pod` (Pods und Einträge, large), `--smart-shape-control` (Chips, Pillen, Schalter, Icon-Buttons, full), `--smart-shape-bar` (Diagrammbalken, extra-small)               |
+| `typography.css` | `--smart-font-weight-medium` (500), `--smart-font-weight-semibold` (600), `--smart-type-value-hero` (80/84 px, 600) mit `--smart-type-tracking-hero` (−0,03 em), `--smart-type-tracking-tight` (Titel), `--smart-type-tracking-label` (Versalien) |
+| `layout.css`     | `--smart-size-pod-width` (140 px), `--smart-size-pod-height` (116 px), `--smart-size-icon-container` (40 px), `--smart-size-progress-band` (12 px), `--smart-size-top-app-bar-large` (72 px), `--smart-motion-scale-pressed` (0,98)               |
+
+Farbfamilien (`UiTone` in `src/lib/tone.ts`) rendern Komponenten als `data-tone`; die Regeln dazu liefert `src/lib/_tone.scss` (`tone.fill` für Flächen, `tone.text` für Text). Neue Bausteine nehmen diese Mixins statt eigener Farbtabellen.
+
+**Stories in allen Kombinationen:** Jeder neue oder geänderte Baustein hat eine Story „Kombinationen“ mit `ui-theme-matrix` (`src/lib/testing/theme-matrix.story-component.ts`): Sie rendert die Zelle in zwei Grundfarben (Standard und `#d32f2f`) × hell/dunkel × Standard/Mittel/Hoch, jede Zelle mit den Variablen der Theme-Engine, und axe prüft alle zwölf in einem Lauf (`expectThemeMatrix`).
+
 ## Verhalten
 
 - **Link-Modus:** `ui-button` und `ui-icon-button` werden mit `route` zu einem Router-Link. Dann feuert `pressed` nicht; für Navigation den Link-Modus, für Aktionen `pressed` nehmen.
 - **Snackbar:** `UiSnackbar.show(text, { action, politeness })`. Eine Meldung mit Aktion bleibt ohne Zeitlimit stehen, bis der Nutzer die Aktion auslöst oder sie über den Schließen-Knopf schließt. Ohne Aktion schließt sie sich nach 4 Sekunden. `politeness` ist `polite` (Standard) oder `assertive`.
 - **Ansagen:** `UiAnnouncer.announce(text, politeness)` meldet Änderungen ohne Fokusziel an Screenreader, etwa einen Eintrag, der nach dem Speichern verschwindet.
 - **Fensterklassen:** `ui-adaptive-shell` zeigt die Navigation unter 600 px als Leiste unten, von 600 bis 839 px als Rail und ab 840 px als Drawer. Die Ziele übergibt der Aufrufer als `UiNavDestination[]`.
+- **Top App Bar:** `size="large"` zeigt den Titel groß (`headline-small`, Gewicht 600) auf einer 72 px hohen Leiste – für Compact (Designkonzept 3.1). Die Leiste beobachtet den Viewport nicht; der Aufrufer wählt die Größe je Fensterklasse.
+- **Tonale Icon-Buttons:** `ui-icon-button` mit `variant="tonal"` sitzt auf einer `surface-container-high`-Scheibe (Top App Bar, Geräteseite). Sichtbar 40 px, Touch-Ziel 48 px wie bei Material.
+- **Icon-Container in Listen:** `ui-list-item` mit `leadingTone` legt das Icon in einen runden 40-px-Container in einer Farbfamilie (`UiTone`): Rolle oder Statusfarbe, jeweils als kräftige Fläche (`error`) oder Container (`ok-container`), oder `surface`. Der Container ist dekorativ (`aria-hidden`); der Eintrag heißt nach seinen Texten.
+- **Chips mit Zähler:** `ui-chip-set` nimmt `UiChipOption` mit `count`; der Zähler steht hinter dem Label und gehört zum Namen der Option („Kritisch 2“). `multiple` (Standard) erlaubt mehrere Chips zugleich.
+- **Werte:** `ui-value-display` zeigt `value` (vom Aufrufer formatiert), `unit` und `label` in `size` `hero` (Hauptwert der Geräteseite, `--smart-type-value-hero`), `large` oder `medium` (Pods, Nebenwerte), immer mit Tabellenziffern. Ohne `tone` erbt der Text seine Farbe von der Fläche; mit `tone` (`UiToneName`) nimmt er die kräftige Farbe der Familie.
+- **Fortschrittsband:** `ui-progress-band` ist ein `meter` mit `label` (Name) und `valueText` (`aria-valuetext`, beide übersetzt vom Aufrufer). `band` `{ from, to, tone }` markiert einen Bereich in der Container-Farbe; liegt der Wert darin, nimmt die Füllung die kräftige Farbe des Bands, sonst `primary`. Bei `prefers-reduced-motion` gleitet nichts.
 
 ## Instanz-Theme
 

@@ -17,10 +17,14 @@ export { ThemeService } from './lib/theme/theme.service';
 export { UiIcon, type UiIconSize } from './lib/icon/icon';
 export { ICON_CODEPOINTS, type IconName } from './lib/icon/icon-codepoints';
 export { UiButton, type UiButtonVariant } from './lib/button/button';
-export { UiIconButton } from './lib/button/icon-button';
+export { UiIconButton, type UiIconButtonVariant } from './lib/button/icon-button';
 export { UiBanner, UiBannerActions, type UiBannerTone } from './lib/banner/banner';
 export { UiBadge } from './lib/badge/badge';
-export { UiTopAppBar, UiTopAppBarActions } from './lib/top-app-bar/top-app-bar';
+export {
+  UiTopAppBar,
+  UiTopAppBarActions,
+  type UiTopAppBarSize,
+} from './lib/top-app-bar/top-app-bar';
 export { UiAdaptiveShell, UiShellBanner, UiShellTopBar } from './lib/adaptive-shell/adaptive-shell';
 export type { UiNavDestination, UiWindowClass } from './lib/adaptive-shell/navigation';
 export { UiAnnouncer } from './lib/announcer/announcer';
