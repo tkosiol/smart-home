@@ -154,16 +154,16 @@ Fensterklassen aus `ui-adaptive-shell`: **Medium** (Rail): Übersicht zweispalti
 
 ### 4.2 Arten, Bedingungen und Sichtbarkeit
 
-| Art (`kind`)      | Dringlichkeit | Bedingung                                                                                                                          | Sichtbar für           |
-| ----------------- | ------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ---------------------- |
-| `gateway_offline` | `critical`    | `bridge_status` oder `z2m_status` länger als 5 min nicht `online` (Benachrichtigung in Etappe 7 nach 15 min, Architektur-Spec 8.8) | alle                   |
-| `device_silent`   | `critical`    | Gateway online und `availability` `offline`, oder keine Meldung länger als die Schwelle (Abschnitt 4.3, Standard 2 h)              | alle                   |
-| `soil_dry`        | `warning`     | das Gerät meldet „trocken“ (Flag der Fähigkeit) oder `soil_moisture` unter der unteren Schwelle (Abschnitt 4.3, Standard 25 %)     | alle                   |
-| `soil_wet`        | `warning`     | `soil_moisture` über der oberen Schwelle (Abschnitt 4.3; Standard: keine, also aus, bis sie gesetzt ist)                           | alle                   |
-| `battery_low`     | `warning`     | Batterie unter der Schwelle (Abschnitt 4.3, Standard 20 % = `LOW_BATTERY_PERCENT`)                                                 | alle                   |
-| `contact_open`    | `info`        | `contact` offen länger als die Schwelle (Abschnitt 4.3, Standard 10 min)                                                           | alle                   |
-| `hardware_new`    | `info`        | erkannte, nicht zugeordnete Hardware                                                                                               | owner                  |
-| `cert_expiring`   | `info`        | Zertifikat oder CRL läuft in weniger als 30 Tagen ab                                                                               | owner, Plattform-Admin |
+| Art (`kind`)      | Dringlichkeit | Bedingung                                                                                                                            | Sichtbar für           |
+| ----------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ---------------------- |
+| `gateway_offline` | `critical`    | `bridge_status` oder `z2m_status` länger als 5 min nicht `online` (Benachrichtigung in Etappe 7 nach 15 min, Architektur-Spec 8.8)   | alle                   |
+| `device_silent`   | `critical`    | Gateway online und `availability` `offline`, oder keine Meldung länger als die Schwelle (Abschnitt 4.3, Standard 2 h)                | alle                   |
+| `soil_dry`        | `warning`     | `soil_moisture` unter der unteren Schwelle (Abschnitt 4.3, Standard 25 %); das Flag „trocken“ des Sensors zählt nur ohne Feuchtewert | alle                   |
+| `soil_wet`        | `warning`     | `soil_moisture` über der oberen Schwelle (Abschnitt 4.3; Standard: keine, also aus, bis sie gesetzt ist)                             | alle                   |
+| `battery_low`     | `warning`     | Batterie unter der Schwelle (Abschnitt 4.3, Standard 20 % = `LOW_BATTERY_PERCENT`)                                                   | alle                   |
+| `contact_open`    | `info`        | `contact` offen länger als die Schwelle (Abschnitt 4.3, Standard 10 min)                                                             | alle                   |
+| `hardware_new`    | `info`        | erkannte, nicht zugeordnete Hardware                                                                                                 | owner                  |
+| `cert_expiring`   | `info`        | Zertifikat oder CRL läuft in weniger als 30 Tagen ab                                                                                 | owner, Plattform-Admin |
 
 Ein Eintrag entsteht, sobald die Bedingung gilt, und verschwindet, sobald sie nicht mehr gilt; `since` ist der Zeitpunkt, ab dem sie gilt. Hysterese nur dort, wo Werte flattern: `soil_dry` endet erst 3 Prozentpunkte über der unteren Schwelle, `soil_wet` 3 Prozentpunkte unter der oberen, `battery_low` 5 Prozentpunkte über ihrer Schwelle.
 
