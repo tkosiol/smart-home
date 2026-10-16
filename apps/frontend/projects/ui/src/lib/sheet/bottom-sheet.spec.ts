@@ -45,6 +45,10 @@ function setup(medium: boolean, router?: { events: Subject<unknown> }) {
   return TestBed.inject(UiBottomSheet);
 }
 
+/** The press that starts a click: the backdrop only counts when it is hit on both ends. */
+const press = (target: Element) =>
+  target.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+
 const dialog = () => document.querySelector<HTMLDialogElement>('ui-sheet-host dialog');
 
 /** Waits for the lazily loaded host to open and render its content. */
@@ -127,8 +131,25 @@ describe('UiBottomSheet', () => {
     const sheet = setup(false);
     const result = sheet.open<Content, Data, 'saved'>(Content, { name: 'Status' });
     const element = await settle();
-    element.querySelector<HTMLElement>('.body')!.click();
+    const body = element.querySelector<HTMLElement>('.body')!;
+    press(body);
+    body.click();
     expect(dialog()).not.toBeNull();
+    press(element);
+    element.click();
+    await expect(result).resolves.toBeUndefined();
+  });
+
+  it('stays open when a drag or a selection starts inside and ends on the backdrop', async () => {
+    const sheet = setup(false);
+    const result = sheet.open<Content, Data, 'saved'>(Content, { name: 'Status' });
+    const element = await settle();
+    // The browser fires the click on the common ancestor, which is the dialog itself.
+    press(element.querySelector<HTMLElement>('.body')!);
+    element.click();
+    expect(dialog()).not.toBeNull();
+    // A later click that starts on the backdrop still closes it.
+    press(element);
     element.click();
     await expect(result).resolves.toBeUndefined();
   });

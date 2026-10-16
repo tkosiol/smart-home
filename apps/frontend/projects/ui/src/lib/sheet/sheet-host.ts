@@ -29,7 +29,11 @@ import type { UiSheetPresentation } from './sheet-ref';
   styleUrl: './sheet-host.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
   // Escape is handled here as well as by the browser, so test DOMs without the dialog API agree.
-  host: { '(click)': 'onClick($event)', '(keydown.escape)': 'close()' },
+  host: {
+    '(pointerdown)': 'onPointerDown($event)',
+    '(click)': 'onClick($event)',
+    '(keydown.escape)': 'close()',
+  },
 })
 export class UiSheetHost {
   readonly component = input.required<Type<unknown>>();
@@ -39,6 +43,8 @@ export class UiSheetHost {
 
   private readonly dialog = viewChild.required<ElementRef<HTMLDialogElement>>('dialog');
   private closing = false;
+  /** Where the press of the current click started. */
+  private pressed: EventTarget | null = null;
 
   constructor() {
     afterNextRender(() => this.show());
@@ -70,9 +76,19 @@ export class UiSheetHost {
     this.closed.emit();
   }
 
-  /** Only a click on the backdrop reaches the dialog element itself. */
+  protected onPointerDown(event: PointerEvent): void {
+    this.pressed = event.target;
+  }
+
+  /**
+   * Only a click that starts and ends on the backdrop closes: a drag or a text selection that
+   * begins inside the sheet and ends outside it also fires its click on the dialog element.
+   */
   protected onClick(event: MouseEvent): void {
-    if (event.target === this.dialog().nativeElement) this.close();
+    const dialog = this.dialog().nativeElement;
+    const startedOnBackdrop = this.pressed === dialog;
+    this.pressed = null;
+    if (event.target === dialog && startedOnBackdrop) this.close();
   }
 
   private show(): void {

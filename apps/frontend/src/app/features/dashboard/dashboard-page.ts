@@ -25,6 +25,7 @@ import {
 import { TopBarActions, type OverviewBlock } from '../../core/features';
 import { HouseholdContext, injectHouseholdErrorHandler } from '../../core/household';
 import {
+  OverviewSurface,
   injectOverviewBlocks,
   resolveOverviewBlocks,
   usableOverviewBlocks,
@@ -102,6 +103,7 @@ export class DashboardPage {
   private readonly api = inject(OverviewLayoutApi);
   private readonly sheet = inject(UiBottomSheet);
   private readonly handleError = injectHouseholdErrorHandler();
+  private readonly surface = inject(OverviewSurface);
   private readonly registered = injectOverviewBlocks();
   private readonly currentId = computed(() => this.household.current()?.id);
 
@@ -150,9 +152,13 @@ export class DashboardPage {
     });
   });
 
-  /** Nothing is on show: the user hid every block (and no critical notice overrides that). */
+  /** Nothing is on show: the user hid every block, and no critical notice surfaces despite that. */
   protected readonly allHidden = computed(
-    () => this.ready() && this.known().length > 0 && !this.layout().blocks.some((b) => b.visible),
+    () =>
+      this.ready() &&
+      this.known().length > 0 &&
+      !this.layout().blocks.some((b) => b.visible) &&
+      !this.surface.any(),
   );
 
   constructor() {
@@ -213,6 +219,9 @@ export class DashboardPage {
     this.customizing = true;
     try {
       await this.runCustomize(householdId);
+    } catch (error) {
+      // A chunk that did not load (the sheet, or its dialog host): tell it, stay usable.
+      this.handleError(error);
     } finally {
       this.customizing = false;
     }

@@ -2,6 +2,7 @@ import { Component, input, type Type } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import type { HouseholdRole, Language, OverviewLayout } from '@smart/contracts';
 import { UiBottomSheet } from '@smart/ui';
+import { reportSurfaced } from '../../core/overview-blocks';
 import { provideFeature, TopBarActions, type OverviewBlock } from '../../core/features';
 import { householdOf, json, meWith } from '../../testing/auth-testing';
 import {
@@ -49,6 +50,14 @@ describe('dashboard page without blocks', () => {
 @Component({ selector: 'app-test-status', template: 'status visible={{ visible() }}' })
 class StatusStub {
   readonly visible = input(true);
+}
+/** Like the status block: reports that it shows although the user hid it. */
+@Component({ selector: 'app-test-critical', template: 'critical' })
+class CriticalStub {
+  readonly visible = input(true);
+  constructor() {
+    reportSurfaced('status', () => true);
+  }
 }
 @Component({ selector: 'app-test-devices', template: 'devices' })
 class DevicesStub {}
@@ -152,7 +161,7 @@ async function sheetOpened(page: Awaited<ReturnType<typeof open>>) {
 const shown = (page: OpenedHouseholdPage) =>
   [
     ...page.element.querySelectorAll(
-      'app-test-status, app-test-devices, app-test-gateway, app-test-rooms',
+      'app-test-status, app-test-critical, app-test-devices, app-test-gateway, app-test-rooms',
     ),
   ].map((element) => element.localName.replace('app-test-', ''));
 
@@ -323,6 +332,20 @@ describe('dashboard page with blocks', () => {
     );
   });
 
+  it('does not say everything is hidden while a critical notice surfaces', async () => {
+    const page = await open({
+      blocks: [block('status', CriticalStub, { surfaceWhenHidden: true }), DEVICES],
+      stored: {
+        blocks: [
+          { id: 'status', visible: false },
+          { id: 'devices', visible: false },
+        ],
+      },
+    });
+    expect(page.element.querySelector('app-test-critical')).not.toBeNull();
+    expect(page.element.querySelector('ui-empty-state')).toBeNull();
+  });
+
   it('reads the layout of the current household', async () => {
     const page = await open();
     const reads = page.calls.filter(
@@ -433,5 +456,16 @@ describe('the customise icon in the top bar', () => {
 
     expect(page.snackbar.show).toHaveBeenCalled();
     expect(shown(page)).toEqual(['status', 'devices']);
+  });
+
+  it('tells the error and can be opened again when the sheet code does not load', async () => {
+    const page = await open({ sheet: [undefined] });
+    page.openSheet.mockRejectedValueOnce(new Error('chunk lost'));
+    const action = TestBed.inject(TopBarActions).action();
+    action?.run();
+    await vi.waitFor(() => expect(page.snackbar.show).toHaveBeenCalled());
+    expect(shown(page)).toEqual(['status', 'devices']);
+    action?.run();
+    await vi.waitFor(() => expect(page.openSheet).toHaveBeenCalledTimes(2));
   });
 });

@@ -5,6 +5,7 @@ export const ICON_CODEPOINTS = {
   arrow_back: 0xe5c4,
   arrow_forward: 0xe5c8,
   battery_alert: 0xe19c,
+  battery_full: 0xe1a4,
   check: 0xe5ca,
   chevron_left: 0xe408,
   chevron_right: 0xe409,

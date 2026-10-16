@@ -107,6 +107,20 @@ describe('sidePodsOf', () => {
     });
   });
 
+  it('warns with the battery icon only below the effective minimum', () => {
+    const battery = (level: number, batteryMin: number) =>
+      sidePodsOf(
+        device('d', 'x', {
+          state: { soil_moisture: 60, temperature: 20, battery: level },
+          effectiveThresholds: { ...effectiveThresholds('soil', {}), batteryMin },
+        }),
+        'de',
+      ).find((pod) => pod.key === 'battery')?.icon;
+    expect(battery(90, 15)).toBe('battery_full');
+    expect(battery(14, 15)).toBe('battery_alert');
+    expect(battery(14, 10)).toBe('battery_full');
+  });
+
   it('shows at most three, takes the next readings for other devices and skips settings', () => {
     const sensor = device('d', 'x', {
       kind: 'climate',

@@ -2,7 +2,11 @@ import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import type { Language } from '@smart/contracts';
 import { UiAnnouncer, UiClock } from '@smart/ui';
-import { injectOverviewBlocks, resolveOverviewBlocks } from '../../core/overview-blocks';
+import {
+  OverviewSurface,
+  injectOverviewBlocks,
+  resolveOverviewBlocks,
+} from '../../core/overview-blocks';
 import { householdOf, meWith } from '../../testing/auth-testing';
 import {
   flush,
@@ -224,6 +228,34 @@ describe('status block', () => {
       await shown(page, 'Braucht Aufmerksamkeit · 2');
       expect(hero(page)?.getAttribute('data-tone')).toBe('critical');
       expect(pageText(page.element)).toContain('Ficus ist zu trocken');
+    });
+  });
+
+  describe("telling the page it is on show against the user's choice", () => {
+    const surfaced = () => TestBed.inject(OverviewSurface).any();
+
+    it('does so only while it shows the hero although it is hidden', async () => {
+      const quiet = await open({ hidden: true, items: [attentionItem('soil_dry', 'Ficus')] });
+      await flush(quiet, 6);
+      expect(surfaced()).toBe(false);
+    });
+
+    it('reports a critical notice that surfaces a hidden block', async () => {
+      const page = await open({
+        hidden: true,
+        items: [attentionItem('soil_dry', 'Ficus'), attentionItem('device_silent', 'Sensor 1')],
+      });
+      await shown(page, 'Braucht Aufmerksamkeit');
+      await flush(page, 2);
+      expect(surfaced()).toBe(true);
+    });
+
+    it('does not report while the user shows the block', async () => {
+      const page = await open({
+        items: [attentionItem('soil_dry', 'Ficus'), attentionItem('device_silent', 'Sensor 1')],
+      });
+      await shown(page, 'Braucht Aufmerksamkeit');
+      expect(surfaced()).toBe(false);
     });
   });
 

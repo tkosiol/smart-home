@@ -3,7 +3,7 @@ import { primaryCapability, type Device, type DeviceKind } from '@smart/contract
 import type { UiProgressBandRange } from '@smart/ui';
 import type { IconName } from '@smart/ui/shell';
 import { NO_VALUE, chipOf, readingValue, type PodChip, type ReadingValue } from './device-pod';
-import { capabilityLabelKey, formatNumber, isReading } from './device-values';
+import { capabilityLabelKey, formatNumber, isBatteryLow, isReading } from './device-values';
 
 // Root keys (marked, so the key check finds them): the words are translated where they are shown.
 const KIND_KEYS: Record<DeviceKind, string> = {
@@ -100,7 +100,7 @@ const SIDE_ORDER = ['temperature', 'humidity', 'battery', 'linkquality'];
 const SIDE_ICONS: Readonly<Record<string, IconName>> = {
   temperature: 'thermostat',
   humidity: 'water_drop',
-  battery: 'battery_alert',
+  battery: 'battery_full',
 };
 const SIDE_COUNT = 3;
 
@@ -120,6 +120,9 @@ export function sidePodsOf(device: Device, locale: string): SidePod[] {
       ...readingValue(capability, device.state[capability.key], locale),
       key: capability.key,
       labelKey: capabilityLabelKey(capability.key),
-      icon: SIDE_ICONS[capability.key] ?? 'sensors',
+      icon:
+        capability.key === 'battery' && isBatteryLow(device)
+          ? 'battery_alert'
+          : (SIDE_ICONS[capability.key] ?? 'sensors'),
     }));
 }

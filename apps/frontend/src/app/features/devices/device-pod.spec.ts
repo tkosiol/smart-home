@@ -72,10 +72,33 @@ describe('podOf', () => {
     });
   });
 
-  it('marks a device that reports "dry" as dry whatever the moisture says', () => {
-    expect(pod('d1', 'A', { state: { soil_moisture: 60, dry: true } }).chip?.key).toBe(
-      'app.devices.pod.dry',
-    );
+  describe('the dry flag of the sensor', () => {
+    const withMin = (soilMoistureMin: number) => ({
+      ...device('d1', 'A').effectiveThresholds,
+      soilMoistureMin,
+    });
+
+    it('does not override the threshold while the device reports a moisture', () => {
+      for (const soil_moisture of [29, 31]) {
+        const chip = pod('d1', 'A', {
+          state: { soil_moisture, dry: true },
+          effectiveThresholds: withMin(25),
+        }).chip;
+        expect(chip?.key).toBe('app.devices.pod.ok');
+      }
+    });
+
+    it('counts when there is no moisture to read', () => {
+      expect(pod('d1', 'A', { state: { dry: true } }).chip?.key).toBe('app.devices.pod.dry');
+    });
+
+    it('follows a lowered minimum', () => {
+      const chip = pod('d1', 'A', {
+        state: { soil_moisture: 28, dry: true },
+        effectiveThresholds: withMin(15),
+      }).chip;
+      expect(chip?.key).toBe('app.devices.pod.ok');
+    });
   });
 
   it('shows a low battery by the effective threshold of the device', () => {

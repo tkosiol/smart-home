@@ -92,7 +92,9 @@ describe('device page', () => {
       expect(hero(page)?.textContent).toContain('%');
       const text = pageText(page.element);
       expect(text).toContain('Bodenfeuchte');
-      expect(text).toContain('trocken');
+      // The sensor's own dry flag is on, but 41.3 % is above the minimum: the threshold decides.
+      expect(text).toContain('OK');
+      expect(text).not.toContain('trocken');
       expect(text).toContain('Aktualisiert vor 5 Minuten');
       expect(text).toContain('Acme SM-1');
       expect(gets(page)).toHaveLength(1);

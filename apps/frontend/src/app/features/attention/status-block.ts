@@ -18,6 +18,7 @@ import {
   UiStatusHero,
 } from '@smart/ui';
 import { HouseholdContext } from '../../core/household';
+import { reportSurfaced } from '../../core/overview-blocks';
 import { ALL_NOTICES_ROUTE, entryOf, entryRoute, type EntryView } from './attention-entries';
 import { attentionChange, groupAttention, heroModel } from './attention-model';
 import { injectAttention } from './attention';
@@ -131,6 +132,8 @@ export class StatusBlock {
   );
 
   constructor() {
+    // The overview must not call itself empty while this shows a critical notice against a hide.
+    reportSurfaced('status', () => !this.visible() && this.shown());
     let previous: readonly AttentionItem[] | null = null;
     effect(() => {
       const loaded = this.attention.loaded();

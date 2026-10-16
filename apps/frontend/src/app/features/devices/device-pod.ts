@@ -48,10 +48,13 @@ export function chipOf(device: Device): PodChip | null {
   if (device.availability === 'offline') return { key: WORDS.offline, tone: 'error' };
   const { state, effectiveThresholds: limits } = device;
   const moisture = typeof state['soil_moisture'] === 'number' ? state['soil_moisture'] : undefined;
-  if (
-    binaryOf(state['dry']) === true ||
-    (moisture !== undefined && limits.soilMoistureMin !== null && moisture < limits.soilMoistureMin)
-  ) {
+  // The sensor's own "dry" flag fires at its level, not the user's: it only counts while the
+  // device reports no moisture number (the same rule as the backend's attention items).
+  const dry =
+    moisture === undefined
+      ? binaryOf(state['dry']) === true
+      : limits.soilMoistureMin !== null && moisture < limits.soilMoistureMin;
+  if (dry) {
     return { key: WORDS.dry, tone: 'dry' };
   }
   if (
