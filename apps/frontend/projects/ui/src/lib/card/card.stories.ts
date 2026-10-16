@@ -24,12 +24,13 @@ export const Varianten: StoryObj<UiCard> = {
           <div uiCardActions><ui-button variant="text">Details</ui-button></div>
         </ui-card>
         <ui-card variant="low" heading="Grenzwerte" description="Ab diesen Werten meldet die App einen Hinweis."><p>Inhalt</p></ui-card>
+        <ui-card variant="accent" heading="Neu erkannt" description="Diese Geräte hat ein Gateway gemeldet."><p>Inhalt</p></ui-card>
       </div>`,
   }),
   play: async ({ canvas, canvasElement }) => {
     await expect(canvas.getByRole('heading', { level: 3, name: 'Umrandet' })).toBeVisible();
     await expect(canvas.getByRole('button', { name: 'Details' })).toBeVisible();
-    await expect(canvas.getAllByRole('heading', { level: 3 })).toHaveLength(4);
+    await expect(canvas.getAllByRole('heading', { level: 3 })).toHaveLength(5);
     // The card of the design concept: surface-container-low with extra-large corners.
     const root = getComputedStyle(document.documentElement);
     const low = canvasElement.querySelector('ui-card[variant="low"] mat-card')!;
@@ -42,6 +43,14 @@ export const Varianten: StoryObj<UiCard> = {
     await expect(
       getComputedStyle(canvas.getByRole('heading', { name: 'Grenzwerte' })).fontWeight,
     ).toBe('600');
+    // The accent card: secondary-container with its on-colour on the texts.
+    const accent = canvasElement.querySelector('ui-card[variant="accent"] mat-card')!;
+    await expect(getComputedStyle(accent).backgroundColor).toBe(
+      rgb(root.getPropertyValue('--mat-sys-secondary-container').trim()),
+    );
+    await expect(getComputedStyle(canvas.getByRole('heading', { name: 'Neu erkannt' })).color).toBe(
+      rgb(root.getPropertyValue('--mat-sys-on-secondary-container').trim()),
+    );
   },
 };
 
@@ -51,10 +60,16 @@ export const Kombinationen: StoryObj<UiCard> = {
     template: `
       <ui-theme-matrix>
         <ng-template uiMatrixCell>
-          <ui-card variant="low" heading="Grenzwerte" description="Ab diesen Werten meldet die App einen Hinweis.">
-            <p>Inhalt</p>
-            <div uiCardActions><ui-button variant="text">Auf Standard zurücksetzen</ui-button></div>
-          </ui-card>
+          <div style="display: grid; gap: 16px">
+            <ui-card variant="low" heading="Grenzwerte" description="Ab diesen Werten meldet die App einen Hinweis.">
+              <p>Inhalt</p>
+              <div uiCardActions><ui-button variant="text">Auf Standard zurücksetzen</ui-button></div>
+            </ui-card>
+            <ui-card variant="accent" heading="Neu erkannt" description="Diese Geräte hat ein Gateway gemeldet.">
+              <p>Inhalt</p>
+              <div uiCardActions><ui-button>Hinzufügen</ui-button></div>
+            </ui-card>
+          </div>
         </ng-template>
       </ui-theme-matrix>`,
   }),

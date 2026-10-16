@@ -16,7 +16,26 @@
   );
 }
 
-:host([data-variant='low']) .title {
+// The same card on secondary-container ("Neu erkannt", spec 3.6); every text takes the on-colour.
+:host([data-variant='accent']) {
+  @include mat.card-overrides(
+    (
+      filled-container-color: var(--mat-sys-secondary-container),
+      filled-container-shape: var(--smart-shape-card),
+      subtitle-text-color: var(--mat-sys-on-secondary-container),
+    )
+  );
+
+  color: var(--mat-sys-on-secondary-container);
+}
+
+// Material has no token for the title's colour.
+:host([data-variant='accent']) .title {
+  color: var(--mat-sys-on-secondary-container);
+}
+
+:host([data-variant='low']) .title,
+:host([data-variant='accent']) .title {
   font: var(--mat-sys-title-large);
   font-weight: var(--smart-font-weight-semibold);
   letter-spacing: var(--smart-type-tracking-tight);

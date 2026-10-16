@@ -217,7 +217,11 @@
       "household": "Haushalt",
       "members": "Mitglieder",
       "gateways": "Gateways",
-      "settings": "Einstellungen"
+      "settings": "Einstellungen",
+      "groups": {
+        "household": "Haushalt verwalten",
+        "app": "App"
+      }
     },
     "offline": "Offline – Anzeigen können veraltet sein",
     "update": {

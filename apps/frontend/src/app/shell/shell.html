@@ -1,6 +1,6 @@
 <ui-adaptive-shell [destinations]="destinations()" [navigationLabel]="'app.nav.label' | transloco">
   <header uiShellTopBar>
-    <ui-top-app-bar [heading]="householdName()">
+    <ui-top-app-bar [heading]="householdName()" [size]="barSize()">
       @if (pageAction(); as action) {
         <ui-icon-button
           uiTopAppBarActions
@@ -13,6 +13,7 @@
       @if (canSwitchHousehold()) {
         <ui-icon-button
           uiTopAppBarActions
+          variant="tonal"
           route="/haushalte"
           icon="swap_horiz"
           [label]="'app.household.switch' | transloco"
@@ -20,6 +21,7 @@
       }
       <ui-icon-button
         uiTopAppBarActions
+        variant="tonal"
         route="/mehr"
         icon="notifications"
         [label]="'app.notifications.none' | transloco"

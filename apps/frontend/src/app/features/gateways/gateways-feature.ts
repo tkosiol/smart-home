@@ -13,6 +13,7 @@ export function provideGatewaysFeature(): Provider {
         id: 'gateways',
         labelKey: marker('app.more.gateways'),
         icon: 'router',
+        group: 'household',
         route: '/mehr/gateways',
         order: 40,
         minRole: 'owner',

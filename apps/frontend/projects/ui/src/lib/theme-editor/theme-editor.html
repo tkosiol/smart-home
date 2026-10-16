@@ -1,6 +1,6 @@
 <ui-stack gap="xl">
   @if (mode() === 'personal') {
-    <ui-section [heading]="'ui.themeEditor.display' | transloco">
+    <ui-card variant="low" [level]="2" [heading]="'ui.themeEditor.display' | transloco">
       <ui-stack gap="md">
         <ui-segmented-button
           [label]="'ui.themeEditor.mode' | transloco"
@@ -16,8 +16,8 @@
           (valueChange)="setContrast($event)"
         />
       </ui-stack>
-    </ui-section>
-    <ui-section [heading]="'ui.themeEditor.colors' | transloco">
+    </ui-card>
+    <ui-card variant="low" [level]="2" [heading]="'ui.themeEditor.colors' | transloco">
       <ui-stack gap="md">
         <ui-switch
           [label]="'ui.themeEditor.ownColors' | transloco"
@@ -30,12 +30,12 @@
           <p class="note">{{ 'ui.themeEditor.installationColors' | transloco }}</p>
         }
       </ui-stack>
-    </ui-section>
+    </ui-card>
   } @else {
-    <ui-section [heading]="'ui.themeEditor.colors' | transloco">
+    <ui-card variant="low" [level]="2" [heading]="'ui.themeEditor.colors' | transloco">
       <ui-theme-colors [colors]="instance().colors" (colorsChange)="setInstanceColors($event)" />
-    </ui-section>
-    <ui-section [heading]="'ui.themeEditor.shapeAndFont' | transloco">
+    </ui-card>
+    <ui-card variant="low" [level]="2" [heading]="'ui.themeEditor.shapeAndFont' | transloco">
       <ui-stack gap="md">
         <ui-select
           [label]="'ui.themeEditor.shape' | transloco"
@@ -50,7 +50,7 @@
           (valueChange)="setFont($event)"
         />
       </ui-stack>
-    </ui-section>
+    </ui-card>
   }
   <ui-stack align="start">
     <ui-button variant="outlined" icon="refresh" (pressed)="resetRequested.emit()">

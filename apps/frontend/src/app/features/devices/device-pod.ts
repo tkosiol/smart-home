@@ -31,7 +31,8 @@ export interface PodModel extends ReadingValue {
   readonly route: string;
 }
 
-const ICONS: Record<DeviceKind, IconName> = {
+/** The icon of a device's kind (pods, and the preview of new hardware). */
+export const ICONS: Record<DeviceKind, IconName> = {
   light: 'lightbulb',
   soil: 'potted_plant',
   climate: 'thermostat',

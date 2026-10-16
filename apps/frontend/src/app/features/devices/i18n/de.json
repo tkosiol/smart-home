@@ -19,17 +19,10 @@
     "lastSeen": "Zuletzt gemeldet {{ time }}",
     "neverSeen": "Noch nichts gemeldet",
     "offline": "Offline – angezeigt wird der letzte bekannte Stand.",
-    "lowBattery": "Die Batterie ist fast leer. Bitte bald wechseln.",
-    "details": "Details"
+    "lowBattery": "Die Batterie ist fast leer. Bitte bald wechseln."
   },
   "reading": {
-    "none": "noch keine Werte",
-    "yes": "ja",
-    "no": "nein",
-    "dry": "trocken",
-    "notDry": "nicht trocken",
-    "on": "an",
-    "off": "aus"
+    "none": "noch keine Werte"
   },
   "detail": {
     "back": "Alle Geräte",

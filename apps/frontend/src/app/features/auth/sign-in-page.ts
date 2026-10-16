@@ -14,7 +14,7 @@ import {
 import { ActivatedRoute, Router } from '@angular/router';
 import { TranslocoPipe } from '@jsverse/transloco';
 import { emailSchema } from '@smart/contracts';
-import { UiBanner, UiButton, UiPage, UiStack } from '@smart/ui';
+import { UiBanner, UiButton, UiCard, UiPage, UiStack } from '@smart/ui';
 import { UiTextField } from '@smart/ui/forms';
 import { ApiError, injectShowApiError } from '../../core/api';
 import { AuthService, safeTarget } from '../../core/auth';
@@ -32,11 +32,12 @@ type FieldError =
  * Sign in with a code sent by e-mail: first the address, then the six digits. Whether an address
  * belongs to an account is never revealed: the code step looks the same for every address. The
  * page stands outside the shell, so it brings its own `main` landmark (the title strategy moves
- * the focus to the heading inside it).
+ * the focus to the heading inside it). The form sits in one card with a full-width primary
+ * button (spec 3.6).
  */
 @Component({
   selector: 'app-sign-in-page',
-  imports: [TranslocoPipe, UiBanner, UiButton, UiPage, UiStack, UiTextField],
+  imports: [TranslocoPipe, UiBanner, UiButton, UiCard, UiPage, UiStack, UiTextField],
   template: `
     <main>
       <ui-page
@@ -56,75 +57,79 @@ type FieldError =
           @if (mailDisabled()) {
             <ui-banner tone="warning">{{ 'auth.mailDisabled' | transloco }}</ui-banner>
           } @else if (step() === 'email') {
-            <form (submit)="sendCode($event)" novalidate>
-              <ui-stack gap="lg">
-                <ui-text-field
-                  type="email"
-                  name="email"
-                  autocomplete="email"
-                  inputmode="email"
-                  required
-                  [label]="'auth.email.label' | transloco"
-                  [error]="
-                    emailError() === 'format'
-                      ? ('auth.errors.email' | transloco)
-                      : emailError() === 'rateLimited'
-                        ? ('auth.errors.rateLimited' | transloco: { seconds: retryAfter() })
-                        : emailError() === 'rateLimitedLater'
-                          ? ('auth.errors.rateLimitedLater' | transloco)
-                          : null
-                  "
-                  [(value)]="email"
-                />
-                <ui-button type="submit" [disabled]="busy()">{{
-                  'auth.email.submit' | transloco
-                }}</ui-button>
-              </ui-stack>
-            </form>
-          } @else {
-            <form (submit)="verify($event)" novalidate>
-              <ui-stack gap="lg">
-                @if (resent()) {
-                  <ui-banner tone="info">{{ 'auth.code.resent' | transloco }}</ui-banner>
-                }
-                <ui-text-field
-                  name="code"
-                  autocomplete="one-time-code"
-                  inputmode="numeric"
-                  required
-                  [label]="'auth.code.label' | transloco"
-                  [hint]="resendReady() ? undefined : ('auth.code.resendWait' | transloco)"
-                  [error]="
-                    codeError() === 'format'
-                      ? ('auth.errors.code' | transloco)
-                      : codeError() === 'invalidCode'
-                        ? ('auth.errors.invalidCode' | transloco)
-                        : codeError() === 'tooManyAttempts'
-                          ? ('auth.errors.tooManyAttempts' | transloco)
-                          : codeError() === 'rateLimited'
-                            ? ('auth.errors.rateLimited' | transloco: { seconds: retryAfter() })
-                            : codeError() === 'rateLimitedLater'
-                              ? ('auth.errors.rateLimitedLater' | transloco)
-                              : null
-                  "
-                  [(value)]="code"
-                />
-                <ui-button type="submit" [disabled]="busy()">{{
-                  'auth.code.submit' | transloco
-                }}</ui-button>
-                <ui-stack direction="row" gap="sm" wrap>
-                  <ui-button
-                    variant="text"
-                    [disabled]="busy() || !resendReady()"
-                    (pressed)="resend()"
-                    >{{ 'auth.code.resend' | transloco }}</ui-button
-                  >
-                  <ui-button variant="text" [disabled]="busy()" (pressed)="changeEmail()">{{
-                    'auth.code.otherEmail' | transloco
+            <ui-card variant="low">
+              <form (submit)="sendCode($event)" novalidate>
+                <ui-stack gap="lg">
+                  <ui-text-field
+                    type="email"
+                    name="email"
+                    autocomplete="email"
+                    inputmode="email"
+                    required
+                    [label]="'auth.email.label' | transloco"
+                    [error]="
+                      emailError() === 'format'
+                        ? ('auth.errors.email' | transloco)
+                        : emailError() === 'rateLimited'
+                          ? ('auth.errors.rateLimited' | transloco: { seconds: retryAfter() })
+                          : emailError() === 'rateLimitedLater'
+                            ? ('auth.errors.rateLimitedLater' | transloco)
+                            : null
+                    "
+                    [(value)]="email"
+                  />
+                  <ui-button type="submit" fullWidth [disabled]="busy()">{{
+                    'auth.email.submit' | transloco
                   }}</ui-button>
                 </ui-stack>
-              </ui-stack>
-            </form>
+              </form>
+            </ui-card>
+          } @else {
+            <ui-card variant="low">
+              <form (submit)="verify($event)" novalidate>
+                <ui-stack gap="lg">
+                  @if (resent()) {
+                    <ui-banner tone="info">{{ 'auth.code.resent' | transloco }}</ui-banner>
+                  }
+                  <ui-text-field
+                    name="code"
+                    autocomplete="one-time-code"
+                    inputmode="numeric"
+                    required
+                    [label]="'auth.code.label' | transloco"
+                    [hint]="resendReady() ? undefined : ('auth.code.resendWait' | transloco)"
+                    [error]="
+                      codeError() === 'format'
+                        ? ('auth.errors.code' | transloco)
+                        : codeError() === 'invalidCode'
+                          ? ('auth.errors.invalidCode' | transloco)
+                          : codeError() === 'tooManyAttempts'
+                            ? ('auth.errors.tooManyAttempts' | transloco)
+                            : codeError() === 'rateLimited'
+                              ? ('auth.errors.rateLimited' | transloco: { seconds: retryAfter() })
+                              : codeError() === 'rateLimitedLater'
+                                ? ('auth.errors.rateLimitedLater' | transloco)
+                                : null
+                    "
+                    [(value)]="code"
+                  />
+                  <ui-button type="submit" fullWidth [disabled]="busy()">{{
+                    'auth.code.submit' | transloco
+                  }}</ui-button>
+                  <ui-stack direction="row" gap="sm" wrap>
+                    <ui-button
+                      variant="text"
+                      [disabled]="busy() || !resendReady()"
+                      (pressed)="resend()"
+                      >{{ 'auth.code.resend' | transloco }}</ui-button
+                    >
+                    <ui-button variant="text" [disabled]="busy()" (pressed)="changeEmail()">{{
+                      'auth.code.otherEmail' | transloco
+                    }}</ui-button>
+                  </ui-stack>
+                </ui-stack>
+              </form>
+            </ui-card>
           }
         </ui-stack>
       </ui-page>

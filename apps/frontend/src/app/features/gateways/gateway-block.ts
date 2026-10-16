@@ -8,29 +8,13 @@ import {
   untracked,
 } from '@angular/core';
 import { TranslocoPipe } from '@jsverse/transloco';
-import type { Gateway, GatewayStatus } from '@smart/contracts';
-import { UiRelativeTimePipe, UiStack, UiStatusEntry, type UiStatusEntryTone } from '@smart/ui';
+import type { Gateway } from '@smart/contracts';
+import { UiRelativeTimePipe, UiStack, UiStatusEntry } from '@smart/ui';
 import { HouseholdContext, injectHouseholdErrorHandler, LoadedList } from '../../core/household';
 import { RefreshGuard, refreshWhileVisible } from '../../core/refresh';
+import { GATEWAY_TONE, gatewayState } from './gateway-status';
 import { GatewaysApi } from './gateways.api';
 import { provideGatewaysTexts } from './gateways-texts';
-
-/**
- * One state for the row: online only while bridge and Zigbee2MQTT both are (the backend counts
- * the gateway as offline otherwise); unknown when nothing says offline but one of them is unknown.
- */
-function stateOf(gateway: Gateway): GatewayStatus {
-  const statuses = [gateway.bridgeStatus, gateway.z2mStatus];
-  if (statuses.every((status) => status === 'online')) return 'online';
-  return statuses.includes('offline') ? 'offline' : 'unknown';
-}
-
-/** The icon container per state (spec 3.6): online ok, offline the strong error, unknown grey. */
-const TONE: Record<GatewayStatus, UiStatusEntryTone> = {
-  online: 'ok-container',
-  offline: 'error',
-  unknown: 'offline-container',
-};
 
 /**
  * The overview's block "Gateway" (owners): one row per registered gateway in the style of the
@@ -93,8 +77,8 @@ export class GatewayBlock {
       .items()
       .filter((gateway) => gateway.revokedAt === null)
       .map((gateway) => {
-        const state = stateOf(gateway);
-        return { gateway, state, tone: TONE[state] };
+        const state = gatewayState(gateway);
+        return { gateway, state, tone: GATEWAY_TONE[state] };
       }),
   );
 

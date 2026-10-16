@@ -19,17 +19,10 @@
     "lastSeen": "Last reported {{ time }}",
     "neverSeen": "Nothing reported yet",
     "offline": "Offline – the last known values are shown.",
-    "lowBattery": "The battery is almost empty. Please replace it soon.",
-    "details": "Details"
+    "lowBattery": "The battery is almost empty. Please replace it soon."
   },
   "reading": {
-    "none": "no values yet",
-    "yes": "yes",
-    "no": "no",
-    "dry": "dry",
-    "notDry": "not dry",
-    "on": "on",
-    "off": "off"
+    "none": "no values yet"
   },
   "detail": {
     "back": "All devices",

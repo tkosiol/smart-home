@@ -40,10 +40,12 @@ function open({ household = home, language = 'de', ...initial }: Options = {}) {
   );
 }
 
-const cards = (page: OpenedHouseholdPage) =>
-  [...page.element.querySelectorAll('app-device-card')] as HTMLElement[];
-const cardText = (page: OpenedHouseholdPage, name: string) =>
-  pageText(cards(page).find((card) => card.querySelector('h3')?.textContent?.trim() === name)!);
+/** The pods of the list "Geräte im Haushalt" (the found hardware shows pods in its card, not here). */
+const pods = (page: OpenedHouseholdPage) =>
+  [...page.element.querySelectorAll('ui-section ui-device-pod')] as HTMLElement[];
+const podOf = (page: OpenedHouseholdPage, name: string) =>
+  pods(page).find((pod) => pod.textContent?.includes(name))!;
+const podText = (page: OpenedHouseholdPage, name: string) => pageText(podOf(page, name));
 const requests = (page: OpenedHouseholdPage, method: string, path: string) =>
   page.calls.filter((call) => call.method === method && call.path.endsWith(path));
 
@@ -68,58 +70,46 @@ describe('devices page', () => {
   });
 
   describe('list', () => {
-    it('shows the main value, the battery and when the device last reported', async () => {
+    it('shows every device as a pod with its main value that links to its page', async () => {
       const page = await open({ devices: [sensor] });
       await flush(page);
       expect(page.calls.filter((call) => call.path.endsWith('/devices'))).toHaveLength(1);
-      const text = cardText(page, 'Basilikum');
-      expect(text).toContain('Bodenfeuchte: 41,3 %');
-      expect(text).toContain('Batterie: 87 %');
-      expect(text).toContain('Zuletzt gemeldet vor 5 Minuten');
+      const text = podText(page, 'Basilikum');
+      expect(text).toContain('41,3%');
       expect(text).not.toContain('Offline');
-      expect(text).not.toContain('Batterie ist fast leer');
-      const link = cards(page)[0]!.querySelector('a');
+      expect(text).not.toContain('Batterie');
+      const link = podOf(page, 'Basilikum').querySelector('a');
       expect(link?.getAttribute('href')).toBe('/geraete/dev-1');
     });
 
     it('formats the values in the page language', async () => {
       const page = await open({ devices: [sensor], language: 'en' });
       await flush(page);
-      expect(cardText(page, 'Basilikum')).toContain('Soil moisture: 41.3 %');
-      expect(cardText(page, 'Basilikum')).toContain('Last reported 5 minutes ago');
+      expect(podText(page, 'Basilikum')).toContain('41.3%');
     });
 
-    it('says "noch keine Werte" for a device without values', async () => {
+    it('shows a dash for a device without values', async () => {
       const empty = device('dev-2', 'Neu', { state: {}, lastSeenAt: null });
       const page = await open({ devices: [empty] });
       await flush(page);
-      const text = cardText(page, 'Neu');
-      expect(text).toContain('Bodenfeuchte: –');
-      expect(text).toContain('Noch nichts gemeldet');
-      const dash = cards(page)[0]!.querySelector('[role="img"]');
-      expect(dash?.getAttribute('aria-label')).toBe('noch keine Werte');
+      expect(podText(page, 'Neu')).toContain('–');
     });
 
-    it('points out that an offline device shows its last known state', async () => {
+    it('marks an offline device with the chip "Offline"', async () => {
       const offline = device('dev-3', 'Garten', { availability: 'offline' });
       const page = await open({ devices: [sensor, offline] });
       await flush(page);
-      expect(cardText(page, 'Garten')).toContain(
-        'Offline – angezeigt wird der letzte bekannte Stand.',
-      );
-      expect(cardText(page, 'Basilikum')).not.toContain('Offline');
+      expect(podText(page, 'Garten')).toContain('Offline');
+      expect(podText(page, 'Basilikum')).not.toContain('Offline');
     });
 
-    it('warns below 20 percent battery, not at 20', async () => {
+    it('marks a low battery below 20 percent, not at 20', async () => {
       const low = device('dev-4', 'Schwach', { state: { soil_moisture: 30, battery: 15 } });
       const edge = device('dev-5', 'Grenze', { state: { soil_moisture: 30, battery: 20 } });
       const page = await open({ devices: [low, edge] });
       await flush(page);
-      expect(cardText(page, 'Schwach')).toContain('Batterie: 15 %');
-      expect(cardText(page, 'Schwach')).toContain(
-        'Die Batterie ist fast leer. Bitte bald wechseln.',
-      );
-      expect(cardText(page, 'Grenze')).not.toContain('fast leer');
+      expect(podText(page, 'Schwach')).toContain('Batterie');
+      expect(podText(page, 'Grenze')).not.toContain('Batterie');
     });
 
     it('warns by the own battery threshold of the device, not a fixed 20 percent', async () => {
@@ -137,18 +127,18 @@ describe('devices page', () => {
       });
       const page = await open({ devices: [lenient, strict] });
       await flush(page);
-      expect(cardText(page, 'Gelassen')).not.toContain('fast leer');
-      expect(cardText(page, 'Streng')).toContain('Die Batterie ist fast leer');
+      expect(podText(page, 'Gelassen')).not.toContain('Batterie');
+      expect(podText(page, 'Streng')).toContain('Batterie');
     });
 
-    it('shows a main value for a device with unknown keys by their raw key', async () => {
+    it('shows the main value of a device with unknown keys', async () => {
       const odd = device('dev-6', 'Seltsam', {
         capabilities: [{ ...linkquality, key: 'pm25', unit: 'µg/m³' }, battery],
         state: { pm25: 12, battery: 90 },
       });
       const page = await open({ devices: [odd] });
       await flush(page);
-      expect(cardText(page, 'Seltsam')).toContain('pm25: 12 µg/m³');
+      expect(podText(page, 'Seltsam')).toContain('12µg/m³');
     });
   });
 
@@ -159,7 +149,7 @@ describe('devices page', () => {
       const section = page.element.querySelector('app-new-hardware')!;
       expect(pageText(section as HTMLElement)).toContain('Neu erkannt');
       expect(pageText(section as HTMLElement)).toContain('Zigbee Sensor 7');
-      expect(pageText(section as HTMLElement)).toContain('Bodenfeuchte: 37 %');
+      expect(pageText(section.querySelector('ui-device-pod') as HTMLElement)).toContain('37%');
       expect(pageText(section as HTMLElement)).not.toContain('soil_calibration');
       expect(pageText(section as HTMLElement)).not.toContain('identify');
       expect(
@@ -175,8 +165,8 @@ describe('devices page', () => {
       const posts = requests(page, 'POST', '/devices');
       expect(posts).toHaveLength(1);
       expect(posts[0]!.body).toEqual({ hardwareId: 'aaaa', name: 'Basilikum' });
-      expect(page.element.querySelector('app-new-hardware ui-section')).toBeNull();
-      expect(cardText(page, 'Basilikum')).toContain('Bodenfeuchte');
+      expect(page.element.querySelector('app-new-hardware ui-card')).toBeNull();
+      expect(podOf(page, 'Basilikum')).toBeTruthy();
       expect(requests(page, 'GET', '/devices').length).toBeGreaterThanOrEqual(2);
     });
 
@@ -212,7 +202,7 @@ describe('devices page', () => {
         'Diese Hardware ist bereits einem Gerät zugeordnet.',
         expect.anything(),
       );
-      expect(page.element.querySelector('app-new-hardware ui-section')).toBeNull();
+      expect(page.element.querySelector('app-new-hardware ui-card')).toBeNull();
     });
 
     it('is not shown to a member, who does not even ask for it', async () => {
@@ -221,7 +211,7 @@ describe('devices page', () => {
       expect(page.element.querySelector('app-new-hardware')).toBeNull();
       expect(pageText(page.element)).not.toContain('Neu erkannt');
       expect(page.calls.some((call) => call.path.includes('/hardware'))).toBe(false);
-      expect(cardText(page, 'Basilikum')).toBeTruthy();
+      expect(podText(page, 'Basilikum')).toBeTruthy();
     });
   });
 
@@ -240,7 +230,7 @@ describe('devices page', () => {
       await vi.advanceTimersByTimeAsync(1_500);
       await flush(page);
       expect(requests(page, 'GET', '/devices')).toHaveLength(2);
-      expect(cardText(page, 'Basilikum')).toContain('Bodenfeuchte: 55 %');
+      expect(podText(page, 'Basilikum')).toContain('55%');
     });
 
     it('does not load while the tab is hidden, and does when it comes back', async () => {
@@ -284,7 +274,7 @@ describe('devices page', () => {
       await vi.advanceTimersByTimeAsync(60_500);
       await flush(page);
       expect(page.snackbar.show).not.toHaveBeenCalled();
-      expect(cardText(page, 'Basilikum')).toContain('Bodenfeuchte: 41,3');
+      expect(podText(page, 'Basilikum')).toContain('41,3');
     });
   });
 });

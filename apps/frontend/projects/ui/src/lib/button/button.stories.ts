@@ -26,9 +26,16 @@ export const Varianten: Story = {
         <ui-button variant="text">Text</ui-button>
         <ui-button variant="elevated">Erhöht</ui-button>
         <ui-button disabled>Deaktiviert</ui-button>
+      </div>
+      <div style="width: 320px; margin-top: 12px">
+        <ui-button fullWidth>Volle Breite</ui-button>
       </div>`,
   }),
   play: async ({ canvas, args }) => {
+    // Full width: the button is as wide as its container.
+    await expect(
+      canvas.getByRole('button', { name: 'Volle Breite' }).getBoundingClientRect().width,
+    ).toBe(320);
     const filled = canvas.getByRole('button', { name: 'Gefüllt' });
     await userEvent.tab();
     await expect(filled).toHaveFocus();

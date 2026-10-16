@@ -9,8 +9,7 @@
     "unknown": "Unknown"
   },
   "entry": {
-    "bridge": "Bridge",
-    "z2m": "Zigbee2MQTT",
+    "status": "Bridge: {{ bridge }} · Zigbee2MQTT: {{ z2m }}",
     "lastMessage": "Last message {{ time }}",
     "noMessage": "No message received yet",
     "certExpires": "Certificate valid until {{ date }}",

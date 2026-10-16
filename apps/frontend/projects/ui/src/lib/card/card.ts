@@ -18,9 +18,10 @@ import {
 
 /**
  * `low` is the card of the design concept (spec 2.1, 2.2, 3.6): surface-container-low, extra-large
- * corners, the heading in title-large with weight 600. The others are Material's appearances.
+ * corners, the heading in title-large with weight 600. `accent` is the same card on
+ * secondary-container (the "Neu erkannt" card, spec 3.6). The others are Material's appearances.
  */
-export type UiCardVariant = 'filled' | 'outlined' | 'elevated' | 'low';
+export type UiCardVariant = 'filled' | 'outlined' | 'elevated' | 'low' | 'accent';
 
 /** Maps each card variant to the Material appearance; `elevated` is Material's `raised`. */
 const APPEARANCE: Record<UiCardVariant, MatCardAppearance> = {
@@ -28,6 +29,7 @@ const APPEARANCE: Record<UiCardVariant, MatCardAppearance> = {
   outlined: 'outlined',
   elevated: 'raised',
   low: 'filled',
+  accent: 'filled',
 };
 
 /** Marks the element holding a card's actions (buttons). */

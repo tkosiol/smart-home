@@ -89,10 +89,15 @@ nav {
   color: var(--mat-sys-on-surface);
 }
 
+.destination--active .label {
+  font-weight: var(--smart-font-weight-semibold);
+}
+
+// The active pill is primary-container (spec 3.1).
 .destination--active .indicator,
 .destination--active:hover .indicator {
-  background: var(--mat-sys-secondary-container);
-  color: var(--mat-sys-on-secondary-container);
+  background: var(--mat-sys-primary-container);
+  color: var(--mat-sys-on-primary-container);
 }
 
 // Medium: a rail on the left, labels below the icons.
@@ -166,8 +171,8 @@ nav {
 
 :host([data-window-class='expanded']) .destination--active,
 :host([data-window-class='expanded']) .destination--active:hover {
-  background: var(--mat-sys-secondary-container);
-  color: var(--mat-sys-on-secondary-container);
+  background: var(--mat-sys-primary-container);
+  color: var(--mat-sys-on-primary-container);
 }
 
 :host([data-window-class='expanded']) .destination--active .indicator,

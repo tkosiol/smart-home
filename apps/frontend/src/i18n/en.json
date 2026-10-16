@@ -217,7 +217,11 @@
       "household": "Household",
       "members": "Members",
       "gateways": "Gateways",
-      "settings": "Settings"
+      "settings": "Settings",
+      "groups": {
+        "household": "Manage the household",
+        "app": "App"
+      }
     },
     "offline": "Offline – displayed data may be out of date",
     "update": {

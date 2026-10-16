@@ -9,12 +9,16 @@ import {
 import { hasRole, type HouseholdRole } from '@smart/contracts';
 import type { IconName } from '@smart/ui/shell';
 
+/** The card an entry of the "More" page belongs to (spec 3.6); `app` when none is given. */
+export type MoreEntryGroup = 'household' | 'app';
+
 /** An entry on the "More" page. */
 export interface MoreEntry {
   readonly id: string;
   /** Root translation key, marked with `marker()` where it is defined. */
   readonly labelKey: string;
   readonly icon: IconName;
+  readonly group?: MoreEntryGroup;
   /** Without a route the entry is shown as "coming soon" and is not clickable. */
   readonly route?: string;
   readonly order: number;

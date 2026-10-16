@@ -38,7 +38,7 @@ describe('switch page', () => {
     async (language, title, owner, viewer, current, add) => {
       const { element } = await open(undefined, language);
       expect(element.querySelector('h1')?.textContent?.trim()).toBe(title);
-      const sections = [...element.querySelectorAll('ui-section')];
+      const sections = [...element.querySelectorAll('ui-card')];
       expect(sections.map((section) => section.querySelector('h2')?.textContent?.trim())).toEqual([
         'Berlin',
         'Auckland',
