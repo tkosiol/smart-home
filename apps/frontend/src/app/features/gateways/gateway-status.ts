@@ -17,3 +17,12 @@ export const GATEWAY_TONE: Record<GatewayStatus, UiStatusEntryTone> = {
   offline: 'error',
   unknown: 'offline-container',
 };
+
+/**
+ * The translation key of a status in words ("Online"), for bridge and Zigbee2MQTT alike. The keys
+ * are built, so the key extraction is told about them here:
+ * t(gateways.status.online, gateways.status.offline, gateways.status.unknown)
+ */
+export function statusKey(status: GatewayStatus): string {
+  return `gateways.status.${status}`;
+}

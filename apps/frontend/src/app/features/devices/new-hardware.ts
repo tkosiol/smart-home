@@ -68,20 +68,20 @@ interface Found {
         [description]="'devices.discovered.description' | transloco"
       >
         <ui-grid min="md" gap="lg">
-          @for (found of found(); track found.item.id) {
-            @let item = found.item;
+          @for (entry of found(); track entry.item.id) {
+            @let item = entry.item;
             <form (submit)="add($event, item)" novalidate>
               <ui-stack gap="sm">
                 <ui-device-pod
                   fill
-                  [kind]="found.kind"
-                  [icon]="found.icon"
+                  [kind]="entry.kind"
+                  [icon]="entry.icon"
                   [value]="
-                    found.reading.valueKey
-                      ? (found.reading.valueKey | transloco)
-                      : found.reading.value
+                    entry.reading.valueKey
+                      ? (entry.reading.valueKey | transloco)
+                      : entry.reading.value
                   "
-                  [unit]="found.reading.unit"
+                  [unit]="entry.reading.unit"
                   [label]="item.friendlyName"
                 />
                 <p>{{ item.vendor }} {{ item.model }}</p>

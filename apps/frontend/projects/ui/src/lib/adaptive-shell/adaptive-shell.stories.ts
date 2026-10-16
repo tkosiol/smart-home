@@ -112,7 +112,38 @@ async function expectNavigation(
   await userEvent.click(rooms);
   await expect(rooms).toHaveAttribute('aria-current', 'page');
   await expect(canvas.getByRole('link', { name: 'Start' })).not.toHaveAttribute('aria-current');
+  await expectActiveLook(rooms, windowClass);
   return nav;
+}
+
+/** The colour a `var(...)` background resolves to, read from a throwaway element. */
+function resolvedBackground(variable: string): string {
+  const probe = document.createElement('div');
+  probe.style.background = `var(${variable})`;
+  document.body.append(probe);
+  const color = getComputedStyle(probe).backgroundColor;
+  probe.remove();
+  return color;
+}
+
+/**
+ * The active destination in every window class: the pill is primary-container (the indicator in
+ * the bar and the rail, the whole row in the drawer) and the label is bold (600), also where the
+ * drawer sets its larger label font.
+ */
+async function expectActiveLook(link: HTMLElement, windowClass: UiWindowClass): Promise<void> {
+  const pill = windowClass === 'expanded' ? link : link.querySelector<HTMLElement>('.indicator')!;
+  // The pill fades in (motion token): wait for the end of the transition, then compare once.
+  const expected = resolvedBackground('--mat-sys-primary-container');
+  for (let frame = 0; frame < 120; frame++) {
+    if (getComputedStyle(pill).backgroundColor === expected) break;
+    await new Promise((resolve) => setTimeout(resolve, 16));
+  }
+  await expect(getComputedStyle(pill).backgroundColor).toBe(expected);
+  await expect(getComputedStyle(link.querySelector('.label')!).fontWeight).toBe('600');
+  // The others keep the regular label.
+  const inactive = link.parentElement!.querySelector<HTMLElement>('a:not(.destination--active)')!;
+  await expect(getComputedStyle(inactive.querySelector('.label')!).fontWeight).not.toBe('600');
 }
 
 export const Handy: Story = {

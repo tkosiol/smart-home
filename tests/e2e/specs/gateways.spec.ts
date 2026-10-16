@@ -49,7 +49,7 @@ test.describe.serial('registering gateways', () => {
       ),
     ).toBeVisible();
     // Nothing was registered.
-    await expect(page.getByRole('heading', { name: 'Kaputt' })).toHaveCount(0);
+    await expect(gatewayBlock(page, 'Kaputt')).toHaveCount(0);
   });
 
   test("the Pi's gateway registers by its certificate and its bridge is online", async ({
@@ -71,7 +71,7 @@ test.describe.serial('registering gateways', () => {
     await page.goto('/mehr/gateways');
     await register(page, 'Noch einmal', testGateway('pi').certificate);
     await expect(page.getByText('Dieses Gateway ist schon registriert.')).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Noch einmal' })).toHaveCount(0);
+    await expect(gatewayBlock(page, 'Noch einmal')).toHaveCount(0);
   });
 
   test('the list survives a reload with the gateway and its status', async ({ page }) => {

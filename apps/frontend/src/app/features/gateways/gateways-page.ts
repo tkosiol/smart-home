@@ -28,7 +28,7 @@ import {
 import { ApiError } from '../../core/api';
 import { AuthService } from '../../core/auth';
 import { HouseholdContext, injectHouseholdErrorHandler, LoadedList } from '../../core/household';
-import { GATEWAY_TONE, gatewayState } from './gateway-status';
+import { GATEWAY_TONE, gatewayState, statusKey } from './gateway-status';
 import { GatewaysApi } from './gateways.api';
 import { GatewayRegisterForm } from './register-form';
 
@@ -81,6 +81,7 @@ const DAY_MS = 86_400_000;
                       icon="router"
                       kindTone="offline-container"
                       [title]="gateway.name"
+                      [headingLevel]="3"
                       [subtitle]="
                         'gateways.entry.revoked'
                           | transloco: { date: gateway.revokedAt | uiDateTime: 'date' }
@@ -92,22 +93,13 @@ const DAY_MS = 86_400_000;
                       icon="router"
                       [kindTone]="row.tone"
                       [title]="gateway.name"
+                      [headingLevel]="3"
                       [subtitle]="
                         'gateways.entry.status'
                           | transloco
                             : {
-                                bridge:
-                                  gateway.bridgeStatus === 'online'
-                                    ? ('gateways.status.online' | transloco)
-                                    : gateway.bridgeStatus === 'offline'
-                                      ? ('gateways.status.offline' | transloco)
-                                      : ('gateways.status.unknown' | transloco),
-                                z2m:
-                                  gateway.z2mStatus === 'online'
-                                    ? ('gateways.status.online' | transloco)
-                                    : gateway.z2mStatus === 'offline'
-                                      ? ('gateways.status.offline' | transloco)
-                                      : ('gateways.status.unknown' | transloco),
+                                bridge: (statusKey(gateway.bridgeStatus) | transloco),
+                                z2m: (statusKey(gateway.z2mStatus) | transloco),
                               }
                       "
                     />
@@ -203,6 +195,7 @@ export class GatewaysPage {
   private readonly currentId = computed(() => this.household.current()?.id);
   protected readonly isPlatformAdmin = computed(() => this.auth.me()?.isPlatformAdmin === true);
 
+  protected readonly statusKey = statusKey;
   protected readonly gateways = new LoadedList<Gateway>(
     (id) => this.api.list(id),
     (error) => this.handleError(error),

@@ -16,7 +16,12 @@
     <ui-icon [name]="icon()" />
   </span>
   <span class="texts">
-    <span class="title">{{ title() }}</span>
+    <span
+      class="title"
+      [attr.role]="headingLevel() ? 'heading' : null"
+      [attr.aria-level]="headingLevel()"
+      >{{ title() }}</span
+    >
     @if (subtitle(); as subtitle) {
       <span class="subtitle">{{ subtitle }}</span>
     }

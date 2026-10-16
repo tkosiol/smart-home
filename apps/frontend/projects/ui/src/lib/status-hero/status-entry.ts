@@ -42,6 +42,8 @@ export class UiStatusEntry {
   readonly icon = input.required<IconName>();
   readonly kindTone = input.required<UiStatusEntryTone>();
   readonly title = input.required<string>();
+  /** Makes the title a heading of this level, so a page of entries can be navigated by heading. */
+  readonly headingLevel = input<2 | 3 | 4>();
   readonly subtitle = input<string>();
   /** Formatted by the caller, with its unit ("18 %"). */
   readonly value = input<string>();

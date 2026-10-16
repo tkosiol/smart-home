@@ -80,6 +80,72 @@ describe('more page', () => {
     expect(items[0].textContent).toContain('Coming soon');
   });
 
+  describe('groups', () => {
+    /** The cards of the page as heading and the headlines of their entries. */
+    function cards(element: HTMLElement) {
+      return [...element.querySelectorAll('ui-card')].map((card) => ({
+        heading: card.querySelector('h2')?.textContent?.trim(),
+        headlines: [...card.querySelectorAll('ui-list-item .headline')].map((headline) =>
+          headline.textContent?.trim(),
+        ),
+      }));
+    }
+
+    const household = provideFeature({
+      moreEntries: [
+        {
+          id: 'members',
+          labelKey: 'app.nav.rooms',
+          icon: 'group',
+          route: '/mehr/mitglieder',
+          order: 10,
+          group: 'household',
+        },
+      ],
+    });
+
+    it('puts an entry into its own group, the household before the app', async () => {
+      const { element } = await open('de', household);
+      expect(cards(element)).toEqual([
+        { heading: 'Haushalt verwalten', headlines: ['Räume'] },
+        { heading: 'App', headlines: ['Module', 'Benachrichtigungen', 'Einstellungen'] },
+      ]);
+    });
+
+    it('puts an entry without a group into the group "app"', async () => {
+      const { element } = await open('de');
+      expect(cards(element)).toEqual([
+        { heading: 'App', headlines: ['Module', 'Benachrichtigungen', 'Einstellungen'] },
+      ]);
+    });
+
+    it('hides a group without entries, here the household', async () => {
+      const { element } = await open('de');
+      expect(cards(element).map((card) => card.heading)).not.toContain('Haushalt verwalten');
+      expect(element.querySelectorAll('ui-card')).toHaveLength(1);
+    });
+
+    it('hides a group whose entries are all hidden by the rights', async () => {
+      const { element } = await open(
+        'de',
+        provideFeature({
+          moreEntries: [
+            {
+              id: 'owners-only',
+              labelKey: 'app.nav.devices',
+              icon: 'group',
+              route: '/z',
+              order: 20,
+              group: 'household',
+              minRole: 'owner',
+            },
+          ],
+        }),
+      );
+      expect(cards(element).map((card) => card.heading)).toEqual(['App']);
+    });
+  });
+
   describe('rights', () => {
     const owners = provideFeature({
       moreEntries: [

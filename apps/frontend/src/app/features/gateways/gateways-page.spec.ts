@@ -153,6 +153,12 @@ describe('gateways page', () => {
       expect(entryText(page, 'Keller')).toContain('Zigbee2MQTT: Unbekannt');
     });
 
+    it('keeps the gateway names reachable by heading navigation', async () => {
+      const page = await open();
+      const headings = [...page.element.querySelectorAll('[role="heading"][aria-level="3"]')];
+      expect(headings.map((heading) => heading.textContent?.trim())).toEqual(['Flur', 'Keller']);
+    });
+
     it('shows dates in the time zone of the household, not in UTC', async () => {
       const page = await open({
         gateways: [gateway('gw-eeeeeeee', 'Neu', { certExpiresAt: '2027-03-31T23:00:00Z' })],

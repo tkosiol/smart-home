@@ -13,11 +13,13 @@ import { UiStatusEntry, type UiStatusEntryVariant } from './status-entry';
     title="Gateway Flur"
     subtitle="Gateway online"
     [route]="route()"
+    [headingLevel]="headingLevel()"
   />`,
 })
 class Host {
   readonly variant = signal<UiStatusEntryVariant>('entry');
   readonly route = signal<string | undefined>(undefined);
+  readonly headingLevel = signal<2 | 3 | 4 | undefined>(undefined);
 }
 
 function render() {
@@ -62,5 +64,25 @@ describe('UiStatusEntry', () => {
       fixture.detectChanges();
       expect(entry().querySelector('a.link')?.getAttribute('href')).toBe('/mehr/gateways');
     }
+  });
+
+  it('makes the title a heading of the given level, and plain text without one', () => {
+    const { fixture, entry } = render();
+    expect(entry().querySelector('[role="heading"]')).toBeNull();
+    for (const level of [2, 3, 4] as const) {
+      fixture.componentInstance.headingLevel.set(level);
+      fixture.detectChanges();
+      const heading = entry().querySelector('[role="heading"]')!;
+      expect(heading.getAttribute('aria-level')).toBe(String(level));
+      expect(heading.textContent?.trim()).toBe('Gateway Flur');
+    }
+  });
+
+  it('keeps the heading inside the link of a linked entry', () => {
+    const { fixture, entry } = render();
+    fixture.componentInstance.headingLevel.set(3);
+    fixture.componentInstance.route.set('/mehr/gateways');
+    fixture.detectChanges();
+    expect(entry().querySelector('a [role="heading"]')?.textContent?.trim()).toBe('Gateway Flur');
   });
 });

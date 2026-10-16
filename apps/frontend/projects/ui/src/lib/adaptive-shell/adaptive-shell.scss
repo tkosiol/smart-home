@@ -165,6 +165,11 @@ nav {
   font: var(--mat-sys-label-large);
 }
 
+// After the font shorthand above, which resets the weight of the active label (spec 3.1).
+:host([data-window-class='expanded']) .destination--active .label {
+  font-weight: var(--smart-font-weight-semibold);
+}
+
 :host([data-window-class='expanded']) .destination:hover {
   background: var(--mat-sys-surface-container-highest);
 }
