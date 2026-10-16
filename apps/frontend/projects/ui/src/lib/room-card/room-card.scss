@@ -1,0 +1,75 @@
+@use '../tone';
+
+// A surface-container-low card with card corners and lg padding (spec 2.1, 2.2, 2.5).
+:host {
+  display: flex;
+  flex-direction: column;
+  gap: var(--smart-space-md);
+  box-sizing: border-box;
+  min-width: 0;
+  padding: var(--smart-space-lg);
+  border-radius: var(--smart-shape-card);
+  background: var(--mat-sys-surface-container-low);
+  color: var(--mat-sys-on-surface);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--smart-space-md);
+  min-width: 0;
+}
+
+// The heading and, with a route, the chevron beside it form the link; the chip or summary on
+// the right is outside it, so the link is named by the room alone.
+.title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--smart-space-xs);
+  min-width: 0;
+  min-height: var(--smart-size-icon-md);
+  color: inherit;
+  text-decoration: none;
+}
+
+.title--link:hover .heading {
+  color: var(--mat-sys-primary);
+}
+
+.title--link:focus-visible {
+  border-radius: var(--smart-shape-control);
+  outline: var(--smart-focus-width) solid var(--mat-sys-primary);
+  outline-offset: var(--smart-space-xs);
+}
+
+.heading {
+  margin: 0;
+  font: var(--mat-sys-title-large);
+  font-weight: var(--smart-font-weight-semibold);
+  overflow-wrap: anywhere;
+  hyphens: auto;
+}
+
+.chevron {
+  color: var(--mat-sys-on-surface-variant);
+}
+
+.summary {
+  flex: none;
+  color: var(--mat-sys-on-surface-variant);
+  font: var(--mat-sys-label-medium);
+  text-align: end;
+}
+
+.chip {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  padding: var(--smart-space-xs) var(--smart-space-md);
+  border-radius: var(--smart-shape-control);
+  font: var(--mat-sys-label-small);
+  font-weight: var(--smart-font-weight-semibold);
+
+  @include tone.container;
+}

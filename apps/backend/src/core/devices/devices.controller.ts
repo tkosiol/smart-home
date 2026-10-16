@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import {
   deviceCreateSchema,
-  deviceRenameSchema,
+  deviceUpdateSchema,
   type Device,
   type Hardware,
 } from '@smart/contracts';
@@ -49,15 +49,15 @@ export class DevicesController {
 
   @Patch('devices/:deviceId')
   @RequireRole('member')
-  rename(
+  update(
     @Req() request: HouseholdRequest,
     @Param('deviceId') deviceId: string,
     @Body() body: unknown,
   ): Promise<Device> {
-    return this.devices.rename(
+    return this.devices.update(
       membershipOf(request).householdId,
       deviceId,
-      deviceRenameSchema.parse(body),
+      deviceUpdateSchema.parse(body),
     );
   }
 }

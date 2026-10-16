@@ -28,22 +28,30 @@ const SIMULATED = [
 const REPORTS = 60_000;
 
 const heading = (page: Page, name: string) => page.getByRole('heading', { level: 1, name });
-/** The "Neu erkannt" section of the devices page. */
+/** The "Neu erkannt" card of the devices page. */
 const discovered = (page: Page) =>
-  page.locator('ui-section').filter({ has: page.getByRole('heading', { name: 'Neu erkannt' }) });
-/** The card of one hardware or device with this heading, inside `scope` (the whole page by default). */
-const card = (page: Page, name: string, scope: Locator = page.locator('body')) =>
-  scope.locator('ui-card').filter({ has: page.getByRole('heading', { name, exact: true }) });
+  page.locator('ui-card').filter({ has: page.getByRole('heading', { name: 'Neu erkannt' }) });
+/** The form of one found hardware in "Neu erkannt": its pod carries the hardware's name. */
+const found = (page: Page, name: string) =>
+  discovered(page)
+    .locator('form')
+    .filter({ has: page.locator('ui-device-pod').filter({ hasText: name }) });
+/** The pod of a device, inside `scope` (the whole page by default): a link named by value and name. */
+const pod = (page: Page, name: string, scope: Locator = page.locator('body')) =>
+  scope.locator('ui-device-pod').filter({ hasText: name });
 
 /** The "Messwerte" section of the device page. */
 const readingsOf = (page: Page) =>
   page.locator('ui-section').filter({ has: page.getByRole('heading', { name: 'Messwerte' }) });
 
-/** Reloads until the soil moisture of a report is on the page (the simulator reports often). */
+/** Reloads until the soil moisture of a report is the hero's value (the simulator reports often). */
 async function expectSoilMoisture(page: Page): Promise<void> {
   await expect(async () => {
     await page.reload();
-    await expect(readingsOf(page)).toContainText(/Bodenfeuchte:\s*\d/, { timeout: 5_000 });
+    await expect(readingsOf(page)).toContainText('Bodenfeuchte', { timeout: 5_000 });
+    await expect(page.locator('ui-value-display[data-size="hero"]')).toContainText(/\d/, {
+      timeout: 5_000,
+    });
   }).toPass({ timeout: REPORTS });
 }
 
@@ -59,7 +67,7 @@ test.describe.serial('devices from the simulator', () => {
       .getByRole('textbox', { name: 'Zertifikat', exact: true })
       .fill(testGateway('simulator').certificate);
     await page.getByRole('button', { name: 'Gateway registrieren' }).click();
-    const block = page.locator('ui-section ui-section').filter({ hasText: 'Simulator' });
+    const block = page.locator('ui-card').filter({ hasText: 'Simulator' });
     await expect(block).toBeVisible();
     await expect(block).toContainText('Zigbee2MQTT: Online');
     await expect(block).toContainText('Bridge: Online');
@@ -84,13 +92,11 @@ test.describe.serial('devices from the simulator', () => {
     await expect(page.getByRole('heading', { name: 'Noch keine Geräte' })).toBeVisible();
 
     const section = discovered(page);
-    await expect(section.locator('ui-card')).toHaveCount(SIMULATED.length);
+    await expect(section.locator('form')).toHaveCount(SIMULATED.length);
     for (const name of SIMULATED) {
-      await expect(card(page, name, section)).toBeVisible();
+      await expect(found(page, name)).toBeVisible();
       // The name field starts with the name Zigbee2MQTT gives the hardware.
-      await expect(card(page, name, section).getByRole('textbox', { name: 'Name' })).toHaveValue(
-        name,
-      );
+      await expect(found(page, name).getByRole('textbox', { name: 'Name' })).toHaveValue(name);
     }
     // Only readings: no settings of the soil sensor (calibration, sampling, unit, warning).
     await expect(section).not.toContainText(/calibration|sampling|temperature_unit|soil_warning/);
@@ -99,25 +105,26 @@ test.describe.serial('devices from the simulator', () => {
   test('adding "Pflanze 1" moves it from "Neu erkannt" to the devices', async ({ page }) => {
     await page.goto('/geraete');
     const section = discovered(page);
-    await card(page, 'Pflanze 1', section).getByRole('button', { name: 'Hinzufügen' }).click();
+    await found(page, 'Pflanze 1').getByRole('button', { name: 'Hinzufügen' }).click();
 
-    await expect(section.locator('ui-card')).toHaveCount(SIMULATED.length - 1);
-    await expect(card(page, 'Pflanze 1', section)).toHaveCount(0);
+    await expect(section.locator('form')).toHaveCount(SIMULATED.length - 1);
+    await expect(found(page, 'Pflanze 1')).toHaveCount(0);
     const list = page.locator('ui-section').filter({
       has: page.getByRole('heading', { name: 'Geräte im Haushalt' }),
     });
-    await expect(card(page, 'Pflanze 1', list)).toBeVisible();
+    await expect(pod(page, 'Pflanze 1', list)).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Noch keine Geräte' })).toHaveCount(0);
   });
 
   test('the soil moisture shows on the device page and on the overview', async ({ page }) => {
     await page.goto('/geraete');
-    await card(page, 'Pflanze 1').getByRole('link', { name: 'Details' }).click();
+    await pod(page, 'Pflanze 1').getByRole('link').click();
     await expect(page).toHaveURL(/\/geraete\/[0-9a-f-]+$/);
     await expect(heading(page, 'Pflanze 1')).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Messwerte' })).toBeVisible();
     await expectSoilMoisture(page);
     const readings = readingsOf(page);
+    // The side values of the hero are pods: temperature, battery and signal.
     await expect(readings).toContainText('Batterie');
     // The settings of the sensor are no readings.
     await expect(readings).not.toContainText(/calibration|sampling|Kalibrierung/);
@@ -125,10 +132,12 @@ test.describe.serial('devices from the simulator', () => {
 
     await page.goto('/');
     await expect(heading(page, 'Übersicht')).toBeVisible();
-    const overview = card(page, 'Pflanze 1');
+    const overview = pod(page, 'Pflanze 1', page.locator('app-devices-block'));
     await expect(overview).toBeVisible();
-    await expect(overview).toContainText(/Bodenfeuchte:\s*\d/);
-    await expect(overview).toContainText(/Batterie:\s*\d/);
+    // The soil moisture is the value of the pod, in front of the name.
+    await expect(overview).toContainText(/\d+(,\d)?\s*%\s*Pflanze 1/);
+    await overview.getByRole('link').click();
+    await expect(page).toHaveURL(/\/geraete\/[0-9a-f-]+$/);
   });
 
   test('a member of the household sees the device but not "Neu erkannt"', async ({ browser }) => {
@@ -142,28 +151,29 @@ test.describe.serial('devices from the simulator', () => {
       await page.getByRole('textbox', { name: 'Dein Name' }).fill(MEMBER.name);
       await page.getByRole('button', { name: 'Annehmen' }).click();
       await expect(heading(page, 'Übersicht')).toBeVisible();
-      await expect(card(page, 'Pflanze 1')).toBeVisible();
+      await expect(pod(page, 'Pflanze 1', page.locator('app-devices-block'))).toBeVisible();
 
       await page
         .getByRole('navigation', { name: 'Hauptnavigation' })
         .getByRole('link', { name: 'Geräte' })
         .click();
       await expect(heading(page, 'Geräte')).toBeVisible();
-      await expect(card(page, 'Pflanze 1')).toBeVisible();
+      await expect(pod(page, 'Pflanze 1')).toBeVisible();
       // The hardware of the other devices is for owners: not even the heading, and no way to add.
       await expect(page.getByRole('heading', { name: 'Neu erkannt' })).toHaveCount(0);
       await expect(page.getByRole('button', { name: 'Hinzufügen' })).toHaveCount(0);
       await expect(page.getByText('Pflanze 2')).toHaveCount(0);
 
       // A member can rename the device.
-      await card(page, 'Pflanze 1').getByRole('link', { name: 'Details' }).click();
+      await pod(page, 'Pflanze 1').getByRole('link').click();
       await expect(page.getByRole('textbox', { name: 'Name' })).toHaveValue('Pflanze 1');
       await page.getByRole('textbox', { name: 'Name' }).fill('Basilikum');
-      await page.getByRole('button', { name: 'Speichern' }).click();
+      // Exact: the card "Grenzwerte" has a button "Grenzwerte speichern" too.
+      await page.getByRole('button', { name: 'Speichern', exact: true }).click();
       await expect(heading(page, 'Basilikum')).toBeVisible();
       await page.goto('/geraete');
-      await expect(card(page, 'Basilikum')).toBeVisible();
-      await expect(card(page, 'Pflanze 1')).toHaveCount(0);
+      await expect(pod(page, 'Basilikum')).toBeVisible();
+      await expect(pod(page, 'Pflanze 1')).toHaveCount(0);
     } finally {
       await context.close();
     }
@@ -174,7 +184,7 @@ test.describe.serial('devices from the simulator', () => {
     // `gateways.spec.ts` registers the Pi's gateway in another household and revokes it, in
     // parallel with this spec; whenever that happens, this household's gateway stays as it was.
     await page.goto('/mehr/gateways');
-    const block = page.locator('ui-section ui-section').filter({ hasText: 'Simulator' });
+    const block = page.locator('ui-card').filter({ hasText: 'Simulator' });
     await expect(block).toContainText('Bridge: Online');
     await expect(block).toContainText('Zigbee2MQTT: Online');
     await expect(block).not.toContainText('Gesperrt am');

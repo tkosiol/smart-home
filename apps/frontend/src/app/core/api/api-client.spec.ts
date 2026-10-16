@@ -121,6 +121,12 @@ describe('ApiClient', () => {
     );
   });
 
+  it('resolves a JSON null body to null, not undefined (an unset overview layout)', async () => {
+    const { api } = setup(() => json(null));
+    const answer = await api.get(`${API_BASE}/households/h/me/overview-layout`);
+    expect(answer).toBeNull();
+  });
+
   it('turns the API error format into an ApiError with code, params and status', async () => {
     const { api } = setup(() =>
       json({ code: 'auth.rateLimited', params: { retryAfterSeconds: 30 }, traceId: 't1' }, 429),

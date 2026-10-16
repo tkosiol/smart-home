@@ -59,6 +59,23 @@ export async function inviteThroughApi(
   }
 }
 
+/**
+ * Deletes the stored overview layout of `account` in its current household, so the overview is the
+ * one a new user has (the answer is 204 whether or not one was stored).
+ */
+export async function resetOverviewLayout(account: AccountId): Promise<void> {
+  const api = await apiAs(account);
+  try {
+    const me = (await (await api.get('/api/v1/me')).json()) as Me;
+    const householdId = me.currentHouseholdId;
+    if (!householdId) throw new Error(`${account} has no current household`);
+    const response = await api.delete(`/api/v1/households/${householdId}/me/overview-layout`);
+    expect(response.status()).toBe(204);
+  } finally {
+    await api.dispose();
+  }
+}
+
 /** Puts the instance appearance back to "none stored" (platform admin only). */
 export async function resetInstanceAppearance(account: AccountId): Promise<void> {
   const api = await apiAs(account);

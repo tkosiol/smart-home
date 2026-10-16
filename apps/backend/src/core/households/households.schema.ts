@@ -1,5 +1,14 @@
-import { HOUSEHOLD_ROLES } from '@smart/contracts';
-import { check, index, pgTable, primaryKey, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { HOUSEHOLD_ROLES, type OverviewLayout } from '@smart/contracts';
+import {
+  check,
+  index,
+  jsonb,
+  pgTable,
+  primaryKey,
+  text,
+  timestamp,
+  uuid,
+} from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { users } from '../identity/index.js';
 
@@ -23,6 +32,8 @@ export const memberships = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
     role: text('role', { enum: HOUSEHOLD_ROLES }).notNull(),
+    /** The member's own arrangement of the overview page here; null means the default. */
+    overviewLayout: jsonb('overview_layout').$type<OverviewLayout>(),
     createdAt: timestamptz('created_at').notNull().defaultNow(),
   },
   (table) => [

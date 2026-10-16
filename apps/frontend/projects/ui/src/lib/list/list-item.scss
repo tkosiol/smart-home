@@ -1,3 +1,5 @@
+@use '../tone';
+
 :host {
   display: block;
   min-width: 0;
@@ -37,6 +39,18 @@
 .leading,
 .chevron {
   color: var(--mat-sys-on-surface-variant);
+}
+
+.leading-container {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--smart-size-icon-container);
+  height: var(--smart-size-icon-container);
+  border-radius: var(--smart-shape-control);
+
+  @include tone.fill;
 }
 
 .texts {

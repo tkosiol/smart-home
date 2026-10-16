@@ -1,0 +1,37 @@
+@use '../tone';
+
+// The track (surface-container-highest, spec 2.2) clips band and fill to the pill.
+:host {
+  position: relative;
+  display: block;
+  height: var(--smart-size-progress-band);
+  overflow: hidden;
+  border-radius: var(--smart-shape-control);
+  background: var(--mat-sys-surface-container-highest);
+}
+
+.band,
+.fill {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+}
+
+// The band is the marked range in its container colour ("too dry" in dry-container); the fill is
+// the value in primary, or in the band's strong colour while the value lies inside the band.
+.band,
+.fill {
+  @include tone.fill;
+}
+
+.fill {
+  border-radius: var(--smart-shape-control);
+  transition: width var(--smart-motion-duration-medium) var(--smart-motion-easing-standard);
+}
+
+// Reduced motion: no sliding, the fill just takes its new width (spec 2.6).
+@media (prefers-reduced-motion: reduce) {
+  .fill {
+    transition: none;
+  }
+}

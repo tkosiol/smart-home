@@ -9,8 +9,7 @@
     "unknown": "Unknown"
   },
   "entry": {
-    "bridge": "Bridge",
-    "z2m": "Zigbee2MQTT",
+    "status": "Bridge: {{ bridge }} · Zigbee2MQTT: {{ z2m }}",
     "lastMessage": "Last message {{ time }}",
     "noMessage": "No message received yet",
     "certExpires": "Certificate valid until {{ date }}",
@@ -38,5 +37,12 @@
     "certificateError": "Please paste the certificate (at most 20,000 characters).",
     "privateKeyError": "This looks like a private key and was not sent. Only the certificate (the public part) belongs here; the key stays on the gateway.",
     "submit": "Register gateway"
+  },
+  "block": {
+    "online": "Gateway online",
+    "offline": "Gateway offline",
+    "unknown": "Status unknown",
+    "subtitle": "{{ state }} · {{ message }}",
+    "empty": "No gateway registered yet."
   }
 }

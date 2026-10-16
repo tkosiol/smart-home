@@ -56,6 +56,11 @@ export const routes: Routes = [
         loadChildren: () => import('./features/devices').then((m) => m.devicesRoutes),
       },
       {
+        path: 'hinweise',
+        title: marker('app.title.attention'),
+        loadChildren: () => import('./features/attention').then((m) => m.attentionRoutes),
+      },
+      {
         path: 'haushalte',
         title: marker('app.title.switchHousehold'),
         loadChildren: () => import('./features/households').then((m) => m.switchRoutes),

@@ -3,5 +3,15 @@
   "empty": {
     "heading": "Nothing to see yet",
     "description": "Rooms, devices and notices will show up here at a glance later."
+  },
+  "hidden": {
+    "heading": "Everything is hidden",
+    "description": "You have hidden all blocks. Show them again to see your overview."
+  },
+  "customize": {
+    "description": "Show or hide blocks and sort them with the drag handle.",
+    "show": "Show {{ name }}",
+    "reset": "Reset",
+    "done": "Done"
   }
 }

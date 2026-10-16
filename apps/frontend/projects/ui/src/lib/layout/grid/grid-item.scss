@@ -1,0 +1,15 @@
+:host {
+  display: block;
+  min-width: 0;
+}
+
+// The whole row, whatever the column count: the hero on a two-column overview (spec 3.7).
+:host([data-span='full']) {
+  grid-column: 1 / -1;
+}
+
+// A cell whose block renders nothing (a hidden status block without a critical notice, a block
+// still loading) leaves neither an empty row nor a gap behind.
+:host(:has(> :empty)) {
+  display: none;
+}

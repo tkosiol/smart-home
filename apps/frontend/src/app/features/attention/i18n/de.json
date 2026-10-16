@@ -1,0 +1,22 @@
+{
+  "title": "Alle Hinweise",
+  "back": "Zur Übersicht",
+  "summary": "{{ count }} offen · nach Dringlichkeit, dann neueste zuerst",
+  "filter": {
+    "severity": "Nach Dringlichkeit filtern",
+    "kind": "Nach Art filtern"
+  },
+  "card": {
+    "countOne": "1 Hinweis",
+    "count": "{{ count }} Hinweise"
+  },
+  "entry": {
+    "devicesOne": "1 Gerät nicht erreichbar · {{ time }}",
+    "devices": "{{ count }} Geräte nicht erreichbar · {{ time }}"
+  },
+  "noMatch": "Zu dieser Auswahl gibt es keine Hinweise.",
+  "empty": {
+    "heading": "Nichts zu tun",
+    "description": "Es gibt keine offenen Hinweise. Neue erscheinen hier und auf der Übersicht."
+  }
+}

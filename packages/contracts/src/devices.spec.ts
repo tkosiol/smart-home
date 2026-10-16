@@ -7,8 +7,11 @@ import {
   deviceCreateSchema,
   deviceRenameSchema,
   deviceSchema,
+  deviceUpdateSchema,
   hardwareSchema,
   primaryCapability,
+  deviceKind,
+  DEVICE_KINDS,
   type Capability,
 } from './devices.js';
 import { API_ERROR_CODES } from './api-error.js';
@@ -144,6 +147,15 @@ describe('deviceSchema', () => {
     lastSeenAt: '2026-10-14T08:00:00.000Z',
     state: { state: 'ON', brightness: 200 },
     capabilities: [lampState, brightness],
+    kind: 'light' as const,
+    thresholds: {},
+    effectiveThresholds: {
+      soilMoistureMin: null,
+      soilMoistureMax: null,
+      batteryMin: 20,
+      contactOpenMinutes: 10,
+      silentMinutes: 120,
+    },
   };
 
   it('accepts a lamp with an icon', () => {
@@ -173,9 +185,36 @@ describe('deviceSchema', () => {
     expect(parsed.success).toBe(true);
   });
 
+  it('requires the kind the server computed and rejects an unknown one', () => {
+    expect(deviceSchema.safeParse({ ...device, kind: undefined }).success).toBe(false);
+    expect(deviceSchema.safeParse({ ...device, kind: 'toaster' }).success).toBe(false);
+  });
+
+  it('requires the own and the effective thresholds', () => {
+    expect(deviceSchema.safeParse({ ...device, thresholds: undefined }).success).toBe(false);
+    expect(deviceSchema.safeParse({ ...device, effectiveThresholds: undefined }).success).toBe(
+      false,
+    );
+    expect(
+      deviceSchema.safeParse({ ...device, thresholds: { batteryMin: 10, silentMinutes: null } })
+        .success,
+    ).toBe(true);
+  });
+
   it('rejects a missing name and an unknown availability', () => {
     expect(deviceSchema.safeParse({ ...device, name: undefined }).success).toBe(false);
     expect(deviceSchema.safeParse({ ...device, availability: 'away' }).success).toBe(false);
+  });
+});
+
+describe('deviceUpdateSchema', () => {
+  it('takes a name, thresholds or both, and nothing else alone', () => {
+    expect(deviceUpdateSchema.safeParse({ name: ' Bed ' }).success).toBe(true);
+    expect(deviceUpdateSchema.safeParse({ thresholds: { batteryMin: null } }).success).toBe(true);
+    expect(deviceUpdateSchema.safeParse({ name: 'Bed', thresholds: {} }).success).toBe(true);
+    expect(deviceUpdateSchema.safeParse({}).success).toBe(false);
+    expect(deviceUpdateSchema.safeParse({ name: '  ' }).success).toBe(false);
+    expect(deviceUpdateSchema.safeParse({ thresholds: { batteryMin: 101 } }).success).toBe(false);
   });
 });
 
@@ -257,5 +296,42 @@ describe('constants', () => {
 
   it('lists the hardware-bound error code', () => {
     expect(API_ERROR_CODES).toContain('device.hardwareBound');
+  });
+});
+
+describe('deviceKind', () => {
+  const contact = capability({ key: 'contact', kind: 'binary' });
+  const readOnlyState = capability({ key: 'state', kind: 'binary' });
+
+  it('lists the kinds', () => {
+    expect(DEVICE_KINDS).toEqual(['light', 'soil', 'climate', 'contact', 'other']);
+  });
+
+  it('recognises a light by a writable state or brightness', () => {
+    expect(deviceKind([lampState])).toBe('light');
+    expect(deviceKind([brightness, battery].map((c) => ({ ...c, writable: true })))).toBe('light');
+  });
+
+  it('does not treat a readable-only state as a light', () => {
+    expect(deviceKind([readOnlyState])).toBe('other');
+  });
+
+  it('recognises soil, also with temperature', () => {
+    expect(deviceKind([soilMoisture, battery])).toBe('soil');
+    expect(deviceKind([soilMoisture, temperature])).toBe('soil');
+  });
+
+  it('recognises climate without soil moisture', () => {
+    expect(deviceKind([temperature])).toBe('climate');
+    expect(deviceKind([humidity, battery])).toBe('climate');
+  });
+
+  it('recognises a contact sensor', () => {
+    expect(deviceKind([contact, battery])).toBe('contact');
+  });
+
+  it('falls back to other', () => {
+    expect(deviceKind([])).toBe('other');
+    expect(deviceKind([battery])).toBe('other');
   });
 });

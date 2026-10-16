@@ -1,0 +1,1 @@
+ALTER TABLE "devices" ADD COLUMN "thresholds" jsonb DEFAULT '{}'::jsonb NOT NULL;

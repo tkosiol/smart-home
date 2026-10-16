@@ -1,8 +1,8 @@
 import { Injectable, inject } from '@angular/core';
-import type { Device, DeviceCreate, DeviceRename, Hardware } from '@smart/contracts';
+import type { Device, DeviceCreate, DeviceUpdate, Hardware } from '@smart/contracts';
 import { API_BASE, ApiClient } from '../../core/api';
 
-/** The device endpoints of one household (owner to list new hardware and add, members rename). */
+/** The device endpoints of one household (owner to list new hardware and add, members change). */
 @Injectable({ providedIn: 'root' })
 export class DevicesApi {
   private readonly api = inject(ApiClient);
@@ -27,7 +27,8 @@ export class DevicesApi {
     return this.api.get<Device>(this.path(householdId, `/devices/${encodeURIComponent(deviceId)}`));
   }
 
-  rename(householdId: string, deviceId: string, body: DeviceRename): Promise<Device> {
+  /** Renames the device and/or changes thresholds; a `null` threshold sets one back to the default. */
+  update(householdId: string, deviceId: string, body: DeviceUpdate): Promise<Device> {
     return this.api.patch<Device>(
       this.path(householdId, `/devices/${encodeURIComponent(deviceId)}`),
       body,

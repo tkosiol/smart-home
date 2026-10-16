@@ -1,4 +1,4 @@
-import { Component } from '@angular/core';
+import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { UiTopAppBar, UiTopAppBarActions } from './top-app-bar';
 
@@ -24,5 +24,27 @@ describe('UiTopAppBar', () => {
     fixture.detectChanges();
     const actions = (fixture.nativeElement as HTMLElement).querySelector('.actions button');
     expect(actions?.textContent).toBe('Aktion');
+  });
+});
+
+@Component({
+  imports: [UiTopAppBar],
+  template: `<ui-top-app-bar heading="Unser Zuhause" [size]="size()" />`,
+})
+class SizeHost {
+  readonly size = signal<'small' | 'large'>('small');
+}
+
+describe('UiTopAppBar sizes', () => {
+  it('is small by default and exposes the large size for the styles', () => {
+    const fixture = TestBed.createComponent(SizeHost);
+    fixture.detectChanges();
+    const host = fixture.nativeElement.querySelector('ui-top-app-bar') as HTMLElement;
+    expect(host.getAttribute('data-size')).toBe('small');
+    fixture.componentInstance.size.set('large');
+    fixture.detectChanges();
+    expect(host.getAttribute('data-size')).toBe('large');
+    expect(host.querySelector('.title')?.textContent?.trim()).toBe('Unser Zuhause');
+    expect(host.querySelector('h1, h2, h3, h4, h5, h6, [role="heading"]')).toBeNull();
   });
 });

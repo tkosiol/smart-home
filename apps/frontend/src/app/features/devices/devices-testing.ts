@@ -1,4 +1,11 @@
-import type { Capability, Device, Hardware } from '@smart/contracts';
+import {
+  effectiveThresholds,
+  type Capability,
+  type Device,
+  type DeviceUpdate,
+  type Hardware,
+  type Thresholds,
+} from '@smart/contracts';
 import { apiError, json } from '../../testing/auth-testing';
 import type { RecordedCall } from '../../testing/household-page-testing';
 
@@ -31,6 +38,15 @@ export const device = (id: string, name: string, overrides: Partial<Device> = {}
   lastSeenAt: '2026-10-14T11:55:00Z',
   state: { soil_moisture: 41.26, temperature: 21.5, battery: 87, linkquality: 120, dry: false },
   capabilities: [moisture, temperature, battery, linkquality, dry],
+  kind: 'soil',
+  thresholds: {},
+  effectiveThresholds: {
+    soilMoistureMin: 25,
+    soilMoistureMax: null,
+    batteryMin: 20,
+    contactOpenMinutes: 10,
+    silentMinutes: 120,
+  },
   ...overrides,
 });
 
@@ -53,6 +69,21 @@ export const hardware = (id: string, friendlyName: string, overrides: Partial<Ha
     ],
     ...overrides,
   }) satisfies Hardware;
+
+/** What the server does with `PATCH`: a new name, thresholds merged in (`null` removes one). */
+function applyUpdate(device: Device, update: DeviceUpdate): Device {
+  const own: Thresholds = { ...device.thresholds };
+  for (const [key, value] of Object.entries(update.thresholds ?? {})) {
+    if (value === null) delete own[key as keyof Thresholds];
+    else Object.assign(own, { [key]: value });
+  }
+  return {
+    ...device,
+    name: update.name ?? device.name,
+    thresholds: own,
+    effectiveThresholds: effectiveThresholds(device.kind, own),
+  };
+}
 
 export interface DevicesServer {
   devices: Device[];
@@ -78,9 +109,9 @@ export function devicesServer(householdId: string, initial: Partial<DevicesServe
       return found ? json(found) : apiError('household.notFound', 404);
     }
     if (one && call.method === 'PATCH' && found) {
-      const renamed = { ...found, name: (call.body as { name: string }).name };
-      state.devices = state.devices.map((entry) => (entry.id === found.id ? renamed : entry));
-      return json(renamed);
+      const updated = applyUpdate(found, call.body as DeviceUpdate);
+      state.devices = state.devices.map((entry) => (entry.id === found.id ? updated : entry));
+      return json(updated);
     }
     if (call.method === 'POST' && path === '/devices') {
       const body = call.body as { hardwareId: string; name: string };

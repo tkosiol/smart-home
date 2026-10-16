@@ -1,0 +1,12 @@
+/* Typography tokens beyond Material's roles (design spec 2.3). Only tokens/ may hold fixed sizes. */
+:root {
+  --smart-font-weight-medium: 500;
+  --smart-font-weight-semibold: 600;
+  /* Main value on the device page: 80/84 px, weight 600 (tracking -0.03 em, see below) */
+  --smart-type-value-hero: var(--smart-font-weight-semibold) 80px/84px var(--smart-font-family);
+  --smart-type-tracking-hero: -0.03em;
+  /* Large titles (household name, page titles inside cards) */
+  --smart-type-tracking-tight: -0.01em;
+  /* Section labels in capitals (STATUS, BODENFEUCHTE) */
+  --smart-type-tracking-label: 0.1em;
+}

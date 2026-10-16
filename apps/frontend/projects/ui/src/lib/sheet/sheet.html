@@ -1,0 +1,17 @@
+@if (presentation === 'sheet') {
+  <span class="handle" aria-hidden="true"></span>
+}
+<div class="header">
+  <h2 class="heading" [id]="headingId">{{ heading() }}</h2>
+  @if (description(); as description) {
+    <p class="description">{{ description }}</p>
+  }
+</div>
+<div class="content">
+  <ng-content />
+</div>
+@if (actions()) {
+  <div class="actions">
+    <ng-content select="[uiSheetActions]" />
+  </div>
+}

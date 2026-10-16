@@ -1,0 +1,29 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  gap: var(--smart-space-sm);
+  min-width: 0;
+}
+
+// The pods snap to the row's start; the scrollbar stays hidden (touch scrolls, arrows page from
+// medium up, Tab reaches every pod), and a swipe at the end does not pull the page.
+.scroller {
+  display: flex;
+  gap: var(--smart-space-sm);
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+}
+
+:host([data-wrap]) .scroller {
+  flex-wrap: wrap;
+  overflow: visible;
+  scroll-snap-type: none;
+}
+
+.arrows {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--smart-space-sm);
+}

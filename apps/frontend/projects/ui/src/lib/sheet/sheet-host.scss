@@ -1,0 +1,78 @@
+// The native dialog sits in the top layer; the surface inside it is the sheet or the dialog
+// card (spec 2.2: surface-container-low, card corners, M3 elevation). The dialog element
+// itself is only the positioning frame.
+.dialog {
+  box-sizing: border-box;
+  max-width: 100vw;
+  max-height: 100dvh;
+  margin: 0;
+  padding: 0;
+  overflow: visible;
+  border: 0;
+  background: transparent;
+  color: var(--mat-sys-on-surface);
+}
+
+.dialog::backdrop {
+  background: color-mix(in srgb, var(--mat-sys-scrim) 32%, transparent);
+}
+
+.surface {
+  box-sizing: border-box;
+  max-height: inherit;
+  overflow: auto;
+  overscroll-behavior: contain;
+  background: var(--mat-sys-surface-container-low);
+  box-shadow: var(--mat-sys-level1);
+}
+
+// Compact windows: a sheet along the bottom edge, full width, rounded at the top, at most
+// nine tenths of the viewport high; it slides up (spec 2.6).
+.dialog[data-presentation='sheet'] {
+  position: fixed;
+  inset: auto 0 0;
+  width: 100%;
+  max-height: 90dvh;
+  transition:
+    transform var(--smart-motion-duration-medium) var(--smart-motion-easing-standard),
+    opacity var(--smart-motion-duration-medium) var(--smart-motion-easing-standard);
+
+  @starting-style {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+}
+
+.dialog[data-presentation='sheet'] .surface {
+  max-height: 90dvh;
+  padding-bottom: env(safe-area-inset-bottom);
+  border-radius: var(--smart-shape-card) var(--smart-shape-card) 0 0;
+}
+
+// Medium windows and up: a centred dialog card with a margin to the viewport edges.
+.dialog[data-presentation='dialog'] {
+  width: min(var(--smart-size-dialog-max), calc(100vw - var(--smart-space-2xl)));
+  max-height: calc(100dvh - var(--smart-space-2xl));
+  margin: auto;
+  transition: opacity var(--smart-motion-duration-medium) var(--smart-motion-easing-standard);
+
+  @starting-style {
+    opacity: 0;
+  }
+}
+
+.dialog[data-presentation='dialog'] .surface {
+  max-height: calc(100dvh - var(--smart-space-2xl));
+  border-radius: var(--smart-shape-card);
+  box-shadow: var(--mat-sys-level3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dialog[data-presentation='sheet'] {
+    transition: opacity var(--smart-motion-duration-medium) var(--smart-motion-easing-standard);
+
+    @starting-style {
+      transform: none;
+    }
+  }
+}

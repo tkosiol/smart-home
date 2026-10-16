@@ -23,7 +23,180 @@
       "household": "Household",
       "members": "Members",
       "gateways": "Gateways",
-      "notFound": "Not found"
+      "notFound": "Not found",
+      "attention": "All notices"
+    },
+    "overview": {
+      "customize": "Customise overview",
+      "move": "Move {{ name }}",
+      "blocks": {
+        "status": {
+          "label": "Status",
+          "description": "Notices that need your attention, or the calm row."
+        },
+        "devices": {
+          "label": "Devices",
+          "description": "All devices with their current value."
+        },
+        "gateway": {
+          "label": "Gateway",
+          "description": "Status and last message of your gateways."
+        }
+      }
+    },
+    "attention": {
+      "heading": "Needs attention",
+      "severity": {
+        "critical": "Critical"
+      },
+      "more": {
+        "one": "1 more group",
+        "other": "{{ n }} more groups"
+      },
+      "calm": {
+        "noDevices": "No devices yet",
+        "detail": "Gateway online · {{ count }} devices · {{ time }}",
+        "detailOne": "Gateway online · 1 device · {{ time }}",
+        "detailNoTime": "Gateway online · {{ count }} devices",
+        "detailOneNoTime": "Gateway online · 1 device"
+      },
+      "announce": {
+        "critical": "Critical: {{ title }}",
+        "criticalMany": "{{ count }} new critical notices",
+        "changed": "Notices updated: {{ count }} open",
+        "none": "No open notices"
+      },
+      "subtitle": {
+        "devices": "{{ count }} devices unreachable",
+        "devicesOne": "1 device unreachable"
+      },
+      "kind": {
+        "gateway_offline": {
+          "one": "Gateway {{ name }} is offline",
+          "many": "{{ count }} gateways are offline"
+        },
+        "device_silent": {
+          "one": "{{ name }} is not reporting",
+          "many": "{{ count }} devices are not reporting"
+        },
+        "soil_dry": {
+          "one": "{{ name }} is too dry",
+          "many": "{{ count }} plants too dry"
+        },
+        "soil_wet": {
+          "one": "{{ name }} is too wet",
+          "many": "{{ count }} plants too wet"
+        },
+        "battery_low": {
+          "one": "{{ name }}: battery low",
+          "many": "{{ count }} devices: battery low"
+        },
+        "contact_open": {
+          "one": "{{ name }} is open",
+          "many": "{{ count }} contacts are open"
+        },
+        "hardware_new": {
+          "one": "New device found: {{ name }}",
+          "many": "{{ count }} new devices found"
+        },
+        "cert_expiring": {
+          "one": "Certificate of {{ name }} expires soon",
+          "expired": "Certificate of {{ name }} has expired",
+          "crl": "Revocation list expires soon",
+          "crlExpired": "Revocation list has expired",
+          "many": "{{ count }} certificates expire soon"
+        },
+        "unknown": {
+          "one": "{{ name }}",
+          "many": "{{ count }} notices"
+        }
+      },
+      "filter": {
+        "all": "All",
+        "critical": "Critical",
+        "warning": "Warning",
+        "info": "Notice"
+      },
+      "section": {
+        "critical": "Critical",
+        "warning": "Warnings",
+        "info": "Notices"
+      },
+      "group": {
+        "gateway_offline": "Gateway offline",
+        "device_silent": "Not reporting",
+        "soil_dry": "Too dry",
+        "soil_wet": "Too wet",
+        "battery_low": "Battery low",
+        "contact_open": "Open contacts",
+        "hardware_new": "New devices",
+        "cert_expiring": "Certificates",
+        "unknown": "Other notices"
+      }
+    },
+    "devices": {
+      "pod": {
+        "on": "On",
+        "off": "Off",
+        "dry": "dry",
+        "wet": "wet",
+        "ok": "OK",
+        "offline": "Offline",
+        "lowBattery": "Battery"
+      },
+      "capability": {
+        "soil_moisture": "Soil moisture",
+        "temperature": "Temperature",
+        "humidity": "Humidity",
+        "battery": "Battery",
+        "dry": "Dry",
+        "linkquality": "Signal quality",
+        "state": "State",
+        "brightness": "Brightness",
+        "color_temp": "Color temperature"
+      },
+      "kind": {
+        "light": "Lamp",
+        "soil": "Plant",
+        "climate": "Climate sensor",
+        "contact": "Contact",
+        "other": "Sensor"
+      },
+      "hero": {
+        "meter": {
+          "dry": "{{ value }}, too dry. Target range {{ from }} to {{ to }} percent.",
+          "wet": "{{ value }}, too wet. Target range {{ from }} to {{ to }} percent.",
+          "ok": "{{ value }}, within the target range of {{ from }} to {{ to }} percent.",
+          "plain": "{{ value }}"
+        }
+      },
+      "thresholds": {
+        "field": {
+          "soilMoistureMin": "Moisture lower limit",
+          "soilMoistureMax": "Moisture upper limit",
+          "batteryMin": "Battery below",
+          "contactOpenMinutes": "Open for longer than",
+          "silentMinutes": "Silent after"
+        },
+        "unit": {
+          "percent": "%",
+          "minutes": "minutes"
+        },
+        "value": {
+          "percent": "{{ value }} %",
+          "minutes": "{{ value }} minutes"
+        },
+        "error": {
+          "invalid": "Please enter a valid number (percent from 0 to 100, whole minutes from 1 to 10080).",
+          "range": "The lower moisture limit must be below the upper one.",
+          "rejected": "This value was rejected. Check it against the other thresholds."
+        },
+        "off": "off",
+        "state": {
+          "standard": "Standard",
+          "custom": "Customised (standard: {{ standard }})"
+        }
+      }
     },
     "household": {
       "switch": "Switch household",
@@ -44,7 +217,11 @@
       "household": "Household",
       "members": "Members",
       "gateways": "Gateways",
-      "settings": "Settings"
+      "settings": "Settings",
+      "groups": {
+        "household": "Manage the household",
+        "app": "App"
+      }
     },
     "offline": "Offline – displayed data may be out of date",
     "update": {

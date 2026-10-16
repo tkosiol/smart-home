@@ -97,11 +97,10 @@ function open({
 
 const requests = (page: OpenedHouseholdPage, method: string) =>
   page.calls.filter((call) => call.method === method);
-const sections = (page: OpenedHouseholdPage) =>
-  [...page.element.querySelectorAll('ui-section')] as HTMLElement[];
+/** The card of one gateway: its status entry carries the name. */
 const entry = (page: OpenedHouseholdPage, name: string) =>
-  sections(page).find(
-    (candidate) => candidate.querySelector(':scope > .header h3')?.textContent?.trim() === name,
+  ([...page.element.querySelectorAll('ui-card')] as HTMLElement[]).find(
+    (candidate) => candidate.querySelector('ui-status-entry .title')?.textContent?.trim() === name,
   )!;
 const entryText = (page: OpenedHouseholdPage, name: string) => pageText(entry(page, name));
 const entryButton = (page: OpenedHouseholdPage, name: string, label: string) =>
@@ -152,6 +151,12 @@ describe('gateways page', () => {
       expect(text).toContain('Zertifikat gültig bis 01.04.2027');
       expect(entryText(page, 'Keller')).toContain('Bridge: Offline');
       expect(entryText(page, 'Keller')).toContain('Zigbee2MQTT: Unbekannt');
+    });
+
+    it('keeps the gateway names reachable by heading navigation', async () => {
+      const page = await open();
+      const headings = [...page.element.querySelectorAll('[role="heading"][aria-level="3"]')];
+      expect(headings.map((heading) => heading.textContent?.trim())).toEqual(['Flur', 'Keller']);
     });
 
     it('shows dates in the time zone of the household, not in UTC', async () => {
@@ -243,7 +248,9 @@ describe('gateways page', () => {
     it('shows the days left of an expiring certificate', async () => {
       const page = await open({ gateways: [expiring] });
       expect(entryText(page, 'Flur')).toContain('Das Zertifikat läuft in 12 Tagen ab.');
-      expect(entry(page, 'Flur').querySelector('ui-banner[data-tone="warning"]')).toBeTruthy();
+      expect(
+        entry(page, 'Flur').querySelector('ui-status-chip[data-tone="warning-container"]'),
+      ).toBeTruthy();
     });
 
     it('rounds partial days up and names the last day', async () => {
@@ -537,7 +544,7 @@ describe('gateways page', () => {
       await flush(page);
       expect(page.calls.at(-1)?.path).toBe(`/api/v1/households/${auckland.id}/gateways`);
       expect(entry(page, 'Garten')).toBeTruthy();
-      expect(sections(page).some((s) => s.textContent?.includes('Flur'))).toBe(false);
+      expect(entry(page, 'Flur')).toBeUndefined();
     });
 
     it('keeps the list and what is typed when the user is reloaded for the same household', async () => {
@@ -587,7 +594,7 @@ describe('gateways page', () => {
       release();
       await flush(page);
       expect(entry(page, 'Garten')).toBeTruthy();
-      expect(sections(page).some((s) => s.textContent?.includes('Flur'))).toBe(false);
+      expect(entry(page, 'Flur')).toBeUndefined();
     });
   });
 

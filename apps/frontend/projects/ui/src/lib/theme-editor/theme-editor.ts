@@ -15,7 +15,7 @@ import {
   type ThemeShape,
 } from '@smart/contracts';
 import { UiButton } from '../button/button';
-import { UiSection } from '../layout/section/section';
+import { UiCard } from '../card/card';
 import { UiStack } from '../layout/stack/stack';
 import { UiSegmentedButton } from '../segmented-button/segmented-button';
 import { UiSelect } from '../select/select';
@@ -42,7 +42,7 @@ export type UiThemeEditorMode = 'personal' | 'instance';
   imports: [
     TranslocoPipe,
     UiButton,
-    UiSection,
+    UiCard,
     UiSegmentedButton,
     UiSelect,
     UiStack,

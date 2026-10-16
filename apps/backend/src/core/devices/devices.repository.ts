@@ -1,6 +1,13 @@
+import { isDeepStrictEqual } from 'node:util';
 import { Inject, Injectable } from '@nestjs/common';
-import type { Availability, Capability } from '@smart/contracts';
-import { and, asc, eq, exists, inArray, isNull, lte, or, sql } from 'drizzle-orm';
+import {
+  deviceKind,
+  type Availability,
+  type Capability,
+  type DeviceKind,
+  type Thresholds,
+} from '@smart/contracts';
+import { and, asc, eq, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { DATABASE, type DatabaseConnection } from '../../platform/database/index.js';
 import { gateways } from '../gateways/index.js';
 import {
@@ -21,11 +28,29 @@ export interface DeviceView {
   icon: string | null;
   createdAt: Date;
   hardware: { id: string; vendor: string; model: string; description: string | null };
+  /** The gateway the device's hardware belongs to. */
+  gatewayId: string;
   availability: Availability;
   lastSeenAt: Date | null;
   state: Record<string, unknown>;
   /** Readable capabilities without settings. */
   capabilities: Capability[];
+  /** The kind of the device, from all its capabilities that are not settings. */
+  kind: DeviceKind;
+  /** The device's own thresholds. */
+  thresholds: Thresholds;
+}
+
+/** What {@link DevicesRepository.update} changes; the thresholds are computed from the stored ones. */
+export interface DeviceChange {
+  name?: string;
+  /** Returns the thresholds to store for the stored ones; may throw to reject the change. */
+  thresholds?: (current: Thresholds, kind: DeviceKind) => Thresholds;
+}
+
+export interface DeviceUpdated {
+  view: DeviceView;
+  thresholdsChanged: boolean;
 }
 
 export type CreateDeviceOutcome =
@@ -106,36 +131,58 @@ export class DevicesRepository {
   }
 
   /**
-   * Renames the household's device and returns it; `undefined` if the household has no such device.
-   * Only a device that is shown (on an active binding) can be renamed, so that a successful
-   * rename always has a device to return.
+   * Changes the household's device and returns it; `undefined` if the household has no such device.
+   * Only a device that is shown (on an active binding) can be changed, so that a successful change
+   * always has a device to return. The stored thresholds are locked while the change is computed,
+   * so that two changes of different thresholds both stay.
    */
-  async rename(
+  async update(
     householdId: string,
     deviceId: string,
-    name: string,
-  ): Promise<DeviceView | undefined> {
-    const renamed = await this.connection.db
-      .update(devices)
-      .set({ name })
-      .where(
-        and(
-          eq(devices.id, deviceId),
-          eq(devices.householdId, householdId),
-          isNull(devices.archivedAt),
-          exists(
-            this.connection.db
-              .select({ one: sql`1` })
-              .from(deviceBindings)
-              .where(
-                and(eq(deviceBindings.deviceId, devices.id), isNull(deviceBindings.unboundAt)),
-              ),
+    change: DeviceChange,
+  ): Promise<DeviceUpdated | undefined> {
+    const outcome = await this.connection.db.transaction(async (tx) => {
+      const [current] = await tx
+        .select({
+          thresholds: devices.thresholds,
+          hardwareId: deviceBindings.hardwareId,
+        })
+        .from(devices)
+        .innerJoin(
+          deviceBindings,
+          and(eq(deviceBindings.deviceId, devices.id), isNull(deviceBindings.unboundAt)),
+        )
+        .where(
+          and(
+            eq(devices.id, deviceId),
+            eq(devices.householdId, householdId),
+            isNull(devices.archivedAt),
           ),
-        ),
-      )
-      .returning({ id: devices.id });
-    if (renamed.length === 0) return undefined;
-    return this.get(householdId, deviceId);
+        )
+        .for('update', { of: devices });
+      if (!current) return undefined;
+      const set: { name?: string; thresholds?: Thresholds } = {};
+      if (change.name !== undefined) set.name = change.name;
+      let thresholdsChanged = false;
+      if (change.thresholds) {
+        const own = await tx
+          .select()
+          .from(capabilities)
+          .where(
+            and(eq(capabilities.hardwareId, current.hardwareId), eq(capabilities.isSetting, false)),
+          );
+        const next = change.thresholds(current.thresholds, deviceKind(own.map(toCapability)));
+        thresholdsChanged = !isDeepStrictEqual(next, current.thresholds);
+        if (thresholdsChanged) set.thresholds = next;
+      }
+      if (Object.keys(set).length > 0) {
+        await tx.update(devices).set(set).where(eq(devices.id, deviceId));
+      }
+      return { thresholdsChanged };
+    });
+    if (!outcome) return undefined;
+    const view = await this.get(householdId, deviceId);
+    return view && { view, thresholdsChanged: outcome.thresholdsChanged };
   }
 
   /** The binding that currently ties a device to the hardware. */
@@ -180,6 +227,7 @@ export class DevicesRepository {
           model: hardware.model,
           description: hardware.description,
         },
+        gatewayId: hardware.gatewayId,
         state: deviceState,
       })
       .from(devices)
@@ -192,7 +240,8 @@ export class DevicesRepository {
       .where(and(where, isNull(devices.archivedAt)))
       .orderBy(asc(devices.name), asc(devices.id));
     if (rows.length === 0) return [];
-    const measured = await this.connection.db
+    // Writable-only capabilities (a light's brightness) are not shown but decide the kind.
+    const known = await this.connection.db
       .select()
       .from(capabilities)
       .where(
@@ -201,23 +250,26 @@ export class DevicesRepository {
             capabilities.hardwareId,
             rows.map((row) => row.hardware.id),
           ),
-          eq(capabilities.readable, true),
           eq(capabilities.isSetting, false),
         ),
       )
       .orderBy(asc(capabilities.key));
-    return rows.map((row) => ({
-      id: row.device.id,
-      name: row.device.name,
-      icon: row.device.icon,
-      createdAt: row.device.createdAt,
-      hardware: row.hardware,
-      availability: row.state?.availability ?? 'unknown',
-      lastSeenAt: row.state?.lastSeenAt ?? null,
-      state: row.state?.state ?? {},
-      capabilities: measured
-        .filter((capability) => capability.hardwareId === row.hardware.id)
-        .map(toCapability),
-    }));
+    return rows.map((row) => {
+      const own = known.filter((capability) => capability.hardwareId === row.hardware.id);
+      return {
+        id: row.device.id,
+        name: row.device.name,
+        icon: row.device.icon,
+        createdAt: row.device.createdAt,
+        hardware: row.hardware,
+        gatewayId: row.gatewayId,
+        availability: row.state?.availability ?? 'unknown',
+        lastSeenAt: row.state?.lastSeenAt ?? null,
+        state: row.state?.state ?? {},
+        capabilities: own.filter((capability) => capability.readable).map(toCapability),
+        kind: deviceKind(own.map(toCapability)),
+        thresholds: row.device.thresholds,
+      };
+    });
   }
 }

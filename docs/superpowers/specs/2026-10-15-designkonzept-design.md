@@ -92,7 +92,7 @@ Nur `--smart-space-*`: Seitenrand `lg`, Karten-Innenabstand `lg` (Hero `xl` oben
 
 ### 2.7 Gültigkeit
 
-Jeder Baustein muss mit jeder Grundfarbe, jeder Schema-Variante, hell/dunkel und allen Kontraststufen funktionieren. Prüfung in Storybook (axe) in sechs Kombinationen: hell/dunkel × Standard/Mittel/Hoch, mit zwei Grundfarben (Standard und ein kräftiges Rot, weil dort `error` und `primary` zusammenrücken).
+Jeder Baustein muss mit jeder Grundfarbe, jeder Schema-Variante, hell/dunkel und allen Kontraststufen funktionieren; das leisten die Rollen des Farbgenerators. Geprüft wird in Storybook (axe) nur **hell und dunkel mit der Standard-Grundfarbe und der Standardschrift** (Entscheidung Till, 2026-10-15): Grundfarben, Varianten, Kontraststufen und Schriften erzeugt die Software, dafür gibt es keine eigene Matrix je Baustein.
 
 ## 3. Bildschirme
 
@@ -154,16 +154,16 @@ Fensterklassen aus `ui-adaptive-shell`: **Medium** (Rail): Übersicht zweispalti
 
 ### 4.2 Arten, Bedingungen und Sichtbarkeit
 
-| Art (`kind`)      | Dringlichkeit | Bedingung                                                                                                                          | Sichtbar für           |
-| ----------------- | ------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ---------------------- |
-| `gateway_offline` | `critical`    | `bridge_status` oder `z2m_status` länger als 5 min nicht `online` (Benachrichtigung in Etappe 7 nach 15 min, Architektur-Spec 8.8) | alle                   |
-| `device_silent`   | `critical`    | Gateway online und `availability` `offline`, oder keine Meldung länger als die Schwelle (Abschnitt 4.3, Standard 2 h)              | alle                   |
-| `soil_dry`        | `warning`     | das Gerät meldet „trocken“ (Flag der Fähigkeit) oder `soil_moisture` unter der unteren Schwelle (Abschnitt 4.3, Standard 25 %)     | alle                   |
-| `soil_wet`        | `warning`     | `soil_moisture` über der oberen Schwelle (Abschnitt 4.3; Standard: keine, also aus, bis sie gesetzt ist)                           | alle                   |
-| `battery_low`     | `warning`     | Batterie unter der Schwelle (Abschnitt 4.3, Standard 20 % = `LOW_BATTERY_PERCENT`)                                                 | alle                   |
-| `contact_open`    | `info`        | `contact` offen länger als die Schwelle (Abschnitt 4.3, Standard 10 min)                                                           | alle                   |
-| `hardware_new`    | `info`        | erkannte, nicht zugeordnete Hardware                                                                                               | owner                  |
-| `cert_expiring`   | `info`        | Zertifikat oder CRL läuft in weniger als 30 Tagen ab                                                                               | owner, Plattform-Admin |
+| Art (`kind`)      | Dringlichkeit | Bedingung                                                                                                                            | Sichtbar für           |
+| ----------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ---------------------- |
+| `gateway_offline` | `critical`    | `bridge_status` oder `z2m_status` länger als 5 min nicht `online` (Benachrichtigung in Etappe 7 nach 15 min, Architektur-Spec 8.8)   | alle                   |
+| `device_silent`   | `critical`    | Gateway online und `availability` `offline`, oder keine Meldung länger als die Schwelle (Abschnitt 4.3, Standard 2 h)                | alle                   |
+| `soil_dry`        | `warning`     | `soil_moisture` unter der unteren Schwelle (Abschnitt 4.3, Standard 25 %); das Flag „trocken“ des Sensors zählt nur ohne Feuchtewert | alle                   |
+| `soil_wet`        | `warning`     | `soil_moisture` über der oberen Schwelle (Abschnitt 4.3; Standard: keine, also aus, bis sie gesetzt ist)                             | alle                   |
+| `battery_low`     | `warning`     | Batterie unter der Schwelle (Abschnitt 4.3, Standard 20 % = `LOW_BATTERY_PERCENT`)                                                   | alle                   |
+| `contact_open`    | `info`        | `contact` offen länger als die Schwelle (Abschnitt 4.3, Standard 10 min)                                                             | alle                   |
+| `hardware_new`    | `info`        | erkannte, nicht zugeordnete Hardware                                                                                                 | owner                  |
+| `cert_expiring`   | `info`        | Zertifikat oder CRL läuft in weniger als 30 Tagen ab                                                                                 | owner, Plattform-Admin |
 
 Ein Eintrag entsteht, sobald die Bedingung gilt, und verschwindet, sobald sie nicht mehr gilt; `since` ist der Zeitpunkt, ab dem sie gilt. Hysterese nur dort, wo Werte flattern: `soil_dry` endet erst 3 Prozentpunkte über der unteren Schwelle, `soil_wet` 3 Prozentpunkte unter der oberen, `battery_low` 5 Prozentpunkte über ihrer Schwelle.
 
@@ -224,7 +224,7 @@ Feature-Code enthält weiterhin kein CSS; was fehlt, wird ein `ui-*`-Baustein. M
 
 ## 8. Barrierefreiheit
 
-- Ziel WCAG 2.2 AA; Text 4,5:1, große Werte und Icons 3:1; die Generator-Rollen garantieren das für `on-*` auf ihrer Fläche, Storybook prüft es mit axe in den sechs Kombinationen.
+- Ziel WCAG 2.2 AA; Text 4,5:1, große Werte und Icons 3:1; die Generator-Rollen garantieren das für `on-*` auf ihrer Fläche, Storybook prüft es mit axe hell und dunkel (Abschnitt 2.7).
 - Touch-Ziele mindestens `--smart-size-touch` (48 px), auch Chips (40 px sichtbar, 48 px Ziel) und Ziehgriffe.
 - Farbe ist nie der einzige Träger: Dringlichkeit über Position, Label „Kritisch“ und Icon; Zustände über Chip-Text („trocken“, „Aus“) oder Icon; Diagramme mit Band **und** Beschriftung.
 - Screenreader: Pod als Link oder Schalter mit `aria-label` „Monstera, Bodenfeuchte 46 Prozent, in Ordnung“ beziehungsweise „Deckenlampe, an, 80 Prozent; ausschalten“; Hero als `region` mit Überschrift; neuer kritischer Eintrag wird über `UiAnnouncer` (`assertive`) angesagt, andere Änderungen `polite`; Diagramm mit `description` als Textzusammenfassung und Link „Werte als Tabelle“.
@@ -238,7 +238,7 @@ Feature-Code enthält weiterhin kein CSS; was fehlt, wird ein `ui-*`-Baustein. M
 | 6b Designsprache                  | Tokens (2.1–2.6), Warnfarben-Spike (6), `deviceKind` in Contracts, Bausteine aus 7 (ohne `ui-chart`, `ui-room-card`), `core/attention` mit den Arten aus 4.2 und den Schwellen aus 4.3 (Standardwerte, Anpassung je Gerät, Karte „Grenzwerte“), Übersicht mit Hero und Block „Geräte“, „Alle Hinweise“, „Übersicht anpassen“ mit Speicherung, Umbau der bestehenden Seiten (3.6), Storybook | Die App sieht aus wie Richtung B; der Status-Block zeigt echte Hinweise des Simulators und der Sensoren |
 | 6c Räume, Verläufe, Live, Befehle | Räume (Modell, Seiten, Block `rooms`, Pods je Raum), Stundenaggregat und `ui-chart`, SSE inklusive `attention.changed`, Befehle mit Lampen-Pod und Geräteseite der Lampe, Kopplungsmodus – alles in der Sprache aus 6b                                                                                                                                                                      | Räume mit Pods, Verläufe mit Band, Lampe schaltbar aus der Übersicht                                    |
 
-Tests: Storybook-Stories je Baustein in den sechs Kombinationen mit axe; Unit-Tests für Gruppierung, Zählung und Hero-Limit (App) und für die Regeln 1–4 und Hysterese (`core/attention`, Integrationstest mit dem Simulator: Gateway offline erzeugt genau einen Eintrag); E2E: Übersicht zeigt Hero mit Simulator-Hinweisen, Anpassung bleibt nach Neuladen erhalten.
+Tests: Storybook-Stories je Baustein hell und dunkel mit axe (Abschnitt 2.7); Unit-Tests für Gruppierung, Zählung und Hero-Limit (App) und für die Regeln 1–4 und Hysterese (`core/attention`, Integrationstest mit dem Simulator: Gateway offline erzeugt genau einen Eintrag); E2E: Übersicht zeigt Hero mit Simulator-Hinweisen, Anpassung bleibt nach Neuladen erhalten.
 
 ## 10. Nicht-Ziele und später
 

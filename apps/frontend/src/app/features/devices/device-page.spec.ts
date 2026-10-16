@@ -11,6 +11,7 @@ import {
   press,
   typeInto,
   type OpenedHouseholdPage,
+  type Responder,
 } from '../../testing/household-page-testing';
 import { capability, device, devicesServer, type DevicesServer } from './devices-testing';
 import { deviceRoutes } from './devices.routes';
@@ -41,15 +42,25 @@ interface Options extends Partial<DevicesServer> {
   household?: typeof owner;
   language?: Language;
   id?: string;
+  /** Wraps the answers of the server, e.g. to make one of them slow. */
+  wrap?: (respond: Responder) => Responder;
 }
 
-function open({ household = owner, language = 'de', id = 'dev-1', ...initial }: Options = {}) {
+function open({
+  household = owner,
+  language = 'de',
+  id = 'dev-1',
+  wrap = (respond) => respond,
+  ...initial
+}: Options = {}) {
   TestBed.overrideProvider(UiClock, { useValue: { now: signal(NOW) } });
   const { state, respond } = devicesServer(household.id, { devices: [sensor], ...initial });
   const me: Me = meWith([household], household.id);
-  return openHouseholdPage(routes, `/geraete/${id}`, { language, me, respond }).then((page) =>
-    Object.assign(page, { server: state }),
-  );
+  return openHouseholdPage(routes, `/geraete/${id}`, {
+    language,
+    me,
+    respond: wrap(respond),
+  }).then((page) => Object.assign(page, { server: state }));
 }
 
 const gets = (page: OpenedHouseholdPage) =>
@@ -62,38 +73,130 @@ describe('device page', () => {
     document.documentElement.setAttribute('lang', 'de');
   });
 
-  it('shows all readings with their units and no settings', async () => {
-    const page = await open();
-    await flush(page);
-    expect(page.element.querySelector('h1')?.textContent?.trim()).toBe('Basilikum');
-    const text = pageText(page.element);
-    expect(text).toContain('Bodenfeuchte: 41,3 %');
-    expect(text).toContain('Temperatur: 21,5 °C');
-    expect(text).toContain('Batterie: 87 %');
-    expect(text).toContain('Signalqualität: 120');
-    expect(text).toContain('Trocken: trocken');
-    expect(text).toContain('Zuletzt gemeldet vor 5 Minuten');
-    expect(text).toContain('Acme SM-1');
-    expect(text).not.toContain('soil_calibration');
-    expect(gets(page)).toHaveLength(1);
-  });
+  describe('hero', () => {
+    const hero = (page: OpenedHouseholdPage) => page.element.querySelector('ui-value-display');
+    const meter = (page: OpenedHouseholdPage) =>
+      page.element.querySelector<HTMLElement>('ui-progress-band');
+    const pods = (page: OpenedHouseholdPage) =>
+      [...page.element.querySelectorAll('ui-device-pod')].map((pod) =>
+        pod.textContent?.replace(/\s+/g, ' ').trim(),
+      );
 
-  it('shows the readings in English', async () => {
-    const page = await open({ language: 'en' });
-    await flush(page);
-    const text = pageText(page.element);
-    expect(text).toContain('Soil moisture: 41.3 %');
-    expect(text).toContain('Dry: dry');
-    expect(text).toContain('Last reported 5 minutes ago');
-  });
+    it('shows the main value large, with its name, status and when it was updated', async () => {
+      const page = await open();
+      await flush(page);
+      expect(page.element.querySelector('h1')?.textContent?.trim()).toBe('Basilikum');
+      expect(pageText(page.element)).toContain('Pflanze');
+      expect(hero(page)?.getAttribute('data-size')).toBe('hero');
+      expect(hero(page)?.textContent).toContain('41,3');
+      expect(hero(page)?.textContent).toContain('%');
+      const text = pageText(page.element);
+      expect(text).toContain('Bodenfeuchte');
+      // The sensor's own dry flag is on, but 41.3 % is above the minimum: the threshold decides.
+      expect(text).toContain('OK');
+      expect(text).not.toContain('trocken');
+      expect(text).toContain('Aktualisiert vor 5 Minuten');
+      expect(text).toContain('Acme SM-1');
+      expect(gets(page)).toHaveLength(1);
+    });
 
-  it('shows a dash with a text for screen readers while a value is missing', async () => {
-    const page = await open({ devices: [device('dev-1', 'Neu', { state: {}, lastSeenAt: null })] });
-    await flush(page);
-    expect(pageText(page.element)).toContain('Bodenfeuchte: –');
-    expect(page.element.querySelector('[role="img"]')?.getAttribute('aria-label')).toBe(
-      'noch keine Werte',
-    );
+    it('marks the target range from the effective thresholds on a meter', async () => {
+      const page = await open({
+        devices: [
+          {
+            ...sensor,
+            effectiveThresholds: { ...sensor.effectiveThresholds, soilMoistureMax: 60 },
+          },
+        ],
+      });
+      await flush(page);
+      const band = meter(page)!;
+      expect(band.getAttribute('role')).toBe('meter');
+      expect(band.getAttribute('aria-valuenow')).toBe('41.26');
+      expect(band.getAttribute('aria-label')).toBe('Bodenfeuchte');
+      expect(band.getAttribute('aria-valuetext')).toBe(
+        '41,3\u00a0%, im Zielbereich von 25 bis 60 Prozent.',
+      );
+      expect(band.querySelector('.band')?.getAttribute('data-tone')).toBe('ok-container');
+      // 25 to 60 percent of the scale.
+      expect(band.querySelector<HTMLElement>('.band')?.style.insetInlineStart).toBe('25%');
+      expect(band.querySelector<HTMLElement>('.band')?.style.width).toBe('35%');
+    });
+
+    it('says in words that the soil is too dry', async () => {
+      const page = await open({
+        devices: [device('dev-1', 'Ficus', { state: { soil_moisture: 12, battery: 90 } })],
+      });
+      await flush(page);
+      expect(meter(page)?.getAttribute('aria-valuetext')).toContain('zu trocken');
+      expect(pageText(page.element)).toContain('trocken');
+    });
+
+    it('says in words that the soil is too wet', async () => {
+      const page = await open({
+        devices: [
+          device('dev-1', 'Farn', {
+            state: { soil_moisture: 85 },
+            effectiveThresholds: { ...sensor.effectiveThresholds, soilMoistureMax: 70 },
+          }),
+        ],
+      });
+      await flush(page);
+      expect(meter(page)?.getAttribute('aria-valuetext')).toContain('zu nass');
+      expect(pageText(page.element)).toContain('nass');
+    });
+
+    it('shows the next readings as three pods, without a setting', async () => {
+      const page = await open();
+      await flush(page);
+      expect(pods(page)).toEqual([
+        expect.stringMatching(/21,5\s?°C\s?Temperatur$/),
+        expect.stringMatching(/87\s?%\s?Batterie$/),
+        expect.stringMatching(/120\s?Signalqualität$/),
+      ]);
+      expect(pageText(page.element)).not.toContain('soil_calibration');
+    });
+
+    it('has no meter for a device that is not a plant', async () => {
+      const page = await open({
+        devices: [
+          device('dev-1', 'Fühler', {
+            kind: 'climate',
+            capabilities: [capability('temperature', { unit: '°C' }), capability('humidity')],
+            state: { temperature: 21.5, humidity: 44 },
+          }),
+        ],
+      });
+      await flush(page);
+      expect(meter(page)).toBeNull();
+      expect(hero(page)?.textContent).toContain('21,5');
+      expect(pageText(page.element)).toContain('Klimasensor');
+      expect(pods(page)).toHaveLength(1);
+    });
+
+    it('speaks English', async () => {
+      const page = await open({ language: 'en' });
+      await flush(page);
+      const text = pageText(page.element);
+      expect(text).toContain('Soil moisture');
+      expect(hero(page)?.textContent).toContain('41.3');
+      expect(text).toContain('Updated 5 minutes ago');
+      expect(text).toContain('Temperature');
+      expect(meter(page)?.getAttribute('aria-valuetext')).toContain('within the target range');
+    });
+
+    it('shows a dash with a text for screen readers while a value is missing', async () => {
+      const page = await open({
+        devices: [device('dev-1', 'Neu', { state: {}, lastSeenAt: null })],
+      });
+      await flush(page);
+      expect(hero(page)?.textContent).toContain('–');
+      expect(page.element.querySelector('[role="img"]')?.getAttribute('aria-label')).toBe(
+        'noch keine Werte',
+      );
+      expect(pageText(page.element)).toContain('Noch nichts gemeldet');
+      expect(meter(page)).toBeNull();
+    });
   });
 
   it('hints at an offline device and a low battery', async () => {
@@ -110,6 +213,27 @@ describe('device page', () => {
     expect(text).toContain('Offline – angezeigt wird der letzte bekannte Stand.');
     expect(text).toContain('Die Batterie ist fast leer.');
   });
+
+  it.each([
+    [10, 15, false],
+    [30, 25, true],
+    [20, 20, false],
+  ])(
+    'hints at a low battery by the own limit of the device (limit %i, battery %i)',
+    async (batteryMin, level, hinted) => {
+      const base = device('x', 'x').effectiveThresholds;
+      const page = await open({
+        devices: [
+          device('dev-1', 'Garten', {
+            state: { soil_moisture: 30, battery: level },
+            effectiveThresholds: { ...base, batteryMin },
+          }),
+        ],
+      });
+      await flush(page);
+      expect(pageText(page.element).includes('Die Batterie ist fast leer.')).toBe(hinted);
+    },
+  );
 
   it('says so when the device does not exist, without a message or a reload of the access', async () => {
     const page = await open({ id: 'gone' });
@@ -168,6 +292,7 @@ describe('device page', () => {
   });
 
   describe('refresh', () => {
+    const hero = (page: OpenedHouseholdPage) => page.element.querySelector('ui-value-display');
     const visibility = (state: DocumentVisibilityState) =>
       vi.spyOn(document, 'visibilityState', 'get').mockReturnValue(state);
 
@@ -182,10 +307,53 @@ describe('device page', () => {
       await vi.advanceTimersByTimeAsync(1_500);
       await flush(page);
       expect(gets(page)).toHaveLength(2);
-      expect(pageText(page.element)).toContain('Bodenfeuchte: 55 %');
+      expect(hero(page)?.textContent).toContain('55');
       expect(
         page.element.querySelector<HTMLInputElement>('ui-text-field[name="name"] input')?.value,
       ).toBe('Thymian');
+    });
+
+    it('does not let a refresh that was already on its way undo a rename', async () => {
+      vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => (release = resolve));
+      let slowGets = 0;
+      const page = await open({
+        household: member,
+        // The second GET is answered with the state of the moment it was asked, but late.
+        wrap: (respond) => async (call) => {
+          const answer = respond(call);
+          if (call.method !== 'GET' || !call.path.endsWith('/devices/dev-1')) return answer;
+          if (++slowGets < 2) return answer;
+          await gate;
+          return answer;
+        },
+      });
+      await flush(page);
+      await vi.advanceTimersByTimeAsync(60_500);
+      expect(gets(page)).toHaveLength(2);
+      typeInto(page, 'name', 'Thymian');
+      await press(page, 'Speichern');
+      expect(page.element.querySelector('h1')?.textContent?.trim()).toBe('Thymian');
+      release();
+      await flush(page);
+      expect(page.element.querySelector('h1')?.textContent?.trim()).toBe('Thymian');
+    });
+
+    it('asks once when the tick and the tab coming back meet a slow refresh', async () => {
+      vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+      const page = await open();
+      await flush(page);
+      const release = page.hold();
+      await vi.advanceTimersByTimeAsync(60_500);
+      document.dispatchEvent(new Event('visibilitychange'));
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(gets(page)).toHaveLength(2);
+      release();
+      await flush(page);
+      document.dispatchEvent(new Event('visibilitychange'));
+      await flush(page);
+      expect(gets(page)).toHaveLength(3);
     });
 
     it('does not load while the tab is hidden', async () => {

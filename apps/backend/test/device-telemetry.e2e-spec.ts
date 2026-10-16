@@ -2,6 +2,7 @@ import type { Capability } from '@smart/contracts';
 import postgres from 'postgres';
 import { inject } from 'vitest';
 import {
+  DeviceEvents,
   DeviceMessageProcessor,
   DevicesRepository,
   HardwareRepository,
@@ -126,7 +127,7 @@ describe('readings of the device ingest', () => {
     hardware = new HardwareRepository(connection);
     devices = new DevicesRepository(connection);
     writer = new MeasurementWriter(new MeasurementsRepository(connection));
-    processor = new DeviceMessageProcessor(hardware, devices, writer);
+    processor = new DeviceMessageProcessor(hardware, devices, writer, new DeviceEvents());
     const [household] = await sql<{ id: string }[]>`
       insert into households (name, timezone) values ('Home', 'Europe/Berlin') returning id`;
     householdId = household?.id ?? '';

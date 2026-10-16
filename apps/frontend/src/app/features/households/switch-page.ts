@@ -1,18 +1,20 @@
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { TranslocoPipe } from '@jsverse/transloco';
-import { UiButton, UiList, UiListItem, UiPage, UiSection, UiStack } from '@smart/ui';
+import { UiButton, UiCard, UiList, UiListItem, UiPage, UiStack } from '@smart/ui';
 import { HouseholdContext, injectHouseholdErrorHandler } from '../../core/household';
 
-/** The user's households with their role; choosing one switches to it. */
+/** The user's households with their role, a card each; choosing one switches to it. */
 @Component({
   selector: 'app-switch-page',
-  imports: [TranslocoPipe, UiButton, UiList, UiListItem, UiPage, UiSection, UiStack],
+  imports: [TranslocoPipe, UiButton, UiCard, UiList, UiListItem, UiPage, UiStack],
   template: `
     <ui-page [heading]="'households.switch.title' | transloco">
       <ui-stack gap="lg">
         @for (item of households.households(); track item.id) {
-          <ui-section
+          <ui-card
+            variant="low"
+            [level]="2"
             [heading]="item.name"
             [description]="
               (item.role === 'owner'
@@ -32,11 +34,12 @@ import { HouseholdContext, injectHouseholdErrorHandler } from '../../core/househ
                 }}</ui-button>
               </ui-stack>
             }
-          </ui-section>
+          </ui-card>
         }
         <ui-list>
           <ui-list-item
             icon="add"
+            leadingTone="surface"
             route="/einrichten"
             [headline]="'households.switch.new' | transloco"
           />

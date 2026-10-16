@@ -5,6 +5,7 @@ import {
   effect,
   inject,
   untracked,
+  viewChild,
 } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
 import { TranslocoPipe, translateSignal } from '@jsverse/transloco';
@@ -21,13 +22,18 @@ import {
   UiTopAppBar,
   UiTopAppBarActions,
   type UiNavDestination,
+  type UiTopAppBarSize,
 } from '@smart/ui/shell';
 import { AuthService } from '../core/auth';
+import { TopBarActions } from '../core/features';
 import { HouseholdContext } from '../core/household';
 import { AppUpdates, OnlineStatus } from '../core/pwa';
 import { MAIN_DESTINATIONS } from './navigation';
 
-/** The frame around every page: navigation, top bar with household name and bell. */
+/**
+ * The frame around every page: navigation, top bar with household name and bell. The top bar
+ * shows the large title on compact windows (spec 3.6) and the small one beside a rail or drawer.
+ */
 @Component({
   selector: 'app-shell',
   imports: [
@@ -55,6 +61,14 @@ export class Shell {
   private readonly auth = inject(AuthService);
   private readonly updates = inject(AppUpdates);
   private readonly household = inject(HouseholdContext);
+
+  /** What the page being shown adds to the top bar (the overview's "customise" icon). */
+  protected readonly pageAction = inject(TopBarActions).action;
+
+  private readonly adaptiveShell = viewChild(UiAdaptiveShell);
+  protected readonly barSize = computed<UiTopAppBarSize>(() =>
+    this.adaptiveShell()?.windowClass() === 'compact' ? 'large' : 'small',
+  );
 
   protected readonly householdName = computed(() => this.household.current()?.name ?? '');
   protected readonly canSwitchHousehold = computed(() => this.household.households().length > 1);

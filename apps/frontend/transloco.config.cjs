@@ -9,6 +9,7 @@ module.exports = {
     dashboard: 'src/app/features/dashboard/i18n',
     rooms: 'src/app/features/rooms/i18n',
     devices: 'src/app/features/devices/i18n',
+    attention: 'src/app/features/attention/i18n',
     more: 'src/app/features/more/i18n',
     settings: 'src/app/features/settings/i18n',
     auth: 'src/app/features/auth/i18n',

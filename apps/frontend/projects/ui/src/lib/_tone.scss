@@ -1,0 +1,152 @@
+// Colour families by `data-tone` (see tone.ts). Written out because the lint config forbids Sass
+// variables; the list mirrors `UiTone`: four Material roles and five status colours, each as the
+// strong fill or its container, plus the neutral `surface`.
+
+/// The strong colour of a family with its on-colour (`error` → error / on-error). Use inside the
+/// selector that carries `data-tone`.
+@mixin strong {
+  &[data-tone='primary'] {
+    background: var(--mat-sys-primary);
+    color: var(--mat-sys-on-primary);
+  }
+
+  &[data-tone='secondary'] {
+    background: var(--mat-sys-secondary);
+    color: var(--mat-sys-on-secondary);
+  }
+
+  &[data-tone='tertiary'] {
+    background: var(--mat-sys-tertiary);
+    color: var(--mat-sys-on-tertiary);
+  }
+
+  &[data-tone='error'] {
+    background: var(--mat-sys-error);
+    color: var(--mat-sys-on-error);
+  }
+
+  &[data-tone='dry'] {
+    background: var(--smart-status-dry);
+    color: var(--smart-status-on-dry);
+  }
+
+  &[data-tone='ok'] {
+    background: var(--smart-status-ok);
+    color: var(--smart-status-on-ok);
+  }
+
+  &[data-tone='wet'] {
+    background: var(--smart-status-wet);
+    color: var(--smart-status-on-wet);
+  }
+
+  &[data-tone='warning'] {
+    background: var(--smart-status-warning);
+    color: var(--smart-status-on-warning);
+  }
+
+  &[data-tone='offline'] {
+    background: var(--smart-status-offline);
+    color: var(--smart-status-on-offline);
+  }
+}
+
+/// The container of a family with its on-colour (`error-container`), plus the neutral `surface`
+/// (surface-container-high / on-surface). Enough for chips and icon containers, and a third of
+/// the size of `fill`, which matters under the component style budget.
+@mixin container {
+  &[data-tone='primary-container'] {
+    background: var(--mat-sys-primary-container);
+    color: var(--mat-sys-on-primary-container);
+  }
+
+  &[data-tone='secondary-container'] {
+    background: var(--mat-sys-secondary-container);
+    color: var(--mat-sys-on-secondary-container);
+  }
+
+  &[data-tone='tertiary-container'] {
+    background: var(--mat-sys-tertiary-container);
+    color: var(--mat-sys-on-tertiary-container);
+  }
+
+  &[data-tone='error-container'] {
+    background: var(--mat-sys-error-container);
+    color: var(--mat-sys-on-error-container);
+  }
+
+  &[data-tone='dry-container'] {
+    background: var(--smart-status-dry-container);
+    color: var(--smart-status-on-dry-container);
+  }
+
+  &[data-tone='ok-container'] {
+    background: var(--smart-status-ok-container);
+    color: var(--smart-status-on-ok-container);
+  }
+
+  &[data-tone='wet-container'] {
+    background: var(--smart-status-wet-container);
+    color: var(--smart-status-on-wet-container);
+  }
+
+  &[data-tone='warning-container'] {
+    background: var(--smart-status-warning-container);
+    color: var(--smart-status-on-warning-container);
+  }
+
+  &[data-tone='offline-container'] {
+    background: var(--smart-status-offline-container);
+    color: var(--smart-status-on-offline-container);
+  }
+
+  &[data-tone='surface'] {
+    background: var(--mat-sys-surface-container-high);
+    color: var(--mat-sys-on-surface);
+  }
+}
+
+/// Background and text colour of any fill: strong, container or surface.
+@mixin fill {
+  @include strong;
+  @include container;
+}
+
+/// Only the strong colour of a family, for text and bars on a surface (`UiToneName`).
+@mixin text {
+  &[data-tone='primary'] {
+    color: var(--mat-sys-primary);
+  }
+
+  &[data-tone='secondary'] {
+    color: var(--mat-sys-secondary);
+  }
+
+  &[data-tone='tertiary'] {
+    color: var(--mat-sys-tertiary);
+  }
+
+  &[data-tone='error'] {
+    color: var(--mat-sys-error);
+  }
+
+  &[data-tone='dry'] {
+    color: var(--smart-status-dry);
+  }
+
+  &[data-tone='ok'] {
+    color: var(--smart-status-ok);
+  }
+
+  &[data-tone='wet'] {
+    color: var(--smart-status-wet);
+  }
+
+  &[data-tone='warning'] {
+    color: var(--smart-status-warning);
+  }
+
+  &[data-tone='offline'] {
+    color: var(--smart-status-offline);
+  }
+}

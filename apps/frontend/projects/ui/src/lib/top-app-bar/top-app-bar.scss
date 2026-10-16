@@ -20,8 +20,24 @@
   text-overflow: ellipsis;
 }
 
+// The large title: headline-small at weight 600 (spec 2.3), on a taller bar.
+:host([data-size='large']) {
+  min-height: var(--smart-size-top-app-bar-large);
+  height: auto;
+  padding-inline-end: var(--smart-space-lg);
+}
+
+:host([data-size='large']) .title {
+  font: var(--mat-sys-headline-small);
+  font-weight: var(--smart-font-weight-semibold);
+  letter-spacing: var(--smart-type-tracking-tight);
+}
+
+// Actions keep a gap in both sizes: the 48 px touch targets of neighbouring 40 px icon buttons
+// would otherwise overlap, and the 48 px tonal discs would touch.
 .actions {
   display: flex;
   flex: none;
   align-items: center;
+  gap: var(--smart-space-sm);
 }

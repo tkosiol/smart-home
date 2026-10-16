@@ -13,8 +13,21 @@
 
 .header {
   display: flex;
+  align-items: center;
+  gap: var(--smart-space-sm);
+  min-width: 0;
+}
+
+.titles {
+  display: flex;
+  flex: 1;
   flex-direction: column;
   gap: var(--smart-space-xs);
+  min-width: 0;
+}
+
+.back {
+  flex: none;
 }
 
 .heading {
@@ -30,4 +43,26 @@
   color: var(--mat-sys-on-surface-variant);
   font: var(--mat-sys-body-large);
   overflow-wrap: anywhere;
+}
+
+// Under a back button the heading is the title of a detail screen (spec 3.3): headline-small,
+// weight 600, and the line under it is small.
+.header--back .heading {
+  font-weight: var(--smart-font-weight-semibold);
+  letter-spacing: var(--smart-type-tracking-tight);
+}
+
+.header--back .description {
+  font: var(--mat-sys-body-medium);
+}
+
+// For screen readers only (the same clipping as the announcer's live region): out of the flow,
+// so it adds no gap above the content, with a tiny box so it still counts as rendered.
+.heading--hidden {
+  position: absolute;
+  width: var(--smart-border-width);
+  height: var(--smart-border-width);
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }

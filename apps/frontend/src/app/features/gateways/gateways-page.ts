@@ -14,6 +14,7 @@ import type { Gateway } from '@smart/contracts';
 import {
   UiBanner,
   UiButton,
+  UiCard,
   UiClock,
   UiDateTimePipe,
   UiEmptyState,
@@ -21,11 +22,13 @@ import {
   UiRelativeTimePipe,
   UiSection,
   UiStack,
+  UiStatusChip,
+  UiStatusEntry,
 } from '@smart/ui';
 import { ApiError } from '../../core/api';
 import { AuthService } from '../../core/auth';
 import { HouseholdContext, injectHouseholdErrorHandler, LoadedList } from '../../core/household';
-import { GatewayStatusText } from './gateway-status';
+import { GATEWAY_TONE, gatewayState, statusKey } from './gateway-status';
 import { GatewaysApi } from './gateways.api';
 import { GatewayRegisterForm } from './register-form';
 
@@ -37,21 +40,25 @@ const DAY_MS = 86_400_000;
  * The gateways of the current household with status and warnings (owners); platform admins also
  * register gateways by their certificate and revoke them. Everything is keyed on the household's
  * id, so a reload of the user (which replaces the household object) leaves the page as it is.
+ * Each gateway is an entry with its state in the icon container (spec 3.6); the certificate
+ * warnings are chips.
  */
 @Component({
   selector: 'app-gateways-page',
   imports: [
     TranslocoPipe,
     GatewayRegisterForm,
-    GatewayStatusText,
     UiBanner,
     UiButton,
+    UiCard,
     UiDateTimePipe,
     UiEmptyState,
     UiPage,
     UiRelativeTimePipe,
     UiSection,
     UiStack,
+    UiStatusChip,
+    UiStatusEntry,
   ],
   template: `
     <ui-page [heading]="'gateways.title' | transloco">
@@ -63,28 +70,39 @@ const DAY_MS = 86_400_000;
           <ui-banner tone="info">{{ 'gateways.revokedHint' | transloco }}</ui-banner>
         }
         <ui-section [heading]="'gateways.list.title' | transloco">
-          <ui-stack gap="lg">
-            @for (gateway of gateways.items(); track gateway.id) {
-              <ui-section [level]="3" [heading]="gateway.name">
+          <ui-stack gap="md">
+            @for (row of rows(); track row.gateway.id) {
+              @let gateway = row.gateway;
+              <ui-card variant="low">
                 <ui-stack gap="sm">
                   @if (gateway.revokedAt) {
-                    <p>
-                      {{
+                    <ui-status-entry
+                      variant="bare"
+                      icon="router"
+                      kindTone="offline-container"
+                      [title]="gateway.name"
+                      [headingLevel]="3"
+                      [subtitle]="
                         'gateways.entry.revoked'
                           | transloco: { date: gateway.revokedAt | uiDateTime: 'date' }
-                      }}
-                    </p>
+                      "
+                    />
                   } @else {
-                    <ui-stack direction="row" gap="lg" wrap>
-                      <app-gateway-status
-                        [label]="'gateways.entry.bridge' | transloco"
-                        [status]="gateway.bridgeStatus"
-                      />
-                      <app-gateway-status
-                        [label]="'gateways.entry.z2m' | transloco"
-                        [status]="gateway.z2mStatus"
-                      />
-                    </ui-stack>
+                    <ui-status-entry
+                      variant="bare"
+                      icon="router"
+                      [kindTone]="row.tone"
+                      [title]="gateway.name"
+                      [headingLevel]="3"
+                      [subtitle]="
+                        'gateways.entry.status'
+                          | transloco
+                            : {
+                                bridge: (statusKey(gateway.bridgeStatus) | transloco),
+                                z2m: (statusKey(gateway.z2mStatus) | transloco),
+                              }
+                      "
+                    />
                     <p>
                       @if (gateway.lastMessageAt) {
                         {{
@@ -101,22 +119,30 @@ const DAY_MS = 86_400_000;
                           | transloco: { date: gateway.certExpiresAt | uiDateTime: 'date' }
                       }}
                     </p>
-                    @for (warning of gateway.warnings; track warning) {
-                      @switch (warning) {
-                        @case ('certExpiring') {
-                          @let days = daysLeft(gateway);
-                          <ui-banner tone="warning">{{
-                            days > 1
-                              ? ('gateways.warnings.certExpiring' | transloco: { days: days })
-                              : ('gateways.warnings.certExpiringSoon' | transloco)
-                          }}</ui-banner>
+                    @if (gateway.warnings.length > 0) {
+                      <ui-stack direction="row" gap="sm" wrap>
+                        @for (warning of gateway.warnings; track warning) {
+                          @switch (warning) {
+                            @case ('certExpiring') {
+                              @let days = daysLeft(gateway);
+                              <ui-status-chip
+                                tone="warning"
+                                [text]="
+                                  days > 1
+                                    ? ('gateways.warnings.certExpiring' | transloco: { days: days })
+                                    : ('gateways.warnings.certExpiringSoon' | transloco)
+                                "
+                              />
+                            }
+                            @case ('certExpired') {
+                              <ui-status-chip
+                                tone="error"
+                                [text]="'gateways.warnings.certExpired' | transloco"
+                              />
+                            }
+                          }
                         }
-                        @case ('certExpired') {
-                          <ui-banner tone="warning">{{
-                            'gateways.warnings.certExpired' | transloco
-                          }}</ui-banner>
-                        }
-                      }
+                      </ui-stack>
                     }
                     @if (isPlatformAdmin()) {
                       <ui-stack direction="row" gap="sm" wrap>
@@ -135,7 +161,7 @@ const DAY_MS = 86_400_000;
                     }
                   }
                 </ui-stack>
-              </ui-section>
+              </ui-card>
             } @empty {
               @if (gateways.loaded()) {
                 <ui-empty-state
@@ -169,9 +195,15 @@ export class GatewaysPage {
   private readonly currentId = computed(() => this.household.current()?.id);
   protected readonly isPlatformAdmin = computed(() => this.auth.me()?.isPlatformAdmin === true);
 
+  protected readonly statusKey = statusKey;
   protected readonly gateways = new LoadedList<Gateway>(
     (id) => this.api.list(id),
     (error) => this.handleError(error),
+  );
+  protected readonly rows = computed(() =>
+    this.gateways
+      .items()
+      .map((gateway) => ({ gateway, tone: GATEWAY_TONE[gatewayState(gateway)] })),
   );
   /** The certificate revocation list is one for the installation, so it is warned about once. */
   protected readonly crlExpiring = computed(() =>

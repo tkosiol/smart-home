@@ -1,12 +1,16 @@
 import {
+  Injectable,
   InjectionToken,
   inject,
-  reflectComponentType,
+  signal,
   type Provider,
   type Type,
 } from '@angular/core';
 import { hasRole, type HouseholdRole } from '@smart/contracts';
 import type { IconName } from '@smart/ui/shell';
+
+/** The card an entry of the "More" page belongs to (spec 3.6); `app` when none is given. */
+export type MoreEntryGroup = 'household' | 'app';
 
 /** An entry on the "More" page. */
 export interface MoreEntry {
@@ -14,6 +18,7 @@ export interface MoreEntry {
   /** Root translation key, marked with `marker()` where it is defined. */
   readonly labelKey: string;
   readonly icon: IconName;
+  readonly group?: MoreEntryGroup;
   /** Without a route the entry is shown as "coming soon" and is not clickable. */
   readonly route?: string;
   readonly order: number;
@@ -24,15 +29,42 @@ export interface MoreEntry {
 }
 
 /**
- * A card on the overview: a component, or a function that loads it (`() => import(...)`), so a
- * feature's card code stays out of the initial bundle.
+ * The component of an overview block, or a function that loads it (`() => import(...)`), so a
+ * feature's block code stays out of the initial bundle.
  */
-export type OverviewCard = Type<unknown> | (() => Promise<Type<unknown>>);
+export type OverviewBlockComponent = Type<unknown> | (() => Promise<Type<unknown>>);
+
+/**
+ * A block of the overview (spec 5). The user's layout decides which blocks are shown and in which
+ * order; a block that is not in the layout yet appears with its defaults.
+ */
+export interface OverviewBlock {
+  readonly id: string;
+  /** Root translation key of the name, marked with `marker()` where it is defined. */
+  readonly labelKey: string;
+  /** Root translation key of the explanation in the customise sheet. */
+  readonly descriptionKey: string;
+  readonly icon: IconName;
+  readonly defaultVisible: boolean;
+  /** Where the block goes when the layout does not know it (ascending). */
+  readonly defaultOrder: number;
+  readonly component: OverviewBlockComponent;
+  /** Neither shown nor offered to users whose role in the current household is lower. */
+  readonly minRole?: HouseholdRole;
+  /**
+   * The block is rendered even when the user hid it, with its input `visible` set to false, and
+   * decides itself what to show then. The status block uses this: a critical notice is shown
+   * whatever the layout says (spec 4.1, rule 7). The component must declare the input.
+   */
+  readonly surfaceWhenHidden?: boolean;
+  /** `full`: the block spans every column of the overview's grid (the status hero, spec 3.7). */
+  readonly span?: 'full';
+}
 
 /** What a feature contributes to the shared pages, so the shell never imports a feature. */
 export interface FeatureDefinition {
   readonly moreEntries?: readonly MoreEntry[];
-  readonly overviewCards?: readonly OverviewCard[];
+  readonly overviewBlocks?: readonly OverviewBlock[];
 }
 
 export const FEATURES = new InjectionToken<readonly FeatureDefinition[]>('FEATURES');
@@ -60,25 +92,28 @@ export function visibleMoreEntries(
   );
 }
 
-export function injectOverviewCards(): OverviewCard[] {
-  const features = inject(FEATURES, { optional: true }) ?? [];
-  return features.flatMap((f) => f.overviewCards ?? []);
-}
-
-/** Whether `card` is a loader function: anything that is not a component class. */
-export function isCardLoader(card: OverviewCard): card is () => Promise<Type<unknown>> {
-  return reflectComponentType(card as Type<unknown>) === null;
+/** What one action in the shell's top bar needs: the page that adds it decides what it does. */
+export interface TopBarAction {
+  readonly id: string;
+  readonly icon: IconName;
+  /** Root translation key of the label, marked with `marker()` where it is defined. */
+  readonly labelKey: string;
+  readonly run: () => void;
 }
 
 /**
- * The card components in registration order. Loaders run once; a loader that fails (a lost chunk,
- * say) drops only its own card.
+ * The one extra action of the shell's top bar, which the page being shown adds (the overview's
+ * "customise" icon), so the shell does not know the page. One slot, not a list: a repeater in the
+ * shell's template would add its runtime (about 2 kB) to the initial bundle.
  */
-export async function resolveOverviewCards(
-  cards: readonly OverviewCard[],
-): Promise<Type<unknown>[]> {
-  const settled = await Promise.allSettled(
-    cards.map((card) => (isCardLoader(card) ? card() : Promise.resolve(card))),
-  );
-  return settled.flatMap((result) => (result.status === 'fulfilled' ? [result.value] : []));
+@Injectable({ providedIn: 'root' })
+export class TopBarActions {
+  private readonly slot = signal<TopBarAction | null>(null);
+  readonly action = this.slot.asReadonly();
+
+  /** Shows the action and returns the function that takes it away again (only while it is shown). */
+  show(action: TopBarAction): () => void {
+    this.slot.set(action);
+    return () => this.slot.update((current) => (current === action ? null : current));
+  }
 }

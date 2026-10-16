@@ -32,7 +32,7 @@ describe('runMigrations', () => {
       'select count(*)::text as count from drizzle.__drizzle_migrations',
     );
     expect(extensions).toHaveLength(1);
-    expect(applied[0]?.count).toBe('7');
+    expect(applied[0]?.count).toBe('9');
   });
 
   it('is idempotent', async () => {
@@ -44,7 +44,7 @@ describe('runMigrations', () => {
       url,
       'select count(*)::text as count from drizzle.__drizzle_migrations',
     );
-    expect(applied[0]?.count).toBe('7');
+    expect(applied[0]?.count).toBe('9');
   });
 });
 

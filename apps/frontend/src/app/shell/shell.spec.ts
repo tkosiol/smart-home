@@ -7,6 +7,7 @@ import { routes } from '../app.routes';
 import { BROWSER_LANGUAGES, LANGUAGE_STORE, provideI18n } from '../core/i18n';
 import { API_FETCH } from '../core/api';
 import { AuthService, ME_CACHE } from '../core/auth';
+import { TopBarActions } from '../core/features';
 import { AppUpdates, OnlineStatus } from '../core/pwa';
 import {
   MemoryMeCache,
@@ -71,6 +72,31 @@ describe('Shell', () => {
     expect(bell.getAttribute('aria-label')).toBe('Benachrichtigungen, keine neuen');
     expect(bell.getAttribute('href')).toBe('/mehr');
     expect(element.querySelector('main')).not.toBeNull();
+  });
+
+  it('shows the action a page adds to the top bar and runs it', async () => {
+    await setup();
+    const run = vi.fn();
+    const remove = TestBed.inject(TopBarActions).show({
+      id: 'customise',
+      icon: 'settings',
+      labelKey: 'app.overview.customize',
+      run,
+    });
+    const fixture = TestBed.createComponent(Shell);
+    fixture.detectChanges();
+    const header = (fixture.nativeElement as HTMLElement).querySelector('header') as HTMLElement;
+    const button = header.querySelector<HTMLButtonElement>(
+      'button[aria-label="Übersicht anpassen"]',
+    );
+
+    expect(button).not.toBeNull();
+    button?.click();
+    expect(run).toHaveBeenCalledTimes(1);
+
+    remove();
+    fixture.detectChanges();
+    expect(header.querySelector('button[aria-label="Übersicht anpassen"]')).toBeNull();
   });
 
   it('offers no switch button with a single household', async () => {

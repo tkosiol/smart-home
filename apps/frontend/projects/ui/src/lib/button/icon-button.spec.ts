@@ -103,3 +103,24 @@ describe('UiIconButton content', () => {
     expect(button.querySelector('ui-icon')).toBeNull();
   });
 });
+
+@Component({
+  imports: [UiIconButton],
+  template: `<ui-icon-button icon="settings" label="Einstellungen" [variant]="variant()" />`,
+})
+class VariantHost {
+  readonly variant = signal<'standard' | 'tonal'>('standard');
+}
+
+describe('UiIconButton variants', () => {
+  it('is standard by default and exposes the tonal variant for the styles', () => {
+    const fixture = TestBed.createComponent(VariantHost);
+    fixture.detectChanges();
+    const host = fixture.nativeElement.querySelector('ui-icon-button') as HTMLElement;
+    expect(host.getAttribute('data-variant')).toBe('standard');
+    fixture.componentInstance.variant.set('tonal');
+    fixture.detectChanges();
+    expect(host.getAttribute('data-variant')).toBe('tonal');
+    expect(host.querySelector('button')?.getAttribute('aria-label')).toBe('Einstellungen');
+  });
+});

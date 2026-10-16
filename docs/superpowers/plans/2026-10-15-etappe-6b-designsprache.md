@@ -12,7 +12,7 @@
 
 **Planform:** schlank wie 5b. Exakte Schnittstellen dort, wo Tasks voneinander abhängen (Contracts, API); Verhalten und Tests sonst als Anforderung.
 
-**Wer setzt um (Tills Vorgabe):** Tasks mit sichtbarer Oberfläche (6–10) setzen **Fable-Subagenten** um, auch ihr Design-Review läuft über Fable. Contracts, Backend und Theme (1–5) übernehmen Sonnet-Subagenten, kleine Nachprüfungen Haiku, das Gesamt-Review Opus. Die Mockups auf dem Design-Canvas (privat, bei Till) sind die Vorlage. Die Fable-Tasks bekommen die Dateien unter `<scratchpad>/design-canvas/project/` als Referenz (B-Uebersicht, B-Dunkel, B-Detail, B-Anpassen, B-Status-*).
+**Wer setzt um (Tills Vorgabe):** Tasks mit sichtbarer Oberfläche (6–10): Fable macht das Visuelle; ab Task 8 baut zuerst Sonnet Logik, Gerüst und Tests, dann setzt Fable die Gestaltung darauf und macht ein kurzes Design-Review auf Screenshots (Änderung Till, 2026-10-15). Contracts, Backend und Theme (1–5) übernehmen Sonnet-Subagenten, kleine Nachprüfungen Haiku, das Gesamt-Review Opus. Die Mockups auf dem Design-Canvas (privat, bei Till) sind die Vorlage. Die Fable-Tasks bekommen die Dateien unter `<scratchpad>/design-canvas/project/` als Referenz (B-Uebersicht, B-Dunkel, B-Detail, B-Anpassen, B-Status-*).
 
 **Bewusste Entscheidungen:**
 
@@ -24,8 +24,8 @@
 
 - Alle Global Constraints aus 6a gelten weiter: Gate je Task (`pnpm lint && pnpm typecheck && pnpm test && pnpm test:tz && pnpm build`), keine KI-Attribution, öffentliches Repo ohne private Daten, Conventional Commits mit Scope, Commit-Body-Zeilen ≤ 100 Zeichen.
 - UI-Regeln aus `CLAUDE.md`: kein `@angular/material`/`@angular/cdk` außerhalb von `@smart/ui`; kein Feature-CSS; in `@smart/ui` nur Tokens (keine Hex-Farben, keine px außerhalb `tokens/`); kein sichtbarer Text ohne Übersetzungsschlüssel (`pnpm i18n:check`); keine `DatePipe`.
-- Initiales Bundle höchstens **480 kB** (Stand rund 472,7 kB): neue Bausteine nur in `public-api.ts`/`forms.ts`, nie in `shell.ts`; Bottom Sheet und Drag-Drop lazy. Nach jedem UI-Task `pnpm build` und die Zahl im Task-Bericht nennen.
-- Farbe nur über Rollen (`--mat-sys-*`) und `--smart-*`-Tokens; jede neue Darstellung in Storybook in sechs Kombinationen (hell/dunkel × Standard/Mittel/Hoch) mit zwei Grundfarben (Standard und ein kräftiges Rot) und axe ohne Verstöße.
+- Initiales Bundle höchstens **480 kB** (Stand rund 472,7 kB; im Lauf von 6b mit Tills Zustimmung auf **485 kB** angehoben, siehe „Ergebnis und Übertrag“): neue Bausteine nur in `public-api.ts`/`forms.ts`, nie in `shell.ts`; Bottom Sheet und Drag-Drop lazy. Nach jedem UI-Task `pnpm build` und die Zahl im Task-Bericht nennen.
+- Farbe nur über Rollen (`--mat-sys-*`) und `--smart-*`-Tokens; jede neue Darstellung in Storybook **hell und dunkel mit der Standard-Grundfarbe** und axe ohne Verstöße (Änderung Till, 2026-10-15: keine Matrix über Kontraststufen und Grundfarben; die Tasks 6 und 7 wurden noch mit der 12er-Matrix gebaut).
 - Formen: Karten `--mat-sys-corner-extra-large`, Pods und Einträge `--mat-sys-corner-large`, Chips/Pillen/Schalter `--mat-sys-corner-full`. Pods 140 × 116 px (`--smart-size-pod-width`/`-height`). Hauptwert `--smart-type-value-hero` 80/84 px, Gewicht 600, Laufweite −0,03 em. Zahlen `tabular-nums`.
 - Touch-Ziele ≥ `--smart-size-touch` (48 px); Farbe nie alleiniger Träger; `prefers-reduced-motion` → nur Opazität.
 - Zeit: speichern und übertragen nur UTC; Anzeige in Haushalts-Zeitzone; Tests auch unter `TZ=Pacific/Chatham`.
@@ -198,7 +198,7 @@ export function normalizeOverviewLayout(
 
 **Verhalten:** wie Spec 2.1–2.6 und Tabelle 7 (Inputs exakt so benannt). `ui-value-display` mit `size: 'hero' | 'large' | 'medium'`; `ui-progress-band` mit `band: { from, to, tone }`, als `role="meter"` mit `aria-valuetext`.
 
-**Tests:** Komponententests für Inputs und ARIA; Stories in den sechs Kombinationen mit zwei Grundfarben, axe ohne Verstöße; Bundle-Zahl im Bericht. Commit `feat(ui): add the tokens and basic building blocks of the new design`.
+**Tests:** Komponententests für Inputs und ARIA; Stories hell und dunkel, axe ohne Verstöße; Bundle-Zahl im Bericht. Commit `feat(ui): add the tokens and basic building blocks of the new design`.
 
 ---
 
@@ -240,7 +240,7 @@ export function normalizeOverviewLayout(
 
 **Verhalten:** Spec 3.6 und 3.7 (Medium zweispaltig, Expanded bis drei Spalten bis `--smart-size-content-max`); keine Funktionsänderung.
 
-**Tests:** bestehende Tests und E2E bleiben grün (Selektoren nur über Rollen/Texte); Seiten-Stories in den sechs Kombinationen mit axe. Bundle-Zahl im Bericht. Commit `feat(frontend): bring the existing pages into the new design`.
+**Tests:** bestehende Tests und E2E bleiben grün (Selektoren nur über Rollen/Texte); Seiten-Stories hell und dunkel mit axe. Bundle-Zahl im Bericht. Commit `feat(frontend): bring the existing pages into the new design`.
 
 ---
 
@@ -249,3 +249,58 @@ export function normalizeOverviewLayout(
 **Files:** `CLAUDE.md` (Bundle-Stand, Hinweis auf `overviewBlocks`), `apps/frontend/projects/ui/README.md` (neue Bausteine, falls nicht schon in 6/7), Architektur-Spec 8.7 (Ereignis `attention.changed` als Vorgabe für 6c) und 10.7 (`overviewBlocks`), Designkonzept-Spec: Status „freigegeben“, Abschnitt „Ergebnis und Übertrag“ in diesem Plan.
 
 **Verhalten:** Doku beschreibt den Ist-Stand. Commit `docs: describe the new design language`.
+
+## Ergebnis und Übertrag
+
+Umgesetzt subagent-gestützt:
+
+- **Grundlagen:** Contracts, Backend und Theme baute Sonnet.
+- **Oberfläche:** Die Tasks 6 und 7 baute Fable vollständig. Ab Task 8 baute zuerst Sonnet Logik, Gerüst und Tests, danach setzte Fable die Gestaltung darauf. Diese Aufteilung hat Till nach Task 7 festgelegt, weil Fable dort sehr aufwendig war.
+- **Reviews:** je Task Sonnet, kleine Nachprüfungen Haiku, das Gesamt-Review Opus mit einem Fix-Durchgang.
+
+Den letzten Teil der Etappe hat Claude auf Tills Wunsch selbstständig fertiggestellt und dabei offene Punkte selbst entschieden. Alle Entscheidungen mit Begründung stehen unten.
+
+### Abweichungen vom Plan und Entscheidungen
+
+**Mit Till abgestimmt**
+
+- **Warnfarbe:** Warnungen bleiben in den Rollen der Fehlerfarbe.
+  - Ein eigener Orangeton erfüllt die Farbton-Abstände nur, wenn er sich höchstens 4° an die Grundfarbe anpasst.
+  - Dann scheitert er aber an den Delta-E-Tests gegen „trocken“, in 25 von 42 Kombinationen.
+  - Die Messtests bleiben mit ihren Zahlen im Code (übersprungen).
+- **Theme-Prüfung in Storybook:** nur hell und dunkel mit der Standard-Grundfarbe; Kontraststufen und weitere Grundfarben erzeugt der Generator. Die Spec, Abschnitt 2.7, ist angepasst.
+- **Bundle-Grenze:** 485 statt 480 kB. Der Stand nach 6b liegt bei rund 482,5 kB. Mehr Luft schafft #68 (Shell-Buttons ohne Material), geplant direkt nach 6b.
+- **Stilles Gerät:** Es behält `battery_low` (#36). Feuchte- und Kontaktwerte gelten dann als veraltet.
+- **Hinweise abhaken:** kommt mit Etappe 7 (#44, Festlegungen im Issue).
+
+**Autonom entschieden (Till kann sie ändern)**
+
+- **Bottom Sheet:** ein natives `<dialog>` (`showModal`) statt Material Sheet oder Dialog. Material hätte die FocusTrap des CDK ins initiale Bundle gezogen, rund 9,5 kB. Material-Overlays wie Auswahllisten oder Snackbars sind im Sheet nicht erreichbar; das steht im README.
+- **`since` eines Hinweises:** Es zählt ab Beginn der Ursache (Öffnen, letzter Bericht, Statuswechsel), nicht ab dem Erreichen der Schwelle. Die Spec spricht von „ab dem sie gilt“; für Anzeige und Sortierung ist der Beginn nützlicher.
+- **„trocken“-Flag des Sensors:** Es zählt nur ohne Feuchtewert. Sonst entscheidet die eigene Schwelle des Geräts mit Hysterese; die Spec, Abschnitt 4.2, ist angepasst.
+- **Hinweis-Modul:** Ein Gerät gilt nur hinter einem vollständig erreichbaren Gateway als stumm, so dass ein Neustart des Pi keine Flut auslöst. Leere Haushalte verlassen den Speicher.
+- **Geräteart:** `kind` liefert der Server, die App leitet sie nicht ab. Ein dimmbares Licht mit nur schreibbarer Helligkeit wäre im Frontend sonst nicht als Licht zu erkennen.
+- **Neue Bausteine über den Plan hinaus:**
+  - `ui-room-card` (Block „Geräte“ als Raumkarte)
+  - `ui-grid-item span="full"`
+  - `ui-device-hero`, `ui-status-chip`
+  - `ui-card variant="low"`/`"accent"`
+  - `ui-button fullWidth`
+  - `ui-status-entry` mit den Varianten `row`/`bare` und `headingLevel`
+  - `ui-page backRoute`/`headingHidden`
+- **„Alle Hinweise“:** Es gibt Chips nach Dringlichkeit und nach Art; die Chips nach Art erscheinen nur bei mehr als einer Art.
+- **Übersicht:** Die Überschrift „Übersicht“ ist nur für Screenreader da, sichtbar steht der Haushaltsname in der Top App Bar.
+- **Geräteseite:** Die Überschrift „Messwerte“ bleibt; ein Überlaufmenü gibt es noch nicht.
+- **Symbolschrift:** Sieben ungenutzte Symbole sind aus der Startcode-Tabelle entfernt; dazugekommen sind `battery_alert` und `tune`.
+- **„Mehr“:** Die Einträge sind in die Gruppen „Haushalt verwalten“ und „App“ geteilt (`MoreEntry.group`).
+- **Lint-Regel `no-literal-template-text`:** `value`, `unit` und `valueText` gelten auf Custom Elements als Text. Feste Einheiten wie `unit="°C"` müssen deshalb aus den Messdaten oder einem Schlüssel kommen.
+
+### Übertrag (Issues)
+
+- **Vor 6c:** #68 (Shell-Buttons ohne Material), dazu #101 (Feature-Routen lazy).
+- **6c:**
+  - Umfang der Etappe: Räume #29, Verläufe #30, SSE #31, Befehle #32, Kopplung #33, Binärwerte #34, Zertifikat erneuern #35.
+  - Hinweise: #37, #38, #39, #98 (gleiche Hysterese für Chip und Status-Block), #99 (`since` nach einem Neustart).
+  - Sichtprüfung auf echten Geräten: #97.
+- **7:** Hinweise abhaken #44, Benachrichtigungen #43.
+- **Später:** #100 (Geräteseite), #102 (Testlücken), #103 (Kleinkram aus 6b).

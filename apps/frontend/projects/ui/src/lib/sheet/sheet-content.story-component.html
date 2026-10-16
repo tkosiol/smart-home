@@ -1,0 +1,14 @@
+<ui-sheet
+  heading="Übersicht anpassen"
+  description="Blöcke ein- oder ausblenden und mit dem Ziehgriff sortieren."
+>
+  @for (block of data.blocks; track block.id) {
+    <ui-status-entry icon="info" kindTone="primary-container" [title]="block.name">
+      <ui-switch [label]="block.name + ' anzeigen'" [checked]="true" />
+    </ui-status-entry>
+  }
+  <div uiSheetActions>
+    <ui-button variant="text" (pressed)="ref.close('reset')">Zurücksetzen</ui-button>
+    <ui-button (pressed)="ref.close('saved')">Fertig</ui-button>
+  </div>
+</ui-sheet>

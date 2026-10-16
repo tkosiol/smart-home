@@ -10,10 +10,11 @@
       [disabled]="disabled()"
       [errorStateMatcher]="errorMatcher"
       [attr.autocomplete]="autocomplete() ?? null"
+      [attr.aria-describedby]="describedBy() ?? null"
       [attr.spellcheck]="verbatim() ? 'false' : null"
       [attr.autocapitalize]="verbatim() ? 'off' : null"
       [attr.autocorrect]="verbatim() ? 'off' : null"
-      [attr.name]="name() ?? null"
+      [name]="name() ?? ''"
       (input)="onInput($event)"
     ></textarea>
   } @else {
@@ -26,11 +27,12 @@
       [disabled]="disabled()"
       [errorStateMatcher]="errorMatcher"
       [attr.autocomplete]="autocomplete() ?? null"
+      [attr.aria-describedby]="describedBy() ?? null"
       [attr.spellcheck]="verbatim() ? 'false' : null"
       [attr.autocapitalize]="verbatim() ? 'off' : null"
       [attr.autocorrect]="verbatim() ? 'off' : null"
       [attr.inputmode]="inputmode() ?? null"
-      [attr.name]="name() ?? null"
+      [name]="name() ?? ''"
       (input)="onInput($event)"
     />
   }

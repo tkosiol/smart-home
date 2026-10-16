@@ -50,6 +50,20 @@
       "when": 1791996612150,
       "tag": "0006_devices_telemetry",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1792088608889,
+      "tag": "0007_device_thresholds",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1792089155186,
+      "tag": "0008_overview_layout",
+      "breakpoints": true
     }
   ]
 }

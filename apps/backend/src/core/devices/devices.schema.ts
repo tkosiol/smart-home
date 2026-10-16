@@ -1,4 +1,4 @@
-import { AVAILABILITIES, CAPABILITY_KINDS } from '@smart/contracts';
+import { AVAILABILITIES, CAPABILITY_KINDS, type Thresholds } from '@smart/contracts';
 import { sql } from 'drizzle-orm';
 import {
   boolean,
@@ -88,6 +88,8 @@ export const devices = pgTable(
       .references(() => households.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
     icon: text('icon'),
+    /** The device's own thresholds; a missing key uses the default of its kind. */
+    thresholds: jsonb('thresholds').$type<Thresholds>().notNull().default({}),
     createdAt: timestamptz('created_at').notNull().defaultNow(),
     archivedAt: timestamptz('archived_at'),
   },

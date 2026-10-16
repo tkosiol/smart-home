@@ -10,83 +10,110 @@ import {
   untracked,
 } from '@angular/core';
 import { TranslocoPipe } from '@jsverse/transloco';
-import { deviceCreateSchema, type Hardware } from '@smart/contracts';
-import { UiButton, UiCard, UiGrid, UiRelativeTimePipe, UiSection, UiStack } from '@smart/ui';
+import {
+  deviceCreateSchema,
+  deviceKind,
+  primaryCapability,
+  type DeviceKind,
+  type Hardware,
+} from '@smart/contracts';
+import {
+  UiButton,
+  UiCard,
+  UiDevicePod,
+  UiGrid,
+  UiFormatContext,
+  UiRelativeTimePipe,
+  UiStack,
+} from '@smart/ui';
+import type { IconName } from '@smart/ui/shell';
 import { UiTextField } from '@smart/ui/forms';
 import { ApiError } from '../../core/api';
 import { HouseholdContext, injectHouseholdErrorHandler, LoadedList } from '../../core/household';
-import { DeviceReading } from './device-reading';
-import { isNetworkFailure, refreshWhileVisible } from './device-refresh';
-import { isReading } from './device-values';
+import { RefreshGuard, refreshWhileVisible } from '../../core/refresh';
+import { ICONS, readingValue, type ReadingValue } from './device-pod';
 import { DevicesApi } from './devices.api';
 
+/** One found hardware with the preview pod of its main reading. */
+interface Found {
+  readonly item: Hardware;
+  readonly kind: DeviceKind;
+  readonly icon: IconName;
+  readonly reading: ReadingValue;
+}
+
 /**
- * "Neu erkannt" (owners): hardware a gateway reported that is not a device yet, with a preview of
- * what it reports. The name is prefilled with the hardware's own and can be changed before the
- * hardware is added.
+ * "Neu erkannt" (owners): hardware a gateway reported that is not a device yet, as a card in
+ * secondary-container (spec 3.6) with a pod per hardware showing its main reading. The name is
+ * prefilled with the hardware's own and can be changed before the hardware is added.
  */
 @Component({
   selector: 'app-new-hardware',
   imports: [
     TranslocoPipe,
-    DeviceReading,
     UiButton,
     UiCard,
+    UiDevicePod,
     UiGrid,
     UiRelativeTimePipe,
-    UiSection,
     UiStack,
     UiTextField,
   ],
   template: `
-    @if (hardware.items().length > 0) {
-      <ui-section
+    @if (found().length > 0) {
+      <ui-card
+        variant="accent"
+        [level]="2"
         [heading]="'devices.discovered.title' | transloco"
         [description]="'devices.discovered.description' | transloco"
       >
-        <ui-grid>
-          @for (item of hardware.items(); track item.id) {
-            <ui-card [heading]="item.friendlyName" [description]="item.vendor + ' ' + item.model">
-              <form (submit)="add($event, item)" novalidate>
-                <ui-stack gap="sm">
-                  @for (capability of readings(item); track capability.key) {
-                    <p>
-                      <app-device-reading
-                        [capability]="capability"
-                        [value]="item.lastState[capability.key]"
-                      />
-                    </p>
+        <ui-grid min="md" gap="lg">
+          @for (entry of found(); track entry.item.id) {
+            @let item = entry.item;
+            <form (submit)="add($event, item)" novalidate>
+              <ui-stack gap="sm">
+                <ui-device-pod
+                  fill
+                  [kind]="entry.kind"
+                  [icon]="entry.icon"
+                  [value]="
+                    entry.reading.valueKey
+                      ? (entry.reading.valueKey | transloco)
+                      : entry.reading.value
+                  "
+                  [unit]="entry.reading.unit"
+                  [label]="item.friendlyName"
+                />
+                <p>{{ item.vendor }} {{ item.model }}</p>
+                <p>
+                  @if (item.lastSeenAt) {
+                    {{
+                      'devices.card.lastSeen'
+                        | transloco: { time: item.lastSeenAt | uiRelativeTime }
+                    }}
+                  } @else {
+                    {{ 'devices.card.neverSeen' | transloco }}
                   }
-                  <p>
-                    @if (item.lastSeenAt) {
-                      {{
-                        'devices.card.lastSeen'
-                          | transloco: { time: item.lastSeenAt | uiRelativeTime }
-                      }}
-                    } @else {
-                      {{ 'devices.card.neverSeen' | transloco }}
-                    }
-                  </p>
-                  <ui-text-field
-                    name="name"
-                    autocomplete="off"
-                    required
-                    [label]="'devices.discovered.name' | transloco"
-                    [error]="invalid().has(item.id) ? ('devices.nameError' | transloco) : null"
-                    [value]="nameOf(item)"
-                    (valueChange)="rename(item.id, $event)"
-                  />
-                  <ui-stack direction="row" gap="sm">
-                    <ui-button type="submit" [disabled]="busy()">{{
-                      'devices.discovered.add' | transloco
-                    }}</ui-button>
-                  </ui-stack>
+                </p>
+                <ui-text-field
+                  name="name"
+                  autocomplete="off"
+                  required
+                  [label]="'devices.discovered.name' | transloco"
+                  [error]="invalid().has(item.id) ? ('devices.nameError' | transloco) : null"
+                  [value]="nameOf(item)"
+                  (valueChange)="rename(item.id, $event)"
+                />
+                <ui-stack direction="row" gap="sm">
+                  <ui-button type="submit" [disabled]="busy()">{{
+                    'devices.discovered.add' | transloco
+                  }}</ui-button>
                 </ui-stack>
-              </form>
-            </ui-card>
+              </ui-stack>
+            </form>
           }
         </ui-grid>
-      </ui-section>
+      </ui-card>
     }
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -94,18 +121,29 @@ import { DevicesApi } from './devices.api';
 export class NewHardware {
   private readonly api = inject(DevicesApi);
   private readonly household = inject(HouseholdContext);
+  private readonly locale = inject(UiFormatContext).locale;
   private readonly handleError = injectHouseholdErrorHandler();
 
   /** A hardware was added as a device: the device list should be loaded again. */
   readonly added = output();
 
   private readonly currentId = computed(() => this.household.current()?.id);
-  private refreshing = false;
+  private readonly refresh = new RefreshGuard();
   protected readonly hardware = new LoadedList<Hardware>(
     (id) => this.api.unassignedHardware(id),
-    (error) => {
-      if (!(this.refreshing && isNetworkFailure(error))) this.handleError(error);
-    },
+    this.refresh.quietNetworkFailure((error) => this.handleError(error)),
+  );
+  protected readonly found = computed<readonly Found[]>(() =>
+    this.hardware.items().map((item) => {
+      const kind = deviceKind(item.capabilities);
+      const main = primaryCapability(item.capabilities);
+      return {
+        item,
+        kind,
+        icon: ICONS[kind],
+        reading: readingValue(main, main ? item.lastState[main.key] : undefined, this.locale()),
+      };
+    }),
   );
   /** Names the owner typed, by hardware id; hardware without an entry shows its own name. */
   private readonly names = signal<Readonly<Record<string, string>>>({});
@@ -122,14 +160,7 @@ export class NewHardware {
         void this.hardware.load(id);
       });
     });
-    refreshWhileVisible(() => {
-      this.refreshing = true;
-      void this.hardware.load(this.currentId(), true).finally(() => (this.refreshing = false));
-    });
-  }
-
-  protected readings(item: Hardware) {
-    return item.capabilities.filter(isReading);
+    refreshWhileVisible(this.refresh, () => this.hardware.load(this.currentId(), true));
   }
 
   protected nameOf(item: Hardware): string {

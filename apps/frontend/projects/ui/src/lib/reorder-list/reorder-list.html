@@ -1,0 +1,31 @@
+<div
+  class="list"
+  role="list"
+  cdkDropList
+  cdkDropListLockAxis="y"
+  (cdkDropListDropped)="drop($event)"
+>
+  @for (item of order(); track item.id; let index = $index) {
+    <div
+      class="row"
+      role="listitem"
+      cdkDrag
+      cdkDragPreviewContainer="parent"
+      [attr.data-id]="item.id"
+    >
+      <ui-icon-button
+        class="handle"
+        cdkDragHandle
+        icon="drag_handle"
+        [label]="item.label"
+        (keydown)="keydown($event, index)"
+      />
+      <div class="content">
+        <ng-container
+          [ngTemplateOutlet]="row()"
+          [ngTemplateOutletContext]="{ $implicit: item, index }"
+        />
+      </div>
+    </div>
+  }
+</div>

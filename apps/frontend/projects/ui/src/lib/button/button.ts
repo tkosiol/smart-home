@@ -9,7 +9,8 @@ export type UiButtonVariant = 'filled' | 'tonal' | 'outlined' | 'text' | 'elevat
 
 /**
  * M3 button; the label is projected content. Listen to `pressed`, not `click`. With a `route` it
- * renders as a link instead and `pressed` never fires.
+ * renders as a link instead and `pressed` never fires. `fullWidth` stretches the button across
+ * its container (the primary button of the sign-in card, spec 3.6).
  */
 @Component({
   selector: 'ui-button',
@@ -17,6 +18,7 @@ export type UiButtonVariant = 'filled' | 'tonal' | 'outlined' | 'text' | 'elevat
   templateUrl: './button.html',
   styleUrl: './button.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  host: { '[attr.data-full-width]': "fullWidth() ? '' : null" },
 })
 export class UiButton {
   readonly variant = input<UiButtonVariant>('filled');
@@ -24,5 +26,6 @@ export class UiButton {
   readonly disabled = input(false, { transform: booleanAttribute });
   readonly icon = input<IconName>();
   readonly route = input<string>();
+  readonly fullWidth = input(false, { transform: booleanAttribute });
   readonly pressed = output<void>();
 }

@@ -19,28 +19,10 @@
     "lastSeen": "Zuletzt gemeldet {{ time }}",
     "neverSeen": "Noch nichts gemeldet",
     "offline": "Offline – angezeigt wird der letzte bekannte Stand.",
-    "lowBattery": "Die Batterie ist fast leer. Bitte bald wechseln.",
-    "details": "Details"
+    "lowBattery": "Die Batterie ist fast leer. Bitte bald wechseln."
   },
   "reading": {
-    "none": "noch keine Werte",
-    "yes": "ja",
-    "no": "nein",
-    "dry": "trocken",
-    "notDry": "nicht trocken",
-    "on": "an",
-    "off": "aus"
-  },
-  "capability": {
-    "soil_moisture": "Bodenfeuchte",
-    "temperature": "Temperatur",
-    "humidity": "Luftfeuchte",
-    "battery": "Batterie",
-    "dry": "Trocken",
-    "linkquality": "Signalqualität",
-    "state": "Zustand",
-    "brightness": "Helligkeit",
-    "color_temp": "Farbtemperatur"
+    "none": "noch keine Werte"
   },
   "detail": {
     "back": "Alle Geräte",
@@ -55,6 +37,19 @@
       "title": "Umbenennen",
       "name": "Name",
       "submit": "Speichern"
-    }
+    },
+    "updated": "Aktualisiert {{ time }}"
+  },
+  "block": {
+    "title": "Geräte",
+    "countOne": "1 Gerät",
+    "count": "{{ n }} Geräte"
+  },
+  "thresholds": {
+    "title": "Grenzwerte",
+    "description": "Ab diesen Werten meldet die App einen Hinweis. Ein leeres Feld bedeutet: Standard der Geräteart.",
+    "descriptionReadOnly": "Ab diesen Werten meldet die App einen Hinweis.",
+    "save": "Grenzwerte speichern",
+    "reset": "Auf Standard zurücksetzen"
   }
 }

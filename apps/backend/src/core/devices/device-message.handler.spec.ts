@@ -2,6 +2,7 @@ import { Logger } from '@nestjs/common';
 import type { Capability } from '@smart/contracts';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MeasurementWriter } from '../telemetry/index.js';
+import { DEVICE_STATE_CHANGED, DeviceEvents } from './device-events.js';
 import { DeviceMessageProcessor } from './device-message.handler.js';
 import type { DevicesRepository } from './devices.repository.js';
 import type { HardwareRepository } from './hardware.repository.js';
@@ -45,6 +46,8 @@ describe('DeviceMessageProcessor', () => {
   const add = vi.fn<MeasurementWriter['add']>();
   const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
   let processor: DeviceMessageProcessor;
+  let events: DeviceEvents;
+  let changed: unknown[];
 
   const handle = (payload: Record<string, unknown>, retained = false, receivedAt = NOW) =>
     processor.handle(GW, HARDWARE, payload, receivedAt, retained);
@@ -65,6 +68,9 @@ describe('DeviceMessageProcessor', () => {
       boundAt: NOW,
       unboundAt: null,
     });
+    events = new DeviceEvents();
+    changed = [];
+    events.on(DEVICE_STATE_CHANGED, (event) => changed.push(event));
     processor = new DeviceMessageProcessor(
       { capabilitiesOf, recordState: recordHardware } as unknown as HardwareRepository,
       {
@@ -72,6 +78,7 @@ describe('DeviceMessageProcessor', () => {
         recordState: recordDevice,
       } as unknown as DevicesRepository,
       { add } as unknown as MeasurementWriter,
+      events,
     );
   });
 
@@ -84,6 +91,18 @@ describe('DeviceMessageProcessor', () => {
     });
     expect(recordDevice).not.toHaveBeenCalled();
     expect(add).not.toHaveBeenCalled();
+  });
+
+  it('announces a changed device state, and stays silent when nothing was stored', async () => {
+    await handle({ soil_moisture: 31 });
+    expect(changed).toEqual([{ deviceId: DEVICE }]);
+
+    changed.length = 0;
+    recordDevice.mockResolvedValue(false);
+    await handle({ soil_moisture: 30 });
+    activeBinding.mockResolvedValue(undefined);
+    await handle({ soil_moisture: 29 });
+    expect(changed).toEqual([]);
   });
 
   it('with a device updates its state and stores readings at the measurement time', async () => {

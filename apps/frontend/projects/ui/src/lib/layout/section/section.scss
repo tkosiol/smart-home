@@ -1,3 +1,5 @@
+@use '../../tone';
+
 :host {
   display: flex;
   flex-direction: column;
@@ -22,6 +24,22 @@
 
 .heading--small {
   font: var(--mat-sys-title-medium);
+}
+
+// With a tone: a section label in the family's strong colour (spec 2.3), indented like the
+// entries' icon containers below it.
+:host([data-tone]) .heading {
+  padding-inline: var(--smart-space-sm);
+  font: var(--mat-sys-label-small);
+  font-weight: var(--smart-font-weight-semibold);
+  letter-spacing: var(--smart-type-tracking-label);
+  text-transform: uppercase;
+
+  @include tone.text;
+}
+
+:host([data-tone]) {
+  gap: var(--smart-space-sm);
 }
 
 .description {

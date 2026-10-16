@@ -162,8 +162,8 @@ describe('GatewaysService', () => {
         events,
       );
       expect(await subject.listActive()).toEqual([
-        { id: 'gw-a1b2c3d4', topicPrefix: 'gw/gw-a1b2c3d4/z2m' },
-        { id: 'gw-bbbbbbbb', topicPrefix: 'gw/gw-bbbbbbbb/z2m' },
+        { id: 'gw-a1b2c3d4', householdId: 'household', topicPrefix: 'gw/gw-a1b2c3d4/z2m' },
+        { id: 'gw-bbbbbbbb', householdId: 'household', topicPrefix: 'gw/gw-bbbbbbbb/z2m' },
       ]);
     });
 

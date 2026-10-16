@@ -1,4 +1,10 @@
-<ui-icon class="icon" [name]="icon()" size="lg" />
+@if (disc(); as disc) {
+  <span class="disc" [attr.data-tone]="disc" aria-hidden="true">
+    <ui-icon [name]="icon()" size="lg" />
+  </span>
+} @else {
+  <ui-icon class="icon" [name]="icon()" size="lg" />
+}
 @if (level() === 2) {
   <h2 class="heading">{{ heading() }}</h2>
 } @else {

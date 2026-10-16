@@ -1,0 +1,22 @@
+@use '@angular/material' as mat;
+
+// Tonal icon button (spec 2.2): a 48 px surface-container-high disc, as in the mockups. Icon and
+// state layer keep Material's on-surface-variant. Material's icon button has no container colour
+// token (only `matButton` has one), so the disc is the button element's own background; the size
+// goes through the override mixin.
+:host([data-variant='tonal']) {
+  @include mat.icon-button-overrides(
+    (
+      state-layer-size: var(--smart-size-touch),
+    )
+  );
+
+  button,
+  a {
+    background: var(--mat-sys-surface-container-high);
+  }
+
+  button:disabled {
+    background: color-mix(in srgb, var(--mat-sys-on-surface) 12%, transparent);
+  }
+}

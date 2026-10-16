@@ -1,12 +1,13 @@
 export {
   FEATURES,
+  TopBarActions,
   injectMoreEntries,
-  injectOverviewCards,
-  isCardLoader,
   provideFeature,
-  resolveOverviewCards,
   visibleMoreEntries,
   type FeatureDefinition,
   type MoreEntry,
-  type OverviewCard,
+  type MoreEntryGroup,
+  type OverviewBlock,
+  type OverviewBlockComponent,
+  type TopBarAction,
 } from './feature-registry';

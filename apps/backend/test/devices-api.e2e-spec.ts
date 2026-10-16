@@ -14,6 +14,7 @@ import type { App } from 'supertest/types.js';
 import { inject } from 'vitest';
 import { AppModule } from '../src/app.module.js';
 import { configureApp } from '../src/app.setup.js';
+import { DEVICE_THRESHOLDS_CHANGED, DeviceEvents } from '../src/core/devices/index.js';
 import { SESSION_COOKIE, SessionService, UsersRepository } from '../src/core/identity/index.js';
 import {
   DATABASE,
@@ -420,6 +421,184 @@ describe('hardware and devices of a household', () => {
       expect(errorCode(blank)).toBe('validation.failed');
       const theirs = await get(`${HOUSEHOLDS}/${other.id}/devices/${foreign}`, other.owner);
       expect(deviceSchema.parse(theirs.body).name).toBe('Theirs');
+    });
+  });
+
+  describe('thresholds per device', () => {
+    const DEFAULTS = {
+      soilMoistureMin: 25,
+      soilMoistureMax: null,
+      batteryMin: 20,
+      contactOpenMinutes: 10,
+      silentMinutes: 120,
+    };
+
+    /** A soil device of a new household, with its URL. */
+    const soilDevice = async (): Promise<{ h: Household; device: Device; url: string }> => {
+      const h = await household();
+      const hardwareId = await addHardware(h.gatewayId, 'bed-1');
+      const created = await post(`${HOUSEHOLDS}/${h.id}/devices`, h.owner, {
+        hardwareId,
+        name: 'Bed',
+      }).expect(201);
+      const device = deviceSchema.parse(created.body);
+      return { h, device, url: `${HOUSEHOLDS}/${h.id}/devices/${device.id}` };
+    };
+
+    it('shows the default of the kind when nothing is set', async () => {
+      const { device } = await soilDevice();
+      expect(device.thresholds).toEqual({});
+      expect(device.effectiveThresholds).toEqual(DEFAULTS);
+    });
+
+    it('shows the default of a climate device without a soil minimum', async () => {
+      const h = await household();
+      const [row] = await connection.sql<{ id: string }[]>`
+        insert into hardware (gateway_id, ieee_address, friendly_name, first_seen_at)
+        values (${h.gatewayId}, '0xclimate', 'room', now()) returning id`;
+      await connection.sql`
+        insert into capabilities (hardware_id, key, kind, readable, writable, is_setting)
+        values (${row?.id}, 'temperature', 'numeric', true, false, false)`;
+      const created = await post(`${HOUSEHOLDS}/${h.id}/devices`, h.owner, {
+        hardwareId: row?.id,
+        name: 'Room',
+      }).expect(201);
+      expect(deviceSchema.parse(created.body).effectiveThresholds).toEqual({
+        ...DEFAULTS,
+        soilMoistureMin: null,
+      });
+    });
+
+    it('stores set values, keeps the others and lets null reset one', async () => {
+      const { h, url } = await soilDevice();
+      const first = await patch(url, h.member, {
+        thresholds: { soilMoistureMin: 30, batteryMin: 15 },
+      }).expect(200);
+      expect(deviceSchema.parse(first.body)).toMatchObject({
+        name: 'Bed',
+        thresholds: { soilMoistureMin: 30, batteryMin: 15 },
+        effectiveThresholds: { ...DEFAULTS, soilMoistureMin: 30, batteryMin: 15 },
+      });
+      const second = await patch(url, h.owner, {
+        thresholds: { soilMoistureMax: 80, batteryMin: null },
+      }).expect(200);
+      expect(deviceSchema.parse(second.body)).toMatchObject({
+        thresholds: { soilMoistureMin: 30, soilMoistureMax: 80 },
+        effectiveThresholds: { ...DEFAULTS, soilMoistureMin: 30, soilMoistureMax: 80 },
+      });
+      const read = deviceSchema.parse((await get(url, h.viewer).expect(200)).body);
+      expect(read.thresholds).toEqual({ soilMoistureMin: 30, soilMoistureMax: 80 });
+      const reset = await patch(url, h.owner, {
+        thresholds: { soilMoistureMin: null, soilMoistureMax: null },
+      }).expect(200);
+      expect(deviceSchema.parse(reset.body)).toMatchObject({
+        thresholds: {},
+        effectiveThresholds: DEFAULTS,
+      });
+    });
+
+    it('changes the name and the thresholds together', async () => {
+      const { h, url } = await soilDevice();
+      const response = await patch(url, h.owner, {
+        name: 'Roses',
+        thresholds: { silentMinutes: 60 },
+      }).expect(200);
+      expect(deviceSchema.parse(response.body)).toMatchObject({
+        name: 'Roses',
+        thresholds: { silentMinutes: 60 },
+      });
+    });
+
+    it.each([
+      ['a minimum above the maximum', { soilMoistureMin: 60, soilMoistureMax: 40 }],
+      ['equal minimum and maximum', { soilMoistureMin: 40, soilMoistureMax: 40 }],
+      ['a percentage above 100', { soilMoistureMax: 101 }],
+      ['a negative percentage', { batteryMin: -1 }],
+      ['a minimum of 0 minutes', { silentMinutes: 0 }],
+      ['more minutes than a week', { contactOpenMinutes: 10081 }],
+      ['a fractional number of minutes', { silentMinutes: 1.5 }],
+      ['a string', { batteryMin: '10' }],
+    ])('rejects %s with 400', async (_label, thresholds) => {
+      const { h, url } = await soilDevice();
+      const response = await patch(url, h.owner, { thresholds }).expect(400);
+      expect(errorCode(response)).toBe('validation.failed');
+      expect(deviceSchema.parse((await get(url, h.owner)).body).thresholds).toEqual({});
+    });
+
+    it('rejects an empty change with 400', async () => {
+      const { h, url } = await soilDevice();
+      await patch(url, h.owner, {}).expect(400);
+    });
+
+    it('rejects a maximum below the default minimum, and a minimum above the stored maximum', async () => {
+      const { h, url } = await soilDevice();
+      const events: unknown[] = [];
+      const listener = (event: unknown) => events.push(event);
+      app.get(DeviceEvents).on(DEVICE_THRESHOLDS_CHANGED, listener);
+      try {
+        const low = await patch(url, h.owner, { thresholds: { soilMoistureMax: 20 } }).expect(400);
+        expect(errorCode(low)).toBe('validation.failed');
+        await patch(url, h.owner, {
+          thresholds: { soilMoistureMin: 10, soilMoistureMax: 20 },
+        }).expect(200);
+        const high = await patch(url, h.owner, { thresholds: { soilMoistureMin: 30 } }).expect(400);
+        expect(errorCode(high)).toBe('validation.failed');
+        const read = deviceSchema.parse((await get(url, h.owner)).body);
+        expect(read.thresholds).toEqual({ soilMoistureMin: 10, soilMoistureMax: 20 });
+        expect(events).toHaveLength(1);
+      } finally {
+        app.get(DeviceEvents).off(DEVICE_THRESHOLDS_CHANGED, listener);
+      }
+    });
+
+    it('announces a change of thresholds, but not a rename or an unchanged value', async () => {
+      const { h, device, url } = await soilDevice();
+      const events: unknown[] = [];
+      const listener = (event: unknown) => events.push(event);
+      app.get(DeviceEvents).on(DEVICE_THRESHOLDS_CHANGED, listener);
+      try {
+        await patch(url, h.owner, { name: 'Renamed' }).expect(200);
+        expect(events).toEqual([]);
+        await patch(url, h.owner, { thresholds: { batteryMin: 10 } }).expect(200);
+        await patch(url, h.owner, { thresholds: { batteryMin: 10 } }).expect(200);
+        expect(events).toEqual([{ householdId: h.id, deviceId: device.id }]);
+      } finally {
+        app.get(DeviceEvents).off(DEVICE_THRESHOLDS_CHANGED, listener);
+      }
+    });
+
+    it('keeps both of two simultaneous changes of different thresholds', async () => {
+      const { h, url } = await soilDevice();
+      const responses = await Promise.all([
+        patch(url, h.owner, { thresholds: { batteryMin: 10 } }),
+        patch(url, h.member, { thresholds: { silentMinutes: 30 } }),
+      ]);
+      expect(responses.map((response) => response.status)).toEqual([200, 200]);
+      expect(deviceSchema.parse((await get(url, h.owner)).body).thresholds).toEqual({
+        batteryMin: 10,
+        silentMinutes: 30,
+      });
+    });
+
+    it('answers a viewer with 403 and changes nothing', async () => {
+      const { h, url } = await soilDevice();
+      const response = await patch(url, h.viewer, { thresholds: { batteryMin: 5 } }).expect(403);
+      expect(errorCode(response)).toBe('household.forbidden');
+      expect(deviceSchema.parse((await get(url, h.owner)).body).thresholds).toEqual({});
+    });
+
+    it('answers a device of another household with 404 and changes nothing', async () => {
+      const { h, device, url } = await soilDevice();
+      const other = await household();
+      const foreignUrl = `${HOUSEHOLDS}/${other.id}/devices/${device.id}`;
+      const response = await patch(foreignUrl, other.owner, {
+        thresholds: { batteryMin: 5 },
+      }).expect(404);
+      expect(errorCode(response)).toBe('household.notFound');
+      await patch(`${HOUSEHOLDS}/${other.id}/devices/not-a-uuid`, other.owner, {
+        thresholds: { batteryMin: 5 },
+      }).expect(404);
+      expect(deviceSchema.parse((await get(url, h.owner)).body).thresholds).toEqual({});
     });
   });
 });

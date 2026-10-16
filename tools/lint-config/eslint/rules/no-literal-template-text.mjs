@@ -8,6 +8,7 @@ export const TEXT_ATTRIBUTES = new Set([
   'aria-placeholder',
   'aria-roledescription',
   'aria-valuetext',
+  'backLabel',
   'description',
   'error',
   'heading',
@@ -15,13 +16,35 @@ export const TEXT_ATTRIBUTES = new Set([
   'hint',
   'invalidMessage',
   'label',
+  'moreLabel',
   'navigationLabel',
   'pickerLabel',
   'placeholder',
+  'severityLabel',
+  'subtitle',
   'supporting',
   'title',
   'trailingText',
 ]);
+
+/**
+ * Inputs of components that carry text but share their name with a plain HTML attribute
+ * (`<option value>`, `<input value>`): text only on custom elements (`ui-*`, `app-*`), so HTML
+ * keeps its values.
+ */
+export const UI_TEXT_INPUTS = new Set(['note', 'text', 'unit', 'value', 'valueText']);
+
+/** True for an attribute of a custom element; native HTML element names have no hyphen. */
+function onCustomElement(attribute) {
+  return (attribute.parent?.name ?? '').includes('-');
+}
+
+function isTextAttribute(attribute) {
+  return (
+    TEXT_ATTRIBUTES.has(attribute.name) ||
+    (UI_TEXT_INPUTS.has(attribute.name) && onCustomElement(attribute))
+  );
+}
 
 /** Operators whose operands end up in the output (`a ?? 'x'`, `'Hello ' + name`); comparisons do not. */
 const VALUE_OPERATORS = new Set(['+', '??', '||', '&&']);
@@ -95,12 +118,12 @@ export const noLiteralTemplateText = {
         if (hasLiteralText(node.value)) report(node, 'literalText');
       },
       TextAttribute(node) {
-        if (TEXT_ATTRIBUTES.has(node.name) && LETTER.test(node.value)) {
+        if (isTextAttribute(node) && LETTER.test(node.value)) {
           report(node, 'literalAttribute', { name: node.name });
         }
       },
       BoundAttribute(node) {
-        if (TEXT_ATTRIBUTES.has(node.name) && hasLiteralText(node.value)) {
+        if (isTextAttribute(node) && hasLiteralText(node.value)) {
           report(node, 'literalAttribute', { name: node.name });
         }
       },

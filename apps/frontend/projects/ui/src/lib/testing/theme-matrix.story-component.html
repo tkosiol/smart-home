@@ -1,0 +1,16 @@
+@for (combination of cells; track combination.id) {
+  <section
+    class="cell"
+    [style]="combination.vars"
+    [attr.data-mode]="combination.mode"
+    [attr.aria-label]="combination.title"
+  >
+    <span class="caption">{{ combination.title }}</span>
+    <div class="content">
+      <ng-container
+        [ngTemplateOutlet]="cell()"
+        [ngTemplateOutletContext]="{ $implicit: combination }"
+      />
+    </div>
+  </section>
+}

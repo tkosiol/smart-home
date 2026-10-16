@@ -5,6 +5,7 @@ import {
   GATEWAY_REGISTERED,
   GATEWAY_REVOKED,
   GatewayEvents,
+  type ActiveGateway,
   type GatewaysService,
 } from '../gateways/index.js';
 import type {
@@ -82,7 +83,7 @@ describe('DeviceIngestConsumer', () => {
   let now: Date;
   let mqtt: FakeMqtt;
   let events: GatewayEvents;
-  let active: { id: string; topicPrefix: string }[];
+  let active: ActiveGateway[];
   let stored: Map<string, { id: string; friendlyName: string }[]>;
   let consumer: DeviceIngestConsumer;
   const upsertFromBridge = vi.fn<HardwareRepository['upsertFromBridge']>();
@@ -115,7 +116,7 @@ describe('DeviceIngestConsumer', () => {
     now = T0;
     mqtt = new FakeMqtt();
     events = new GatewayEvents();
-    active = [{ id: GW, topicPrefix: prefix(GW) }];
+    active = [{ id: GW, householdId: 'household', topicPrefix: prefix(GW) }];
     stored = new Map();
     for (const mock of [
       upsertFromBridge,
@@ -174,7 +175,7 @@ describe('DeviceIngestConsumer', () => {
 
   describe('shutdown', () => {
     it('leaves its subscriptions to the persistent session', async () => {
-      active = [{ id: GW, topicPrefix: prefix(GW) }];
+      active = [{ id: GW, householdId: 'household', topicPrefix: prefix(GW) }];
       await start();
       await consumer.onModuleDestroy();
       expect(mqtt.kept).toEqual([`${prefix(GW)}/#`]);
@@ -184,7 +185,7 @@ describe('DeviceIngestConsumer', () => {
     it('waits at most 10 s for messages that are not done', async () => {
       vi.useFakeTimers();
       try {
-        active = [{ id: GW, topicPrefix: prefix(GW) }];
+        active = [{ id: GW, householdId: 'household', topicPrefix: prefix(GW) }];
         stored.set(GW, [{ id: 'hw-1', friendlyName: 'sensor-1' }]);
         await start();
         handle.mockImplementation(() => new Promise<void>(() => undefined));
@@ -203,7 +204,7 @@ describe('DeviceIngestConsumer', () => {
     });
 
     it('does not wait when everything is handled', async () => {
-      active = [{ id: GW, topicPrefix: prefix(GW) }];
+      active = [{ id: GW, householdId: 'household', topicPrefix: prefix(GW) }];
       await start();
       const started = Date.now();
       await consumer.onModuleDestroy();
@@ -214,8 +215,8 @@ describe('DeviceIngestConsumer', () => {
   describe('subscriptions', () => {
     it('subscribes to the prefix of every active gateway on start', async () => {
       active = [
-        { id: GW, topicPrefix: prefix(GW) },
-        { id: OTHER, topicPrefix: prefix(OTHER) },
+        { id: GW, householdId: 'household', topicPrefix: prefix(GW) },
+        { id: OTHER, householdId: 'household', topicPrefix: prefix(OTHER) },
       ];
       await start();
       expect(mqtt.filters).toEqual([`${prefix(GW)}/#`, `${prefix(OTHER)}/#`]);
@@ -223,7 +224,7 @@ describe('DeviceIngestConsumer', () => {
 
     it('subscribes to a gateway that is registered later and ends it when it is revoked', async () => {
       await start();
-      active.push({ id: OTHER, topicPrefix: prefix(OTHER) });
+      active.push({ id: OTHER, householdId: 'household', topicPrefix: prefix(OTHER) });
       events.emit(GATEWAY_REGISTERED, { gatewayId: OTHER, topicPrefix: prefix(OTHER) });
       await consumer.idle();
       expect(mqtt.filters).toContain(`${prefix(OTHER)}/#`);
@@ -262,7 +263,7 @@ describe('DeviceIngestConsumer', () => {
     });
 
     it('does not tell the connection when it is shut down before the gateways are followed', async () => {
-      let release: (gateways: { id: string; topicPrefix: string }[]) => void = () => undefined;
+      let release: (gateways: ActiveGateway[]) => void = () => undefined;
       consumer = new DeviceIngestConsumer(
         {
           listActive: () => new Promise((resolve) => (release = resolve)),
@@ -276,7 +277,7 @@ describe('DeviceIngestConsumer', () => {
       consumer.onModuleInit();
       await new Promise((resolve) => setImmediate(resolve));
       const destroyed = consumer.onModuleDestroy();
-      release([{ id: GW, topicPrefix: prefix(GW) }]);
+      release([{ id: GW, householdId: 'household', topicPrefix: prefix(GW) }]);
       await destroyed;
       await consumer.idle();
       expect(mqtt.complete).toBe(0);
@@ -528,7 +529,7 @@ describe('DeviceIngestConsumer', () => {
     });
 
     it('keeps the hardware of two gateways with the same name apart', async () => {
-      active.push({ id: OTHER, topicPrefix: prefix(OTHER) });
+      active.push({ id: OTHER, householdId: 'household', topicPrefix: prefix(OTHER) });
       await start();
       await send(`${prefix(GW)}/bridge/devices`, JSON.parse(fixture));
       await send(`${prefix(OTHER)}/bridge/devices`, JSON.parse(fixture));
@@ -856,7 +857,7 @@ describe('DeviceIngestConsumer', () => {
     });
 
     it('applies an availability that arrived before the device list', async () => {
-      active.push({ id: OTHER, topicPrefix: prefix(OTHER) });
+      active.push({ id: OTHER, householdId: 'household', topicPrefix: prefix(OTHER) });
       events.emit(GATEWAY_REGISTERED, { gatewayId: OTHER, topicPrefix: prefix(OTHER) });
       await consumer.idle();
       await send(`${prefix(OTHER)}/Lampe/availability`, '{"state":"online"}', true);

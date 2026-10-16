@@ -1,0 +1,35 @@
+@switch (mode()) {
+  @case ('link') {
+    <a class="pod pod--action" [attr.data-tone]="tone()" [routerLink]="route()">
+      <ng-container [ngTemplateOutlet]="content" />
+    </a>
+  }
+  @case ('switch') {
+    <button
+      class="pod pod--action"
+      type="button"
+      [attr.data-tone]="tone()"
+      [class.pod--pending]="pending()"
+      [attr.aria-pressed]="pressed()"
+      [attr.aria-busy]="pending() ? 'true' : null"
+      (click)="toggle()"
+    >
+      <ng-container [ngTemplateOutlet]="content" />
+    </button>
+  }
+  @default {
+    <div class="pod" [attr.data-tone]="tone()">
+      <ng-container [ngTemplateOutlet]="content" />
+    </div>
+  }
+}
+
+<ng-template #content>
+  <span class="top">
+    <ui-icon class="icon" [name]="icon()" />
+    @if (chip(); as chip) {
+      <span class="chip" [attr.data-tone]="chip.tone + '-container'">{{ chip.text }}</span>
+    }
+  </span>
+  <ui-value-display class="reading" [value]="value()" [unit]="unit()" [label]="label()" />
+</ng-template>

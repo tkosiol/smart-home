@@ -1,6 +1,9 @@
 import * as z from 'zod/mini';
 import { gatewayIdSchema } from './gateways.js';
 import { displayNameSchema } from './households.js';
+import { effectiveThresholdsSchema, LOW_BATTERY_PERCENT, thresholdsSchema } from './thresholds.js';
+
+export { LOW_BATTERY_PERCENT };
 
 export const CAPABILITY_KINDS = ['numeric', 'binary', 'enum', 'text', 'composite'] as const;
 export type CapabilityKind = (typeof CAPABILITY_KINDS)[number];
@@ -43,6 +46,10 @@ export const hardwareSchema = z.object({
 });
 export type Hardware = z.infer<typeof hardwareSchema>;
 
+export const DEVICE_KINDS = ['light', 'soil', 'climate', 'contact', 'other'] as const;
+export type DeviceKind = (typeof DEVICE_KINDS)[number];
+export const deviceKindSchema = z.enum(DEVICE_KINDS);
+
 /** A household's named device on top of a piece of hardware. */
 export const deviceSchema = z.object({
   id: z.string(),
@@ -60,6 +67,15 @@ export const deviceSchema = z.object({
   state: z.record(z.string(), z.unknown()),
   /** Readable capabilities without settings. */
   capabilities: z.array(capabilitySchema),
+  /**
+   * What sort of device this is, computed by the server from all its capabilities (also those
+   * that are only written, like a lamp's switch); clients never derive it.
+   */
+  kind: deviceKindSchema,
+  /** The thresholds set on this device; a missing field uses the kind's default. */
+  thresholds: thresholdsSchema,
+  /** The thresholds in force: the device's own value, else the default of its kind. */
+  effectiveThresholds: effectiveThresholdsSchema,
 });
 export type Device = z.infer<typeof deviceSchema>;
 
@@ -71,6 +87,22 @@ export type DeviceCreate = z.infer<typeof deviceCreateSchema>;
 
 export const deviceRenameSchema = z.object({ name: displayNameSchema });
 export type DeviceRename = z.infer<typeof deviceRenameSchema>;
+
+/**
+ * A change to a device: its name and/or thresholds. A threshold that is set overwrites, `null`
+ * removes it (the kind's default applies again), a missing one stays.
+ */
+export const deviceUpdateSchema = z
+  .object({
+    name: z.optional(displayNameSchema),
+    thresholds: z.optional(thresholdsSchema),
+  })
+  .check(
+    z.refine(({ name, thresholds }) => name !== undefined || thresholds !== undefined, {
+      message: 'name or thresholds is required',
+    }),
+  );
+export type DeviceUpdate = z.infer<typeof deviceUpdateSchema>;
 
 /** Keys shown first, in this order. */
 const PRIMARY_KEYS = ['soil_moisture', 'temperature', 'humidity', 'state'] as const;
@@ -90,10 +122,27 @@ export function primaryCapability(capabilities: readonly Capability[]): Capabili
   return readings.find((capability) => capability.kind === 'numeric');
 }
 
-/** A battery below this percentage counts as low. */
-export const LOW_BATTERY_PERCENT = 20;
-
 /** True for a finite battery percentage below {@link LOW_BATTERY_PERCENT}; anything else is not low. */
 export function isLowBattery(percent: unknown): boolean {
   return typeof percent === 'number' && Number.isFinite(percent) && percent < LOW_BATTERY_PERCENT;
+}
+
+/**
+ * light: writable `state` or `brightness`; soil: `soil_moisture`; climate: `temperature`/`humidity`
+ * without `soil_moisture`; contact: `contact`; else other.
+ */
+export function deviceKind(capabilities: readonly Capability[]): DeviceKind {
+  const has = (key: string): boolean => capabilities.some((capability) => capability.key === key);
+  if (
+    capabilities.some(
+      (capability) =>
+        capability.writable && (capability.key === 'state' || capability.key === 'brightness'),
+    )
+  ) {
+    return 'light';
+  }
+  if (has('soil_moisture')) return 'soil';
+  if (has('temperature') || has('humidity')) return 'climate';
+  if (has('contact')) return 'contact';
+  return 'other';
 }

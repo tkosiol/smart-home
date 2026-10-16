@@ -1,0 +1,8 @@
+<div class="top">
+  <span class="label">{{ label() }}</span>
+  <span class="chip"><ng-content select="ui-status-chip" /></span>
+</div>
+<ng-content />
+@if (note(); as note) {
+  <p class="note">{{ note }}</p>
+}

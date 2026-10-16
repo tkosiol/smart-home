@@ -1,0 +1,60 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  gap: var(--smart-space-lg);
+  box-sizing: border-box;
+  min-width: 0;
+  padding: var(--smart-space-xl);
+  color: var(--mat-sys-on-surface);
+}
+
+// Under the bottom sheet's drag handle the heading needs less room above it.
+:host([data-presentation='sheet']) {
+  padding-top: var(--smart-space-sm);
+}
+
+.handle {
+  display: block;
+  width: var(--smart-size-sheet-handle-width);
+  height: var(--smart-size-sheet-handle-height);
+  margin: 0 auto;
+  border-radius: var(--smart-shape-control);
+  background: var(--mat-sys-outline);
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--smart-space-xs);
+}
+
+.heading {
+  margin: 0;
+  font: var(--mat-sys-headline-small);
+  font-weight: var(--smart-font-weight-semibold);
+  letter-spacing: var(--smart-type-tracking-tight);
+  overflow-wrap: anywhere;
+  hyphens: auto;
+}
+
+.description {
+  margin: 0;
+  color: var(--mat-sys-on-surface-variant);
+  font: var(--mat-sys-body-medium);
+  overflow-wrap: anywhere;
+}
+
+.content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--smart-space-md);
+  min-width: 0;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--smart-space-sm);
+}
