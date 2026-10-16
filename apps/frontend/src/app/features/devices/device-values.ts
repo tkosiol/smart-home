@@ -85,6 +85,15 @@ export function batteryPercent(device: Pick<Device, 'state'>): number | undefine
   return typeof value === 'number' ? value : undefined;
 }
 
+/**
+ * The battery is low when it is below the device's own limit (its effective `batteryMin`, the
+ * same rule as the chip and the server), not a fixed percentage.
+ */
+export function isBatteryLow(device: Pick<Device, 'state' | 'effectiveThresholds'>): boolean {
+  const level = batteryPercent(device);
+  return level !== undefined && level < device.effectiveThresholds.batteryMin;
+}
+
 // Root keys (marked, so the key check finds them): the name is translated where it is shown.
 const CAPABILITY_LABELS: Readonly<Record<string, string>> = {
   soil_moisture: marker('app.devices.capability.soil_moisture'),

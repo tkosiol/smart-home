@@ -18,6 +18,10 @@ describe('heroOf', () => {
     });
   });
 
+  it('shows no chip while the device has not reported anything yet', () => {
+    expect(heroOf(device('d', 'Neu', { state: {}, lastSeenAt: null }), 'de').chip).toBeNull();
+  });
+
   it('has a meter with the target range between the limits that are set', () => {
     const base = device('d', 'Ficus', { state: { soil_moisture: 40 } });
     const withMax = {

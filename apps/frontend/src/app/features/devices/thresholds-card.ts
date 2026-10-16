@@ -10,7 +10,16 @@ import {
 } from '@angular/core';
 import { TranslocoPipe } from '@jsverse/transloco';
 import type { Device, Thresholds } from '@smart/contracts';
-import { UiButton, UiCard, UiGrid, UiList, UiListItem, UiStack, UiStatusChip } from '@smart/ui';
+import {
+  UiButton,
+  UiCard,
+  UiFormatContext,
+  UiGrid,
+  UiList,
+  UiListItem,
+  UiStack,
+  UiStatusChip,
+} from '@smart/ui';
 import { UiTextField } from '@smart/ui/forms';
 import { ApiError } from '../../core/api';
 import { HouseholdContext, injectHouseholdErrorHandler } from '../../core/household';
@@ -48,7 +57,10 @@ import {
       variant="low"
       [level]="2"
       [heading]="'devices.thresholds.title' | transloco"
-      [description]="'devices.thresholds.description' | transloco"
+      [description]="
+        (canEdit() ? 'devices.thresholds.description' : 'devices.thresholds.descriptionReadOnly')
+          | transloco
+      "
     >
       @if (canEdit()) {
         <form (submit)="save($event)" novalidate>
@@ -61,24 +73,22 @@ import {
                     autocomplete="off"
                     inputmode="decimal"
                     [label]="(row.labelKey | transloco) + ' (' + (row.unitKey | transloco) + ')'"
+                    [describedBy]="stateId(row.key)"
                     [error]="errors()[row.key] ? (errors()[row.key] ?? '' | transloco) : null"
                     [value]="texts()[row.key] ?? row.initial"
                     (valueChange)="type(row.key, $event)"
                   />
                   <ui-stack direction="row" gap="sm" wrap>
                     <ui-status-chip
+                      [attr.id]="stateId(row.key)"
                       [tone]="row.custom ? 'primary' : 'surface'"
                       [text]="
-                        row.custom
-                          ? ('devices.thresholds.state.custom'
-                            | transloco
-                              : {
-                                  standard:
-                                    row.standard === null
-                                      ? ('devices.thresholds.off' | transloco)
-                                      : (row.valueKey | transloco: { value: row.standard }),
-                                })
-                          : ('devices.thresholds.state.standard' | transloco)
+                        row.state.key
+                          | transloco
+                            : {
+                                standard:
+                                  row.state.standardKey | transloco: row.state.standardParams,
+                              }
                       "
                     />
                   </ui-stack>
@@ -103,20 +113,13 @@ import {
             <ui-list-item
               [headline]="row.labelKey | transloco"
               [supporting]="
-                row.custom
-                  ? ('devices.thresholds.state.custom'
-                    | transloco
-                      : {
-                          standard:
-                            row.standard === null
-                              ? ('devices.thresholds.off' | transloco)
-                              : (row.valueKey | transloco: { value: row.standard }),
-                        })
-                  : ('devices.thresholds.state.standard' | transloco)
+                row.state.key
+                  | transloco
+                    : { standard: row.state.standardKey | transloco: row.state.standardParams }
               "
               [trailingText]="
                 row.value === null
-                  ? ('devices.thresholds.off' | transloco)
+                  ? (row.offKey | transloco)
                   : (row.valueKey | transloco: { value: row.value })
               "
             />
@@ -138,7 +141,8 @@ export class ThresholdsCard {
   private readonly household = inject(HouseholdContext);
   private readonly handleError = injectHouseholdErrorHandler();
 
-  protected readonly rows = computed(() => thresholdRows(this.device()));
+  private readonly locale = inject(UiFormatContext).locale;
+  protected readonly rows = computed(() => thresholdRows(this.device(), this.locale()));
   protected readonly custom = computed(() => customKeys(this.rows()));
 
   /** The device and its own thresholds; a refresh that brings the same values leaves it unchanged. */
@@ -159,6 +163,11 @@ export class ThresholdsCard {
   });
   protected readonly busy = signal(false);
 
+  /** The id of the chip that says whether a value is the standard; the field points at it. */
+  protected stateId(key: ThresholdKey): string {
+    return `threshold-state-${key}`;
+  }
+
   protected type(key: ThresholdKey, text: string): void {
     this.texts.update((texts) => ({ ...texts, [key]: text }));
   }
@@ -170,8 +179,12 @@ export class ThresholdsCard {
       this.errors.set(result.errors);
       return Promise.resolve();
     }
-    // Nothing changed: nothing to send.
-    if (Object.keys(result.patch).length === 0) return Promise.resolve();
+    // Nothing changed: nothing to send, and the fields show the values in force again (an emptied
+    // field that already showed the standard would otherwise stay empty).
+    if (Object.keys(result.patch).length === 0) {
+      this.texts.set({});
+      return Promise.resolve();
+    }
     return this.send(result.patch);
   }
 
@@ -187,6 +200,7 @@ export class ThresholdsCard {
     try {
       const device = await this.api.update(householdId, deviceId, { thresholds: patch });
       if (this.household.current()?.id !== householdId) return;
+      this.texts.set({});
       this.saved.emit(device);
     } catch (error) {
       if (error instanceof ApiError && error.status === 400) this.errors.set(rejectedErrors(patch));

@@ -4,11 +4,14 @@ import { customKeys, resetPatch, thresholdPatch, thresholdRows } from './thresho
 
 describe('thresholdRows', () => {
   it('lists what the capabilities allow, with the value in force and the kind default', () => {
-    const rows = thresholdRows({
-      ...device('d', 'x'),
-      thresholds: { batteryMin: 10 },
-      effectiveThresholds: effectiveThresholds('soil', { batteryMin: 10 }),
-    });
+    const rows = thresholdRows(
+      {
+        ...device('d', 'x'),
+        thresholds: { batteryMin: 10 },
+        effectiveThresholds: effectiveThresholds('soil', { batteryMin: 10 }),
+      },
+      'de',
+    );
     expect(rows.map((row) => [row.key, row.initial, row.custom, row.standard])).toEqual([
       ['soilMoistureMin', '25', false, 25],
       ['soilMoistureMax', '', false, null],
@@ -17,8 +20,23 @@ describe('thresholdRows', () => {
     ]);
   });
 
+  it('writes the values in the language of the user, without digit grouping', () => {
+    const own = {
+      ...device('d', 'x'),
+      thresholds: { batteryMin: 15.5, silentMinutes: 10080 },
+      effectiveThresholds: effectiveThresholds('soil', { batteryMin: 15.5, silentMinutes: 10080 }),
+    };
+    const initials = (locale: string) =>
+      Object.fromEntries(thresholdRows(own, locale).map((row) => [row.key, row.initial]));
+    expect(initials('de')).toMatchObject({ batteryMin: '15,5', silentMinutes: '10080' });
+    expect(initials('en')).toMatchObject({ batteryMin: '15.5', silentMinutes: '10080' });
+  });
+
   it('counts a null of the device as "not its own"', () => {
-    const rows = thresholdRows({ ...device('d', 'x'), thresholds: { soilMoistureMin: null } });
+    const rows = thresholdRows(
+      { ...device('d', 'x'), thresholds: { soilMoistureMin: null } },
+      'de',
+    );
     expect(customKeys(rows)).toEqual([]);
   });
 
@@ -27,7 +45,7 @@ describe('thresholdRows', () => {
       kind: 'contact',
       capabilities: [capability('contact', { kind: 'binary' })],
     });
-    expect(thresholdRows(window).map((row) => row.key)).toEqual([
+    expect(thresholdRows(window, 'de').map((row) => row.key)).toEqual([
       'contactOpenMinutes',
       'silentMinutes',
     ]);
@@ -36,7 +54,7 @@ describe('thresholdRows', () => {
 
 describe('thresholdPatch', () => {
   const plant = device('d', 'x');
-  const rows = thresholdRows(plant);
+  const rows = thresholdRows(plant, 'de');
 
   it('is empty when nothing differs, also when the text only has spaces around it', () => {
     expect(thresholdPatch(plant, rows, {})).toEqual({ ok: true, patch: {} });
@@ -47,9 +65,33 @@ describe('thresholdPatch', () => {
   });
 
   it('keeps only the changed values, as numbers, and an empty text as null', () => {
-    expect(
-      thresholdPatch(plant, rows, { soilMoistureMin: '', batteryMin: '15,5', silentMinutes: '60' }),
-    ).toEqual({ ok: true, patch: { soilMoistureMin: null, batteryMin: 15.5, silentMinutes: 60 } });
+    expect(thresholdPatch(plant, rows, { batteryMin: '15,5', silentMinutes: '60' })).toEqual({
+      ok: true,
+      patch: { batteryMin: 15.5, silentMinutes: 60 },
+    });
+    const own = { ...plant, thresholds: { soilMoistureMax: 70 } };
+    expect(thresholdPatch(own, thresholdRows(own, 'de'), { soilMoistureMax: '' })).toEqual({
+      ok: true,
+      patch: { soilMoistureMax: null },
+    });
+  });
+
+  it('does not send an emptied field that already shows the standard', () => {
+    expect(thresholdPatch(plant, rows, { soilMoistureMin: '', soilMoistureMax: '' })).toEqual({
+      ok: true,
+      patch: {},
+    });
+  });
+
+  it('compares numbers, not text: "25,0" and "25.0" are the value in force', () => {
+    expect(thresholdPatch(plant, rows, { soilMoistureMin: '25,0' })).toEqual({
+      ok: true,
+      patch: {},
+    });
+    expect(thresholdPatch(plant, rows, { soilMoistureMin: '25.00' })).toEqual({
+      ok: true,
+      patch: {},
+    });
   });
 
   it.each([
@@ -101,7 +143,7 @@ describe('thresholdPatch', () => {
     };
     // Min 80 and a new max 60 would be empty; resetting the min to the standard (25) makes it fine.
     expect(
-      thresholdPatch(own, thresholdRows(own), { soilMoistureMin: '', soilMoistureMax: '60' }),
+      thresholdPatch(own, thresholdRows(own, 'de'), { soilMoistureMin: '', soilMoistureMax: '60' }),
     ).toEqual({
       ok: true,
       patch: { soilMoistureMin: null, soilMoistureMax: 60 },

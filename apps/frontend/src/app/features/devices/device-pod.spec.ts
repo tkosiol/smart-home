@@ -92,6 +92,14 @@ describe('podOf', () => {
     expect(fine.chip?.key).toBe('app.devices.pod.ok');
   });
 
+  it('shows no chip while the device has not reported a reading yet', () => {
+    expect(pod('d1', 'A', { state: {}, lastSeenAt: null }).chip).toBeNull();
+    // Only a battery level says nothing about the soil: still no "OK".
+    expect(pod('d1', 'A', { state: { battery: 90 } }).chip).toBeNull();
+    // But it can still say the battery is low.
+    expect(pod('d1', 'A', { state: { battery: 5 } }).chip?.key).toBe('app.devices.pod.lowBattery');
+  });
+
   it('says offline before anything else', () => {
     expect(
       pod('d1', 'A', { availability: 'offline', state: { soil_moisture: 10, battery: 3 } }).chip,

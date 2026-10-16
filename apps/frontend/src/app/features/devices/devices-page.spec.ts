@@ -122,6 +122,25 @@ describe('devices page', () => {
       expect(cardText(page, 'Grenze')).not.toContain('fast leer');
     });
 
+    it('warns by the own battery threshold of the device, not a fixed 20 percent', async () => {
+      const own = (batteryMin: number) => ({
+        ...device('x', 'x').effectiveThresholds,
+        batteryMin,
+      });
+      const lenient = device('dev-7', 'Gelassen', {
+        state: { soil_moisture: 30, battery: 15 },
+        effectiveThresholds: own(10),
+      });
+      const strict = device('dev-8', 'Streng', {
+        state: { soil_moisture: 30, battery: 25 },
+        effectiveThresholds: own(30),
+      });
+      const page = await open({ devices: [lenient, strict] });
+      await flush(page);
+      expect(cardText(page, 'Gelassen')).not.toContain('fast leer');
+      expect(cardText(page, 'Streng')).toContain('Die Batterie ist fast leer');
+    });
+
     it('shows a main value for a device with unknown keys by their raw key', async () => {
       const odd = device('dev-6', 'Seltsam', {
         capabilities: [{ ...linkquality, key: 'pm25', unit: 'µg/m³' }, battery],

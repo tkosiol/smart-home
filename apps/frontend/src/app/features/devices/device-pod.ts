@@ -2,7 +2,7 @@ import { marker } from '@jsverse/transloco-keys-manager/marker';
 import { primaryCapability, type Capability, type Device, type DeviceKind } from '@smart/contracts';
 import type { UiToneName } from '@smart/ui';
 import type { IconName } from '@smart/ui/shell';
-import { binaryOf, formatNumber, formatReading } from './device-values';
+import { binaryOf, formatNumber, formatReading, isBatteryLow } from './device-values';
 
 // Root keys (marked, so the key check finds them): the words are translated where the pod is shown.
 const WORDS = {
@@ -60,11 +60,10 @@ export function chipOf(device: Device): PodChip | null {
   ) {
     return { key: WORDS.wet, tone: 'wet' };
   }
-  const battery = state['battery'];
-  if (typeof battery === 'number' && battery < limits.batteryMin) {
-    return { key: WORDS.lowBattery, tone: 'warning' };
-  }
-  return device.kind === 'soil' ? { key: WORDS.ok, tone: 'ok' } : null;
+  if (isBatteryLow(device)) return { key: WORDS.lowBattery, tone: 'warning' };
+  // "OK" needs a reading of the soil; while there is none, there is nothing to say yet.
+  const reported = moisture !== undefined || binaryOf(state['dry']) !== undefined;
+  return device.kind === 'soil' && reported ? { key: WORDS.ok, tone: 'ok' } : null;
 }
 
 /** A reading as a pod or the hero shows it: a number with its unit, or a word (`valueKey`). */

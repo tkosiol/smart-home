@@ -55,11 +55,7 @@
   "thresholds": {
     "title": "Thresholds",
     "description": "From these values the app raises a notice. An empty field means the standard of the device kind.",
-    "off": "off",
-    "state": {
-      "standard": "Standard",
-      "custom": "Customised (standard: {{ standard }})"
-    },
+    "descriptionReadOnly": "From these values the app raises a notice.",
     "save": "Save thresholds",
     "reset": "Reset to standard"
   }

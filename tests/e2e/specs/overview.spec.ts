@@ -67,7 +67,14 @@ test.describe.serial('the overview of the simulator household', () => {
     page,
   }) => {
     await page.goto('/');
-    await page.locator('app-devices-block ui-device-pod').first().getByRole('link').click();
+    // The soil sensor `devices.spec.ts` added (a member renamed it since, so not by its name),
+    // not whatever pod is first: the pod of a soil sensor has its moisture in percent as the value.
+    await page
+      .locator('app-devices-block ui-device-pod')
+      .filter({ hasText: /\d\s*%/ })
+      .first()
+      .getByRole('link')
+      .click();
     await expect(page).toHaveURL(/\/geraete\/[0-9a-f-]+$/);
     const card = page.locator('app-thresholds-card');
     await expect(card.getByRole('heading', { name: 'Grenzwerte' })).toBeVisible();

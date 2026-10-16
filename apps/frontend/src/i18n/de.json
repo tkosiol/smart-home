@@ -190,6 +190,11 @@
           "invalid": "Bitte gib eine gültige Zahl ein (Prozent von 0 bis 100, Minuten ganzzahlig von 1 bis 10080).",
           "range": "Die untere Feuchte muss unter der oberen liegen.",
           "rejected": "Dieser Wert wurde abgelehnt. Prüfe ihn im Zusammenhang mit den anderen Grenzwerten."
+        },
+        "off": "aus",
+        "state": {
+          "standard": "Standard",
+          "custom": "Angepasst (Standard: {{ standard }})"
         }
       }
     },

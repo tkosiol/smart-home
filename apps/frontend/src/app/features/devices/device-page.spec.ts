@@ -11,6 +11,7 @@ import {
   press,
   typeInto,
   type OpenedHouseholdPage,
+  type Responder,
 } from '../../testing/household-page-testing';
 import { capability, device, devicesServer, type DevicesServer } from './devices-testing';
 import { deviceRoutes } from './devices.routes';
@@ -41,15 +42,25 @@ interface Options extends Partial<DevicesServer> {
   household?: typeof owner;
   language?: Language;
   id?: string;
+  /** Wraps the answers of the server, e.g. to make one of them slow. */
+  wrap?: (respond: Responder) => Responder;
 }
 
-function open({ household = owner, language = 'de', id = 'dev-1', ...initial }: Options = {}) {
+function open({
+  household = owner,
+  language = 'de',
+  id = 'dev-1',
+  wrap = (respond) => respond,
+  ...initial
+}: Options = {}) {
   TestBed.overrideProvider(UiClock, { useValue: { now: signal(NOW) } });
   const { state, respond } = devicesServer(household.id, { devices: [sensor], ...initial });
   const me: Me = meWith([household], household.id);
-  return openHouseholdPage(routes, `/geraete/${id}`, { language, me, respond }).then((page) =>
-    Object.assign(page, { server: state }),
-  );
+  return openHouseholdPage(routes, `/geraete/${id}`, {
+    language,
+    me,
+    respond: wrap(respond),
+  }).then((page) => Object.assign(page, { server: state }));
 }
 
 const gets = (page: OpenedHouseholdPage) =>
@@ -201,6 +212,27 @@ describe('device page', () => {
     expect(text).toContain('Die Batterie ist fast leer.');
   });
 
+  it.each([
+    [10, 15, false],
+    [30, 25, true],
+    [20, 20, false],
+  ])(
+    'hints at a low battery by the own limit of the device (limit %i, battery %i)',
+    async (batteryMin, level, hinted) => {
+      const base = device('x', 'x').effectiveThresholds;
+      const page = await open({
+        devices: [
+          device('dev-1', 'Garten', {
+            state: { soil_moisture: 30, battery: level },
+            effectiveThresholds: { ...base, batteryMin },
+          }),
+        ],
+      });
+      await flush(page);
+      expect(pageText(page.element).includes('Die Batterie ist fast leer.')).toBe(hinted);
+    },
+  );
+
   it('says so when the device does not exist, without a message or a reload of the access', async () => {
     const page = await open({ id: 'gone' });
     await flush(page);
@@ -277,6 +309,33 @@ describe('device page', () => {
       expect(
         page.element.querySelector<HTMLInputElement>('ui-text-field[name="name"] input')?.value,
       ).toBe('Thymian');
+    });
+
+    it('does not let a refresh that was already on its way undo a rename', async () => {
+      vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => (release = resolve));
+      let slowGets = 0;
+      const page = await open({
+        household: member,
+        // The second GET is answered with the state of the moment it was asked, but late.
+        wrap: (respond) => async (call) => {
+          const answer = respond(call);
+          if (call.method !== 'GET' || !call.path.endsWith('/devices/dev-1')) return answer;
+          if (++slowGets < 2) return answer;
+          await gate;
+          return answer;
+        },
+      });
+      await flush(page);
+      await vi.advanceTimersByTimeAsync(60_500);
+      expect(gets(page)).toHaveLength(2);
+      typeInto(page, 'name', 'Thymian');
+      await press(page, 'Speichern');
+      expect(page.element.querySelector('h1')?.textContent?.trim()).toBe('Thymian');
+      release();
+      await flush(page);
+      expect(page.element.querySelector('h1')?.textContent?.trim()).toBe('Thymian');
     });
 
     it('asks once when the tick and the tab coming back meet a slow refresh', async () => {

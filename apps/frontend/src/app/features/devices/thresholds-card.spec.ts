@@ -10,6 +10,7 @@ import {
   pageText,
   press,
   type OpenedHouseholdPage,
+  type Responder,
 } from '../../testing/household-page-testing';
 import { battery, capability, device, devicesServer, type DevicesServer } from './devices-testing';
 import { deviceRoutes } from './devices.routes';
@@ -30,15 +31,26 @@ const customised = (own: Device['thresholds']): Device => ({
 interface Options extends Partial<DevicesServer> {
   household?: typeof owner;
   language?: Language;
+  /** Wraps the answers of the server, e.g. to make one of them slow. */
+  wrap?: (respond: Responder) => Responder;
 }
 
-async function open({ household = owner, language = 'de', ...initial }: Options = {}) {
+async function open({
+  household = owner,
+  language = 'de',
+  wrap = (respond) => respond,
+  ...initial
+}: Options = {}) {
   TestBed.overrideProvider(UiClock, {
     useValue: { now: signal(Date.parse('2026-10-14T12:00:00Z')) },
   });
   const { state, respond } = devicesServer(household.id, { devices: [plant], ...initial });
   const me: Me = meWith([household], household.id);
-  const page = await openHouseholdPage(routes, '/geraete/dev-1', { language, me, respond });
+  const page = await openHouseholdPage(routes, '/geraete/dev-1', {
+    language,
+    me,
+    respond: wrap(respond),
+  });
   await flush(page);
   return Object.assign(page, { server: state });
 }
@@ -131,6 +143,23 @@ describe('thresholds card', () => {
       expect(field(page, 'soilMoistureMax')?.value).toBe('70');
     });
 
+    it('ties the state of each value to its field for screen readers', async () => {
+      const page = await open({ devices: [customised({ soilMoistureMin: 30 })] });
+      const described = (key: string) => {
+        const ids = field(page, key)?.getAttribute('aria-describedby')?.split(' ') ?? [];
+        return ids.map((id) => document.getElementById(id)?.textContent?.trim());
+      };
+      expect(described('soilMoistureMin')).toContain('Angepasst (Standard: 25 %)');
+      expect(described('batteryMin')).toContain('Standard');
+      // The field's own error stays in the list.
+      type(page, 'batteryMin', 'abc');
+      await save(page);
+      expect(described('batteryMin')).toContain('Standard');
+      expect(described('batteryMin')).toContain(
+        'Bitte gib eine gültige Zahl ein (Prozent von 0 bis 100, Minuten ganzzahlig von 1 bis 10080).',
+      );
+    });
+
     it('speaks English', async () => {
       const page = await open({ language: 'en', devices: [customised({ soilMoistureMin: 30 })] });
       const text = cardText(page);
@@ -187,6 +216,71 @@ describe('thresholds card', () => {
       await save(page);
       expect(patches(page)[0]!.body).toEqual({ thresholds: { soilMoistureMax: null } });
       expect(cardText(page)).not.toContain('Angepasst');
+    });
+
+    it('sends nothing for an emptied field that already shows the standard, and shows it again', async () => {
+      const page = await open();
+      type(page, 'soilMoistureMin', '');
+      await save(page);
+      expect(patches(page)).toHaveLength(0);
+      expect(field(page, 'soilMoistureMin')?.value).toBe('25');
+    });
+
+    it('shows the standard again for such a field after another value was saved', async () => {
+      const page = await open();
+      type(page, 'soilMoistureMin', '');
+      type(page, 'batteryMin', '15');
+      await save(page);
+      expect(patches(page)[0]!.body).toEqual({ thresholds: { batteryMin: 15 } });
+      expect(field(page, 'soilMoistureMin')?.value).toBe('25');
+      expect(field(page, 'batteryMin')?.value).toBe('15');
+    });
+
+    it('takes a value typed with a trailing zero for the same number', async () => {
+      const page = await open({ devices: [customised({ soilMoistureMin: 31 })] });
+      type(page, 'soilMoistureMin', '31,0');
+      await save(page);
+      expect(patches(page)).toHaveLength(0);
+      expect(field(page, 'soilMoistureMin')?.value).toBe('31');
+    });
+
+    it.each([
+      ['de', '15,5'],
+      ['en', '15.5'],
+    ] as const)(
+      'writes decimals the way the language does (%s), and whole numbers without a separator',
+      async (language, decimal) => {
+        const page = await open({
+          language,
+          devices: [customised({ batteryMin: 15.5, silentMinutes: 10080 })],
+        });
+        expect(field(page, 'batteryMin')?.value).toBe(decimal);
+        expect(field(page, 'silentMinutes')?.value).toBe('10080');
+      },
+    );
+
+    it('does not let a refresh that was already on its way undo a save', async () => {
+      vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => (release = resolve));
+      let gets = 0;
+      const page = await open({
+        wrap: (respond) => async (call) => {
+          const answer = respond(call);
+          if (call.method !== 'GET' || !call.path.endsWith('/devices/dev-1')) return answer;
+          if (++gets < 2) return answer;
+          await gate;
+          return answer;
+        },
+      });
+      await vi.advanceTimersByTimeAsync(60_500);
+      type(page, 'soilMoistureMin', '30');
+      await save(page);
+      expect(field(page, 'soilMoistureMin')?.value).toBe('30');
+      release();
+      await flush(page);
+      expect(field(page, 'soilMoistureMin')?.value).toBe('30');
+      expect(cardText(page)).toContain('Angepasst (Standard: 25 %)');
     });
 
     it('keeps what was typed when the device is fetched again', async () => {
@@ -329,6 +423,9 @@ describe('thresholds card', () => {
       ]);
       const text = cardText(page);
       expect(text).toContain('Angepasst (Standard: 25 %)');
+      // A viewer has no fields, so the text must not talk about an empty one.
+      expect(text).toContain('Ab diesen Werten meldet die App einen Hinweis.');
+      expect(text).not.toContain('leeres Feld');
       expect(text).not.toContain('Grenzwerte speichern');
       expect(text).not.toContain('Auf Standard zurücksetzen');
     });

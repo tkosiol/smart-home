@@ -8,6 +8,7 @@ export const TEXT_ATTRIBUTES = new Set([
   'aria-placeholder',
   'aria-roledescription',
   'aria-valuetext',
+  'backLabel',
   'description',
   'error',
   'heading',
@@ -31,7 +32,7 @@ export const TEXT_ATTRIBUTES = new Set([
  * (`<option value>`, `<input value>`): text only on custom elements (`ui-*`, `app-*`), so HTML
  * keeps its values.
  */
-export const UI_TEXT_INPUTS = new Set(['unit', 'value', 'valueText']);
+export const UI_TEXT_INPUTS = new Set(['note', 'text', 'unit', 'value', 'valueText']);
 
 /** True for an attribute of a custom element; native HTML element names have no hyphen. */
 function onCustomElement(attribute) {

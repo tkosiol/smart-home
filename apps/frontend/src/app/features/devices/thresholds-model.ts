@@ -66,11 +66,28 @@ const UNIT_KEYS: Record<ThresholdUnit, { readonly label: string; readonly value:
   },
 };
 
+// Root keys (marked, so the key check finds them): the words are translated where they are shown.
+const STATE_KEYS = {
+  standard: marker('app.devices.thresholds.state.standard'),
+  custom: marker('app.devices.thresholds.state.custom'),
+  off: marker('app.devices.thresholds.off'),
+} as const;
+
 const ERROR_KEYS = {
   invalid: marker('app.devices.thresholds.error.invalid'),
   range: marker('app.devices.thresholds.error.range'),
   rejected: marker('app.devices.thresholds.error.rejected'),
 } as const;
+
+/**
+ * Whether a value is the standard or the device's own, as words: `key` takes the parameter
+ * `standard`, which is `standardKey` translated with `standardParams` (a value or "off").
+ */
+export interface ThresholdState {
+  readonly key: string;
+  readonly standardKey: string;
+  readonly standardParams: { readonly value: number } | undefined;
+}
 
 /** What the card shows for one threshold of a device. */
 export interface ThresholdRow {
@@ -89,24 +106,51 @@ export interface ThresholdRow {
   readonly custom: boolean;
   /** The kind's default; null: off. */
   readonly standard: number | null;
+  /** "Standard" or "Angepasst (Standard: 25 %)". */
+  readonly state: ThresholdState;
+  /** The word for an off threshold, where it is shown as a value. */
+  readonly offKey: string;
+}
+
+const formats = new Map<string, Intl.NumberFormat>();
+
+/** A number as typed into a field: the language's decimal separator, no digit grouping. */
+function fieldText(value: number, locale: string): string {
+  let format = formats.get(locale);
+  if (!format) {
+    format = new Intl.NumberFormat(locale, { useGrouping: false, maximumFractionDigits: 20 });
+    formats.set(locale, format);
+  }
+  return format.format(value);
 }
 
 /** The thresholds that fit the capabilities of the device, with their state (spec 4.3). */
-export function thresholdRows(device: Device): ThresholdRow[] {
+export function thresholdRows(device: Device, locale: string): ThresholdRow[] {
   const has = (key: string) => device.capabilities.some((capability) => capability.key === key);
   const defaults = DEFAULT_THRESHOLDS[device.kind];
   return FIELDS.filter((field) => field.needs === null || has(field.needs)).map((field) => {
     const value = device.effectiveThresholds[field.key];
+    const standard = defaults[field.key];
+    const custom = device.thresholds[field.key] != null;
+    const valueKey = UNIT_KEYS[field.unit].value;
     return {
       key: field.key,
       unit: field.unit,
       labelKey: field.labelKey,
       unitKey: UNIT_KEYS[field.unit].label,
-      valueKey: UNIT_KEYS[field.unit].value,
-      initial: value === null ? '' : String(value),
+      valueKey,
+      initial: value === null ? '' : fieldText(value, locale),
       value,
-      custom: device.thresholds[field.key] != null,
-      standard: defaults[field.key],
+      custom,
+      standard,
+      state: custom
+        ? {
+            key: STATE_KEYS.custom,
+            standardKey: standard === null ? STATE_KEYS.off : valueKey,
+            standardParams: standard === null ? undefined : { value: standard },
+          }
+        : { key: STATE_KEYS.standard, standardKey: STATE_KEYS.off, standardParams: undefined },
+      offKey: STATE_KEYS.off,
     };
   });
 }
@@ -128,10 +172,11 @@ export type ThresholdPatch =
   | { readonly ok: false; readonly errors: Partial<Record<ThresholdKey, string>> };
 
 /**
- * The change to send: only fields whose text differs from what it started with, a number for a
- * value and `null` for an empty field (back to the kind's default). The contract's ranges apply, and
- * the range of the soil moisture is checked against the values in force, as the server does. Nothing
- * changed gives an empty patch.
+ * The change to send: only fields whose number differs from the one in force ("31,0" is 31), a
+ * number for a value and `null` for an emptied field that has its own value (back to the kind's
+ * default; an emptied field that already shows the standard is no change). The contract's ranges
+ * apply, and the range of the soil moisture is checked against the values in force, as the server
+ * does. Nothing changed gives an empty patch.
  */
 export function thresholdPatch(
   device: Device,
@@ -141,16 +186,15 @@ export function thresholdPatch(
   const patch: Record<string, number | null> = {};
   const errors: Partial<Record<ThresholdKey, string>> = {};
   for (const row of rows) {
-    const text = texts[row.key] ?? row.initial;
-    if (text.trim() === row.initial) continue;
-    if (text.trim() === '') {
-      patch[row.key] = null;
+    const text = (texts[row.key] ?? row.initial).trim();
+    if (text === '') {
+      if (row.custom) patch[row.key] = null;
       continue;
     }
     const value = parseNumber(text);
     const parsed = thresholdsSchema.safeParse({ [row.key]: value });
     if (Number.isNaN(value) || !parsed.success) errors[row.key] = ERROR_KEYS.invalid;
-    else patch[row.key] = value;
+    else if (value !== row.value) patch[row.key] = value;
   }
   if (Object.keys(errors).length > 0) return { ok: false, errors };
 

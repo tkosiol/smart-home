@@ -1,9 +1,9 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 import { TranslocoPipe } from '@jsverse/transloco';
-import { isLowBattery, primaryCapability, type Device } from '@smart/contracts';
+import { primaryCapability, type Device } from '@smart/contracts';
 import { UiButton, UiCard, UiCardActions, UiRelativeTimePipe, UiStack } from '@smart/ui';
 import { DeviceReading } from './device-reading';
-import { batteryPercent } from './device-values';
+import { isBatteryLow } from './device-values';
 
 /**
  * One device at a glance: its main value and battery, when it last reported, and a hint while it
@@ -72,5 +72,5 @@ export class DeviceCard {
   protected readonly battery = computed(() =>
     this.device().capabilities.find((capability) => capability.key === 'battery'),
   );
-  protected readonly lowBattery = computed(() => isLowBattery(batteryPercent(this.device())));
+  protected readonly lowBattery = computed(() => isBatteryLow(this.device()));
 }

@@ -31,9 +31,24 @@ ruleTester.run('no-literal-template-text', noLiteralTemplateText, {
     { code: '<option value="kitchen"></option>' },
     { code: '<input type="hidden" value="token" />' },
     { code: '<button type="submit" value="send"></button>' },
+    // The ids and routes of ui-* elements are no text.
+    { code: '<ui-text-field describedBy="state" />' },
+    { code: '<ui-page backRoute="/geraete" />' },
   ],
   invalid: [
     { code: '<p>Hallo</p>', errors: [{ messageId: 'literalText' }] },
+    {
+      code: '<ui-device-hero note="Aktualisiert" />',
+      errors: [{ messageId: 'literalAttribute', data: { name: 'note' } }],
+    },
+    {
+      code: '<ui-status-chip text="Standard" />',
+      errors: [{ messageId: 'literalAttribute', data: { name: 'text' } }],
+    },
+    {
+      code: '<ui-page backLabel="Zurück" />',
+      errors: [{ messageId: 'literalAttribute', data: { name: 'backLabel' } }],
+    },
     { code: '<p>{{ count() }} Geräte</p>', errors: [{ messageId: 'literalText' }] },
     {
       code: '<ui-icon-button aria-label="Schließen" />',
@@ -92,7 +107,14 @@ ruleTester.run('no-literal-template-text', noLiteralTemplateText, {
 });
 
 /** String inputs of @smart/ui that never carry text for people: identifiers, URLs, form hints. */
-const NON_TEXT_STRING_INPUTS = new Set(['autocomplete', 'moreRoute', 'name', 'route']);
+const NON_TEXT_STRING_INPUTS = new Set([
+  'autocomplete',
+  'backRoute',
+  'describedBy',
+  'moreRoute',
+  'name',
+  'route',
+]);
 
 const UI_LIB = join(import.meta.dirname, '../../../apps/frontend/projects/ui/src/lib');
 const STRING_INPUT = /readonly (\w+) = input(?:\.required)?<string\b/g;

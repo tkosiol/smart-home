@@ -55,11 +55,7 @@
   "thresholds": {
     "title": "Grenzwerte",
     "description": "Ab diesen Werten meldet die App einen Hinweis. Ein leeres Feld bedeutet: Standard der Geräteart.",
-    "off": "aus",
-    "state": {
-      "standard": "Standard",
-      "custom": "Angepasst (Standard: {{ standard }})"
-    },
+    "descriptionReadOnly": "Ab diesen Werten meldet die App einen Hinweis.",
     "save": "Grenzwerte speichern",
     "reset": "Auf Standard zurücksetzen"
   }

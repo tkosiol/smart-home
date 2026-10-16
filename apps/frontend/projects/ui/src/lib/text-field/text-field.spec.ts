@@ -60,14 +60,19 @@ class VerbatimHost {
 @Component({
   imports: [UiTextField],
   template: `<ui-text-field
-    label="Name"
-    [name]="name()"
-    [multiline]="multiline()"
-    [(value)]="text"
-  />`,
+      label="Name"
+      [name]="name()"
+      [describedBy]="describedBy()"
+      [error]="error()"
+      [multiline]="multiline()"
+      [(value)]="text"
+    />
+    <span id="note">Standard</span>`,
 })
 class NamedHost {
   readonly name = signal<string | undefined>('threshold');
+  readonly describedBy = signal<string | undefined>(undefined);
+  readonly error = signal<string | null>(null);
   readonly multiline = signal(false);
   readonly text = signal('');
 }
@@ -92,6 +97,31 @@ describe('UiTextField', () => {
     fixture.componentInstance.name.set(undefined);
     fixture.detectChanges();
     expect(input.hasAttribute('name')).toBe(false);
+  });
+
+  it('renders no name attribute while no name is set, not even an empty one', () => {
+    const fixture = TestBed.createComponent(NamedHost);
+    fixture.componentInstance.name.set(undefined);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('input').hasAttribute('name')).toBe(false);
+    fixture.componentInstance.multiline.set(true);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('textarea').hasAttribute('name')).toBe(false);
+  });
+
+  it('points the native control at the element that describes it, next to its own error', () => {
+    const fixture = TestBed.createComponent(NamedHost);
+    fixture.detectChanges();
+    const input = fixture.nativeElement.querySelector('input') as HTMLInputElement;
+    expect(input.hasAttribute('aria-describedby')).toBe(false);
+    fixture.componentInstance.describedBy.set('note');
+    fixture.detectChanges();
+    expect(input.getAttribute('aria-describedby')).toBe('note');
+    fixture.componentInstance.error.set('Falsch');
+    fixture.detectChanges();
+    const ids = input.getAttribute('aria-describedby')?.split(' ') ?? [];
+    expect(ids).toContain('note');
+    expect(ids.length).toBe(2);
   });
 
   it('puts name on the textarea of a multiline field too', () => {

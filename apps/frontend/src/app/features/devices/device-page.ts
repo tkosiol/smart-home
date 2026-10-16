@@ -11,7 +11,7 @@ import {
 } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
 import { TranslocoPipe } from '@jsverse/transloco';
-import { deviceRenameSchema, hasRole, isLowBattery, type Device } from '@smart/contracts';
+import { deviceRenameSchema, hasRole, type Device } from '@smart/contracts';
 import {
   UiBanner,
   UiButton,
@@ -34,7 +34,7 @@ import { ApiError } from '../../core/api';
 import { HouseholdContext, injectHouseholdErrorHandler } from '../../core/household';
 import { RefreshGuard, isNetworkFailure, refreshWhileVisible } from '../../core/refresh';
 import { heroOf, kindKey, sidePodsOf } from './device-hero';
-import { batteryPercent, capabilityLabelKey } from './device-values';
+import { capabilityLabelKey, isBatteryLow } from './device-values';
 import { DevicesApi } from './devices.api';
 import { ThresholdsCard } from './thresholds-card';
 
@@ -223,7 +223,7 @@ export class DevicePage {
   });
   protected readonly lowBattery = computed(() => {
     const device = this.device();
-    return device !== null && isLowBattery(batteryPercent(device));
+    return device !== null && isBatteryLow(device);
   });
   protected readonly canRename = computed(() => {
     const role = this.household.current()?.role;
@@ -281,7 +281,10 @@ export class DevicePage {
   }
 
   protected updated(device: Device): void {
-    if (device.id === this.deviceId) this.device.set(device);
+    if (device.id !== this.deviceId) return;
+    // A refresh that was asked before this change may still be on its way with the old values.
+    this.requests++;
+    this.device.set(device);
   }
 
   protected async rename(event: Event): Promise<void> {
@@ -297,6 +300,7 @@ export class DevicePage {
     try {
       const device = await this.api.update(householdId, this.deviceId, parsed.data);
       if (this.currentId() !== householdId) return;
+      this.requests++;
       this.device.set(device);
       this.name.set(device.name);
     } catch (error) {
