@@ -440,7 +440,7 @@ Fehler einer Nachricht beenden nie den Konsumenten; Nutzdaten werden nie protoko
 ### 8.7 Live-Updates (SSE)
 
 - `GET /api/v1/households/:id/events`, Authentifizierung über das Session-Cookie, Mitgliedschaft wird geprüft.
-- Event-Typen: `device.state`, `device.availability`, `gateway.status`, `hardware.discovered`, `hardware.updated`, `command.result`, `notification.created`.
+- Event-Typen: `device.state`, `device.availability`, `gateway.status`, `hardware.discovered`, `hardware.updated`, `command.result`, `notification.created`, `attention.changed` (vollständiger Stand der Hinweise des Haushalts aus `core/attention`, ab Etappe 6c; Designkonzept-Spec Abschnitt 4.4).
 - Heartbeat alle 25 s; Header `X-Accel-Buffering: no` (wirkt für NPM und `web`-nginx).
 - Nach jedem (Neu-)Verbinden lädt der Client den Snapshot per REST und wendet danach nur noch Deltas an.
 
