@@ -98,10 +98,27 @@ describe('evaluate', () => {
       expect(kinds(run({ devices: [withState({ soil_moisture: 41 }, { own })] }))).toEqual([]);
     });
 
-    it('fires on the dry flag whatever the moisture', () => {
-      const [item] = run({ devices: [withState({ soil_moisture: 60, dry: true })] });
-      expect(item).toMatchObject({ kind: 'soil_dry', severity: 'warning', value: 60, unit: '%' });
-      expect(item?.params).toMatchObject({ dryFlag: true });
+    it('lets the moisture decide over the dry flag when the device reports one', () => {
+      expect(run({ devices: [withState({ soil_moisture: 60, dry: true })] })).toEqual([]);
+      const [item] = run({ devices: [withState({ soil_moisture: 20, dry: true })] });
+      expect(item).toMatchObject({ kind: 'soil_dry', severity: 'warning', value: 20, unit: '%' });
+      expect(item?.params).toMatchObject({ dryFlag: true, threshold: 25 });
+    });
+
+    it('does not flip when moisture flutters around the flag level with the flag on', () => {
+      const at = (moisture: number, previous: Previous = NOTHING_BEFORE) =>
+        run({ devices: [withState({ soil_moisture: moisture, dry: true })] }, previous);
+      const low = at(29);
+      expect(low).toEqual([]);
+      const high = at(31, { items: low });
+      expect(high).toEqual([]);
+      expect(at(29, { items: high })).toEqual([]);
+    });
+
+    it('follows a lowered threshold even with the flag on', () => {
+      const own = { soilMoistureMin: 15 };
+      const lowered = withState({ soil_moisture: 28, dry: true }, { own });
+      expect(run({ devices: [lowered] })).toEqual([]);
     });
 
     it('fires on the dry flag without a moisture value', () => {

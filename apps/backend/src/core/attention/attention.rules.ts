@@ -229,11 +229,12 @@ function evaluateDevice(
   const { soilMoistureMin: min, soilMoistureMax: max } = thresholds;
   const dryFlag = isTrue(state['dry']);
   const wasDry = before.has(`soil_dry:${device.id}`);
+  // The sensor's own "dry" flag fires at its level, not the user's: it only counts while the
+  // device reports no moisture number. Otherwise the thresholds and the hysteresis decide.
   const isDry =
-    dryFlag ||
-    (moisture !== undefined &&
-      min !== null &&
-      (moisture < min || (wasDry && moisture < min + SOIL_HYSTERESIS)));
+    moisture === undefined
+      ? dryFlag
+      : min !== null && (moisture < min || (wasDry && moisture < min + SOIL_HYSTERESIS));
   if (isDry) {
     add('soil_dry', device.id, reported, {
       ...base,
