@@ -31,7 +31,7 @@
     "@commitlint/config-conventional": "21.2.3",
     "@smart/lint-config": "workspace:*",
     "eslint": "10.12.0",
-    "lefthook": "2.2.1",
+    "lefthook": "2.2.2",
     "prettier": "3.9.10",
     "stylelint": "17.16.0",
     "typescript": "6.0.3"
