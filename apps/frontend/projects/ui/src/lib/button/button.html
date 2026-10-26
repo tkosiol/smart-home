@@ -1,16 +1,18 @@
 @if (route(); as route) {
-  <a [matButton]="variant()" [routerLink]="route">
+  <a class="ui-button" [routerLink]="route">
     <ng-container [ngTemplateOutlet]="content" />
   </a>
 } @else {
-  <button [matButton]="variant()" [type]="type()" [disabled]="disabled()" (click)="pressed.emit()">
+  <button class="ui-button" [type]="type()" [disabled]="disabled()" (click)="pressed.emit()">
     <ng-container [ngTemplateOutlet]="content" />
   </button>
 }
 
 <ng-template #content>
-  @if (icon(); as icon) {
-    <ui-icon matButtonIcon [name]="icon" size="sm" />
-  }
-  <ng-content />
+  <span class="content">
+    @if (icon(); as icon) {
+      <ui-icon [name]="icon" size="sm" />
+    }
+    <ng-content />
+  </span>
 </ng-template>

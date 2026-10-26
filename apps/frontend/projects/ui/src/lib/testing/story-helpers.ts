@@ -34,3 +34,12 @@ export async function expectNoBrokenWords(root: Element): Promise<void> {
   }
   await expect(broken, 'words broken across lines').toEqual([]);
 }
+
+/**
+ * Size of the touch target of a ui-button or ui-icon-button: the invisible `::after` box of the
+ * native control, which may be larger than the visible button.
+ */
+export function touchTargetSize(control: Element): { width: number; height: number } {
+  const box = getComputedStyle(control, '::after');
+  return { width: parseFloat(box.width), height: parseFloat(box.height) };
+}

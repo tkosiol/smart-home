@@ -1,6 +1,7 @@
 import { provideRouter, withDisabledInitialNavigation } from '@angular/router';
 import { applicationConfig, type Meta, type StoryObj } from '@storybook/angular';
 import { expect, fn, userEvent } from 'storybook/test';
+import { touchTargetSize } from '../testing/story-helpers';
 import { UiButton } from './button';
 
 const meta: Meta<UiButton> = {
@@ -39,11 +40,13 @@ export const Varianten: Story = {
     const filled = canvas.getByRole('button', { name: 'Gefüllt' });
     await userEvent.tab();
     await expect(filled).toHaveFocus();
-    // Keyboard focus must show Material's strong focus ring, not only the faint state layer.
-    const ring = getComputedStyle(filled.querySelector('.mat-focus-indicator')!, '::before');
-    await expect(ring.display).not.toBe('none');
-    await expect(ring.borderTopStyle).not.toBe('none');
-    await expect(parseFloat(ring.borderTopWidth)).toBeGreaterThan(0);
+    // Keyboard focus shows a solid ring, not only the faint state layer.
+    const focused = getComputedStyle(filled);
+    await expect(focused.outlineStyle).toBe('solid');
+    await expect(parseFloat(focused.outlineWidth)).toBeGreaterThan(0);
+    // The touch target reaches 48 px although the button is 40 px high.
+    await expect(touchTargetSize(filled).height).toBeGreaterThanOrEqual(48);
+    await expect(filled.getBoundingClientRect().height).toBe(40);
     await userEvent.keyboard('{Enter}');
     await userEvent.keyboard(' ');
     await expect(args.pressed).toHaveBeenCalledTimes(2);

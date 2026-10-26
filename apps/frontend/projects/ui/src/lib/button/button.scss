@@ -1,11 +1,85 @@
+@use './control';
+
+// M3 common button (spec 3) on the shared control base in _control.scss; the variant sets
+// container, label, border and elevation.
 :host {
   display: inline-flex;
   max-width: 100%;
 }
 
-button,
-a {
+.ui-button {
+  @include control.base;
+
   max-width: 100%;
+  min-height: var(--smart-size-button);
+  padding-block: 0;
+  padding-inline: var(--smart-space-xl);
+  background: transparent;
+  color: var(--mat-sys-primary);
+  font: var(--mat-sys-label-large);
+  letter-spacing: var(--mat-sys-label-large-tracking);
+}
+
+.content {
+  gap: var(--smart-space-sm);
+}
+
+:host([data-icon]) .ui-button {
+  padding-inline-start: var(--smart-space-lg);
+}
+
+:host([data-variant='filled']) .ui-button {
+  background: var(--mat-sys-primary);
+  color: var(--mat-sys-on-primary);
+}
+
+:host([data-variant='tonal']) .ui-button {
+  background: var(--mat-sys-secondary-container);
+  color: var(--mat-sys-on-secondary-container);
+}
+
+:host([data-variant='filled']) .ui-button:hover:not(:disabled),
+:host([data-variant='tonal']) .ui-button:hover:not(:disabled) {
+  box-shadow: var(--mat-sys-level1);
+}
+
+:host([data-variant='outlined']) .ui-button {
+  border: var(--smart-border-width) solid var(--mat-sys-outline);
+}
+
+// Surrounding components (banner, snackbar) recolour text buttons through --ui-button-text-color.
+:host([data-variant='text']) .ui-button {
+  padding-inline: var(--smart-space-md);
+  color: var(--ui-button-text-color, var(--mat-sys-primary));
+}
+
+:host([data-variant='text'][data-icon]) .ui-button {
+  padding-inline-end: var(--smart-space-lg);
+}
+
+:host([data-variant='elevated']) .ui-button {
+  background: var(--mat-sys-surface-container-low);
+  box-shadow: var(--mat-sys-level1);
+}
+
+:host([data-variant='elevated']) .ui-button:hover:not(:disabled) {
+  box-shadow: var(--mat-sys-level2);
+}
+
+// Disabled (M3): content on-surface 38 % (control base), containers and outlines on-surface 12 %.
+:host .ui-button:disabled {
+  box-shadow: none;
+  color: color-mix(in srgb, var(--mat-sys-on-surface) 38%, transparent);
+}
+
+:host([data-variant='outlined']) .ui-button:disabled {
+  border-color: color-mix(in srgb, var(--mat-sys-on-surface) 12%, transparent);
+}
+
+:host([data-variant='filled']) .ui-button:disabled,
+:host([data-variant='tonal']) .ui-button:disabled,
+:host([data-variant='elevated']) .ui-button:disabled {
+  background: color-mix(in srgb, var(--mat-sys-on-surface) 12%, transparent);
 }
 
 // Full width: the host fills its container and the button fills the host.
@@ -14,12 +88,6 @@ a {
   width: 100%;
 }
 
-:host([data-full-width]) button,
-:host([data-full-width]) a {
+:host([data-full-width]) .ui-button {
   flex: 1;
-}
-
-/* Material spaces icons only for .mat-icon / mat-icon, which ui-icon is not; keep the M3 8px gap. */
-ui-icon[matButtonIcon] {
-  margin-inline-end: var(--smart-space-sm);
 }
