@@ -1,14 +1,14 @@
 import { Component, inject, signal } from '@angular/core';
 import { MATERIAL_ANIMATIONS } from '@angular/material/core';
-import { BreakpointObserver } from '@angular/cdk/layout';
 import { provideLocationMocks } from '@angular/common/testing';
 import { provideRouter, withDisabledInitialNavigation } from '@angular/router';
-import { of } from 'rxjs';
 import { applicationConfig, moduleMetadata, type Meta, type StoryObj } from '@storybook/angular';
 import { expect, screen, userEvent, waitFor } from 'storybook/test';
-import { UiAdaptiveShell } from '../adaptive-shell/adaptive-shell';
+import { EXPANDED, MEDIUM, UiAdaptiveShell } from '../adaptive-shell/adaptive-shell';
 import { UiButton } from '../button/button';
 import { waitForTranslations } from '../testing/storybook-environment';
+import { MEDIA_QUERIES } from '../theme/media-queries';
+import { forcedMediaQueries } from '../theme/testing/fake-media-queries';
 import { UiSnackbar } from './snackbar';
 
 @Component({
@@ -86,8 +86,8 @@ export const UeberDerLeiste: StoryObj<SnackbarShellDemo> = {
         provideLocationMocks(),
         provideRouter([], withDisabledInitialNavigation()),
         {
-          provide: BreakpointObserver,
-          useValue: { observe: () => of({ matches: false, breakpoints: {} }) },
+          provide: MEDIA_QUERIES,
+          useValue: forcedMediaQueries({ [MEDIUM]: false, [EXPANDED]: false }),
         },
       ],
     }),

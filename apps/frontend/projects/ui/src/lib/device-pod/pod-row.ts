@@ -1,4 +1,3 @@
-import { BreakpointObserver } from '@angular/cdk/layout';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -12,12 +11,10 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
-import { toSignal } from '@angular/core/rxjs-interop';
 import { TRANSLOCO_SCOPE, TranslocoPipe } from '@jsverse/transloco';
-import { map } from 'rxjs';
 import { MEDIUM } from '../adaptive-shell/adaptive-shell';
 import { UiIconButton } from '../button/icon-button';
-import { MEDIA_QUERIES } from '../theme/media-queries';
+import { MEDIA_QUERIES, mediaQuerySignal } from '../theme/media-queries';
 
 const REDUCED_MOTION = '(prefers-reduced-motion: reduce)';
 
@@ -42,12 +39,7 @@ export class UiPodRow {
 
   private readonly scroller = viewChild.required<ElementRef<HTMLElement>>('scroller');
   private readonly media = inject(MEDIA_QUERIES);
-  private readonly medium = toSignal(
-    inject(BreakpointObserver)
-      .observe(MEDIUM)
-      .pipe(map((state) => state.matches)),
-    { initialValue: false },
-  );
+  private readonly medium = mediaQuerySignal(MEDIUM);
 
   private readonly overflowing = signal(false);
   protected readonly atStart = signal(true);

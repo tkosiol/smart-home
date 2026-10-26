@@ -1,10 +1,10 @@
-import { BreakpointObserver, type BreakpointState } from '@angular/cdk/layout';
 import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
-import { of } from 'rxjs';
 import { MEDIUM } from '../adaptive-shell/adaptive-shell';
 import { provideUiTranslocoTesting } from '../testing/i18n-testing';
+import { MEDIA_QUERIES } from '../theme/media-queries';
+import { FakeMediaQueries } from '../theme/testing/fake-media-queries';
 import { UiDevicePod } from './device-pod';
 import { UiPodRow } from './pod-row';
 
@@ -21,12 +21,11 @@ class Host {
 }
 
 async function render(medium: boolean, setup: (host: Host) => void = () => undefined) {
-  const state: BreakpointState = { matches: medium, breakpoints: { [MEDIUM]: medium } };
   TestBed.configureTestingModule({
     providers: [
       provideRouter([]),
       provideUiTranslocoTesting(),
-      { provide: BreakpointObserver, useValue: { observe: () => of(state) } },
+      { provide: MEDIA_QUERIES, useValue: new FakeMediaQueries({ [MEDIUM]: medium }) },
     ],
   });
   const fixture = TestBed.createComponent(Host);
