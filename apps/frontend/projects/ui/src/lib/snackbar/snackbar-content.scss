@@ -1,0 +1,6 @@
+// The snack bar sits on inverse-surface: its buttons take the matching inverse colours (M3).
+:host {
+  --ui-button-text-color: var(--mat-sys-inverse-primary);
+  --ui-icon-button-color: var(--mat-sys-inverse-on-surface);
+  --ui-focus-color: var(--mat-sys-inverse-primary);
+}

@@ -5,6 +5,7 @@ import { UiBadge } from '../badge/badge';
 import { UiIcon } from '../icon/icon';
 import { expectThemeMatrix, rgb } from '../testing/theme-matrix';
 import { ThemeMatrixStoryComponent, UiMatrixCell } from '../testing/theme-matrix.story-component';
+import { touchTargetSize } from '../testing/story-helpers';
 import { UiIconButton } from './icon-button';
 
 const meta: Meta<UiIconButton> = {
@@ -53,8 +54,9 @@ export const Link: StoryObj<UiIconButton> = {
     await userEvent.tab();
     await expect(link).toHaveFocus();
     await expect(args.pressed).not.toHaveBeenCalled();
-    const target = link.querySelector('.mat-mdc-button-touch-target')!.getBoundingClientRect();
+    const target = touchTargetSize(link);
     await expect(target.width).toBeGreaterThanOrEqual(48);
+    await expect(target.height).toBeGreaterThanOrEqual(48);
     await expect(canvas.getByRole('link', { name: '3 neue Benachrichtigungen' })).toBeVisible();
   },
 };

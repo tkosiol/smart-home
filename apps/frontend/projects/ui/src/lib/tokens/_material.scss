@@ -11,16 +11,6 @@
     )
   );
 
-  // The snack bar surface is inverse-surface; its close button needs the matching content color.
-  .mat-mdc-snack-bar-container {
-    @include mat.icon-button-overrides(
-      (
-        icon-color: var(--mat-sys-inverse-on-surface),
-        state-layer-color: var(--mat-sys-inverse-on-surface),
-      )
-    );
-  }
-
   html {
     @include mat.theme(
       (

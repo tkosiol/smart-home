@@ -18,6 +18,23 @@ class Host {
 }
 
 describe('UiIconButton', () => {
+  it('is a native button without Material parts', () => {
+    const fixture = TestBed.createComponent(Host);
+    fixture.detectChanges();
+    const element = fixture.nativeElement as HTMLElement;
+    expect(element.querySelector('button')!.classList).toContain('ui-icon-button');
+    expect(element.querySelector('[class*="mat-"], [class*="mdc-"]')).toBeNull();
+  });
+
+  it('keeps a disabled button out of the tab order', () => {
+    const fixture = TestBed.createComponent(Host);
+    fixture.componentInstance.disabled.set(true);
+    fixture.detectChanges();
+    const button = fixture.nativeElement.querySelector('button') as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    button.focus();
+    expect(document.activeElement).not.toBe(button);
+  });
   it('names the button with its label and emits pressed', () => {
     const fixture = TestBed.createComponent(Host);
     fixture.detectChanges();

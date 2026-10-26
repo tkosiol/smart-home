@@ -8,15 +8,11 @@
   padding: var(--smart-space-md) var(--smart-space-lg);
   border-radius: var(--mat-sys-corner-medium);
 
-  // Text buttons take the banner's text color, including their state layers and ripples: Material's
-  // primary tints are not designed for the status containers (1.6:1 in the high-contrast dark theme).
-  @include mat.button-overrides(
-    (
-      text-label-text-color: currentColor,
-      text-state-layer-color: currentColor,
-      text-ripple-color: color-mix(in srgb, currentColor 12%, transparent),
-    )
-  );
+  // Text buttons take the banner's text color, including their state layers: the primary tints are
+  // not designed for the status containers (1.6:1 in the high-contrast dark theme). The focus ring
+  // follows for the same reason.
+  --ui-button-text-color: currentcolor;
+  --ui-focus-color: currentcolor;
 
   // The global primary focus ring would be too faint on the status containers.
   @include mat.strong-focus-indicators(
