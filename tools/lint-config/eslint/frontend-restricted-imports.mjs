@@ -1,3 +1,6 @@
+import { existsSync, readFileSync } from 'node:fs';
+import path from 'node:path';
+
 // @smart/ui has three entries: `@smart/ui/shell` (eager part, for startup code), `@smart/ui` (the
 // barrel: shell plus everything else, for lazy pages) and `@smart/ui/forms` (form controls, theme
 // editor). They are kept apart so that code only lazy pages use is bundled with those pages.
@@ -38,7 +41,28 @@ const NO_FORMS_IN_THE_SHELL = {
     'its Material code into the initial bundle. Use it only in lazy feature pages.',
 };
 
-export function frontendRestrictedImports() {
+const MATERIAL = {
+  group: ['@angular/material', '@angular/material/*', '@angular/cdk', '@angular/cdk/*'],
+  message:
+    'This file is part of "@smart/ui/shell" and loads at startup: build it without Angular ' +
+    'Material/CDK, or load them on demand with import() (ADR-0011, addendum 2026-10-27).',
+};
+
+const SHELL_ENTRY = 'apps/frontend/projects/ui/src/shell.ts';
+
+/** The files `@smart/ui/shell` re-exports, relative to the repository root. */
+function shellEntryFiles(rootDir) {
+  const entry = path.join(rootDir, SHELL_ENTRY);
+  if (!existsSync(entry)) return [];
+  const source = readFileSync(entry, 'utf8');
+  return [...source.matchAll(/from '\.\/(lib\/[^']+)'/g)].map(
+    ([, file]) => `${path.posix.dirname(SHELL_ENTRY)}/${file}.ts`,
+  );
+}
+
+/** @param {{ rootDir: string }} options */
+export function frontendRestrictedImports({ rootDir }) {
+  const shellFiles = shellEntryFiles(rootDir);
   return [
     {
       files: ['apps/frontend/src/**/*.ts'],
@@ -63,5 +87,14 @@ export function frontendRestrictedImports() {
         ],
       },
     },
+    ...(shellFiles.length === 0
+      ? []
+      : [
+          {
+            // import() is no import declaration: loading Material on demand stays allowed.
+            files: shellFiles,
+            rules: { 'no-restricted-imports': ['error', { patterns: [MATERIAL] }] },
+          },
+        ]),
   ];
 }

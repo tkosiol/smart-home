@@ -207,6 +207,36 @@ describe('frontend boundaries and UI rules', () => {
       ['no-restricted-imports'],
     ],
     [
+      'UI file of the eager entry → Angular Material (would load at startup)',
+      'apps/frontend/projects/ui/src/lib/button/button.ts',
+      "import { MatButton } from '@angular/material/button';\nexport const b = MatButton;",
+      ['no-restricted-imports'],
+    ],
+    [
+      'UI file of the eager entry → CDK',
+      'apps/frontend/projects/ui/src/lib/button/button.ts',
+      "import { Platform } from '@angular/cdk/platform';\nexport const p = Platform;",
+      ['no-restricted-imports'],
+    ],
+    [
+      'UI file of the eager entry → Material loaded on demand',
+      'apps/frontend/projects/ui/src/lib/snackbar/snackbar.ts',
+      "export const load = () => import('@angular/material/snack-bar');",
+      [],
+    ],
+    [
+      'UI file outside the eager entry → Angular Material',
+      'apps/frontend/projects/ui/src/lib/snackbar/snackbar-content.ts',
+      "import { MatSnackBarLabel } from '@angular/material/snack-bar';\nexport const l = MatSnackBarLabel;",
+      [],
+    ],
+    [
+      'spec of a UI file of the eager entry → CDK',
+      'apps/frontend/projects/ui/src/lib/button/button.spec.ts',
+      "import { Platform } from '@angular/cdk/platform';\nexport const p = Platform;",
+      [],
+    ],
+    [
       'feature → other @smart/ui entry',
       'apps/frontend/src/app/features/devices/devices.page.ts',
       page("import { x } from '@smart/ui/other';\nexport const u = x;"),

@@ -120,4 +120,22 @@
 
 ## Ergebnis und Übertrag
 
-(wird nach der Umsetzung ergänzt)
+Umgesetzt nativ durch Claude (Opus) in einer Sitzung, Gesamt-Review durch einen frischen Reviewer.
+
+- **Bundle:** 482,5 → 411,7 kB initial (128,4 → 113,5 kB komprimiert). Material/CDK sind aus dem Startcode verschwunden; die Buttons kosten als eigenes CSS rund 11 kB vor der Minifizierung.
+- **Ziel verfehlt:** unter 400 kB nur mit dem zod-Hebel → #120. Fehlergrenze 425 kB, Warnung 400 kB.
+
+### Entscheidungen während der Umsetzung
+
+- **Stylelint öffnet `--ui-*`:** Komponenten-Styles durften keine Custom Properties setzen. Die Spec braucht sie als Schnittstelle zwischen Bausteinen (Banner, Snackbar, Reorder-Griff). Erlaubt sind nur `--ui-*`, mit Test; Rohwerte und Hex-Farben bleiben auch darin verboten.
+- **Keine lokalen `--_*`-Variablen:** Die Varianten stehen als eigene Selektoren in `button.scss`.
+- **Inhalt in `.content`:** `z-index: -1` für den State Layer ist ohne Token nicht erlaubt; der Inhalt liegt stattdessen in einem positionierten `<span class="content">` über dem State Layer.
+- **Forced Colors:** kein eigener Block mit Systemfarben, sondern ein transparenter Rand, den der Browser in Forced-Colors-Modi zeichnet.
+- **Mixin in `button/_control.scss`, nicht in `tokens/`:** `tokens/` ist von Stylelint ausgenommen.
+- **`settings` mit #101:** Die Einstellungen hatten dieselben statischen Routen im Index; ein Test an der App-Wurzel (`src/app/feature-routes.spec.ts`) hält alle Index-Routen als lazy Schritt.
+- **Snackbar bleibt Material:** Nur ihr Aktions-Button ist jetzt `ui-button`; die Story prüft weiter Materials Fläche.
+
+### Übertrag
+
+- #120 Startcode ohne zod.
+- Der Dashboard-Test „opens the sheet …“ war einmal unter dem parallelen Gate zu langsam (`vi.waitFor` 1 s auf einen lazy Import); allein dreimal grün.

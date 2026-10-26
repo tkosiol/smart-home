@@ -64,3 +64,8 @@ Geplant war, die Schemas des Startcodes auf `zod/mini` umzustellen. Der Spike ze
 - Neu: Varianten hell und dunkel mit axe; Touch-Ziel ≥ 48 px; deaktiviert nicht fokussierbar und ohne `pressed`; Link-Modus ohne `pressed`; Tastatur (Enter/Leertaste) über das native Element.
 - `mediaQuerySignal`: Startwert und Wechsel.
 - Bundle-Messung nach jedem Schritt.
+
+## 9. Ergebnis (2026-10-27)
+
+- Initial **411,7 kB** (vorher 482,5 kB, −70,8 kB); komprimiert 113,5 kB (vorher 128,4 kB). Material und CDK sind vollständig aus dem Startcode verschwunden.
+- Das Ziel „unter 400 kB“ ist ohne den zod-Hebel (Abschnitt 5) nicht erreicht. Fehlergrenze daher **425 kB**, Warnung bleibt bei 400 kB als Zielmarke; Folge-Issue #120.
