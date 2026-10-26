@@ -2,8 +2,8 @@ import type { Provider } from '@angular/core';
 import type { Routes } from '@angular/router';
 import { provideTranslocoScope } from '@jsverse/transloco';
 
-// Pages load lazily (loadComponent): the app config imports this folder's index at startup for
-// provideHouseholdsFeature(), and must not pull the pages into the initial bundle with it.
+// Reached through the lazy hop in this folder's index, so neither these routes nor their texts
+// belong to the initial bundle (#101).
 
 function households(): Provider {
   return provideTranslocoScope({
