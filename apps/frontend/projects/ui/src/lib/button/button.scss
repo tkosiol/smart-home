@@ -11,6 +11,9 @@
   @include control.base;
 
   max-width: 100%;
+
+  // A pill with a finite radius (not corner-full's 9999px), so the pressed shape morph animates.
+  border-radius: calc(var(--smart-size-button) / 2);
   min-height: var(--smart-size-button);
   padding-block: 0;
   padding-inline: var(--smart-space-xl);

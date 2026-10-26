@@ -50,14 +50,33 @@ const MATERIAL = {
 
 const SHELL_ENTRY = 'apps/frontend/projects/ui/src/shell.ts';
 
-/** The files `@smart/ui/shell` re-exports, relative to the repository root. */
+const STATIC_IMPORT =
+  /(?:^|\n)\s*(?:import|export)\s(?!type\s)[^;]*?from\s*['"](\.{1,2}\/[^'"]+)['"]/g;
+
+/**
+ * The files the eager entry `@smart/ui/shell` loads, relative to the repository root: everything
+ * shell.ts reaches through static relative imports and re-exports (type-only ones are skipped, they
+ * are not bundled). import() is not followed, so a
+ * file loaded on demand stays outside.
+ */
 function shellEntryFiles(rootDir) {
   const entry = path.join(rootDir, SHELL_ENTRY);
-  if (!existsSync(entry)) return [];
-  const source = readFileSync(entry, 'utf8');
-  return [...source.matchAll(/from '\.\/(lib\/[^']+)'/g)].map(
-    ([, file]) => `${path.posix.dirname(SHELL_ENTRY)}/${file}.ts`,
-  );
+  if (!existsSync(entry))
+    throw new Error(`lint config: the eager UI entry ${SHELL_ENTRY} is missing`);
+  const found = new Set();
+  const pending = [entry];
+  while (pending.length > 0) {
+    const file = pending.pop();
+    for (const [, specifier] of readFileSync(file, 'utf8').matchAll(STATIC_IMPORT)) {
+      const base = path.resolve(path.dirname(file), specifier);
+      const target = [`${base}.ts`, path.join(base, 'index.ts')].find((f) => existsSync(f));
+      if (!target || found.has(target)) continue;
+      found.add(target);
+      pending.push(target);
+    }
+  }
+  if (found.size === 0) throw new Error(`lint config: ${SHELL_ENTRY} re-exports no files`);
+  return [...found].map((file) => path.relative(rootDir, file).split(path.sep).join('/'));
 }
 
 /** @param {{ rootDir: string }} options */
@@ -87,14 +106,10 @@ export function frontendRestrictedImports({ rootDir }) {
         ],
       },
     },
-    ...(shellFiles.length === 0
-      ? []
-      : [
-          {
-            // import() is no import declaration: loading Material on demand stays allowed.
-            files: shellFiles,
-            rules: { 'no-restricted-imports': ['error', { patterns: [MATERIAL] }] },
-          },
-        ]),
+    {
+      // import() is no import declaration: loading Material on demand stays allowed.
+      files: shellFiles,
+      rules: { 'no-restricted-imports': ['error', { patterns: [MATERIAL] }] },
+    },
   ];
 }

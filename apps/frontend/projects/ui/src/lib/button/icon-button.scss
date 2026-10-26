@@ -13,6 +13,9 @@
   width: var(--ui-icon-button-size, var(--smart-size-icon-button));
   height: var(--ui-icon-button-size, var(--smart-size-icon-button));
   padding: 0;
+
+  // A circle with a finite radius (not corner-full's 9999px), so the pressed shape morph animates.
+  border-radius: calc(var(--ui-icon-button-size, var(--smart-size-icon-button)) / 2);
   background: transparent;
   color: var(--ui-icon-button-color, var(--mat-sys-on-surface-variant));
 }
@@ -20,6 +23,7 @@
 :host([data-variant='tonal']) .ui-icon-button {
   width: var(--ui-icon-button-size, var(--smart-size-touch));
   height: var(--ui-icon-button-size, var(--smart-size-touch));
+  border-radius: calc(var(--ui-icon-button-size, var(--smart-size-touch)) / 2);
   background: var(--mat-sys-surface-container-high);
 }
 

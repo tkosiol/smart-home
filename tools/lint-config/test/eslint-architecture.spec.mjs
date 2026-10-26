@@ -225,6 +225,12 @@ describe('frontend boundaries and UI rules', () => {
       [],
     ],
     [
+      'UI file the eager entry reaches through a static import → Angular Material',
+      'apps/frontend/projects/ui/src/lib/icon/icon.ts',
+      "import { MatButton } from '@angular/material/button';\nexport const b = MatButton;",
+      ['no-restricted-imports'],
+    ],
+    [
       'UI file outside the eager entry → Angular Material',
       'apps/frontend/projects/ui/src/lib/snackbar/snackbar-content.ts',
       "import { MatSnackBarLabel } from '@angular/material/snack-bar';\nexport const l = MatSnackBarLabel;",
@@ -381,5 +387,13 @@ describe('root eslint.config.mjs (canary against real repository paths)', () => 
       "import { Component } from '@angular/core';\n@Component({ selector: 'app-canary', template: '', styles: [':host{}'] })\nexport class Canary {}\n",
     );
     expect(result).toEqual(['smart/no-component-styles']);
+  });
+});
+
+describe('eager @smart/ui entry', () => {
+  it('fails loudly when the entry is missing or re-exports nothing', async () => {
+    const { frontendRestrictedImports } = await import('../eslint/frontend-restricted-imports.mjs');
+    const empty = fileURLToPath(new URL('./fixture-empty/', import.meta.url));
+    expect(() => frontendRestrictedImports({ rootDir: empty })).toThrow(/shell\.ts/);
   });
 });

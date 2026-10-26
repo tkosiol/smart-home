@@ -19,6 +19,9 @@
   cursor: pointer;
   user-select: none;
   appearance: none;
+
+  // The state layer is the touch feedback; no grey tap rectangle from mobile browsers on top.
+  -webkit-tap-highlight-color: transparent;
   transition:
     border-radius var(--smart-motion-duration-short) var(--smart-motion-easing-standard),
     box-shadow var(--smart-motion-duration-short) var(--smart-motion-easing-standard);

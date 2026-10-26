@@ -47,6 +47,10 @@ export const Varianten: Story = {
     // The touch target reaches 48 px although the button is 40 px high.
     await expect(touchTargetSize(filled).height).toBeGreaterThanOrEqual(48);
     await expect(filled.getBoundingClientRect().height).toBe(40);
+    // No grey tap rectangle on phones over the state layer.
+    await expect(focused.getPropertyValue('-webkit-tap-highlight-color')).toBe('rgba(0, 0, 0, 0)');
+    // A finite resting radius, so the corners visibly pull in while pressed (shape morph).
+    await expect(parseFloat(focused.borderTopLeftRadius)).toBeLessThanOrEqual(20);
     await userEvent.keyboard('{Enter}');
     await userEvent.keyboard(' ');
     await expect(args.pressed).toHaveBeenCalledTimes(2);

@@ -77,11 +77,16 @@ export const Tonal: StoryObj<UiIconButton> = {
   render: () => ({ template: tonalRow }),
   play: async ({ canvas }) => {
     const button = canvas.getByRole('button', { name: 'Übersicht anpassen' });
+    const style = getComputedStyle(button);
+    await expect(style.getPropertyValue('-webkit-tap-highlight-color')).toBe('rgba(0, 0, 0, 0)');
     const root = getComputedStyle(document.documentElement);
     await expect(getComputedStyle(button).backgroundColor).toBe(
       rgb(root.getPropertyValue('--mat-sys-surface-container-high').trim()),
     );
-    await expect(getComputedStyle(button).borderRadius).toBe('9999px');
+    // A full circle: the radius is half the width.
+    await expect(parseFloat(getComputedStyle(button).borderTopLeftRadius)).toBe(
+      button.getBoundingClientRect().width / 2,
+    );
     await expect(getComputedStyle(button.querySelector('ui-icon')!).color).toBe(
       rgb(root.getPropertyValue('--mat-sys-on-surface-variant').trim()),
     );

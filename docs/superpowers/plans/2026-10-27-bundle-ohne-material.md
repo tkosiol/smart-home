@@ -122,7 +122,7 @@
 
 Umgesetzt nativ durch Claude (Opus) in einer Sitzung, Gesamt-Review durch einen frischen Reviewer.
 
-- **Bundle:** 482,5 → 411,7 kB initial (128,4 → 113,5 kB komprimiert). Material/CDK sind aus dem Startcode verschwunden; die Buttons kosten als eigenes CSS rund 11 kB vor der Minifizierung.
+- **Bundle:** 482,5 → 412,0 kB initial (128,4 → 113,6 kB komprimiert). Material/CDK sind aus dem Startcode verschwunden; die Buttons kosten als eigenes CSS rund 11 kB vor der Minifizierung.
 - **Ziel verfehlt:** unter 400 kB nur mit dem zod-Hebel → #120. Fehlergrenze 425 kB, Warnung 400 kB.
 
 ### Entscheidungen während der Umsetzung
@@ -134,6 +134,17 @@ Umgesetzt nativ durch Claude (Opus) in einer Sitzung, Gesamt-Review durch einen 
 - **Mixin in `button/_control.scss`, nicht in `tokens/`:** `tokens/` ist von Stylelint ausgenommen.
 - **`settings` mit #101:** Die Einstellungen hatten dieselben statischen Routen im Index; ein Test an der App-Wurzel (`src/app/feature-routes.spec.ts`) hält alle Index-Routen als lazy Schritt.
 - **Snackbar bleibt Material:** Nur ihr Aktions-Button ist jetzt `ui-button`; die Story prüft weiter Materials Fläche.
+
+### Gesamt-Review (frischer Reviewer, Opus)
+
+Keine kritischen Funde. Behoben, jeweils mit Test, der vorher scheiterte:
+
+- **Tap-Highlight auf Telefonen:** Die Buttons setzen `-webkit-tap-highlight-color: transparent` wie früher Material (Story-Prüfung in „Varianten“ und „Tonal“).
+- **Fokusring auf farbigen Flächen:** Banner- und Snackbar-Story prüfen die Ringfarbe und die Farbe der Snackbar-Aktion (per Mutation geprüft: ohne `--ui-focus-color` scheitern beide).
+- **Form-Animation beim Drücken:** Der Ruheradius ist endlich (halbe Höhe) statt `corner-full` (9999 px), sonst springt die Ecke erst am Ende der Animation.
+- **ESLint-Regel transitiv:** Sie folgt allen statischen, relativen Importen ab `shell.ts` (ohne `import type`), wirft einen Fehler, wenn `shell.ts` fehlt oder nichts exportiert; Tests mit Fixture.
+
+Zurückgestellt (klein): keine Mindestbreite von 64 px mehr für kurze Text-Buttons; Hover überdeckt Fokus im State Layer (8 % statt 12 %, der Ring bleibt); der Spec-Test „fires pressed once …“ beweist für Enter/Leertaste wenig (das deckt die Story ab); Hover-State-Layer bleiben auf Touch-Geräten nach dem Tippen stehen (wie bei Material).
 
 ### Übertrag
 
