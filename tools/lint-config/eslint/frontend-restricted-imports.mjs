@@ -20,9 +20,21 @@ const PATTERNS = [
     group: ['@angular/material', '@angular/material/*', '@angular/cdk', '@angular/cdk/*'],
     message: 'Angular Material/CDK are internal to @smart/ui. Use or add a ui-* component.',
   },
-  { group: ['@smart/ui/*', '!@smart/ui/forms', '!@smart/ui/shell'], message: PUBLIC_UI_ONLY },
+  {
+    group: ['@smart/ui/*', '!@smart/ui/forms', '!@smart/ui/shell', '!@smart/ui/testing'],
+    message: PUBLIC_UI_ONLY,
+  },
   { group: ['**/projects/ui/**'], message: PUBLIC_UI_ONLY },
 ];
+
+// `@smart/ui/testing` holds stand-ins for specs (a chart engine that draws nothing, say). Only
+// specs and the app's test helpers may import it, so none of it can end up in a bundle.
+const TESTING_IN_SPECS_ONLY = {
+  group: ['@smart/ui/testing'],
+  message:
+    '"@smart/ui/testing" holds stand-ins for specs: import it in *.spec.ts files and in ' +
+    'src/app/testing/ only.',
+};
 
 // A barrel that startup code imports pulls in every file it re-exports that is used anywhere,
 // lazy pages' components included (esbuild assigns whole files to the chunk main reaches).
@@ -85,7 +97,12 @@ export function frontendRestrictedImports({ rootDir }) {
   return [
     {
       files: ['apps/frontend/src/**/*.ts'],
-      rules: { 'no-restricted-imports': ['error', { paths: PATHS, patterns: PATTERNS }] },
+      rules: {
+        'no-restricted-imports': [
+          'error',
+          { paths: PATHS, patterns: [...PATTERNS, TESTING_IN_SPECS_ONLY] },
+        ],
+      },
     },
     {
       // A later config replaces the rule's options, so the general ones are repeated.
@@ -101,10 +118,15 @@ export function frontendRestrictedImports({ rootDir }) {
           'error',
           {
             paths: [...PATHS, ONLY_THE_SHELL_ENTRY],
-            patterns: [...PATTERNS, NO_FORMS_IN_THE_SHELL],
+            patterns: [...PATTERNS, TESTING_IN_SPECS_ONLY, NO_FORMS_IN_THE_SHELL],
           },
         ],
       },
+    },
+    {
+      // Specs and the test helpers are never bundled: they may use the stand-ins.
+      files: ['apps/frontend/src/**/*.spec.ts', 'apps/frontend/src/app/testing/**/*.ts'],
+      rules: { 'no-restricted-imports': ['error', { paths: PATHS, patterns: PATTERNS }] },
     },
     {
       // import() is no import declaration: loading Material on demand stays allowed.
