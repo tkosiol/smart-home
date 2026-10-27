@@ -20,6 +20,7 @@ import {
   capabilities,
   deviceBindings,
   deviceState,
+  devices,
   hardware,
   type CapabilityRow,
   type HardwareRow,
@@ -67,16 +68,17 @@ export class HardwareRepository {
    * Makes the gateway's hardware match what the bridge lists: new hardware is added, known
    * hardware (by IEEE address) gets its name, model and capabilities updated and is revived if it
    * was removed, hardware that is no longer listed is marked removed. Hardware stays stored so
-   * that devices keep their history.
+   * that devices keep their history. `ids` are the hardware that was added, updated or removed.
    */
   async upsertFromBridge(
     gatewayId: string,
     devices: readonly Z2mDevice[],
     now: Date,
-  ): Promise<{ upserted: number; removed: number }> {
+  ): Promise<{ upserted: number; removed: number; ids: string[] }> {
     // One row per IEEE address (the last entry wins): an upsert cannot touch a row twice.
     const listed = [...new Map(devices.map((device) => [device.ieeeAddress, device])).values()];
     return this.connection.db.transaction(async (tx) => {
+      const ids: string[] = [];
       if (listed.length > 0) {
         const rows = await tx
           .insert(hardware)
@@ -106,6 +108,7 @@ export class HardwareRepository {
             },
           })
           .returning({ id: hardware.id, ieeeAddress: hardware.ieeeAddress });
+        ids.push(...rows.map((row) => row.id));
         const idOf = new Map(rows.map((row) => [row.ieeeAddress, row.id]));
         await tx.delete(capabilities).where(
           inArray(
@@ -150,7 +153,8 @@ export class HardwareRepository {
           ),
         )
         .returning({ id: hardware.id });
-      return { upserted: listed.length, removed: gone.length };
+      ids.push(...gone.map((row) => row.id));
+      return { upserted: listed.length, removed: gone.length, ids };
     });
   }
 
@@ -184,16 +188,21 @@ export class HardwareRepository {
     return row.id;
   }
 
-  /** Stores how far the interview of known hardware is (`device_interview`). */
+  /**
+   * Stores how far the interview of known hardware is (`device_interview`); its ID, `undefined`
+   * if the gateway does not have it.
+   */
   async setInterviewState(
     gatewayId: string,
     ieeeAddress: string,
     interviewState: string,
-  ): Promise<void> {
-    await this.connection.db
+  ): Promise<string | undefined> {
+    const [row] = await this.connection.db
       .update(hardware)
       .set({ interviewState })
-      .where(and(eq(hardware.gatewayId, gatewayId), eq(hardware.ieeeAddress, ieeeAddress)));
+      .where(and(eq(hardware.gatewayId, gatewayId), eq(hardware.ieeeAddress, ieeeAddress)))
+      .returning({ id: hardware.id });
+    return row?.id;
   }
 
   /** Marks hardware as removed (`device_leave`); returns its name, `undefined` if it is unknown. */
@@ -232,11 +241,17 @@ export class HardwareRepository {
     return row?.id;
   }
 
-  /** Stores the availability of the hardware and of the device that sits on it. */
-  async setAvailability(hardwareId: string, availability: Availability): Promise<void> {
-    await this.connection.db.transaction(async (tx) => {
+  /**
+   * Stores the availability of the hardware and of the device that sits on it; returns the device
+   * (none for free hardware) with its household.
+   */
+  async setAvailability(
+    hardwareId: string,
+    availability: Availability,
+  ): Promise<{ deviceId: string; householdId: string }[]> {
+    return this.connection.db.transaction(async (tx) => {
       await tx.update(hardware).set({ availability }).where(eq(hardware.id, hardwareId));
-      await tx
+      const touched = await tx
         .update(deviceState)
         .set({ availability })
         .where(
@@ -248,6 +263,17 @@ export class HardwareRepository {
               .where(
                 and(eq(deviceBindings.hardwareId, hardwareId), isNull(deviceBindings.unboundAt)),
               ),
+          ),
+        )
+        .returning({ deviceId: deviceState.deviceId });
+      if (touched.length === 0) return [];
+      return tx
+        .select({ deviceId: devices.id, householdId: devices.householdId })
+        .from(devices)
+        .where(
+          inArray(
+            devices.id,
+            touched.map((row) => row.deviceId),
           ),
         );
     });
@@ -333,6 +359,31 @@ export class HardwareRepository {
       )
       .orderBy(asc(hardware.friendlyName), asc(hardware.id));
     return this.withCapabilities(rows.map((row) => row.hardware));
+  }
+
+  /**
+   * The household the hardware belongs to (through its gateway) and the hardware as the household
+   * lists it as new: `listed` is `null` once it is removed, assigned to a device or its gateway is
+   * revoked. `undefined` if the hardware or its gateway is unknown.
+   */
+  async listingOf(
+    hardwareId: string,
+  ): Promise<{ householdId: string; listed: HardwareWithCapabilities | null } | undefined> {
+    const [row] = await this.connection.db
+      .select({ hardware, householdId: gateways.householdId, revokedAt: gateways.revokedAt })
+      .from(hardware)
+      .innerJoin(gateways, eq(gateways.id, hardware.gatewayId))
+      .where(eq(hardware.id, hardwareId));
+    if (!row) return undefined;
+    const [binding] = await this.connection.db
+      .select({ id: deviceBindings.id })
+      .from(deviceBindings)
+      .where(and(eq(deviceBindings.hardwareId, hardwareId), isNull(deviceBindings.unboundAt)));
+    if (row.revokedAt !== null || row.hardware.removedAt !== null || binding) {
+      return { householdId: row.householdId, listed: null };
+    }
+    const [listed] = await this.withCapabilities([row.hardware]);
+    return { householdId: row.householdId, listed: listed ?? null };
   }
 
   private async withCapabilities(rows: HardwareRow[]): Promise<HardwareWithCapabilities[]> {

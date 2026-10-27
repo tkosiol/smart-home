@@ -21,6 +21,13 @@ import {
   type GatewayRevoked,
 } from '../gateways/index.js';
 import { CLOCK, type Clock } from '../identity/index.js';
+import {
+  DEVICE_CHANGED,
+  DeviceEvents,
+  HARDWARE_CHANGED,
+  type DeviceChanged,
+  type HardwareChanged,
+} from './device-events.js';
 import { DEVICE_MESSAGE_HANDLER, type DeviceMessageHandler } from './device-message-handler.js';
 import { capabilitiesFromExposes, exposesSchema } from './exposes.js';
 import { HardwareRepository, type Z2mDevice } from './hardware.repository.js';
@@ -172,6 +179,7 @@ export class DeviceIngestConsumer implements OnModuleInit, OnModuleDestroy {
     @Inject(DEVICE_MESSAGE_HANDLER) private readonly handler: DeviceMessageHandler,
     @Inject(MQTT_CONNECTION) private readonly mqtt: MqttConnection,
     @Inject(CLOCK) private readonly clock: Clock,
+    private readonly deviceEvents: DeviceEvents,
   ) {}
 
   onModuleInit(): void {
@@ -378,7 +386,8 @@ export class DeviceIngestConsumer implements OnModuleInit, OnModuleDestroy {
     }
     // A list of nothing but garbage is no list: it must not mark all hardware as removed.
     if (valid === 0 && parsed.data.length > 0) return;
-    await this.hardware.upsertFromBridge(gatewayId, devices, this.clock());
+    const { ids } = await this.hardware.upsertFromBridge(gatewayId, devices, this.clock());
+    for (const hardwareId of ids) this.announceHardware(hardwareId);
     const names = await this.hardware.listNames(gatewayId);
     if (!this.subscriptions.has(gatewayId)) return;
     this.names.replace(gatewayId, names);
@@ -387,7 +396,7 @@ export class DeviceIngestConsumer implements OnModuleInit, OnModuleDestroy {
       const availability = this.pendingAvailability.get(key);
       if (availability === undefined) continue;
       this.pendingAvailability.delete(key);
-      await this.hardware.setAvailability(id, availability);
+      await this.recordAvailability(id, availability);
     }
   }
 
@@ -410,23 +419,28 @@ export class DeviceIngestConsumer implements OnModuleInit, OnModuleDestroy {
         if (this.subscriptions.has(gatewayId)) {
           this.names.set(gatewayId, joined.data.friendly_name, id);
         }
+        this.announceHardware(id);
         return;
       }
       case 'device_interview': {
         const interview = interviewSchema.safeParse(data);
         if (!interview.success) return this.discard('invalid', gatewayId, type);
-        await this.hardware.setInterviewState(
+        const id = await this.hardware.setInterviewState(
           gatewayId,
           interview.data.ieee_address,
           INTERVIEW_STATES[interview.data.status],
         );
+        if (id !== undefined) this.announceHardware(id);
         return;
       }
       case 'device_leave': {
         const left = leaveSchema.safeParse(data);
         if (!left.success) return this.discard('invalid', gatewayId, type);
         const gone = await this.hardware.markLeft(gatewayId, left.data.ieee_address, now);
-        if (gone) this.names.remove(gatewayId, gone.friendlyName);
+        if (gone) {
+          this.names.remove(gatewayId, gone.friendlyName);
+          this.announceHardware(gone.id);
+        }
         return;
       }
       case 'device_renamed': {
@@ -437,6 +451,7 @@ export class DeviceIngestConsumer implements OnModuleInit, OnModuleDestroy {
         if (id !== undefined && this.subscriptions.has(gatewayId)) {
           this.names.rename(gatewayId, from, to, id);
         }
+        if (id !== undefined) this.announceHardware(id);
         return;
       }
       default:
@@ -448,7 +463,7 @@ export class DeviceIngestConsumer implements OnModuleInit, OnModuleDestroy {
     const availability = parseAvailability(payload);
     if (availability === undefined) return this.discard('invalid', gatewayId, 'availability');
     const hardwareId = this.names.lookup(gatewayId, name);
-    if (hardwareId !== undefined) return this.hardware.setAvailability(hardwareId, availability);
+    if (hardwareId !== undefined) return this.recordAvailability(hardwareId, availability);
     // The retained availability can arrive before the device list: keep it for when that does.
     const key = this.pendingKey(gatewayId, name);
     this.pendingAvailability.delete(key);
@@ -468,6 +483,19 @@ export class DeviceIngestConsumer implements OnModuleInit, OnModuleDestroy {
     const message = parseJson(payload);
     if (!isObject(message)) return this.discard('invalid', gatewayId, 'device message');
     await this.handler.handle(gatewayId, hardwareId, message, this.clock(), retained);
+  }
+
+  /** Stores the availability and announces the hardware and the devices that sit on it. */
+  private async recordAvailability(hardwareId: string, availability: Availability): Promise<void> {
+    const devices = await this.hardware.setAvailability(hardwareId, availability);
+    this.announceHardware(hardwareId);
+    for (const { deviceId, householdId } of devices) {
+      this.deviceEvents.emit(DEVICE_CHANGED, { householdId, deviceId } satisfies DeviceChanged);
+    }
+  }
+
+  private announceHardware(hardwareId: string): void {
+    this.deviceEvents.emit(HARDWARE_CHANGED, { hardwareId } satisfies HardwareChanged);
   }
 
   private pendingKey(gatewayId: string, name: string): string {

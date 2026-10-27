@@ -133,7 +133,11 @@ describe('devices and telemetry data model', () => {
         [sensor('0x01', 'bed-1'), sensor('0x02', 'bed-2')],
         now,
       );
-      expect(first).toEqual({ upserted: 2, removed: 0 });
+      expect(first).toEqual({
+        upserted: 2,
+        removed: 0,
+        ids: [expect.any(String), expect.any(String)],
+      });
 
       const bed1 = await hardware.findByName(gatewayId, 'bed-1');
       expect(bed1).toMatchObject({
@@ -164,7 +168,7 @@ describe('devices and telemetry data model', () => {
         later,
       );
 
-      expect(result).toEqual({ upserted: 1, removed: 0 });
+      expect(result).toEqual({ upserted: 1, removed: 0, ids: [before] });
       expect(await hardware.findByName(gatewayId, 'bed-1')).toBeUndefined();
       const renamed = await hardware.findByName(gatewayId, 'tomatoes');
       expect(renamed?.id).toBe(before);
@@ -177,12 +181,17 @@ describe('devices and telemetry data model', () => {
       await hardware.upsertFromBridge(gatewayId, [sensor('0x01', 'a'), sensor('0x02', 'b')], now);
 
       const gone = await hardware.upsertFromBridge(gatewayId, [sensor('0x01', 'a')], now);
-      expect(gone).toEqual({ upserted: 1, removed: 1 });
+      expect(gone).toEqual({
+        upserted: 1,
+        removed: 1,
+        ids: [expect.any(String), expect.any(String)],
+      });
       expect(await hardware.findByName(gatewayId, 'b')).toBeUndefined();
       // Listing it again does not count it as removed a second time.
       expect(await hardware.upsertFromBridge(gatewayId, [sensor('0x01', 'a')], now)).toEqual({
         upserted: 1,
         removed: 0,
+        ids: [expect.any(String)],
       });
 
       await hardware.upsertFromBridge(gatewayId, [sensor('0x01', 'a'), sensor('0x02', 'b')], now);
@@ -201,6 +210,7 @@ describe('devices and telemetry data model', () => {
       expect(await hardware.upsertFromBridge(gatewayId, [], now)).toEqual({
         upserted: 0,
         removed: 1,
+        ids: [expect.any(String)],
       });
     });
 
@@ -277,7 +287,8 @@ describe('devices and telemetry data model', () => {
       });
       // Readable measurements only: the calibration setting is not part of a device.
       expect(view?.capabilities.map((capability) => capability.key)).toEqual(['soil_moisture']);
-      expect((await devices.activeBindingForHardware(id))?.deviceId).toBe(created.device.id);
+      const binding = await devices.activeBindingForHardware(id);
+      expect(binding).toMatchObject({ deviceId: created.device.id, householdId });
     });
 
     it('refuses hardware that is bound already or belongs to somebody else', async () => {

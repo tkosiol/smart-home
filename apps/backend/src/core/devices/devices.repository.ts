@@ -186,12 +186,15 @@ export class DevicesRepository {
   }
 
   /** The binding that currently ties a device to the hardware. */
-  async activeBindingForHardware(hardwareId: string): Promise<DeviceBindingRow | undefined> {
+  async activeBindingForHardware(
+    hardwareId: string,
+  ): Promise<(DeviceBindingRow & { householdId: string }) | undefined> {
     const [row] = await this.connection.db
-      .select()
+      .select({ binding: deviceBindings, householdId: devices.householdId })
       .from(deviceBindings)
+      .innerJoin(devices, eq(devices.id, deviceBindings.deviceId))
       .where(and(eq(deviceBindings.hardwareId, hardwareId), isNull(deviceBindings.unboundAt)));
-    return row;
+    return row && { ...row.binding, householdId: row.householdId };
   }
 
   /**
