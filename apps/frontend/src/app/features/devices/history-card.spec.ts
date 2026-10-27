@@ -99,10 +99,10 @@ describe('history card', () => {
       const inputs = chartInputs(page);
       expect(inputs.kind()).toBe('area');
       expect(inputs.range()).toBe('7d');
-      expect(inputs.domain()).toEqual({ min: 0, max: 80 });
-      expect(inputs.band()).toMatchObject({
+      expect(inputs.domain()).toEqual({ min: 0, max: 100 });
+      // only the threshold line with its value: the band is no longer shaded or labelled
+      expect(inputs.band()).toEqual({
         below: 25,
-        label: 'zu trocken',
         valueLabel: `25${String.fromCharCode(0xa0)}%`,
       });
       expect(inputs.label()).toBe('Bodenfeuchte, letzte 7 Tage');

@@ -66,41 +66,51 @@ describe('buildChartModel', () => {
     ]);
   });
 
-  it('smooths an area monotonically and fills it with a fade', () => {
-    const main = series(buildChartModel(input()).option)[0];
+  it('smooths the line monotonically and fills a separate, silent series with a fade', () => {
+    const [main, fill] = series(buildChartModel(input()).option);
     expect(main.smooth).toBe(true);
     expect(main.smoothMonotone).toBe('x');
-    expect(main.areaStyle.color.colorStops[0].color).toBe(withAlpha(COLORS.primary, 0.2));
-    expect(main.areaStyle.color.colorStops[1].color).toBe(withAlpha(COLORS.primary, 0));
     expect(main.lineStyle.width).toBe(2);
+    expect(main.areaStyle).toBeUndefined();
+    expect(fill.smooth).toBe(true);
+    expect(fill.smoothMonotone).toBe('x');
+    expect(fill.silent).toBe(true);
+    expect(fill.showSymbol).toBe(false);
+    expect(fill.lineStyle.width).toBe(0);
+    expect(fill.data).toEqual(main.data);
+    expect(fill.areaStyle.color.colorStops[0].color).toBe(withAlpha(COLORS.primary, 0.2));
+    expect(fill.areaStyle.color.colorStops[1].color).toBe(withAlpha(COLORS.primary, 0));
   });
 
   it('uses the stronger washes and hairlines in dark mode', () => {
-    const band = { below: 25, label: 'too dry', valueLabel: '25 %' };
-    const dark = series(
+    const band = { below: 25, valueLabel: '25 %' };
+    const [dark, fill] = series(
       buildChartModel(
-        input({ colors: { ...COLORS, dark: true }, domain: { min: 0, max: 80 }, band }),
+        input({ colors: { ...COLORS, dark: true }, domain: { min: 0, max: 100 }, band }),
       ).option,
-    )[0];
-    expect(dark.areaStyle.color.colorStops[0].color).toBe(withAlpha(COLORS.primary, 0.26));
-    expect(dark.markArea.itemStyle.color).toBe(withAlpha(COLORS.dryContainer, 0.5));
+    );
+    expect(fill.areaStyle.color.colorStops[0].color).toBe(withAlpha(COLORS.primary, 0.26));
     const [threshold, gridline] = dark.markLine.data;
     expect(threshold.lineStyle.color).toBe(withAlpha(COLORS.dry, 0.6));
     expect(gridline.lineStyle.color).toBe(withAlpha(COLORS.outlineVariant, 0.7));
   });
 
-  it('paints the band, then the hairlines and labels, then the line, then the dots', () => {
-    const band = { below: 25, label: 'too dry', valueLabel: '25 %' };
-    const main = series(buildChartModel(input({ domain: { min: 0, max: 80 }, band })).option)[0];
-    expect(main.markArea.z).toBeLessThan(main.markLine.z);
-    expect(main.markLine.z).toBeLessThan(main.z);
+  it('paints the hairlines and labels, then the fill, then the line, then the dots', () => {
+    const band = { below: 25, valueLabel: '25 %' };
+    const [main, fill] = series(
+      buildChartModel(input({ domain: { min: 0, max: 100 }, band })).option,
+    );
+    expect(main.markLine.z).toBeLessThan(fill.z);
+    expect(fill.z).toBeLessThan(main.z);
     expect(main.z).toBeLessThan(main.markPoint.z);
   });
 
   it('draws a step as a step line without smoothing', () => {
-    const main = series(buildChartModel(input({ kind: 'step' })).option)[0];
+    const [main, fill] = series(buildChartModel(input({ kind: 'step' })).option);
     expect(main.step).toBe('end');
     expect(main.smooth).toBeFalsy();
+    expect(fill.step).toBe('end');
+    expect(fill.smooth).toBeFalsy();
   });
 
   it('draws a ribbon as two stacked series under the line', () => {
@@ -148,45 +158,80 @@ describe('buildChartModel', () => {
     expect(model.times).toHaveLength(5);
   });
 
-  it('draws a point with a gap on both sides (or at an edge) as a small dot', () => {
-    const band = { below: 25, label: 'too dry', valueLabel: '25 %' };
+  it('fills through a gap and draws the line on as a dashed one beneath the solid line', () => {
     const model = buildChartModel(
       input({
-        band,
-        domain: { min: 0, max: 80 },
+        resolutionMinutes: 60,
         points: [
-          { t: at(10), value: 30 }, // alone: gap after it
-          { t: at(6), value: 20 },
-          { t: at(5), value: 21 },
-          { t: at(4), value: 22 }, // part of a line
-          { t: at(1), value: 40 }, // alone between two gaps
+          { t: at(6), value: 30 },
+          { t: at(5), value: 29 },
+          { t: at(2), value: 20 }, // 3 h later: gap
+          { t: at(1), value: 21 },
         ],
       }),
     );
-    const dots = series(model.option)[1];
-    expect(dots.type).toBe('scatter');
-    expect(dots.silent).toBe(true);
-    expect(dots.symbolSize).toBe(6);
-    expect(dots.z).toBeGreaterThan(series(model.option)[0].z);
-    expect(dots.data.map((d: any) => d.value)).toEqual([
-      [END - 10 * HOUR, 30],
-      [END - HOUR, 40],
-    ]);
-    expect(dots.data[0].itemStyle.color).toBe(COLORS.primary);
-    const dry = buildChartModel(
-      input({
-        band,
-        points: [
-          { t: at(10), value: 10 },
-          { t: at(1), value: 40 },
-        ],
-      }),
-    );
-    expect(series(dry.option)[1].data[0].itemStyle.color).toBe(COLORS.dry);
+    const [main, fill, bridge] = series(model.option);
+    const measured = [
+      [END - 6 * HOUR, 30],
+      [END - 5 * HOUR, 29],
+      [END - 2 * HOUR, 20],
+      [END - HOUR, 21],
+    ];
+    // fill and dashed line take the same rows and the same curve: the fill's edge is the line
+    expect(fill.data).toEqual(measured);
+    expect(bridge.data).toEqual(measured);
+    expect(bridge.type).toBe('line');
+    expect(bridge.smooth).toBe(true);
+    expect(bridge.smoothMonotone).toBe('x');
+    expect(bridge.silent).toBe(true);
+    expect(bridge.showSymbol).toBe(false);
+    expect(bridge.lineStyle.width).toBe(2);
+    expect(bridge.lineStyle.type).toEqual([4, 4]);
+    expect(bridge.itemStyle.color).toBe(COLORS.primary);
+    // the solid line covers it wherever there are readings
+    expect(fill.z).toBeLessThan(bridge.z);
+    expect(bridge.z).toBeLessThan(main.z);
+    // hovering stays on the measured points
+    expect(model.rows).toEqual([0, 1, 3, 4]);
   });
 
-  it('adds no dots when every point has a neighbour', () => {
-    expect(series(buildChartModel(input()).option)).toHaveLength(1);
+  it('draws no lonely dots: points between gaps sit on the dashed line', () => {
+    const all = series(
+      buildChartModel(
+        input({
+          points: [
+            { t: at(10), value: 30 }, // alone before a gap
+            { t: at(6), value: 20 },
+            { t: at(5), value: 21 },
+            { t: at(4), value: 22 },
+            { t: at(1), value: 40 }, // alone after a gap
+          ],
+        }),
+      ).option,
+    );
+    expect(all.map((s) => s.type)).toEqual(['line', 'line', 'line']);
+    expect(all[2].data).toHaveLength(5);
+  });
+
+  it('runs the ribbon through a gap and draws its line on dashed', () => {
+    const model = buildChartModel(
+      input({
+        kind: 'ribbon',
+        points: [
+          { t: at(4), value: 20, min: 18, max: 22 },
+          { t: at(1), value: 26, min: 24, max: 31 },
+        ],
+      }),
+    );
+    const [main, base, range, bridge] = series(model.option);
+    expect(main.data.map((d: number[]) => d[1])).toEqual([20, null, 26]);
+    expect(base.data.map((d: number[]) => d[1])).toEqual([18, 24]);
+    expect(range.data.map((d: number[]) => d[1])).toEqual([4, 7]);
+    expect(bridge.data.map((d: number[]) => d[1])).toEqual([20, 26]);
+  });
+
+  it('adds neither bridge nor dots when every point has a neighbour', () => {
+    expect(series(buildChartModel(input()).option)).toHaveLength(2);
   });
 
   it('never breaks a step line: a value holds until it changes', () => {
@@ -202,7 +247,8 @@ describe('buildChartModel', () => {
     );
     expect(series(model.option)[0].data).toHaveLength(3);
     expect(model.rows).toEqual([0, 1, 2]);
-    expect(series(model.option)).toHaveLength(1);
+    // the line and its fill, no bridge
+    expect(series(model.option)).toHaveLength(2);
   });
 
   it('does not break at exactly twice the resolution', () => {
@@ -218,7 +264,7 @@ describe('buildChartModel', () => {
   });
 
   it('recolours the part below the band threshold through a piecewise visual map', () => {
-    const band = { below: 25, label: 'too dry', valueLabel: '25 %' };
+    const band = { below: 25, valueLabel: '25 %' };
     const { option } = buildChartModel(input({ band }));
     const map = (option['visualMap'] as any[])[0];
     expect(map.type).toBe('piecewise');
@@ -227,22 +273,28 @@ describe('buildChartModel', () => {
       { lt: 25, color: COLORS.dry },
       { gte: 25, lt: 1e9, color: COLORS.primary },
     ]);
+    expect(map.seriesIndex).toEqual([0]);
+    const gap = buildChartModel(
+      input({
+        band,
+        points: [
+          { t: at(6), value: 30 },
+          { t: at(1), value: 20 },
+        ],
+      }),
+    );
+    // the bridge changes colour with the line
+    expect((gap.option['visualMap'] as any[])[0].seriesIndex).toEqual([0, 2]);
   });
 
-  it('paints the band from the bottom to the threshold with its label and a threshold line', () => {
-    const band = { below: 25, label: 'too dry', valueLabel: '25 %' };
-    const main = series(buildChartModel(input({ domain: { min: 0, max: 80 }, band })).option)[0];
-    const [[from, to]] = main.markArea.data;
-    expect(from.yAxis).toBe(0);
-    expect(to.yAxis).toBe(25);
-    expect(from.label.formatter).toBe('too dry');
-    // 8 px in, baseline 15 px below the threshold: ECharts takes one distance for both axes
-    expect(from.label.distance).toBe(8);
-    expect(from.label.offset).toEqual([0, -3]);
-    expect(main.markArea.itemStyle.color).toBe(withAlpha(COLORS.dryContainer, 0.42));
+  it('marks the threshold with a line and its value only, without a shaded band', () => {
+    const band = { below: 25, valueLabel: '25 %' };
+    const main = series(buildChartModel(input({ domain: { min: 0, max: 100 }, band })).option)[0];
+    expect(main.markArea).toBeUndefined();
     const threshold = main.markLine.data.find((d: any) => d.yAxis === 25);
     expect(threshold.label.formatter).toBe('25 %');
     expect(threshold.lineStyle.color).toBe(withAlpha(COLORS.dry, 0.55));
+    expect(main.markLine.data.map((d: any) => d.yAxis)).toEqual([25, 50, 75, 100]);
   });
 
   it('has no band, visual map or mark area without a band', () => {
@@ -265,7 +317,7 @@ describe('buildChartModel', () => {
   });
 
   it('uses the band threshold as the step when it fits the domain', () => {
-    const band = { below: 25, label: 'too dry', valueLabel: '25 %' };
+    const band = { below: 25, valueLabel: '25 %' };
     const main = series(buildChartModel(input({ domain: { min: 0, max: 80 }, band })).option)[0];
     expect(main.markLine.data.map((d: any) => d.yAxis)).toEqual([25, 50, 75]);
   });
@@ -315,7 +367,7 @@ describe('buildChartModel', () => {
   });
 
   it('shows the hovered point as a primary 5 px disc in a 7 px card ring, even below the band', () => {
-    const band = { below: 25, label: 'too dry', valueLabel: '25 %' };
+    const band = { below: 25, valueLabel: '25 %' };
     const main = series(buildChartModel(input({ domain: { min: 0, max: 80 }, band })).option)[0];
     expect(main.showSymbol).toBe(false);
     expect(main.symbolSize).toBe(12);
@@ -399,8 +451,9 @@ describe('buildChartModel', () => {
 
   it('builds a model for a single point and for none', () => {
     const lone = series(buildChartModel(input({ points: [{ t: at(0), value: 5 }] })).option);
-    expect(lone).toHaveLength(2);
-    expect(lone[1].data.map((d: any) => d.value)).toEqual([[END, 5]]);
+    expect(lone).toHaveLength(3);
+    expect(lone[2].type).toBe('scatter');
+    expect(lone[2].data.map((d: any) => d.value)).toEqual([[END, 5]]);
     expect(buildChartModel(input({ points: [] })).times).toEqual([]);
   });
 });

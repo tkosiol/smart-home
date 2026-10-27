@@ -56,11 +56,11 @@ describe('thresholdFor', () => {
 });
 
 describe('chartViewOf', () => {
-  it('draws soil moisture as an area from 0 to 80 with the band and the waterings', () => {
+  it('draws soil moisture as an area from 0 to 100 with the threshold and the waterings', () => {
     const history = historyOf('soil_moisture', '7d', (i) => (i < 100 ? 20 : i === 100 ? 45 : 40));
     const view = chartViewOf(history, 25);
     expect(view.kind).toBe('area');
-    expect(view.domain).toEqual({ min: 0, max: 80 });
+    expect(view.domain).toEqual({ min: 0, max: 100 });
     expect(view.band).toBe(25);
     expect(view.resolutionMinutes).toBe(60);
     expect(view.points).toHaveLength(168);

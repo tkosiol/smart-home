@@ -15,7 +15,7 @@ import { formatNumber, isReading } from './device-values';
 const NBSP = String.fromCharCode(0xa0);
 const SOIL = 'soil_moisture';
 /** Soil moisture is drawn on a fixed scale, so a dry and a wet plant look the same everywhere. */
-const SOIL_DOMAIN = { min: 0, max: 80 } as const;
+const SOIL_DOMAIN = { min: 0, max: 100 } as const;
 const DAY_MINUTES = 1440;
 /** After the main value come these, in this order, then everything else. */
 const CHIP_ORDER = ['temperature', 'humidity', 'battery'] as const;
@@ -86,7 +86,7 @@ export interface ChartView {
   readonly points: readonly UiChartPoint[];
   readonly resolutionMinutes: number;
   readonly domain: { min: number; max: number } | null;
-  /** The threshold below which the chart shades "too dry"; null draws no band. */
+  /** The "too dry" threshold, drawn as a line; null draws none. */
   readonly band: number | null;
   readonly markers: readonly string[];
 }
@@ -109,7 +109,7 @@ function dayMiddle(date: string, timeZone: string): string {
 }
 
 /**
- * How a history is drawn (spec 4.3): soil moisture as an area on 0 to 80 % with the "too dry" band
+ * How a history is drawn (spec 4.3): soil moisture as an area on 0 to 100 % with the "too dry" line
  * (only with a threshold) and the waterings as rings; temperature and humidity as an area, over
  * 4 weeks a ribbon of low to high per day; the battery as steps of its last value; the rest as an
  * area.

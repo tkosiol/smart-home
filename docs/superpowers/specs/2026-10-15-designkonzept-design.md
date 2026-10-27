@@ -113,7 +113,7 @@ Seite `/raeume/:id`: Top App Bar mit Zurück und Raumname, Status-Hero nur für 
 - Kopf: Zurück, Name, Zeile „Art · Raum“, Overflow.
 - Hero-Karte in der Farbe der Geräteart: Label, Hauptwert (`--smart-type-value-hero`), Status-Chip, Fortschrittsleiste mit markiertem Zielbereich, „aktualisiert vor n min“.
 - Nebenwerte als drei Pods (`secondary-container`): Temperatur, Batterie, Signal; bei anderen Geräten die nächsten Messwerte nach `primaryCapability`.
-- Diagrammkarte (6c): Titel „Verlauf“ (gebaut in 6c-1, Spec `2026-10-27-etappe-6c1-verlaeufe-design.md`), tonale Chips für den Messwert, `ui-chart` als **Linie mit Fläche** (statt Balken) und ruhige Segmentgruppe „24 h | 7 Tage | 4 Wochen“ darunter, Bereich „zu trocken“ als Band in `dry-container`, Linie unterhalb der Schwelle in `dry`; Zusammenfassung als Text, Umschalter „Werte als Tabelle“ (`ui-value-table`).
+- Diagrammkarte (6c): Titel „Verlauf“ (gebaut in 6c-1, Spec `2026-10-27-etappe-6c1-verlaeufe-design.md`), tonale Chips für den Messwert, `ui-chart` als **Linie mit Fläche** (statt Balken) und ruhige Segmentgruppe „24 h | 7 Tage | 4 Wochen“ darunter, Schwelle „zu trocken“ als dünne Linie in `dry` mit ihrem Wert (kein eingefärbtes Band), Linie unterhalb der Schwelle in `dry`, Lücken gestrichelt bei durchgehender Fläche; Zusammenfassung als Text, Umschalter „Werte als Tabelle“ (`ui-value-table`).
 - Darunter Pillen „Raum: …“ und „Grenzwerte“ (führt zur Karte „Grenzwerte“, Abschnitt 4.3).
 - Lampe: Hero mit Schalter, Schieberegler für Helligkeit, Chips für Farbtemperatur.
 
@@ -171,7 +171,7 @@ Ein Eintrag entsteht, sobald die Bedingung gilt, und verschwindet, sobald sie ni
 
 - **Standardwerte je Geräteart** (`deviceKind`, Abschnitt 2.4) stehen in `@smart/contracts` (`DEFAULT_THRESHOLDS`), zum Beispiel `soil`: Feuchte unten 25 %, oben aus; alle batteriebetriebenen Arten: Batterie 20 %; `contact`: offen länger als 10 min; alle Arten: stumm nach 2 h. Für Gateways gilt fest 5 min (keine Anpassung in 6b).
 - **Je Gerät überschreibbar:** `devices.thresholds` (JSON, nur gesetzte Werte; fehlender Wert = Standard der Art). Die effektive Schwelle ist `Gerät ?? Art`. Ändern dürfen `owner` und `member` (wie Umbenennen); `viewer` sieht die Werte. `PATCH /api/v1/households/:id/devices/:deviceId` nimmt `thresholds` mit zod-Grenzen (Prozent 0–100, untere < obere Feuchte, Dauer 1 min–7 Tage); `null` für einen Wert setzt ihn auf den Standard zurück.
-- **Oberfläche:** auf der Geräteseite eine Karte „Grenzwerte“ mit den Werten, die für die Fähigkeiten des Geräts gelten (Feuchte unten/oben, Batterie, offen länger als, stumm nach); jeder Wert zeigt, ob er der Standard der Art ist („Standard“) oder angepasst, mit „Auf Standard zurücksetzen“. Das Band „zu trocken“ im Diagramm (6c) folgt der effektiven unteren Schwelle.
+- **Oberfläche:** auf der Geräteseite eine Karte „Grenzwerte“ mit den Werten, die für die Fähigkeiten des Geräts gelten (Feuchte unten/oben, Batterie, offen länger als, stumm nach); jeder Wert zeigt, ob er der Standard der Art ist („Standard“) oder angepasst, mit „Auf Standard zurücksetzen“. Die Linie „zu trocken“ im Diagramm (6c) folgt der effektiven unteren Schwelle.
 - `core/attention` liest die effektiven Schwellen; eine Änderung wirkt sofort (neu berechnen für das Gerät). Das Pflanzenmodul (Etappe 8) kann später Standardwerte je Pflanzenart liefern; eine Anpassung am Gerät hat weiter Vorrang.
 
 ### 4.4 Berechnung im Backend

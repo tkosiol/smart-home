@@ -280,7 +280,6 @@ export class HistoryCard {
     if (below === null) return null;
     return {
       below,
-      label: this.text(DRY_KEY) ?? '',
       valueLabel: withUnit(below, this.unit(), this.locale()),
     };
   });
