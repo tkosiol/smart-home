@@ -13,7 +13,7 @@ Was die App zeigt, aktualisiert sich ohne Neuladen und ohne Polling:
 - neu erkannte Hardware („Neu erkannt“),
 - der Verlauf auf der Geräteseite.
 
-**Nicht in 6c-2:** `command.result` (kommt mit den Befehlen), `notification.created` (kommt mit den Benachrichtigungen), `device.removed` (Geräte lassen sich noch nicht löschen; das Ereignis kommt mit dem Löschen), eine Anzeige „nicht live“. Die Mitgliederseite behält ihr 60-s-Polling, für Mitgliedschaften gibt es kein Ereignis.
+**Nicht in 6c-2:** `command.result` (kommt mit den Befehlen), `notification.created` (kommt mit den Benachrichtigungen), `device.removed` (Geräte lassen sich noch nicht löschen; das Ereignis kommt mit dem Löschen), eine Anzeige „nicht live“. Die Mitgliederseite lädt weiterhin nur beim Öffnen und auf Nutzeraktion (sie hat nie gepollt); für Mitgliedschaften gibt es kein Ereignis.
 
 ## 2. Ereignisse (`@smart/contracts`)
 
@@ -120,7 +120,7 @@ injectLive({
 | Gateway-Block und Gateway-Seite         | `gateway.status`                        | `upsert`                                                                                                     |
 | Neu erkannt (`new-hardware.ts`)         | `hardware.updated` / `hardware.removed` | `upsert` / `remove`; Eingaben (Namen) zu einer entfernten Hardware fallen weg                                |
 
-- **Polling entfällt** an diesen Stellen: `refreshWhileVisible` wird dort nicht mehr aufgerufen, ebenso die 5-Minuten-Aktualisierung der Verlaufskarte (`HISTORY_REFRESH_MS`). `refreshWhileVisible` bleibt für die Mitgliederseite.
+- **Polling entfällt** an diesen Stellen: `refreshWhileVisible` wird dort nicht mehr aufgerufen, ebenso die 5-Minuten-Aktualisierung der Verlaufskarte (`HISTORY_REFRESH_MS`). `refreshWhileVisible` und `REFRESH_MS` sind entfernt (die Mitgliederseite hat nie gepollt).
 - Relative Zeiten („vor 3 Min.“) tickt weiter die `UiClock` (alle 30 s); sie hängen nicht am Nachladen.
 - **Ausfall:** Ist der Stream länger getrennt, zeigt die App den zuletzt bekannten Stand.
 

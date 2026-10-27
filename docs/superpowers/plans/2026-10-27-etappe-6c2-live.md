@@ -251,7 +251,7 @@ remove(id: string): void;
 replace(items: readonly T[]): void;
 ```
 
-- Je Stelle `injectLive` mit Handler und `resync` (Laden mit `keep = true` über den vorhandenen `RefreshGuard`, damit Netzfehler still bleiben); `refreshWhileVisible` fällt an diesen Stellen weg (bleibt in `members-page.ts`).
+- Je Stelle `injectLive` mit Handler und `resync` (Laden mit `keep = true` über den vorhandenen `RefreshGuard`, damit Netzfehler still bleiben); `refreshWhileVisible` (samt `REFRESH_MS`) wird entfernt; es wird sonst nirgends verwendet, die Mitgliederseite hat nie gepollt.
   - Geräteliste: `device.state` → `upsert`.
   - Geräteseite: `device.state` mit eigener ID → vorhandenes `updated(device)` (verwirft späte REST-Antworten; der getippte Name bleibt).
   - Neu erkannt: `hardware.updated` → `upsert`, `hardware.removed` → `remove` und den getippten Namen und Fehlerzustand dieser ID verwerfen.
