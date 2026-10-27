@@ -64,6 +64,13 @@
       "when": 1792089155186,
       "tag": "0008_overview_layout",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1793063257500,
+      "tag": "0009_measurements_hourly",
+      "breakpoints": true
     }
   ]
 }
