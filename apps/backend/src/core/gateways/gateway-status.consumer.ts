@@ -11,8 +11,10 @@ import { MQTT_CONNECTION, MqttConnection, type Unsubscribe } from '../../platfor
 import { CLOCK, type Clock } from '../identity/index.js';
 import {
   GATEWAY_STATUS_CHANGED,
+  GATEWAY_TOUCHED,
   GatewayEvents,
   type GatewayStatusChanged,
+  type GatewayTouched,
 } from './gateway-events.js';
 import {
   STATUS_MEMORY_LIMIT,
@@ -131,7 +133,12 @@ export class GatewayStatusConsumer implements OnModuleInit, OnModuleDestroy {
     const now = this.clock();
     if (id === undefined || !this.touches.allow(id, now)) return;
     this.enqueue(async () => {
-      if (!(await this.gateways.touch(id, now))) this.noticeIgnored(id, now);
+      if (await this.gateways.touch(id, now)) {
+        const event: GatewayTouched = { gatewayId: id };
+        this.events.emit(GATEWAY_TOUCHED, event);
+      } else {
+        this.noticeIgnored(id, now);
+      }
     });
   }
 

@@ -53,6 +53,17 @@ export class GatewaysService {
     return rows.map((row) => this.toGateway(row, crlNextUpdate, now));
   }
 
+  /** The gateway with the household it belongs to, revoked or not; `undefined` if unknown. */
+  async find(gatewayId: string): Promise<{ householdId: string; gateway: Gateway } | undefined> {
+    const row = await this.gateways.findById(gatewayId);
+    if (!row) return undefined;
+    const crlNextUpdate = await this.crlNextUpdate();
+    return {
+      householdId: row.householdId,
+      gateway: this.toGateway(row, crlNextUpdate, this.clock()),
+    };
+  }
+
   /** Registers the gateway whose public certificate was pasted; the CA decides whether it counts. */
   async register(householdId: string, input: GatewayRegister): Promise<Gateway> {
     const ca = await this.loadCa();

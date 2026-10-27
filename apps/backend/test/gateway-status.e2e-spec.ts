@@ -7,7 +7,13 @@ import type { StartedTestContainer } from 'testcontainers';
 import { inject, vi } from 'vitest';
 import { AppModule } from '../src/app.module.js';
 import { configureApp } from '../src/app.setup.js';
-import { GATEWAY_STATUS_MEMORY, type GatewayStatusMemory } from '../src/core/gateways/index.js';
+import {
+  GATEWAY_STATUS_MEMORY,
+  GATEWAY_TOUCHED,
+  GatewayEvents,
+  type GatewayStatusMemory,
+  type GatewayTouched,
+} from '../src/core/gateways/index.js';
 import { GatewaysService } from '../src/core/gateways/gateways.service.js';
 import { CLOCK } from '../src/core/identity/index.js';
 import { runMigrations } from '../src/platform/database/index.js';
@@ -206,6 +212,22 @@ describe('gateway status from the broker', () => {
     now = new Date(first.getTime() + 61_000);
     await publish(`gw/${id}/z2m/living_room_lamp`, '{"state":"OFF"}');
     await eventually(async () => expect((await rowOf(id)).last_message_at).toEqual(now));
+  });
+
+  it('announces gateway.touched for the write and finds the gateway with its household', async () => {
+    const id = randomGatewayId();
+    await insertGateway(id);
+    const touched: GatewayTouched[] = [];
+    const listener = (event: GatewayTouched): void => void touched.push(event);
+    app.get(GatewayEvents).on(GATEWAY_TOUCHED, listener);
+    now = new Date(Date.now() + 10_000);
+    await publish(`gw/${id}/z2m/living_room_lamp`, '{"state":"ON"}');
+    await eventually(() => expect(touched).toEqual([{ gatewayId: id }]));
+    app.get(GatewayEvents).off(GATEWAY_TOUCHED, listener);
+    const found = await app.get(GatewaysService).find(id);
+    expect(found?.householdId).toBe(householdId);
+    expect(found?.gateway.id).toBe(id);
+    expect(await app.get(GatewaysService).find(randomGatewayId())).toBeUndefined();
   });
 
   it('processes a status message after the broker restarted', async () => {

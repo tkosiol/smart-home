@@ -3,8 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MqttConnection, MqttMessageHandler, Unsubscribe } from '../../platform/mqtt/index.js';
 import {
   GATEWAY_STATUS_CHANGED,
+  GATEWAY_TOUCHED,
   GatewayEvents,
   type GatewayStatusChanged,
+  type GatewayTouched,
 } from './gateway-events.js';
 import { StatusMemory } from './gateway-status-memory.js';
 import { GatewayStatusConsumer } from './gateway-status.consumer.js';
@@ -214,6 +216,18 @@ describe('GatewayStatusConsumer', () => {
         [OTHER, new Date(T0.getTime() + 30_000)],
         [ID, new Date(T0.getTime() + 60_000)],
       ]);
+    });
+
+    it('announces gateway.touched only after a successful write', async () => {
+      const touched: GatewayTouched[] = [];
+      events.on(GATEWAY_TOUCHED, (event: GatewayTouched) => touched.push(event));
+      mqtt.publish(`gw/${ID}/z2m/lamp`, '{}');
+      await settle();
+      expect(touched).toEqual([{ gatewayId: ID }]);
+      touch.mockResolvedValue(false);
+      mqtt.publish(`gw/${OTHER}/z2m/lamp`, '{}');
+      await settle();
+      expect(touched).toHaveLength(1);
     });
 
     it('is not written for retained messages, which are no sign of life', async () => {

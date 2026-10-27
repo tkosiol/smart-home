@@ -7,7 +7,12 @@ import type { App } from 'supertest/types.js';
 import { inject } from 'vitest';
 import { AppModule } from '../src/app.module.js';
 import { configureApp } from '../src/app.setup.js';
-import { AttentionService } from '../src/core/attention/index.js';
+import {
+  ATTENTION_CHANGED,
+  AttentionEvents,
+  AttentionService,
+  type AttentionChanged,
+} from '../src/core/attention/index.js';
 import { SESSION_COOKIE, SessionService, UsersRepository } from '../src/core/identity/index.js';
 import {
   DATABASE,
@@ -203,6 +208,24 @@ describe('attention items of a household', () => {
     }).expect(200);
     await attention.idle();
     expect(await itemsOf(home, home.owner)).toEqual([]);
+  });
+
+  it('announces attention.changed only when the list differs', async () => {
+    const home = await household();
+    const changed: AttentionChanged[] = [];
+    const listener = (event: AttentionChanged): void => void changed.push(event);
+    app.get(AttentionEvents).on(ATTENTION_CHANGED, listener);
+    const deviceId = await addPlant(home, 'Ficus', { soil_moisture: 20 });
+    await attention.recomputeHousehold(home.id);
+    expect(changed.filter((event) => event.householdId === home.id)).toHaveLength(1);
+    await attention.recomputeHousehold(home.id);
+    expect(changed.filter((event) => event.householdId === home.id)).toHaveLength(1);
+    await patch(`${HOUSEHOLDS}/${home.id}/devices/${deviceId}`, home.owner, {
+      thresholds: { soilMoistureMin: 10 },
+    }).expect(200);
+    await attention.idle();
+    expect(changed.filter((event) => event.householdId === home.id)).toHaveLength(2);
+    app.get(AttentionEvents).off(ATTENTION_CHANGED, listener);
   });
 
   it('hides a household from people who are not its members', async () => {

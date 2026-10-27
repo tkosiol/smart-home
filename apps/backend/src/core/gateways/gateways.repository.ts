@@ -30,6 +30,12 @@ export class GatewaysRepository {
       .orderBy(asc(gateways.createdAt), asc(gateways.id));
   }
 
+  /** The gateway with the ID, revoked or not. */
+  async findById(id: string): Promise<GatewayRow | undefined> {
+    const [row] = await this.connection.db.select().from(gateways).where(eq(gateways.id, id));
+    return row;
+  }
+
   /** Marks the household's gateway as revoked (the first time stays); `false` if it has none such. */
   async revoke(householdId: string, id: string, now: Date): Promise<boolean> {
     const rows = await this.connection.db

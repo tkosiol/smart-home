@@ -146,6 +146,44 @@ describe('identity: users and sessions', () => {
       .expect(401);
   });
 
+  describe('isActive', () => {
+    const idOf = async (): Promise<string> => {
+      const { token } = await service.create(userId, 'email_code', 'Browser/1');
+      const valid = await service.validate(token);
+      if (!valid) throw new Error('expected a valid session');
+      return valid.sessionId;
+    };
+
+    it('is true for a valid session and leaves last_seen_at alone', async () => {
+      const id = await idOf();
+      advance(10 * DAY);
+      expect(await service.isActive(id)).toBe(true);
+      const row = await sessionRow(id);
+      expect(row.lastSeenAt).toEqual(START);
+      expect(row.expiresAt).toEqual(new Date(START.getTime() + 30 * DAY));
+    });
+
+    it('is false for a revoked, an idle-expired, an absolutely expired and an unknown session', async () => {
+      const revoked = await idOf();
+      await service.revoke(revoked);
+      expect(await service.isActive(revoked)).toBe(false);
+
+      const idle = await idOf();
+      advance(30 * DAY);
+      expect(await service.isActive(idle)).toBe(false);
+      now = START;
+
+      const absolute = await idOf();
+      const limit = new Date(START.getTime() + DAY).toISOString();
+      await connection.sql`update sessions set absolute_expires_at = ${limit}::timestamptz where id = ${absolute}`;
+      expect(await service.isActive(absolute)).toBe(true);
+      advance(DAY);
+      expect(await service.isActive(absolute)).toBe(false);
+
+      expect(await service.isActive('00000000-0000-4000-8000-000000000000')).toBe(false);
+    });
+  });
+
   it('rejects a tampered or unknown cookie', async () => {
     const { token } = await service.create(userId, 'email_code', 'Browser/1');
     expect(await service.validate(`${token}x`)).toBeNull();
