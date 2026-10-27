@@ -1,6 +1,6 @@
 # Etappe 6c-2: Live-Aktualisierung – Design
 
-- Status: Entwurf (im Chat abgestimmt mit Till, 2026-10-27; Umfang „Werte + Hinweise + Verlauf“, Ansatz „Ereignisse mit Daten“)
+- Status: freigegeben (Till, 2026-10-27, im Chat: „schreib den plan und setze um“; Umfang „Werte + Hinweise + Verlauf“, Ansatz „Ereignisse mit Daten“)
 - Bezug: Architektur-Spec 8.7 (Live-Updates), 8.9 (API); ADR-0010 (SSE); Designkonzept 4.4 (Hinweise), Abschnitt „Daten“ (60-s-Muster bis zur SSE-Anbindung); Etappe 6c-1 (Verlaufskarte)
 
 ## 1. Ziel
@@ -19,13 +19,13 @@ Was die App zeigt, aktualisiert sich ohne Neuladen und ohne Polling:
 
 Jedes Ereignis trägt dasselbe Objekt, das der passende REST-Endpunkt liefert; die App ersetzt es per ID, ohne nachzufragen. Nach jedem (Neu-)Verbinden lädt sie den Stand einmal per REST (Abschnitt 4.2).
 
-| Ereignis            | Daten                                 | Empfänger                         | Auslöser                                                                          |
-| ------------------- | ------------------------------------- | --------------------------------- | --------------------------------------------------------------------------------- |
-| `device.state`      | `Device` (wie `GET devices/:id`)      | ab `viewer`                       | neuer Messwert, Verfügbarkeit, Name, Symbol, Schwellwerte, Gerät angelegt         |
-| `gateway.status`    | `Gateway` (wie `GET gateways`)        | `owner`                           | Status von Bridge oder Z2M geändert, Gateway registriert, widerrufen              |
-| `hardware.updated`  | `Hardware` (wie `GET hardware`)       | `owner`                           | freie Hardware neu erkannt, Interview-Stand, umbenannt, Verfügbarkeit, Zustand    |
-| `hardware.removed`  | `{ id }`                              | `owner`                           | Hardware einem Gerät zugeordnet oder vom Netz abgemeldet                          |
-| `attention.changed` | `AttentionList` (wie `GET attention`) | ab `viewer`, nach Rolle gefiltert | Hinweisliste des Haushalts hat sich nach einer Neuberechnung tatsächlich geändert |
+| Ereignis            | Daten                                 | Empfänger                         | Auslöser                                                                                                                                                 |
+| ------------------- | ------------------------------------- | --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `device.state`      | `Device` (wie `GET devices/:id`)      | ab `viewer`                       | neuer Messwert, Verfügbarkeit, Name, Symbol, Schwellwerte, Gerät angelegt                                                                                |
+| `gateway.status`    | `Gateway` (wie `GET gateways`)        | `owner`                           | Status von Bridge oder Z2M geändert, Gateway registriert, widerrufen, neue Meldung (höchstens einmal pro Minute, wie `last_message_at` gespeichert wird) |
+| `hardware.updated`  | `Hardware` (wie `GET hardware`)       | `owner`                           | freie Hardware neu erkannt, Interview-Stand, umbenannt, Verfügbarkeit, Zustand                                                                           |
+| `hardware.removed`  | `{ id }`                              | `owner`                           | Hardware einem Gerät zugeordnet oder vom Netz abgemeldet                                                                                                 |
+| `attention.changed` | `AttentionList` (wie `GET attention`) | ab `viewer`, nach Rolle gefiltert | Hinweisliste des Haushalts hat sich nach einer Neuberechnung tatsächlich geändert                                                                        |
 
 - Die Empfänger folgen den Rollen der REST-Endpunkte: Gateways und freie Hardware liest nur `owner`, Geräte und Hinweise jedes Mitglied. `attention.changed` filtert wie `GET attention` (`cert_expiring` nur für Besitzer und Plattform-Admins).
 - **Drosselung:** je Objekt (Ereignistyp + ID, bei `attention.changed` der Haushalt) höchstens ein Ereignis pro Sekunde. Fällt ein Auslöser in eine laufende Sekunde, geht nach ihrem Ende genau ein Ereignis mit dem dann aktuellen Stand raus. Zigbee-Geräte mit Strommessung melden sich alle paar Sekunden.
@@ -116,7 +116,7 @@ injectLive({
 | Geräteliste und Pods (`device-list.ts`) | `device.state`                          | `upsert`                                                                                                     |
 | Geräteseite (`device-page.ts`)          | `device.state` mit eigener ID           | `device` ersetzen                                                                                            |
 | Verlaufskarte (`history-card.ts`)       | `device.state` mit eigener ID           | gewählten Zeitraum neu laden, höchstens einmal pro Minute; ein Auslöser in der Pause lädt am Ende der Minute |
-| Hinweise (`attention.ts`)               | `attention.changed`                     | Liste ersetzen                                                                                               |
+| Hinweise (`attention.ts`)               | `attention.changed`                     | Liste ersetzen; die Ruhezeile übernimmt aus `device.state` das neueste `lastSeenAt`                          |
 | Gateway-Block und Gateway-Seite         | `gateway.status`                        | `upsert`                                                                                                     |
 | Neu erkannt (`new-hardware.ts`)         | `hardware.updated` / `hardware.removed` | `upsert` / `remove`; Eingaben (Namen) zu einer entfernten Hardware fallen weg                                |
 
