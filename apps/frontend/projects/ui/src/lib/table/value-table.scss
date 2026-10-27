@@ -1,0 +1,88 @@
+:host {
+  display: block;
+  min-width: 0;
+}
+
+// Where the chart was, at its height: a scrolling box whose corners match the chart's.
+.scroll {
+  box-sizing: border-box;
+  height: var(--smart-size-chart);
+  overflow: auto;
+  overscroll-behavior: contain;
+  border-radius: var(--mat-sys-corner-medium);
+  background: var(--mat-sys-surface-container-lowest);
+}
+
+:host([data-large]) .scroll {
+  height: var(--smart-size-chart-large);
+}
+
+// The focus ring sits inside the box (an outline outside it would be cut by the card's padding).
+.scroll:focus-visible {
+  outline: var(--smart-focus-width) solid var(--mat-sys-primary);
+  outline-offset: calc(-1 * var(--smart-focus-width));
+}
+
+// Separate borders: a collapsed border would scroll away from the sticky header row.
+.table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  color: var(--mat-sys-on-surface);
+  font: var(--mat-sys-body-medium);
+  font-variant-numeric: tabular-nums;
+}
+
+th,
+td {
+  box-sizing: border-box;
+  height: var(--smart-size-table-row);
+  padding-block: 0;
+  padding-inline: var(--smart-space-sm);
+  border-bottom: var(--smart-border-width) solid
+    color-mix(in srgb, var(--mat-sys-outline-variant) 50%, transparent);
+  text-align: end;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+[data-align='start'] {
+  text-align: start;
+  white-space: normal;
+}
+
+th:first-child,
+td:first-child {
+  padding-inline-start: var(--smart-space-lg);
+}
+
+th:last-child,
+td:last-child {
+  padding-inline-end: var(--smart-space-lg);
+}
+
+// The header stays in view while the rows scroll under it (positioned, so it paints above them).
+th {
+  position: sticky;
+  top: 0;
+  background: var(--mat-sys-surface-container-lowest);
+  color: var(--mat-sys-on-surface-variant);
+  font: var(--mat-sys-label-medium);
+  font-weight: var(--smart-font-weight-medium);
+  letter-spacing: var(--mat-sys-label-medium-tracking);
+}
+
+tr:last-child td {
+  border-bottom: 0;
+}
+
+// A note is the second line of the first cell, in supporting text.
+.note {
+  display: block;
+  color: var(--mat-sys-on-surface-variant);
+  font: var(--mat-sys-body-small);
+}
+
+td:has(.note) {
+  padding-block: var(--smart-space-sm);
+}

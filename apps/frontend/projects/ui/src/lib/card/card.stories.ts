@@ -106,12 +106,15 @@ export const Kopfaktion: StoryObj<UiCard> = {
       <p>Inhalt</p>
     </ui-card>`,
   }),
-  play: async ({ canvas }) => {
+  play: async ({ canvas, canvasElement }) => {
     const heading = canvas.getByRole('heading', { name: 'Verlauf' }).getBoundingClientRect();
     const action = canvas
       .getByRole('button', { name: 'Werte als Tabelle' })
       .getBoundingClientRect();
+    const card = canvasElement.querySelector('mat-card')!.getBoundingClientRect();
     await expect(action.left).toBeGreaterThanOrEqual(heading.right);
+    // At the end of the row: only the card's padding is left of the edge.
+    await expect(card.right - action.right).toBeLessThan(24);
     await expect(
       Math.abs(action.top + action.height / 2 - (heading.top + heading.height / 2)),
     ).toBeLessThan(8);

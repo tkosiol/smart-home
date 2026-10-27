@@ -1,0 +1,11 @@
+<figure class="figure">
+  <div class="body" [class.body--message]="message()">
+    @if (message(); as message) {
+      <p class="message">{{ message }}</p>
+    }
+    <ng-content />
+  </div>
+  @if (caption(); as caption) {
+    <figcaption class="caption">{{ caption }}</figcaption>
+  }
+</figure>

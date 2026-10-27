@@ -13,6 +13,8 @@ export type { UiOption } from './lib/option';
 export { UiCard, UiCardActions } from './lib/card/card';
 export { UiEmptyState, UiEmptyStateActions } from './lib/empty-state/empty-state';
 export { UiSkeleton } from './lib/skeleton/skeleton';
+export { UiFigure } from './lib/figure/figure';
+export { UiValueTable, type UiTableColumn, type UiTableRow } from './lib/table/value-table';
 export { UiList } from './lib/list/list';
 export { UiListItem } from './lib/list/list-item';
 export type { UiRoleTone, UiTone, UiToneName } from './lib/tone';

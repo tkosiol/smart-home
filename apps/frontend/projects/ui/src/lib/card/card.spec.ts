@@ -23,6 +23,10 @@ describe('UiCard', () => {
     const element = fixture.nativeElement as HTMLElement;
     expect(element.querySelector('mat-card-header [uiCardHeaderAction]')).not.toBeNull();
     expect(element.querySelector('mat-card-content [uiCardHeaderAction]')).toBeNull();
+    // Wrapped in the card's own element, so the card's styles can place it at the row's end.
+    expect(
+      element.querySelector('mat-card-header .header-action [uiCardHeaderAction]'),
+    ).not.toBeNull();
   });
 
   it('renders an h3 heading by default and follows the level', () => {

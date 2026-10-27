@@ -47,6 +47,8 @@
   --smart-size-pod-width: 140px;
   --smart-size-pod-height: 116px;
   --smart-size-icon-container: 40px;
+  /* Rows of ui-value-table (M3 data table: 40 px header and rows) */
+  --smart-size-table-row: 40px;
   /* Track height of ui-progress-band */
   --smart-size-progress-band: 12px;
   --smart-focus-width: 3px;
