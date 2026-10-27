@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { GatewaysModule } from '../gateways/index.js';
 import { IdentityModule } from '../identity/index.js';
 import { TelemetryModule } from '../telemetry/index.js';
+import { DeviceHistoryService } from './device-history.service.js';
 import { DeviceEvents } from './device-events.js';
 import { DevicesController } from './devices.controller.js';
 import { DeviceIngestConsumer } from './device-ingest.consumer.js';
@@ -19,6 +20,7 @@ import { HardwareRepository } from './hardware.repository.js';
     HardwareRepository,
     DevicesRepository,
     DevicesService,
+    DeviceHistoryService,
     { provide: DEVICE_MESSAGE_HANDLER, useClass: DeviceMessageProcessor },
     DeviceIngestConsumer,
   ],

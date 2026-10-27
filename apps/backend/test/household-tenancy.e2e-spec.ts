@@ -80,6 +80,11 @@ const ENDPOINTS: {
   { route: 'GET /v1/households/:householdId/devices' },
   { route: 'GET /v1/households/:householdId/devices/:deviceId', crossIds: true },
   {
+    route: 'GET /v1/households/:householdId/devices/:deviceId/history',
+    query: '?capability=soil_moisture&range=7d',
+    crossIds: true,
+  },
+  {
     route: 'PATCH /v1/households/:householdId/devices/:deviceId',
     body: { name: 'Hijacked' },
     crossIds: true,
