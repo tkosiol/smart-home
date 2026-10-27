@@ -21,7 +21,7 @@ type Story = StoryObj<UiChart>;
 const NOW = Date.UTC(2026, 9, 27, 12, 32); // 14:32 in Berlin
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
-const BAND = { below: 25, label: 'zu trocken', valueLabel: '25 %' };
+const BAND = { below: 25, valueLabel: '25 %' };
 
 function rng(seed: number): () => number {
   let a = seed;
@@ -98,6 +98,15 @@ async function expectOne(labels: string[], spellings: string[]): Promise<void> {
   ).toBe(true);
 }
 
+/** The line across a gap in the readings is drawn dashed. */
+async function expectDashedLine(svg: SVGSVGElement): Promise<void> {
+  await waitFor(() =>
+    expect(
+      [...svg.querySelectorAll('path')].some((path) => path.getAttribute('stroke-dasharray')),
+    ).toBe(true),
+  );
+}
+
 const labelsOf = (svg: SVGElement) =>
   [...svg.querySelectorAll('text')].map((node) =>
     (node.textContent ?? '').replace(/\u00a0/g, ' ').trim(),
@@ -118,7 +127,7 @@ export const Bodenfeuchte7Tage: Story = {
     points: week.points,
     range: '7d',
     resolutionMinutes: 60,
-    domain: { min: 0, max: 80 },
+    domain: { min: 0, max: 100 },
     band: BAND,
     markers: week.waterings,
     label: 'Bodenfeuchte, 7 Tage',
@@ -134,8 +143,10 @@ export const Bodenfeuchte7Tage: Story = {
     );
     await expect(group).toHaveAttribute('aria-label', 'Bodenfeuchte, 7 Tage');
     const labels = labelsOf(svg);
-    await expect(labels).toContain('zu trocken');
+    // the threshold is a line with its value, no shaded band and no band label
+    await expect(labels).not.toContain('zu trocken');
     await expect(labels).toContain('25 %');
+    await expect(labels).toContain('100 %');
     await expectOne(labels, ['Heute', 'Today']);
     await expect(labels).toContain('50 %');
     await expect(group.getBoundingClientRect().height).toBe(
@@ -193,7 +204,7 @@ export const Wochen4: Story = {
     points: month.points,
     range: '28d',
     resolutionMinutes: 60,
-    domain: { min: 0, max: 80 },
+    domain: { min: 0, max: 100 },
     band: BAND,
     markers: month.waterings,
     label: 'Bodenfeuchte, 4 Wochen',
@@ -264,18 +275,48 @@ export const Luecke: Story = {
     points: withGap,
     range: '7d',
     resolutionMinutes: 60,
-    domain: { min: 0, max: 80 },
+    domain: { min: 0, max: 100 },
     band: BAND,
     label: 'Bodenfeuchte, 7 Tage, mit Lücke',
     description: 'Bodenfeuchte der letzten 7 Tage; zwischen Sonntag und Dienstag fehlen Messwerte.',
   },
   render: (args) => ({ props: args, template }),
   play: async ({ canvasElement }) => {
-    await drawn(canvasElement);
+    await expectDashedLine(await drawn(canvasElement));
   },
 };
 
-/** Readings far apart: no line reaches any of them, so each is drawn as a small dot. */
+/**
+ * Till's plants: moist soil around 80 to 87 % (the axis must reach 100 %), watered once, and a
+ * day and a half without readings.
+ */
+const moist: UiChartPoint[] = Array.from({ length: 7 * 24 }, (_, index) => {
+  const hoursAgo = 7 * 24 - 1 - index;
+  const value = index < 60 ? 86 - index * 0.09 : 87 - (index - 60) * 0.06;
+  return { t: new Date(NOW - hoursAgo * HOUR).toISOString(), value: Math.round(value * 10) / 10 };
+}).filter((_, index) => index < 90 || index > 126);
+
+export const FeuchtMitLuecke: Story = {
+  args: {
+    points: moist,
+    range: '7d',
+    resolutionMinutes: 60,
+    domain: { min: 0, max: 100 },
+    band: BAND,
+    markers: [moist[60]!.t],
+    label: 'Bodenfeuchte, 7 Tage, feucht, mit Lücke',
+    description:
+      'Bodenfeuchte der letzten 7 Tage zwischen 80 und 87 %; anderthalb Tage fehlen Messwerte.',
+  },
+  render: (args) => ({ props: args, template }),
+  play: async ({ canvasElement }) => {
+    const svg = await drawn(canvasElement);
+    await expect(labelsOf(svg)).toContain('100 %');
+    await expectDashedLine(svg);
+  },
+};
+
+/** Readings far apart: no solid line reaches any of them, the dashed one joins them. */
 const lonely: UiChartPoint[] = [60, 50, 40, 30].map((hoursAgo, index) => ({
   t: new Date(NOW - hoursAgo * HOUR).toISOString(),
   value: 30 + index * 5,
@@ -288,22 +329,19 @@ export const EinzelnePunkte: Story = {
     resolutionMinutes: 60,
     from: new Date(NOW - 7 * DAY).toISOString(),
     to: new Date(NOW).toISOString(),
-    domain: { min: 0, max: 80 },
+    domain: { min: 0, max: 100 },
     label: 'Bodenfeuchte, 7 Tage, einzelne Messwerte',
-    description: 'Bodenfeuchte der letzten 7 Tage; vier einzelne Messwerte ohne Linie dazwischen.',
+    description: 'Bodenfeuchte der letzten 7 Tage; vier einzelne Messwerte, gestrichelt verbunden.',
   },
   render: (args) => ({ props: args, template }),
   play: async ({ canvasElement }) => {
     const svg = await drawn(canvasElement);
-    // a 6 px dot (the unit circle scaled by 3) per reading; the line series draws no symbols
-    await waitFor(() => {
-      const dots = [...svg.querySelectorAll('path[transform]')].filter(
-        (path) =>
-          path.getAttribute('fill') !== 'none' &&
-          /^matrix\(3,0,0,3,/.test(path.getAttribute('transform') ?? ''),
-      );
-      return expect(dots).toHaveLength(lonely.length);
-    });
+    await expectDashedLine(svg);
+    // no dots of their own: every reading sits on the dashed line
+    const dots = [...svg.querySelectorAll('path[transform]')].filter((path) =>
+      /^matrix\(3,0,0,3,/.test(path.getAttribute('transform') ?? ''),
+    );
+    await expect(dots).toHaveLength(0);
   },
 };
 

@@ -10,9 +10,9 @@ export interface UiChartPoint {
   readonly max?: number;
 }
 
+/** The threshold the line changes colour below, drawn as a hairline labelled with its value. */
 export interface UiChartBand {
   readonly below: number;
-  readonly label: string;
   readonly valueLabel: string;
 }
 
@@ -60,10 +60,12 @@ const GRID = { left: 6, right: 10, top: 22, bottom: 26 };
  */
 const DOT = { now: 10, marker: 9, hover: 12, edge: 2, isolated: 6 };
 /**
- * Painting order (zrender `z`): band, hairlines with their labels, then the area and line over
- * them (a label's halo must not notch the line), the dots on top.
+ * Painting order (zrender `z`): hairlines with their labels, then the fill, the dashed line through
+ * the gaps and the solid line over them (a label's halo must not notch the line), the dots on top.
  */
-const Z = { band: 1, lines: 2, series: 3, dots: 4 };
+const Z = { lines: 1, fill: 2, bridge: 3, series: 4, dots: 5 };
+/** Dash and gap of the line across a gap in the readings, in px. */
+const BRIDGE_DASH = [4, 4];
 
 /**
  * The value range and the gridline values. Without `domain` the range is rounded outward to a
@@ -138,7 +140,6 @@ export function buildChartModel(input: ChartModelInput): ChartModel {
 
   // One row per point; a null row between two points that are too far apart breaks the line.
   const rows: number[] = [];
-  const pointOfRow = new Map<number, number>();
   const pick = (value: (point: UiChartPoint) => number): Row[] => {
     const data: Row[] = [];
     points.forEach((point, index) => {
@@ -146,12 +147,15 @@ export function buildChartModel(input: ChartModelInput): ChartModel {
         data.push([(times[index]! + times[index - 1]!) / 2, null]);
       }
       rows[index] = data.length;
-      pointOfRow.set(data.length, index);
       data.push([times[index]!, value(point)]);
     });
     return data;
   };
   const main = pick((point) => point.value);
+  // The fill and the dashed line run through the gaps: the same rows without the breaks.
+  const whole = (value: (point: UiChartPoint) => number): Row[] =>
+    points.map((point, index) => [times[index]!, value(point)]);
+  const hasGap = breaksOnGap && points.some((_, index) => gapBefore(index));
   const hasLast = points.length > 0;
   const lastTime = hasLast ? times[times.length - 1]! : 0;
   // The window the data was asked for; without it the chart ends at its last point.
@@ -240,6 +244,7 @@ export function buildChartModel(input: ChartModelInput): ChartModel {
     });
   }
 
+  const shape = kind === 'step' ? { step: 'end' } : { smooth: true, smoothMonotone: 'x' };
   // The hovered point: always primary in a card-coloured ring, also below the threshold.
   const dot = { color: colors.primary, borderColor: colors.card, borderWidth: DOT.edge };
   const line: Record<string, unknown> = {
@@ -263,52 +268,8 @@ export function buildChartModel(input: ChartModelInput): ChartModel {
       data: lines,
     },
     markPoint: { silent: true, animation: false, label: { show: false }, z: Z.dots, data: marks },
-    ...(kind === 'step' ? { step: 'end' } : { smooth: true, smoothMonotone: 'x' }),
-    ...(ribbon
-      ? {}
-      : {
-          areaStyle: {
-            color: {
-              type: 'linear',
-              x: 0,
-              y: 0,
-              x2: 0,
-              y2: 1,
-              colorStops: [
-                { offset: 0, color: withAlpha(colors.primary, alpha.area) },
-                { offset: 1, color: withAlpha(colors.primary, 0) },
-              ],
-            },
-          },
-        }),
+    ...shape,
   };
-  if (band) {
-    line['markArea'] = {
-      silent: true,
-      animation: false,
-      z: Z.band,
-      itemStyle: { color: withAlpha(colors.dryContainer, alpha.band), borderRadius: 4 },
-      data: [
-        [
-          {
-            yAxis: domain.min,
-            label: {
-              show: true,
-              position: 'insideTopLeft',
-              // 8 px in from the left edge; the baseline 15 px below the threshold line
-              distance: 8,
-              offset: [0, -3],
-              formatter: band.label,
-              ...text,
-              ...halo,
-            },
-          },
-          { yAxis: band.below },
-        ],
-      ],
-    };
-  }
-
   const series: Record<string, unknown>[] = [line];
   if (ribbon) {
     const bounds = {
@@ -318,53 +279,76 @@ export function buildChartModel(input: ChartModelInput): ChartModel {
       silent: true,
       smooth: true,
       smoothMonotone: 'x',
-      connectNulls: false,
-      z: 1,
+      z: Z.fill,
       lineStyle: { width: 0 },
     };
-    const lower: Row[] = [];
-    const span: Row[] = [];
-    main.forEach(([t, value], row) => {
-      if (value === null) {
-        lower.push([t, null]);
-        span.push([t, null]);
-        return;
-      }
-      const point = points[pointOfRow.get(row)!]!;
-      const min = point.min ?? point.value;
-      lower.push([t, min]);
-      span.push([t, (point.max ?? point.value) - min]);
-    });
+    const low = (point: UiChartPoint) => point.min ?? point.value;
     series.push(
-      { ...bounds, data: lower, areaStyle: { color: 'transparent' } },
-      { ...bounds, data: span, areaStyle: { color: withAlpha(colors.primary, alpha.ribbon) } },
+      { ...bounds, data: whole(low), areaStyle: { color: 'transparent' } },
+      {
+        ...bounds,
+        data: whole((point) => (point.max ?? point.value) - low(point)),
+        areaStyle: { color: withAlpha(colors.primary, alpha.ribbon) },
+      },
     );
+  } else {
+    series.push({
+      type: 'line',
+      data: whole((point) => point.value),
+      z: Z.fill,
+      silent: true,
+      showSymbol: false,
+      lineStyle: { width: 0 },
+      areaStyle: {
+        color: {
+          type: 'linear',
+          x: 0,
+          y: 0,
+          x2: 0,
+          y2: 1,
+          colorStops: [
+            { offset: 0, color: withAlpha(colors.primary, alpha.area) },
+            { offset: 1, color: withAlpha(colors.primary, 0) },
+          ],
+        },
+      },
+      ...shape,
+    });
   }
 
-  // Points that no line reaches (a gap on both sides, or alone) would vanish: draw them as dots.
-  if (breaksOnGap) {
-    const lonely = points
-      .map((point, index) => ({ point, index }))
-      .filter(
-        ({ index }) =>
-          (index === 0 || gapBefore(index)) &&
-          (index === points.length - 1 || gapBefore(index + 1)),
-      );
-    if (lonely.length > 0) {
-      series.push({
-        type: 'scatter',
-        silent: true,
-        animation: false,
-        z: Z.dots,
-        symbolSize: DOT.isolated,
-        data: lonely.map(({ point, index }) => ({
-          value: [times[index]!, point.value],
+  // Across a gap the line goes on dashed: a whole dashed line beneath the broken solid one.
+  const bridgeIndex = hasGap ? series.length : -1;
+  if (hasGap) {
+    series.push({
+      type: 'line',
+      data: whole((point) => point.value),
+      z: Z.bridge,
+      silent: true,
+      showSymbol: false,
+      lineStyle: { width: 2, type: BRIDGE_DASH, cap: 'round' },
+      itemStyle: { color: colors.primary },
+      ...shape,
+    });
+  }
+
+  // A single reading has no line to sit on: it is drawn as a dot.
+  if (points.length === 1) {
+    const [point] = points;
+    series.push({
+      type: 'scatter',
+      silent: true,
+      animation: false,
+      z: Z.dots,
+      symbolSize: DOT.isolated,
+      data: [
+        {
+          value: [times[0]!, point!.value],
           itemStyle: {
-            color: band && point.value < band.below ? colors.dry : colors.primary,
+            color: band && point!.value < band.below ? colors.dry : colors.primary,
           },
-        })),
-      });
-    }
+        },
+      ],
+    });
   }
 
   const labels = hasLast
@@ -438,7 +422,8 @@ export function buildChartModel(input: ChartModelInput): ChartModel {
         type: 'piecewise',
         show: false,
         dimension: 1,
-        seriesIndex: 0,
+        // the dashed line changes colour with the solid one
+        seriesIndex: bridgeIndex < 0 ? [0] : [0, bridgeIndex],
         pieces: [
           { lt: band.below, color: colors.dry },
           // A bounded upper end: ECharts fails to build the gradient of an open-ended last piece.

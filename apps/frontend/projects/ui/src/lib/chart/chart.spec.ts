@@ -101,7 +101,8 @@ describe('UiChart', () => {
     await flush();
     expect(loads()).toBe(1);
     expect(chart.options.at(-1)!['animation']).toBe(false);
-    expect((chart.options.at(-1)!['series'] as unknown[]).length).toBe(1);
+    // the line, its fill and (for the gap) the dashed line
+    expect((chart.options.at(-1)!['series'] as unknown[]).length).toBe(3);
   });
 
   it('ends the time axis at the asked window instead of the last point', async () => {
