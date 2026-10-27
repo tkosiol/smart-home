@@ -95,8 +95,7 @@ export interface ChartView {
 function dayMiddle(date: string, timeZone: string): string {
   const [year, month, day] = date.split('-').map(Number) as [number, number, number];
   const guess = Date.UTC(year, month - 1, day, 12);
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone,
+  const parts = dateFormat('en-US', timeZone, {
     hourCycle: 'h23',
     year: 'numeric',
     month: 'numeric',
@@ -201,6 +200,23 @@ export function summaryOf(
   return parts;
 }
 
+const dateFormats = new Map<string, Intl.DateTimeFormat>();
+
+/** A date formatter per locale, zone and options: building one is far dearer than using it. */
+function dateFormat(
+  locale: string,
+  timeZone: string,
+  options: Intl.DateTimeFormatOptions,
+): Intl.DateTimeFormat {
+  const key = `${locale}|${timeZone}|${JSON.stringify(options)}`;
+  let format = dateFormats.get(key);
+  if (!format) {
+    format = new Intl.DateTimeFormat(locale, { ...options, timeZone });
+    dateFormats.set(key, format);
+  }
+  return format;
+}
+
 const hourCycles = new Map<string, boolean>();
 
 /** Whether the language counts hours 0 to 23 (then midnight ends a bucket as "24"). */
@@ -251,42 +267,57 @@ export function pointLabel(
   const start = Date.parse(t);
   const date =
     (now === undefined ? null : relativeDay(t, now, locale, timeZone)) ??
-    new Intl.DateTimeFormat(locale, {
-      timeZone,
-      weekday: 'short',
-      day: 'numeric',
-      month: 'short',
-    }).format(start);
+    dateFormat(locale, timeZone, { weekday: 'short', day: 'numeric', month: 'short' }).format(
+      start,
+    );
   if (resolutionMinutes >= DAY_MINUTES) return date;
   const end = start + resolutionMinutes * 60_000;
-  const hourly = resolutionMinutes % 60 === 0;
+  // Whole hours read "14–15 Uhr"; a bucket that starts at :15, :30 or :45 (quarter hours, or an
+  // hourly bucket in a zone like Asia/Kolkata) keeps its minutes.
+  const hourly = resolutionMinutes % 60 === 0 && localMinute(start, timeZone) === 0;
   const options: Intl.DateTimeFormatOptions = {
-    timeZone,
     hour: hourly ? 'numeric' : '2-digit',
     minute: hourly ? undefined : '2-digit',
   };
-  const timeFormat = new Intl.DateTimeFormat(locale, options);
+  const timeFormat = dateFormat(locale, timeZone, options);
   // A bucket that ends at midnight would make `formatRange` add both dates: join the two times,
   // the end as "24 Uhr" where the language counts to 24 ("23 Uhr–24 Uhr"; a bucket that starts
   // at midnight keeps its "0").
   const time =
     localDate(t, timeZone) === localDate(new Date(end).toISOString(), timeZone)
       ? timeFormat.formatRange(start, end)
-      : `${timeFormat.format(start)}–${new Intl.DateTimeFormat(locale, {
+      : `${timeFormat.format(start)}–${dateFormat(locale, timeZone, {
           ...options,
           hourCycle: hourly && countsTo24(locale) ? 'h24' : undefined,
         }).format(end)}`;
   return `${date}, ${time}`;
 }
 
+/** The minute of the hour an instant has in a zone (0 for whole-hour zones). */
+function localMinute(instant: number, timeZone: string): number {
+  const parts = dateFormat('en-US', timeZone, { minute: 'numeric' }).formatToParts(instant);
+  return Number(parts.find((part) => part.type === 'minute')?.value ?? 0);
+}
+
 /** The calendar day of an instant in a zone, `YYYY-MM-DD`. */
-function localDate(t: string, timeZone: string): string {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone,
+export function localDate(t: string, timeZone: string): string {
+  return dateFormat('en-CA', timeZone, {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
   }).format(Date.parse(t));
+}
+
+/** "Heute, 14:00" or "Mi., 21. Okt., 14:00": the day and time of a reading, in household time. */
+export function lastLabel(t: string, locale: string, timeZone: string, now?: number): string {
+  const instant = Date.parse(t);
+  const date =
+    (now === undefined ? null : relativeDay(t, now, locale, timeZone)) ??
+    dateFormat(locale, timeZone, { weekday: 'short', day: 'numeric', month: 'short' }).format(
+      instant,
+    );
+  const time = dateFormat(locale, timeZone, { hour: '2-digit', minute: '2-digit' }).format(instant);
+  return `${date}, ${time}`;
 }
 
 /**
@@ -334,11 +365,13 @@ export function tableRowsOf(
       .reverse();
   }
   const minutes = RESOLUTION_MINUTES[history.resolution];
+  const battery = history.capability === 'battery';
   return history.points
     .map((point): TableRow => ({
       key: point.t,
       label: pointLabel(point.t, minutes, locale, timeZone, now),
-      values: [withUnit(point.avg, unit, locale)],
+      // The battery is drawn as steps of its last value, so the table lists that too.
+      values: [withUnit(battery ? point.last : point.avg, unit, locale)],
       notes: [],
     }))
     .reverse();

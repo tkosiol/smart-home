@@ -222,6 +222,7 @@
         },
         "dry": "zu trocken",
         "now": "Jetzt",
+        "last": "Zuletzt: {{ time }}",
         "watered": "zuletzt gegossen {{ time }}",
         "separator": "·",
         "empty": "Noch keine Messwerte in diesem Zeitraum",

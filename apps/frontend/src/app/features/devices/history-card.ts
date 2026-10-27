@@ -53,10 +53,13 @@ import {
   SPAN_KEYS,
   chartViewOf,
   historyCapabilities,
+  lastLabel,
+  localDate,
   pointLabel,
   summaryOf,
   tableRowsOf,
   thresholdFor,
+  withUnit,
   type TableRow,
 } from './history-model';
 
@@ -67,6 +70,7 @@ const DEFAULT_RANGE: HistoryRange = '7d';
 /** The texts this card composes in code: root keys, marked so the key check finds them. */
 const KEYS = {
   now: marker('app.devices.history.now'),
+  last: marker('app.devices.history.last'),
   watered: marker('app.devices.history.watered'),
   separator: marker('app.devices.history.separator'),
   empty: marker('app.devices.history.empty'),
@@ -165,6 +169,8 @@ function noteKeyOf(row: TableRow): string {
                     [domain]="chart.domain"
                     [band]="band()"
                     [markers]="chart.markers"
+                    [from]="window().from"
+                    [to]="window().to"
                     [label]="chartLabel()"
                     [description]="'devices.history.chart.description' | transloco: chartWords()"
                     (scrubbed)="scrub.set($event)"
@@ -255,13 +261,27 @@ export class HistoryCard {
     if (!history || history.points.length === 0) return null;
     return chartViewOf(history, this.threshold(), this.timeZone());
   });
+  /** The period the server answered: the chart's time axis ends at its `to`, not at the last point. */
+  protected readonly window = computed(() => {
+    const history = this.history();
+    return { from: history?.from ?? null, to: history?.to ?? null };
+  });
+  /** The last drawn point when it is older than twice the resolution before the period's end. */
+  private readonly staleSince = computed(() => {
+    const view = this.chart();
+    const history = this.history();
+    const last = view?.points.at(-1);
+    if (!view || !history || !last) return null;
+    const age = Date.parse(history.to) - Date.parse(last.t);
+    return age > view.resolutionMinutes * 2 * 60_000 ? last : null;
+  });
   protected readonly band = computed(() => {
     const below = this.chart()?.band ?? null;
     if (below === null) return null;
     return {
       below,
       label: this.text(DRY_KEY) ?? '',
-      valueLabel: formatNumber(below, this.locale()),
+      valueLabel: withUnit(below, this.unit(), this.locale()),
     };
   });
   protected readonly summary = computed(() => {
@@ -296,6 +316,16 @@ export class HistoryCard {
         dry: threshold !== null && point.value < threshold,
       };
     }
+    const stale = this.staleSince();
+    if (stale) {
+      // The device went quiet: its last reading, with when it was taken, instead of "Jetzt".
+      return {
+        value: formatNumber(stale.value, locale),
+        unit: this.unit(),
+        label: null,
+        dry: false,
+      };
+    }
     const key = this.capabilityKey();
     const current = key === undefined ? undefined : this.device().state[key];
     return {
@@ -316,7 +346,12 @@ export class HistoryCard {
     if (readout.label !== null) {
       return readout.dry ? `${readout.label}${separator}${this.text(DRY_KEY)}` : readout.label;
     }
-    const now = this.text(KEYS.now) ?? '';
+    const stale = this.staleSince();
+    const now = stale
+      ? (this.text(KEYS.last, {
+          time: lastLabel(stale.t, this.locale(), this.timeZone(), this.clock.now()),
+        }) ?? '')
+      : (this.text(KEYS.now) ?? '');
     const watered = this.lastWatering();
     if (watered === null) return now;
     const time = this.relativeTime.transform(watered);
@@ -362,6 +397,15 @@ export class HistoryCard {
         ]
       : [{ label: label(KEYS.column.time) }, { label: this.chartWords().capability }];
   });
+  /**
+   * The clock for the table: it only names "Heute" and "Gestern", so it changes with the day, not
+   * with every tick of the clock (which would rebuild all rows every 30 seconds).
+   */
+  private readonly today = computed(() => this.clock.now(), {
+    equal: (a, b) =>
+      localDate(new Date(a).toISOString(), this.timeZone()) ===
+      localDate(new Date(b).toISOString(), this.timeZone()),
+  });
   protected readonly rows = computed<UiTableRow[]>(() => {
     const history = this.history();
     if (!history) return [];
@@ -371,7 +415,7 @@ export class HistoryCard {
       this.waterings(),
       this.locale(),
       this.timeZone(),
-      this.clock.now(),
+      this.today(),
     );
     return rows.map((row) => ({
       key: row.key,

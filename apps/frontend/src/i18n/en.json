@@ -222,6 +222,7 @@
         },
         "dry": "too dry",
         "now": "Now",
+        "last": "Last reading: {{ time }}",
         "watered": "last watered {{ time }}",
         "separator": "·",
         "empty": "No readings in this period yet",

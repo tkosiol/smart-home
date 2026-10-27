@@ -2,6 +2,7 @@ import { capability, device, historyOf, moisture, temperature, battery } from '.
 import {
   chartViewOf,
   historyCapabilities,
+  lastLabel,
   pointLabel,
   summaryOf,
   tableRowsOf,
@@ -189,6 +190,37 @@ describe('pointLabel', () => {
     expect(pointLabel('2026-10-14T11:00:00Z', 60, 'de', BERLIN)).toMatch(/^Mi\., 14\. Okt\./);
   });
 
+  it('keeps the minutes of a bucket in a half-hour zone (Asia/Kolkata)', () => {
+    // 10:00Z is 15:30 in Kolkata
+    expect(pointLabel('2026-10-23T10:00:00Z', 60, 'de', 'Asia/Kolkata')).toContain('15:30–16:30');
+    expect(pointLabel('2026-10-23T10:00:00Z', 60, 'en', 'Asia/Kolkata')).toMatch(
+      /3:30.{0,3}4:30\s?PM/,
+    );
+  });
+
+  it('keeps the minutes of a bucket in a 45 minute zone, also across midnight (Pacific/Chatham)', () => {
+    // 07:00Z is 20:45 in Chatham (+13:45); 10:00Z is 23:45, its bucket ends at 00:45
+    expect(pointLabel('2026-10-23T07:00:00Z', 60, 'de', 'Pacific/Chatham')).toContain(
+      '20:45–21:45',
+    );
+    expect(pointLabel('2026-10-23T10:00:00Z', 60, 'de', 'Pacific/Chatham')).toContain(
+      '23:45–00:45',
+    );
+  });
+
+  it('keeps hours only in whole-hour zones', () => {
+    expect(pointLabel('2026-10-23T10:00:00Z', 60, 'de', BERLIN)).toContain('12–13 Uhr');
+  });
+
+  it('creates each date formatter once per locale, zone and options', () => {
+    pointLabel('2026-10-23T10:00:00Z', 60, 'de', BERLIN, Date.parse('2026-10-24T10:00:00Z'));
+    const created = vi.spyOn(Intl, 'DateTimeFormat');
+    pointLabel('2026-10-23T11:00:00Z', 60, 'de', BERLIN, Date.parse('2026-10-24T10:00:00Z'));
+    pointLabel('2026-10-23T21:00:00Z', 60, 'de', BERLIN, Date.parse('2026-10-24T10:00:00Z'));
+    expect(created).not.toHaveBeenCalled();
+    created.mockRestore();
+  });
+
   it('names the day only for a daily value', () => {
     const label = pointLabel('2026-10-05T12:00:00Z', 1440, 'de', BERLIN);
     expect(label).toContain('5. Okt.');
@@ -228,9 +260,33 @@ describe('tableRowsOf', () => {
     expect(watered.notes).toEqual(['watered']);
   });
 
+  it('lists the last value of a battery bucket, as the chart draws it', () => {
+    const base = historyOf('battery', '7d', () => 80);
+    const history = { ...base, points: base.points.map((p) => ({ ...p, avg: p.last - 3 })) };
+    const rows = tableRowsOf(history, null, [], 'de', BERLIN);
+    expect(rows[0]!.values).toEqual([withUnit(history.points.at(-1)!.last, '%', 'de')]);
+    const soil = tableRowsOf(history, null, [], 'de', BERLIN);
+    expect(soil).toHaveLength(168);
+    const other = { ...history, capability: 'temperature' };
+    expect(tableRowsOf(other, null, [], 'de', BERLIN)[0]!.values).toEqual([
+      withUnit(history.points.at(-1)!.avg, '%', 'de'),
+    ]);
+  });
+
   it('flags nothing dry without a threshold', () => {
     const history = historyOf('soil_moisture', '28d', () => 5);
     const rows = tableRowsOf(history, null, [], 'de', BERLIN);
     expect(rows.every((r) => r.notes.length === 0)).toBe(true);
+  });
+});
+
+describe('lastLabel', () => {
+  const now = Date.parse('2026-10-24T12:00:00Z');
+  it('names the day and the time of a reading in household time', () => {
+    expect(lastLabel('2026-10-21T12:00:00Z', 'de', BERLIN, now)).toMatch(
+      /^Mi\., 21\. Okt\., 14:00$/,
+    );
+    expect(lastLabel('2026-10-24T09:00:00Z', 'de', BERLIN, now)).toBe('Heute, 11:00');
+    expect(lastLabel('2026-10-23T09:00:00Z', 'en', BERLIN, now)).toMatch(/^Yesterday, 11:00/);
   });
 });

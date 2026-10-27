@@ -26,8 +26,11 @@ interface Options extends Partial<DevicesServer> {
   before?: (capability: string, range: HistoryRange) => Promise<void> | undefined;
 }
 
+const clockNow = signal(NOW);
+
 async function open({ language = 'de', before, ...initial }: Options = {}) {
-  TestBed.overrideProvider(UiClock, { useValue: { now: signal(NOW) } });
+  clockNow.set(NOW);
+  TestBed.overrideProvider(UiClock, { useValue: { now: clockNow } });
   const { state, respond } = devicesServer(owner.id, { devices: [sensor], ...initial });
   const me: Me = meWith([owner], owner.id);
   const page = await openHouseholdPage(routes, '/geraete/dev-1', {
@@ -97,7 +100,11 @@ describe('history card', () => {
       expect(inputs.kind()).toBe('area');
       expect(inputs.range()).toBe('7d');
       expect(inputs.domain()).toEqual({ min: 0, max: 80 });
-      expect(inputs.band()).toMatchObject({ below: 25, label: 'zu trocken' });
+      expect(inputs.band()).toMatchObject({
+        below: 25,
+        label: 'zu trocken',
+        valueLabel: `25${String.fromCharCode(0xa0)}%`,
+      });
       expect(inputs.label()).toBe('Bodenfeuchte, letzte 7 Tage');
       expect(radio(page, '7 Tage').getAttribute('aria-checked')).toBe('true');
     });
@@ -140,6 +147,34 @@ describe('history card', () => {
       expect(text).toContain(`41,3`);
       expect(text).toContain('Jetzt');
       expect(text).toContain('zuletzt gegossen vor');
+    });
+  });
+
+  describe('the window', () => {
+    it('draws the period the server answered, ending at its `to`', async () => {
+      const page = await open();
+      const inputs = chartInputs(page);
+      const answer = historyOf('soil_moisture', '7d');
+      expect(inputs.from()).toBe(answer.from);
+      expect(inputs.to()).toBe(answer.to);
+    });
+
+    it('does not claim "Jetzt" for a device that went quiet, but names its last reading', async () => {
+      const stale = (capability: string, range: HistoryRange): DeviceHistory => {
+        const fresh = historyOf(capability, range, (i) => 30 + (i % 10));
+        // the last reading came 3 days before `to`
+        const shift = 3 * 24 * 3_600_000;
+        const points = fresh.points
+          .map((p) => ({ ...p, t: new Date(Date.parse(p.t) - shift).toISOString() }))
+          .map((p) => ({ ...p, t: p.t.replace('.000Z', 'Z') }));
+        return { ...fresh, points };
+      };
+      const page = await open({ history: stale });
+      expect(chartInputs(page).to()).toBe(historyOf('soil_moisture', '7d').to);
+      const text = readoutText(page);
+      expect(text).not.toContain('Jetzt');
+      // the last point, 11:00Z on Sunday 11 October, is 13:00 in Berlin
+      expect(text).toContain('Zuletzt: So., 11. Okt., 13:00');
     });
   });
 
@@ -287,6 +322,17 @@ describe('history card', () => {
       await toggleTable(page);
       expect(chart(page)).toBeTruthy();
       expect(card(page).querySelector('table')).toBeNull();
+    });
+
+    it('keeps the rows when only the clock ticks', async () => {
+      const page = await open();
+      await toggleTable(page);
+      const instance = page.harness.fixture.debugElement.query(By.css('app-history-card'))
+        .componentInstance as { rows: () => unknown };
+      const before = instance.rows();
+      clockNow.set(NOW + 30_000);
+      await flush(page);
+      expect(instance.rows()).toBe(before);
     });
 
     it('lists 4 weeks per day', async () => {
