@@ -106,14 +106,16 @@ ruleTester.run('no-literal-template-text', noLiteralTemplateText, {
   ],
 });
 
-/** String inputs of @smart/ui that never carry text for people: identifiers, URLs, form hints. */
+/** String inputs of @smart/ui that never carry text for people: identifiers, URLs, instants, form hints. */
 const NON_TEXT_STRING_INPUTS = new Set([
   'autocomplete',
   'backRoute',
   'describedBy',
+  'from',
   'moreRoute',
   'name',
   'route',
+  'to',
   'timeZone',
 ]);
 
