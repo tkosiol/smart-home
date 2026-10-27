@@ -66,6 +66,11 @@ import {
 
 /** The shortest time between two reloads caused by the device's reports. */
 const RELOAD_WINDOW_MS = 60_000;
+/**
+ * The backend writes buffered readings once a second, and the event goes out when one is buffered:
+ * a reload started by an event waits this long so it sees the reading that caused it.
+ */
+const WRITER_SETTLE_MS = 2_000;
 const DEFAULT_RANGE: HistoryRange = '7d';
 
 /** The texts this card composes in code: root keys, marked so the key check finds them. */
@@ -453,10 +458,18 @@ export class HistoryCard {
         ),
       );
     const reloads = throttled(RELOAD_WINDOW_MS, reload);
-    inject(DestroyRef).onDestroy(() => reloads.dispose());
+    let settling: ReturnType<typeof setTimeout> | undefined;
+    inject(DestroyRef).onDestroy(() => {
+      clearTimeout(settling);
+      reloads.dispose();
+    });
     injectLive({
       'device.state': (device) => {
-        if (device.id === this.deviceId()) reloads.trigger();
+        if (device.id !== this.deviceId() || settling !== undefined) return;
+        settling = setTimeout(() => {
+          settling = undefined;
+          reloads.trigger();
+        }, WRITER_SETTLE_MS);
       },
       resync: reload,
     });

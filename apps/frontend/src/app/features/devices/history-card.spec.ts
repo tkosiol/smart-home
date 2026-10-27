@@ -396,7 +396,9 @@ describe('history card', () => {
 
     it('loads again when its device reports, without the skeleton', async () => {
       const page = await open();
+      vi.useFakeTimers(quiet);
       report(page);
+      await vi.advanceTimersByTimeAsync(2_000);
       expect(card(page).querySelector('ui-skeleton')).toBeNull();
       await flush(page);
       expect(historyCalls(page)).toEqual([
@@ -406,9 +408,30 @@ describe('history card', () => {
       expect(chart(page)).toBeTruthy();
     });
 
+    it('waits for the measurement writer before it loads after a report', async () => {
+      const page = await open();
+      vi.useFakeTimers(quiet);
+      report(page);
+      await vi.advanceTimersByTimeAsync(1_999);
+      expect(historyCalls(page)).toHaveLength(1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(historyCalls(page)).toHaveLength(2);
+    });
+
+    it('does not load when it is gone during the delay', async () => {
+      const page = await open();
+      vi.useFakeTimers(quiet);
+      report(page);
+      page.harness.fixture.destroy();
+      await vi.advanceTimersByTimeAsync(120_000);
+      expect(historyCalls(page)).toHaveLength(1);
+    });
+
     it('ignores the report of another device', async () => {
       const page = await open();
+      vi.useFakeTimers(quiet);
       report(page, 'dev-2');
+      await vi.advanceTimersByTimeAsync(5_000);
       await flush(page);
       expect(historyCalls(page)).toHaveLength(1);
     });
@@ -421,9 +444,9 @@ describe('history card', () => {
         await vi.advanceTimersByTimeAsync(2_000);
       }
       expect(historyCalls(page)).toHaveLength(2);
-      await vi.advanceTimersByTimeAsync(49_000);
+      await vi.advanceTimersByTimeAsync(47_000);
       expect(historyCalls(page)).toHaveLength(2);
-      await vi.advanceTimersByTimeAsync(2_000);
+      await vi.advanceTimersByTimeAsync(6_000);
       expect(historyCalls(page)).toHaveLength(3);
       await vi.advanceTimersByTimeAsync(120_000);
       expect(historyCalls(page)).toHaveLength(3);
@@ -450,7 +473,9 @@ describe('history card', () => {
           fail ? apiError('internal', 500) : historyOf(capability, range),
       });
       fail = true;
+      vi.useFakeTimers(quiet);
       report(page);
+      await vi.advanceTimersByTimeAsync(2_000);
       await flush(page);
       expect(historyCalls(page)).toHaveLength(2);
       expect(chart(page)).toBeTruthy();
@@ -461,7 +486,9 @@ describe('history card', () => {
       const page = await open();
       vi.useFakeTimers(quiet);
       report(page);
-      report(page); // due at the end of the minute
+      await vi.advanceTimersByTimeAsync(2_000);
+      report(page);
+      await vi.advanceTimersByTimeAsync(2_000); // due at the end of the minute
       await flush(page);
       expect(historyCalls(page)).toHaveLength(2);
       page.harness.fixture.destroy();
