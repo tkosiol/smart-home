@@ -72,9 +72,9 @@ describe('refreshWhileVisible', () => {
     vi.spyOn(document, 'visibilityState', 'get').mockReturnValue(state);
   let destroy: (() => void) | undefined;
 
-  function start(guard: RefreshGuard, reload: () => Promise<unknown>): void {
+  function start(guard: RefreshGuard, reload: () => Promise<unknown>, intervalMs?: number): void {
     const injector = createEnvironmentInjector([], TestBed.inject(EnvironmentInjector));
-    runInInjectionContext(injector, () => refreshWhileVisible(guard, reload));
+    runInInjectionContext(injector, () => refreshWhileVisible(guard, reload, intervalMs));
     let done = false;
     destroy = () => {
       if (!done) injector.destroy();
@@ -94,6 +94,15 @@ describe('refreshWhileVisible', () => {
     const reload = vi.fn(async () => undefined);
     start(new RefreshGuard(), reload);
     await vi.advanceTimersByTimeAsync(REFRESH_MS - 1);
+    expect(reload).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(reload).toHaveBeenCalledOnce();
+  });
+
+  it('reloads at the interval it is given', async () => {
+    const reload = vi.fn(async () => undefined);
+    start(new RefreshGuard(), reload, 5 * REFRESH_MS);
+    await vi.advanceTimersByTimeAsync(5 * REFRESH_MS - 1);
     expect(reload).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);
     expect(reload).toHaveBeenCalledOnce();

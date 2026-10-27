@@ -51,3 +51,13 @@
 mat-card-content {
   overflow-wrap: anywhere;
 }
+
+// An action in the header row stays at the end, its own size, the heading takes the rest.
+mat-card-header {
+  align-items: center;
+}
+
+[uiCardHeaderAction] {
+  flex: none;
+  margin-inline-start: auto;
+}

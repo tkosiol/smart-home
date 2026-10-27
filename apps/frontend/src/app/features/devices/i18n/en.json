@@ -51,5 +51,23 @@
     "descriptionReadOnly": "From these values the app raises a notice.",
     "save": "Save thresholds",
     "reset": "Reset to standard"
+  },
+  "history": {
+    "title": "History",
+    "table": "Show values as a table",
+    "capability": "Reading",
+    "range": "Period",
+    "now": "Now",
+    "watered": "last watered {{ time }}",
+    "separator": "·",
+    "empty": "No readings in this period yet",
+    "error": {
+      "text": "The history could not be loaded.",
+      "retry": "Try again"
+    },
+    "chart": {
+      "label": "{{ capability }}, {{ range }}",
+      "description": "{{ capability }}, {{ range }}. {{ summary }}"
+    }
   }
 }

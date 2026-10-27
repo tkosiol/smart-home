@@ -1,6 +1,7 @@
 import { moduleMetadata, type Meta, type StoryObj } from '@storybook/angular';
 import { expect } from 'storybook/test';
 import { UiButton } from '../button/button';
+import { UiIconButton } from '../button/icon-button';
 import { expectNoHorizontalOverflow, withNarrowFrame } from '../testing/story-helpers';
 import { expectThemeMatrix, rgb } from '../testing/theme-matrix';
 import { ThemeMatrixStoryComponent, UiMatrixCell } from '../testing/theme-matrix.story-component';
@@ -9,7 +10,7 @@ import { UiCard, UiCardActions } from './card';
 const meta: Meta<UiCard> = {
   title: 'Inhalt/Card',
   component: UiCard,
-  decorators: [moduleMetadata({ imports: [UiCardActions, UiButton] })],
+  decorators: [moduleMetadata({ imports: [UiCardActions, UiButton, UiIconButton] })],
 };
 export default meta;
 
@@ -94,5 +95,25 @@ export const Schmal: StoryObj<UiCard> = {
   }),
   play: async ({ canvasElement }) => {
     await expectNoHorizontalOverflow(canvasElement.querySelector('.story-narrow')!);
+  },
+};
+
+/** An element marked `uiCardHeaderAction` sits at the end of the header row, beside the heading. */
+export const Kopfaktion: StoryObj<UiCard> = {
+  render: () => ({
+    template: `<ui-card variant="low" [level]="2" heading="Verlauf">
+      <ui-icon-button uiCardHeaderAction variant="tonal" icon="table_rows" label="Werte als Tabelle" />
+      <p>Inhalt</p>
+    </ui-card>`,
+  }),
+  play: async ({ canvas }) => {
+    const heading = canvas.getByRole('heading', { name: 'Verlauf' }).getBoundingClientRect();
+    const action = canvas
+      .getByRole('button', { name: 'Werte als Tabelle' })
+      .getBoundingClientRect();
+    await expect(action.left).toBeGreaterThanOrEqual(heading.right);
+    await expect(
+      Math.abs(action.top + action.height / 2 - (heading.top + heading.height / 2)),
+    ).toBeLessThan(8);
   },
 };

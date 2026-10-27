@@ -10,7 +10,21 @@ import { UiCard } from './card';
 })
 class Host {}
 
+@Component({
+  imports: [UiCard],
+  template: `<ui-card heading="Verlauf"><button uiCardHeaderAction>Aktion</button>Inhalt</ui-card>`,
+})
+class ActionHost {}
+
 describe('UiCard', () => {
+  it('puts an element marked uiCardHeaderAction into the header row, not the body', () => {
+    const fixture = TestBed.createComponent(ActionHost);
+    fixture.detectChanges();
+    const element = fixture.nativeElement as HTMLElement;
+    expect(element.querySelector('mat-card-header [uiCardHeaderAction]')).not.toBeNull();
+    expect(element.querySelector('mat-card-content [uiCardHeaderAction]')).toBeNull();
+  });
+
   it('renders an h3 heading by default and follows the level', () => {
     const fixture = TestBed.createComponent(Host);
     fixture.detectChanges();

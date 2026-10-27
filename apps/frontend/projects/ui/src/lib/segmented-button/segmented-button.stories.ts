@@ -174,3 +174,17 @@ export const Schmal: StoryObj<UiSegmentedButton<string>> = {
     await expectSelected(canvas.getByRole('radio', { name: '7 Tage' }));
   },
 };
+
+/** `fullWidth`: the group fills its container and the segments share the width evenly. */
+export const VolleBreite: StoryObj<UiSegmentedButton<string>> = {
+  args: { fullWidth: true },
+  render: (args) => ({
+    props: args,
+    template: `<div data-testid="frame" style="width: 480px"><ui-segmented-button [label]="label" [options]="options" [value]="value" fullWidth /></div>`,
+  }),
+  play: async ({ canvas }) => {
+    const frame = canvas.getByTestId('frame').getBoundingClientRect();
+    const group = canvas.getByRole('radiogroup').getBoundingClientRect();
+    await expect(Math.round(group.width)).toBe(Math.round(frame.width));
+  },
+};

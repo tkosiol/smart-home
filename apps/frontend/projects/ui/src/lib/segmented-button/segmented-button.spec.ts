@@ -36,7 +36,26 @@ function press(target: HTMLElement, key: string): void {
   target.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
 }
 
+@Component({
+  imports: [UiSegmentedButton],
+  template: `<ui-segmented-button label="Modus" [options]="options" fullWidth value="light" />`,
+})
+class FullWidthHost {
+  readonly options = MODES;
+}
+
 describe('UiSegmentedButton', () => {
+  it('stretches across its container with fullWidth only', () => {
+    const fixture = TestBed.createComponent(FullWidthHost);
+    fixture.detectChanges();
+    const group = (fixture.nativeElement as HTMLElement).querySelector('ui-segmented-button')!;
+    expect(group.hasAttribute('data-full-width')).toBe(true);
+    const plain = render();
+    expect(
+      plain.element.querySelector('ui-segmented-button')!.hasAttribute('data-full-width'),
+    ).toBe(false);
+  });
+
   it('is a named radio group of native buttons marking the bound option', () => {
     const { element, radios } = render();
     const group = element.querySelector('[role="radiogroup"]') as HTMLElement;

@@ -36,7 +36,10 @@ const APPEARANCE: Record<UiCardVariant, MatCardAppearance> = {
 @Directive({ selector: '[uiCardActions]' })
 export class UiCardActions {}
 
-/** M3 card; the heading is an h3 by default because cards sit inside page sections (h1/h2). */
+/**
+ * M3 card; an element marked `uiCardHeaderAction` sits at the end of the header row (a tonal icon
+ * button, say), next to the heading. The heading is an h3 by default because cards sit inside page sections (h1/h2).
+ */
 @Component({
   selector: 'ui-card',
   imports: [MatCard, MatCardHeader, MatCardTitle, MatCardSubtitle, MatCardContent, MatCardActions],

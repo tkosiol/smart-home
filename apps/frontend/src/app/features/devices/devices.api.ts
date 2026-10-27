@@ -1,5 +1,12 @@
 import { Injectable, inject } from '@angular/core';
-import type { Device, DeviceCreate, DeviceUpdate, Hardware } from '@smart/contracts';
+import type {
+  Device,
+  DeviceCreate,
+  DeviceHistory,
+  DeviceUpdate,
+  Hardware,
+  HistoryRange,
+} from '@smart/contracts';
 import { API_BASE, ApiClient } from '../../core/api';
 
 /** The device endpoints of one household (owner to list new hardware and add, members change). */
@@ -32,6 +39,19 @@ export class DevicesApi {
     return this.api.patch<Device>(
       this.path(householdId, `/devices/${encodeURIComponent(deviceId)}`),
       body,
+    );
+  }
+
+  /** The values of one capability over a range, in buckets (and per day over 4 weeks). */
+  history(
+    householdId: string,
+    deviceId: string,
+    capability: string,
+    range: HistoryRange,
+  ): Promise<DeviceHistory> {
+    const query = `capability=${encodeURIComponent(capability)}&range=${range}`;
+    return this.api.get<DeviceHistory>(
+      this.path(householdId, `/devices/${encodeURIComponent(deviceId)}/history?${query}`),
     );
   }
 }

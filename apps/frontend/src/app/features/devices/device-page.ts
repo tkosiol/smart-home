@@ -36,18 +36,21 @@ import { RefreshGuard, isNetworkFailure, refreshWhileVisible } from '../../core/
 import { heroOf, kindKey, sidePodsOf } from './device-hero';
 import { capabilityLabelKey, isBatteryLow } from './device-values';
 import { DevicesApi } from './devices.api';
+import { HistoryCard } from './history-card';
+import { historyCapabilities } from './history-model';
 import { ThresholdsCard } from './thresholds-card';
 
 /**
- * One device (spec 3.3, without the chart): the hero with its main value, status and target range,
+ * One device (spec 3.3): the hero with its main value, status and target range,
  * the next readings as pods, when it last reported, a banner while it is offline or its battery is
- * low, and the thresholds; members can rename it and change the thresholds. The values are fetched
- * again every minute.
+ * low, its history (next to the values from the Expanded window class) and the thresholds; members
+ * can rename it and change the thresholds. The values are fetched again every minute.
  */
 @Component({
   selector: 'app-device-page',
   imports: [
     TranslocoPipe,
+    HistoryCard,
     ThresholdsCard,
     UiBanner,
     UiButton,
@@ -93,62 +96,67 @@ import { ThresholdsCard } from './thresholds-card';
               }
             </ui-stack>
           }
-          <ui-section [heading]="'devices.detail.readings' | transloco">
-            <ui-stack gap="sm">
-              @if (hero(); as hero) {
-                <ui-device-hero
-                  [kind]="hero.kind"
-                  [label]="
-                    heroLabelKey() ? (heroLabelKey()! | transloco) : (hero.capabilityKey ?? '')
-                  "
-                  [note]="
-                    device.lastSeenAt
-                      ? ('devices.detail.updated'
-                        | transloco: { time: device.lastSeenAt | uiRelativeTime })
-                      : ('devices.card.neverSeen' | transloco)
-                  "
-                >
-                  @if (hero.chip; as chip) {
-                    <ui-status-chip [text]="chip.key | transloco" [tone]="chip.tone" />
-                  }
-                  <span
-                    [attr.role]="hero.missing ? 'img' : null"
-                    [attr.aria-label]="hero.missing ? ('devices.reading.none' | transloco) : null"
+          <ui-grid min="split" gap="xl">
+            <ui-section [heading]="'devices.detail.readings' | transloco">
+              <ui-stack gap="sm">
+                @if (hero(); as hero) {
+                  <ui-device-hero
+                    [kind]="hero.kind"
+                    [label]="
+                      heroLabelKey() ? (heroLabelKey()! | transloco) : (hero.capabilityKey ?? '')
+                    "
+                    [note]="
+                      device.lastSeenAt
+                        ? ('devices.detail.updated'
+                          | transloco: { time: device.lastSeenAt | uiRelativeTime })
+                        : ('devices.card.neverSeen' | transloco)
+                    "
                   >
-                    <ui-value-display
-                      size="hero"
-                      [value]="hero.valueKey ? (hero.valueKey | transloco) : hero.value"
-                      [unit]="hero.unit"
-                    />
-                  </span>
-                  @if (hero.meter; as meter) {
-                    <ui-progress-band
-                      [value]="meter.value"
-                      [band]="meter.band"
-                      [label]="'app.devices.capability.soil_moisture' | transloco"
-                      [valueText]="meter.textKey | transloco: meter.textParams"
-                    />
-                  }
-                </ui-device-hero>
-              } @else {
-                <p>{{ 'devices.detail.noReadings' | transloco }}</p>
-              }
-              @if (sidePods().length > 0) {
-                <ui-grid min="xs" gap="sm">
-                  @for (pod of sidePods(); track pod.key) {
-                    <ui-device-pod
-                      fill
-                      kind="climate"
-                      [icon]="pod.icon"
-                      [value]="pod.valueKey ? (pod.valueKey | transloco) : pod.value"
-                      [unit]="pod.unit"
-                      [label]="pod.labelKey ? (pod.labelKey | transloco) : pod.key"
-                    />
-                  }
-                </ui-grid>
-              }
-            </ui-stack>
-          </ui-section>
+                    @if (hero.chip; as chip) {
+                      <ui-status-chip [text]="chip.key | transloco" [tone]="chip.tone" />
+                    }
+                    <span
+                      [attr.role]="hero.missing ? 'img' : null"
+                      [attr.aria-label]="hero.missing ? ('devices.reading.none' | transloco) : null"
+                    >
+                      <ui-value-display
+                        size="hero"
+                        [value]="hero.valueKey ? (hero.valueKey | transloco) : hero.value"
+                        [unit]="hero.unit"
+                      />
+                    </span>
+                    @if (hero.meter; as meter) {
+                      <ui-progress-band
+                        [value]="meter.value"
+                        [band]="meter.band"
+                        [label]="'app.devices.capability.soil_moisture' | transloco"
+                        [valueText]="meter.textKey | transloco: meter.textParams"
+                      />
+                    }
+                  </ui-device-hero>
+                } @else {
+                  <p>{{ 'devices.detail.noReadings' | transloco }}</p>
+                }
+                @if (sidePods().length > 0) {
+                  <ui-grid min="xs" gap="sm">
+                    @for (pod of sidePods(); track pod.key) {
+                      <ui-device-pod
+                        fill
+                        kind="climate"
+                        [icon]="pod.icon"
+                        [value]="pod.valueKey ? (pod.valueKey | transloco) : pod.value"
+                        [unit]="pod.unit"
+                        [label]="pod.labelKey ? (pod.labelKey | transloco) : pod.key"
+                      />
+                    }
+                  </ui-grid>
+                }
+              </ui-stack>
+            </ui-section>
+            @if (hasHistory()) {
+              <app-history-card [device]="device" />
+            }
+          </ui-grid>
           <app-thresholds-card
             [device]="device"
             [canEdit]="canRename()"
@@ -224,6 +232,10 @@ export class DevicePage {
   protected readonly lowBattery = computed(() => {
     const device = this.device();
     return device !== null && isBatteryLow(device);
+  });
+  protected readonly hasHistory = computed(() => {
+    const device = this.device();
+    return device !== null && historyCapabilities(device).length > 0;
   });
   protected readonly canRename = computed(() => {
     const role = this.household.current()?.role;

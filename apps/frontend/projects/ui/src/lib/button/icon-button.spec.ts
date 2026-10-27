@@ -55,6 +55,30 @@ describe('UiIconButton', () => {
 
 @Component({
   imports: [UiIconButton],
+  template: `<ui-icon-button icon="table_rows" label="Tabelle" [toggled]="on()" />
+    <ui-icon-button icon="close" label="Plain" />`,
+})
+class ToggleHost {
+  readonly on = signal(false);
+}
+
+describe('UiIconButton as a toggle', () => {
+  it('reports aria-pressed only when it is given a state', () => {
+    const fixture = TestBed.createComponent(ToggleHost);
+    fixture.detectChanges();
+    const [toggle, plain] = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('button'),
+    );
+    expect(toggle!.getAttribute('aria-pressed')).toBe('false');
+    expect(plain!.hasAttribute('aria-pressed')).toBe(false);
+    fixture.componentInstance.on.set(true);
+    fixture.detectChanges();
+    expect(toggle!.getAttribute('aria-pressed')).toBe('true');
+  });
+});
+
+@Component({
+  imports: [UiIconButton],
   template: `<ui-icon-button
     icon="notifications"
     label="Benachrichtigungen"

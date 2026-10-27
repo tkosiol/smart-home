@@ -27,6 +27,11 @@
   background: var(--mat-sys-surface-container-high);
 }
 
+:host([data-variant='tonal']) .ui-icon-button[aria-pressed='true'] {
+  background: var(--mat-sys-secondary-container);
+  color: var(--ui-icon-button-color, var(--mat-sys-on-secondary-container));
+}
+
 :host([data-variant='tonal']) .ui-icon-button:disabled {
   background: color-mix(in srgb, var(--mat-sys-on-surface) 12%, transparent);
 }

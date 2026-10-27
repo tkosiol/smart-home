@@ -196,6 +196,31 @@
           "standard": "Standard",
           "custom": "Angepasst (Standard: {{ standard }})"
         }
+      },
+      "history": {
+        "range": {
+          "24h": "24 h",
+          "7d": "7 Tage",
+          "28d": "4 Wochen"
+        },
+        "summary": {
+          "low": "Tief {{ value }}",
+          "high": "Hoch {{ value }}",
+          "dryHours": "{{ n }} Std. zu trocken",
+          "dryMinutes": "{{ n }} Min. zu trocken",
+          "waterings": "{{ n }}× gegossen"
+        },
+        "note": {
+          "dry": "zeitweise zu trocken",
+          "watered": "gegossen",
+          "both": "zeitweise zu trocken · gegossen"
+        },
+        "span": {
+          "24h": "letzte 24 Stunden",
+          "7d": "letzte 7 Tage",
+          "28d": "letzte 4 Wochen"
+        },
+        "dry": "zu trocken"
       }
     },
     "household": {

@@ -23,12 +23,15 @@ import { nextIndex } from '../roving-index';
   templateUrl: './segmented-button.html',
   styleUrl: './segmented-button.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  host: { '[attr.data-full-width]': "fullWidth() ? '' : null" },
 })
 export class UiSegmentedButton<T extends string> {
   readonly options = input.required<readonly UiOption<T>[]>();
   readonly value = model<T>();
   readonly label = input.required<string>();
   readonly disabled = input(false, { transform: booleanAttribute });
+  /** Stretches the group across its container, the segments sharing the width evenly. */
+  readonly fullWidth = input(false, { transform: booleanAttribute });
 
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
 

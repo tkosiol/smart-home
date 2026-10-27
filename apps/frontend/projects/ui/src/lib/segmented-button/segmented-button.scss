@@ -9,6 +9,18 @@
   max-width: 100%;
 }
 
+:host([data-full-width]) {
+  display: flex;
+}
+
+:host([data-full-width]) .group {
+  flex: 1;
+}
+
+:host([data-full-width]) .segment {
+  max-width: none;
+}
+
 .group {
   display: flex;
   gap: var(--smart-space-2xs);
