@@ -82,6 +82,12 @@ export class UiChart {
   readonly band = input<UiChartBand | null>(null);
   /** ISO instants drawn as hollow rings on the first point at or after them. */
   readonly markers = input<readonly string[]>([]);
+  /**
+   * The window the points were asked for (ISO UTC). The time axis spans it, so a device that went
+   * quiet ends short of "now"; without `to` the axis ends at the last point.
+   */
+  readonly from = input<string | null>(null);
+  readonly to = input<string | null>(null);
   readonly label = input.required<string>();
   readonly description = input.required<string>();
   /** The chosen point (index in `points`), `null` when the pointer or keyboard leaves. */
@@ -124,6 +130,8 @@ export class UiChart {
       domain: this.domain(),
       band: this.band(),
       markers: this.markers(),
+      from: this.from(),
+      to: this.to(),
       colors,
       locale: this.format.locale(),
       width: this.width(),

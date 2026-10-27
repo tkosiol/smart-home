@@ -148,6 +148,63 @@ describe('buildChartModel', () => {
     expect(model.times).toHaveLength(5);
   });
 
+  it('draws a point with a gap on both sides (or at an edge) as a small dot', () => {
+    const band = { below: 25, label: 'too dry', valueLabel: '25 %' };
+    const model = buildChartModel(
+      input({
+        band,
+        domain: { min: 0, max: 80 },
+        points: [
+          { t: at(10), value: 30 }, // alone: gap after it
+          { t: at(6), value: 20 },
+          { t: at(5), value: 21 },
+          { t: at(4), value: 22 }, // part of a line
+          { t: at(1), value: 40 }, // alone between two gaps
+        ],
+      }),
+    );
+    const dots = series(model.option)[1];
+    expect(dots.type).toBe('scatter');
+    expect(dots.silent).toBe(true);
+    expect(dots.symbolSize).toBe(6);
+    expect(dots.z).toBeGreaterThan(series(model.option)[0].z);
+    expect(dots.data.map((d: any) => d.value)).toEqual([
+      [END - 10 * HOUR, 30],
+      [END - HOUR, 40],
+    ]);
+    expect(dots.data[0].itemStyle.color).toBe(COLORS.primary);
+    const dry = buildChartModel(
+      input({
+        band,
+        points: [
+          { t: at(10), value: 10 },
+          { t: at(1), value: 40 },
+        ],
+      }),
+    );
+    expect(series(dry.option)[1].data[0].itemStyle.color).toBe(COLORS.dry);
+  });
+
+  it('adds no dots when every point has a neighbour', () => {
+    expect(series(buildChartModel(input()).option)).toHaveLength(1);
+  });
+
+  it('never breaks a step line: a value holds until it changes', () => {
+    const model = buildChartModel(
+      input({
+        kind: 'step',
+        points: [
+          { t: at(40), value: 90 },
+          { t: at(10), value: 80 },
+          { t: at(0), value: 70 },
+        ],
+      }),
+    );
+    expect(series(model.option)[0].data).toHaveLength(3);
+    expect(model.rows).toEqual([0, 1, 2]);
+    expect(series(model.option)).toHaveLength(1);
+  });
+
   it('does not break at exactly twice the resolution', () => {
     const model = buildChartModel(
       input({
@@ -231,6 +288,30 @@ describe('buildChartModel', () => {
     // the design: "now" is a 4 px disc in a 6 px ring, a watering ring 3.5 in 5.5 (2 px edges)
     expect([now.symbolSize, now.itemStyle.borderWidth]).toEqual([10, 2]);
     expect([rings[0].symbolSize, rings[0].itemStyle.borderWidth]).toEqual([9, 2]);
+  });
+
+  it('spans the window from `from` to `to` instead of ending at the last point', () => {
+    const to = new Date(END + 3 * HOUR).toISOString();
+    const from = new Date(END + 3 * HOUR - 7 * 24 * HOUR).toISOString();
+    const model = buildChartModel(input({ range: '7d', from, to }));
+    const axis = model.option['xAxis'] as any;
+    expect(axis.min).toBe(Date.parse(from));
+    expect(axis.max).toBe(Date.parse(to));
+    // the last day's label is "Heute", centred on the part of that day inside the window (axis ends at `to`)
+    const texts = axis.axisLabel.customValues.map(axis.axisLabel.formatter);
+    expect(texts.at(-1)).toBe('Heute');
+    expect(axis.axisLabel.customValues.at(-1)).toBeLessThanOrEqual(Date.parse(to));
+  });
+
+  it('draws the "now" dot only when the last point is within twice the resolution of `to`', () => {
+    const marks = (m: ReturnType<typeof buildChartModel>) =>
+      series(m.option)[0].markPoint.data.map((d: any) => d.name);
+    const range = { range: '7d' as const, resolutionMinutes: 60 };
+    const fresh = new Date(END + 2 * HOUR).toISOString();
+    expect(marks(buildChartModel(input({ ...range, to: fresh })))).toContain('now');
+    const stale = new Date(END + 3 * 24 * HOUR).toISOString();
+    expect(marks(buildChartModel(input({ ...range, to: stale })))).not.toContain('now');
+    expect(marks(buildChartModel(input({ ...range })))).toContain('now');
   });
 
   it('shows the hovered point as a primary 5 px disc in a 7 px card ring, even below the band', () => {
@@ -317,9 +398,9 @@ describe('buildChartModel', () => {
   });
 
   it('builds a model for a single point and for none', () => {
-    expect(
-      series(buildChartModel(input({ points: [{ t: at(0), value: 5 }] })).option),
-    ).toHaveLength(1);
+    const lone = series(buildChartModel(input({ points: [{ t: at(0), value: 5 }] })).option);
+    expect(lone).toHaveLength(2);
+    expect(lone[1].data.map((d: any) => d.value)).toEqual([[END, 5]]);
     expect(buildChartModel(input({ points: [] })).times).toEqual([]);
   });
 });

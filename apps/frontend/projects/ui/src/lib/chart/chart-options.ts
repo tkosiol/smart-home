@@ -31,6 +31,9 @@ export interface ChartModelInput {
   readonly markers: readonly string[];
   readonly colors: ChartColors;
   readonly locale: string;
+  /** The window the data was asked for (ISO UTC); without `to` the window ends at the last point. */
+  readonly from?: string | null;
+  readonly to?: string | null;
   /** Width of the drawing area in px (0 before the first measurement). */
   readonly width: number;
 }
@@ -55,7 +58,7 @@ const GRID = { left: 6, right: 10, top: 22, bottom: 26 };
  * Diameters of the dots; their 2 px edge straddles the outline, so the "now" dot is a 4 px
  * primary disc in a 6 px card-coloured ring, a watering ring 3.5 in 5.5, the hovered point 5 in 7.
  */
-const DOT = { now: 10, marker: 9, hover: 12, edge: 2 };
+const DOT = { now: 10, marker: 9, hover: 12, edge: 2, isolated: 6 };
 /**
  * Painting order (zrender `z`): band, hairlines with their labels, then the area and line over
  * them (a label's halo must not notch the line), the dots on top.
@@ -129,6 +132,9 @@ export function buildChartModel(input: ChartModelInput): ChartModel {
   const alpha = chartAlphas(colors.dark);
   const times = points.map((point) => Date.parse(point.t));
   const maxGap = input.resolutionMinutes * 2 * 60_000;
+  // A step holds its value until it changes (a battery level): it never breaks on a gap.
+  const breaksOnGap = kind !== 'step';
+  const gapBefore = (index: number) => index > 0 && times[index]! - times[index - 1]! > maxGap;
 
   // One row per point; a null row between two points that are too far apart breaks the line.
   const rows: number[] = [];
@@ -136,7 +142,7 @@ export function buildChartModel(input: ChartModelInput): ChartModel {
   const pick = (value: (point: UiChartPoint) => number): Row[] => {
     const data: Row[] = [];
     points.forEach((point, index) => {
-      if (index > 0 && times[index]! - times[index - 1]! > maxGap) {
+      if (breaksOnGap && gapBefore(index)) {
         data.push([(times[index]! + times[index - 1]!) / 2, null]);
       }
       rows[index] = data.length;
@@ -147,8 +153,17 @@ export function buildChartModel(input: ChartModelInput): ChartModel {
   };
   const main = pick((point) => point.value);
   const hasLast = points.length > 0;
-  const to = hasLast ? times[times.length - 1]! : 0;
-  const from = hasLast ? Math.min(to - rangeDurationMs(input.range), times[0]!) : 0;
+  const lastTime = hasLast ? times[times.length - 1]! : 0;
+  // The window the data was asked for; without it the chart ends at its last point.
+  const asked = input.to ? Date.parse(input.to) : NaN;
+  const to = hasLast ? (Number.isFinite(asked) ? Math.max(asked, lastTime) : lastTime) : 0;
+  const askedFrom = input.from ? Date.parse(input.from) : NaN;
+  const from = hasLast
+    ? Math.min(
+        Number.isFinite(askedFrom) ? askedFrom : to - rangeDurationMs(input.range),
+        times[0]!,
+      )
+    : 0;
 
   const ribbon = kind === 'ribbon';
   const extent = ribbon
@@ -213,7 +228,8 @@ export function buildChartModel(input: ChartModelInput): ChartModel {
     seen.add(index);
     marks.push(ring(index));
   }
-  if (hasLast) {
+  // "Now" is only marked where the last point is current: a stale value ends short of `to`.
+  if (hasLast && to - lastTime <= maxGap) {
     const last = points.length - 1;
     marks.push({
       name: 'now',
@@ -323,6 +339,32 @@ export function buildChartModel(input: ChartModelInput): ChartModel {
       { ...bounds, data: lower, areaStyle: { color: 'transparent' } },
       { ...bounds, data: span, areaStyle: { color: withAlpha(colors.primary, alpha.ribbon) } },
     );
+  }
+
+  // Points that no line reaches (a gap on both sides, or alone) would vanish: draw them as dots.
+  if (breaksOnGap) {
+    const lonely = points
+      .map((point, index) => ({ point, index }))
+      .filter(
+        ({ index }) =>
+          (index === 0 || gapBefore(index)) &&
+          (index === points.length - 1 || gapBefore(index + 1)),
+      );
+    if (lonely.length > 0) {
+      series.push({
+        type: 'scatter',
+        silent: true,
+        animation: false,
+        z: Z.dots,
+        symbolSize: DOT.isolated,
+        data: lonely.map(({ point, index }) => ({
+          value: [times[index]!, point.value],
+          itemStyle: {
+            color: band && point.value < band.below ? colors.dry : colors.primary,
+          },
+        })),
+      });
+    }
   }
 
   const labels = hasLast

@@ -23,6 +23,8 @@ const at = (hoursAgo: number) => new Date(END - hoursAgo * HOUR).toISOString();
     timeZone="Europe/Berlin"
     unit="%"
     [band]="band()"
+    [from]="from()"
+    [to]="to()"
     label="Bodenfeuchte, 24 Stunden"
     description="Bodenfeuchte der letzten 24 Stunden: von 30 auf 24 %."
     (scrubbed)="scrubbed.push($event)"
@@ -36,6 +38,8 @@ class Host {
     { t: at(0), value: 24 },
   ]);
   readonly band = signal<UiChartBand | null>(null);
+  readonly from = signal<string | null>(null);
+  readonly to = signal<string | null>(null);
   readonly scrubbed: (number | null)[] = [];
 }
 
@@ -100,7 +104,22 @@ describe('UiChart', () => {
     expect((chart.options.at(-1)!['series'] as unknown[]).length).toBe(1);
   });
 
+  it('ends the time axis at the asked window instead of the last point', async () => {
+    const { fixture, chart, flush } = await setup();
+    await flush();
+    expect((chart.options.at(-1)!['xAxis'] as { max: number }).max).toBe(END);
+    const to = new Date(END + 5 * HOUR).toISOString();
+    fixture.componentInstance.from.set(new Date(END - 19 * HOUR).toISOString());
+    fixture.componentInstance.to.set(to);
+    await flush();
+    const axis = chart.options.at(-1)!['xAxis'] as { min: number; max: number };
+    expect(axis.max).toBe(Date.parse(to));
+    expect(axis.min).toBe(END - 19 * HOUR);
+  });
+
   it('draws again when the theme changes, with the other colour scheme', async () => {
+    // the washes differ by scheme only on a colour that can take an opacity
+    document.documentElement.style.setProperty('--mat-sys-primary', 'rgb(0, 104, 122)');
     const { fixture, chart, flush } = await setup();
     await flush();
     const before = chart.options.length;
@@ -109,6 +128,7 @@ describe('UiChart', () => {
     await flush();
     expect(chart.options.length).toBeGreaterThan(before);
     expect(JSON.stringify(chart.options.at(-1))).not.toBe(light);
+    document.documentElement.style.removeProperty('--mat-sys-primary');
     fixture.destroy();
   });
 

@@ -22,28 +22,18 @@ export function chartAlphas(dark: boolean) {
     : { area: 0.2, ribbon: 0.16, band: 0.42, grid: 0.55, threshold: 0.55, pointer: 0.7 };
 }
 
-const FALLBACK = {
-  primary: '#00687a',
-  outline: '#70797b',
-  outlineVariant: '#bfc8cb',
-  onSurfaceVariant: '#3f484b',
-  card: '#eff4f7',
-  dry: '#795900',
-  dryContainer: '#ffdfa0',
-};
-
-/** Reads the roles at `host`; a missing property falls back to the default theme's colour. */
+/** Reads the roles at `host`; a missing property falls back to the text colour. */
 export function readChartColors(host: Element, dark: boolean): ChartColors {
   const style = getComputedStyle(host);
-  const read = (name: string, fallback: string) => style.getPropertyValue(name).trim() || fallback;
+  const read = (name: string) => style.getPropertyValue(name).trim() || 'currentColor';
   return {
-    primary: read('--mat-sys-primary', FALLBACK.primary),
-    outline: read('--mat-sys-outline', FALLBACK.outline),
-    outlineVariant: read('--mat-sys-outline-variant', FALLBACK.outlineVariant),
-    onSurfaceVariant: read('--mat-sys-on-surface-variant', FALLBACK.onSurfaceVariant),
-    card: read('--mat-sys-surface-container-low', FALLBACK.card),
-    dry: read('--smart-status-dry', FALLBACK.dry),
-    dryContainer: read('--smart-status-dry-container', FALLBACK.dryContainer),
+    primary: read('--mat-sys-primary'),
+    outline: read('--mat-sys-outline'),
+    outlineVariant: read('--mat-sys-outline-variant'),
+    onSurfaceVariant: read('--mat-sys-on-surface-variant'),
+    card: read('--mat-sys-surface-container-low'),
+    dry: read('--smart-status-dry'),
+    dryContainer: read('--smart-status-dry-container'),
     fontFamily: style.fontFamily || 'sans-serif',
     dark,
   };
