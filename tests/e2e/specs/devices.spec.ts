@@ -140,6 +140,30 @@ test.describe.serial('devices from the simulator', () => {
     await expect(page).toHaveURL(/\/geraete\/[0-9a-f-]+$/);
   });
 
+  test('the history card charts the soil moisture and offers a table', async ({ page }) => {
+    await page.goto('/geraete');
+    await pod(page, 'Pflanze 1').getByRole('link').click();
+    await expect(heading(page, 'Pflanze 1')).toBeVisible();
+    const card = page
+      .locator('ui-card')
+      .filter({ has: page.getByRole('heading', { name: 'Verlauf' }) });
+    await expect(card).toBeVisible();
+    // Reports arrive every few seconds: reload until the chart has data (no chart while empty).
+    await expect(async () => {
+      await page.reload();
+      await expect(card.locator('ui-chart')).toBeVisible({ timeout: 5_000 });
+    }).toPass({ timeout: REPORTS });
+    await expect(card.getByRole('group', { name: /Bodenfeuchte/ }).first()).toBeVisible();
+
+    await card.getByRole('radio', { name: '24 h' }).click();
+    await expect(card.getByRole('radio', { name: '24 h' })).toBeChecked();
+    await expect(card.locator('ui-chart')).toBeVisible();
+
+    await card.getByRole('button', { name: 'Werte als Tabelle' }).click();
+    await expect(card.locator('ui-value-table tbody tr').first()).toBeVisible();
+    expect(await card.locator('ui-value-table tbody tr').count()).toBeGreaterThan(0);
+  });
+
   test('a member of the household sees the device but not "Neu erkannt"', async ({ browser }) => {
     const { link } = await inviteThroughApi('theme', MEMBER.email, 'member');
     // A new person: the saved state of `theme`, which this file uses, must not apply.
