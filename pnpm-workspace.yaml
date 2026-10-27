@@ -24,3 +24,9 @@ engineStrict: true
 # Remove once @storybook/test-runner is replaced (the test-runner is end-of-life in Storybook 10).
 overrides:
   jest-runtime: 30.4.2
+  # CVE-2023-54404 (unbounded array validation, fixed in 4.6.6): Angular CLI, @angular/forms and
+  # the MCP SDK pin 4.6.5 transitively. Remove once they depend on 4.6.6 or later.
+  zod: 4.6.6
+  # CVE-2026-113872 (DoS via aborted upload, fixed in 2.5.0): @nestjs/platform-express pins 2.4.0
+  # up to 12.2.0. Remove once it depends on 2.5.0 or later.
+  multer: 2.5.0
