@@ -181,7 +181,7 @@ Neues Core-Modul `core/attention` berechnet die Einträge je Haushalt aus `gatew
 - `GET /api/v1/households/:id/attention` (viewer): `{ items: AttentionItem[] }`, nach Rolle gefiltert.
 - `AttentionItem` in `@smart/contracts`: `id`, `kind`, `severity`, `since` (UTC), `deviceId?`, `gatewayId?`, `roomId?`, `name`, `value?`, `unit?`, `params` (z. B. `affectedDevices`).
 - SSE-Ereignis `attention.changed` (neu in Architektur-Spec 8.7) mit dem vollständigen Stand des Haushalts; die App ersetzt ihren Stand.
-- Die Übersicht verwendet außerdem: Haushalt (Name), Gateways (Status, `status_changed_at`, `last_message_at`), Geräte (6a, mit `room_id` ab 6c), Räume mit Gerätereihenfolge (6c), die Anpassung (Abschnitt 5). Bis zur SSE-Anbindung in 6c gilt das 6a-Muster: Laden beim Öffnen und alle 60 s.
+- Die Übersicht verwendet außerdem: Haushalt (Name), Gateways (Status, `status_changed_at`, `last_message_at`), Geräte (6a, mit `room_id` ab 6c), Räume mit Gerätereihenfolge (6c), die Anpassung (Abschnitt 5). Seit 6c-2 kommen Änderungen live per SSE (Architektur-Spec 8.7); nach jedem Neuverbinden wird der Stand einmal per REST geladen. Nur die Mitgliederseite lädt weiter alle 60 s.
 
 ## 5. Übersicht anpassen
 

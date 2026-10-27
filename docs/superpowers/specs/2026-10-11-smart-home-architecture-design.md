@@ -445,6 +445,17 @@ Fehler einer Nachricht beenden nie den Konsumenten; Nutzdaten werden nie protoko
 - Heartbeat alle 25 s; Header `X-Accel-Buffering: no` (wirkt für NPM und `web`-nginx).
 - Nach jedem (Neu-)Verbinden lädt der Client den Snapshot per REST und wendet danach nur noch Deltas an.
 
+**Nachtrag 6c-2 (2026-10-27):** Umgesetzt sind diese Ereignisse (Details: `docs/superpowers/specs/2026-10-27-etappe-6c2-live-design.md`):
+
+- `device.state` (ab `viewer`): neuer Messwert, Verfügbarkeit, Name, Symbol, Schwellwerte, Gerät angelegt.
+- `gateway.status` (nur `owner`): Status von Bridge oder Z2M, Registrierung, Widerruf und neue Gateway-Aktivität (höchstens einmal pro Minute).
+- `hardware.updated` und `hardware.removed` (nur `owner`): freie Hardware neu erkannt oder geändert bzw. zugeordnet oder abgemeldet.
+- `attention.changed` (ab `viewer`, nach Rolle gefiltert): Hinweisliste hat sich tatsächlich geändert.
+- **Drosselung:** je Objekt (Ereignistyp + ID) höchstens ein Ereignis pro Sekunde; danach geht der dann aktuelle Stand raus.
+- **Entfallen:** `device.availability` (steckt in `device.state`) und `hardware.discovered` (ersetzt durch `hardware.updated`/`hardware.removed`).
+- **Später:** `command.result` und `notification.created` kommen mit den Befehlen (Abschnitt 8.6) bzw. den Benachrichtigungen (Abschnitt 8.8).
+- **Client:** per `fetch` und eigenem SSE-Parser statt `EventSource` (ADR-0010, Nachtrag). Der Stream ist geschlossen, solange der Tab verborgen ist; beim Sichtbarwerden wird neu verbunden und der Stand per REST geladen.
+
 ### 8.8 Benachrichtigungen
 
 - Core-Schnittstelle `notify({ recipients, householdId, type, severity, params, cooldownKey? })`.
