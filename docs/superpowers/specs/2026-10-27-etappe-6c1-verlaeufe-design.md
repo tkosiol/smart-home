@@ -27,7 +27,7 @@ Auf der Geräteseite zeigt eine Karte „Verlauf“ die Geschichte jedes numeris
 - Echtzeit-Aggregation an (`timescaledb.materialized_only = false`): Die laufende Stunde und noch nicht materialisierte Stunden kommen aus den Rohdaten dazu, der Verlauf reicht bis „jetzt“.
 - Refresh-Policy: `start_offset` 7 Tage, `end_offset` 1 Stunde, alle 30 Minuten. Nachgelieferte Pufferdaten des Pi (bis 72 h, ADR-0020) landen so im Aggregat.
 - Unbegrenzt aufbewahrt (die Rohdaten-Retention von 1 Jahr greift nicht auf das Aggregat).
-- **Anlegen:** in der Migration mit `WITH NO DATA` (läuft in Drizzles Transaktion). **Nachrechnen der Historie:** `refresh_continuous_aggregate` darf nicht in einer Transaktion laufen; deshalb rechnet das Backend beim Start den Bereich nach, den das Aggregat noch nicht abdeckt (von der ältesten Rohzeile bis zur ältesten materialisierten Stunde, höchstens bis `now() - 1 hour`). Ist nichts offen, tut der Schritt nichts. Fehler beim Nachrechnen werden protokolliert und blockieren den Start nicht.
+- **Anlegen:** in der Migration mit `WITH NO DATA` (läuft in Drizzles Transaktion). **Nachrechnen der Historie:** `refresh_continuous_aggregate` darf nicht in einer Transaktion laufen; deshalb rechnet der Migrationsschritt (`src/migrate.ts`, läuft bei jedem Deploy vor dem Start der API) nach den Migrationen den Bereich nach, den das Aggregat noch nicht abdeckt: von der ältesten Rohzeile bis zur ältesten materialisierten Stunde, höchstens bis `now() - 1 hour`. Ist nichts offen, tut der Schritt nichts.
 
 ### 2.2 Verlaufs-API
 
@@ -114,7 +114,7 @@ Die API liefert Zahlen, keine Texte. Ableitungen für die Anzeige (Gießen, Zeit
 
 ## 5. Tests
 
-- **Backend (Testcontainers, echte TimescaleDB):** Aggregat liefert avg/min/max/last; Echtzeit-Anteil zeigt Werte der laufenden Stunde; Nachrechnen beim Start füllt alte Daten und ist beim zweiten Start ein No-op; nachgelieferte Werte erscheinen nach Refresh; Tageswerte in `Europe/Berlin` am 25.10.2026 (25 Stunden) und in `Pacific/Chatham`; 404 für fremden Haushalt und unbekanntes Gerät; 400 für Einstellung, nicht numerischen oder unbekannten Messwert und ungültigen Zeitraum; leerer Verlauf.
+- **Backend (Testcontainers, echte TimescaleDB):** Aggregat liefert avg/min/max/last; Echtzeit-Anteil zeigt Werte der laufenden Stunde; Nachrechnen im Migrationsschritt füllt alte Daten und ist beim zweiten Lauf ein No-op; nachgelieferte Werte erscheinen nach Refresh; Tageswerte in `Europe/Berlin` am 25.10.2026 (25 Stunden) und in `Pacific/Chatham`; 404 für fremden Haushalt und unbekanntes Gerät; 400 für Einstellung, nicht numerischen oder unbekannten Messwert und ungültigen Zeitraum; leerer Verlauf.
 - **Contracts:** `wateringEvents`, `timeBelow`, `historySummary` mit Grenzfällen (leere Reihe, Sprung genau `minRise`, zwei Anstiege in 2 Stunden, Schwelle `null`).
 - **Frontend:** `ui-chart` Stories (Bodenfeuchte mit Band, Ribbon, Step, leer, schmal) hell und dunkel mit axe; Spec für Tastatur-Scrubbing und `scrubbed`; Karte: Chips/Zeitraum laden neu, Wischen ändert die Anzeige, Tabelle, Zustände; Achsenbeschriftung unter `TZ=Pacific/Chatham`.
 - **Stack-E2E:** Mit dem Simulator erscheint auf der Geräteseite eines Bodensensors der Verlauf (Diagramm sichtbar, Zeitraum umschaltbar, Tabelle zeigt Zeilen).
@@ -122,4 +122,4 @@ Die API liefert Zahlen, keine Texte. Ableitungen für die Anzeige (Gießen, Zeit
 
 ## 6. Doku
 
-Architektur-Spec 8.4 (Aggregat ab 6c-1, Nachrechnen beim Start) und 8.9 (Verlaufs-Endpunkt); Designkonzept 3.3 und 7 („24 h | 7 Tage | 4 Wochen“, Linien statt Balken, ruhige Zeitraum-Auswahl, tonale Chips); UI-README (`ui-chart`, Chips, Segmente); `CLAUDE.md` nur, falls sich Befehle oder Regeln ändern.
+Architektur-Spec 8.4 (Aggregat ab 6c-1, Nachrechnen im Migrationsschritt) und 8.9 (Verlaufs-Endpunkt); Designkonzept 3.3 und 7 („24 h | 7 Tage | 4 Wochen“, Linien statt Balken, ruhige Zeitraum-Auswahl, tonale Chips); UI-README (`ui-chart`, Chips, Segmente); `CLAUDE.md` nur, falls sich Befehle oder Regeln ändern.
