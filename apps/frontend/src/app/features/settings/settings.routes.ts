@@ -3,8 +3,8 @@ import { provideTranslocoScope } from '@jsverse/transloco';
 import { marker } from '@jsverse/transloco-keys-manager/marker';
 import { platformAdmin } from '../../core/household';
 
-// Pages load lazily (loadComponent): the app config imports this folder's index at startup for
-// provideSettingsFeature(), and must not pull the pages into the initial bundle with it.
+// Reached through the lazy hop in this folder's index, so neither these routes nor their texts
+// belong to the initial bundle (#101).
 export const settingsRoutes: Routes = [
   {
     path: '',

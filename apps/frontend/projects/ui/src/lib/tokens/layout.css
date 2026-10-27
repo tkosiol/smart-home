@@ -10,6 +10,9 @@
   --smart-border-width: 1px;
   /* Sizes */
   --smart-size-touch: 48px;
+  /* M3 common button and icon button (their touch target stays --smart-size-touch) */
+  --smart-size-button: 40px;
+  --smart-size-icon-button: 40px;
   --smart-size-top-app-bar: 64px;
   /* Top app bar with the large title (compact windows) */
   --smart-size-top-app-bar-large: 72px;
@@ -38,6 +41,7 @@
   /* Track height of ui-progress-band */
   --smart-size-progress-band: 12px;
   --smart-focus-width: 3px;
+  --smart-focus-offset: 2px;
   --smart-line-height-icon: 1;
   /* Opacity of disabled content (M3 uses 38%) */
   --smart-opacity-disabled: 0.38;

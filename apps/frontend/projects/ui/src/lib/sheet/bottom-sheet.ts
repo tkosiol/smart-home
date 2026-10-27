@@ -1,4 +1,3 @@
-import { BreakpointObserver } from '@angular/cdk/layout';
 import {
   ApplicationRef,
   DOCUMENT,
@@ -10,6 +9,7 @@ import {
   type Type,
 } from '@angular/core';
 import { MEDIUM } from '../adaptive-shell/adaptive-shell';
+import { MEDIA_QUERIES } from '../theme/media-queries';
 import { UI_SHEET_DATA, UiSheetRef, type UiSheetPresentation } from './sheet-ref';
 
 /**
@@ -28,7 +28,7 @@ export class UiBottomSheet {
   private readonly environment = inject(EnvironmentInjector);
   private readonly appRef = inject(ApplicationRef);
   private readonly document = inject(DOCUMENT);
-  private readonly breakpoints = inject(BreakpointObserver);
+  private readonly media = inject(MEDIA_QUERIES);
 
   private pending: Promise<unknown> | null = null;
 
@@ -48,9 +48,7 @@ export class UiBottomSheet {
 
   private async show<C, D, R>(component: Type<C>, data: D): Promise<R | undefined> {
     const { UiSheetHost } = await import('./sheet-host');
-    const presentation: UiSheetPresentation = this.breakpoints.isMatched(MEDIUM)
-      ? 'dialog'
-      : 'sheet';
+    const presentation: UiSheetPresentation = this.media.matches(MEDIUM) ? 'dialog' : 'sheet';
     let result: R | undefined;
     let close: () => void = () => undefined;
     const ref: UiSheetRef<R> = {

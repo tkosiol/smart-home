@@ -1,9 +1,9 @@
-import { BreakpointObserver, type BreakpointState } from '@angular/cdk/layout';
 import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
-import { of } from 'rxjs';
 import { EXPANDED, MEDIUM, UiAdaptiveShell, UiShellBanner, UiShellTopBar } from './adaptive-shell';
+import { MEDIA_QUERIES } from '../theme/media-queries';
+import { FakeMediaQueries } from '../theme/testing/fake-media-queries';
 import type { UiNavDestination } from './navigation';
 
 const DESTINATIONS: readonly UiNavDestination[] = [
@@ -25,15 +25,13 @@ class Host {
   readonly destinations = DESTINATIONS;
 }
 
-function render(medium: boolean, expanded: boolean) {
-  const state: BreakpointState = {
-    matches: medium || expanded,
-    breakpoints: { [MEDIUM]: medium, [EXPANDED]: expanded },
-  };
+function render(medium: boolean, expanded: boolean, media = new FakeMediaQueries()) {
+  media.state[MEDIUM] = medium || expanded;
+  media.state[EXPANDED] = expanded;
   TestBed.configureTestingModule({
     providers: [
       provideRouter([{ path: '**', children: [] }]),
-      { provide: BreakpointObserver, useValue: { observe: () => of(state) } },
+      { provide: MEDIA_QUERIES, useValue: media },
     ],
   });
   const fixture = TestBed.createComponent(Host);
@@ -42,6 +40,19 @@ function render(medium: boolean, expanded: boolean) {
 }
 
 describe('UiAdaptiveShell', () => {
+  it('changes its window class when the window is resized', () => {
+    const media = new FakeMediaQueries();
+    const fixture = render(false, false, media);
+    const shell = fixture.nativeElement.querySelector('ui-adaptive-shell') as HTMLElement;
+    media.emit(MEDIUM, true);
+    media.emit(EXPANDED, true);
+    fixture.detectChanges();
+    expect(shell.getAttribute('data-window-class')).toBe('expanded');
+    media.emit(EXPANDED, false);
+    fixture.detectChanges();
+    expect(shell.getAttribute('data-window-class')).toBe('medium');
+  });
+
   it.each([
     ['compact', false, false],
     ['medium', true, false],

@@ -1,5 +1,5 @@
 import { moduleMetadata, type Meta, type StoryObj } from '@storybook/angular';
-import { expect } from 'storybook/test';
+import { expect, userEvent } from 'storybook/test';
 import { UiButton } from '../button/button';
 import { expectNoHorizontalOverflow, withNarrowFrame } from '../testing/story-helpers';
 import { UiBanner, UiBannerActions } from './banner';
@@ -24,7 +24,14 @@ export const Toene: StoryObj<UiBanner> = {
   }),
   play: async ({ canvas }) => {
     await expect(canvas.getAllByRole('status')).toHaveLength(3);
-    await expect(canvas.getByRole('button', { name: 'Zum Gerät' })).toBeVisible();
+    const action = canvas.getByRole('button', { name: 'Zum Gerät' });
+    await expect(action).toBeVisible();
+    // On the status container the focus ring takes the banner's text colour, not primary.
+    await userEvent.tab();
+    await expect(action).toHaveFocus();
+    const ring = getComputedStyle(action);
+    await expect(ring.outlineStyle).toBe('solid');
+    await expect(ring.outlineColor).toBe(getComputedStyle(action.closest('ui-banner')!).color);
   },
 };
 

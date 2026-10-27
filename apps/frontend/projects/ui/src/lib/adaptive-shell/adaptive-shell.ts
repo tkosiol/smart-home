@@ -1,15 +1,7 @@
-import { BreakpointObserver } from '@angular/cdk/layout';
-import {
-  ChangeDetectionStrategy,
-  Component,
-  Directive,
-  computed,
-  inject,
-  input,
-} from '@angular/core';
-import { toSignal } from '@angular/core/rxjs-interop';
+import { ChangeDetectionStrategy, Component, Directive, computed, input } from '@angular/core';
 import { RouterLink, RouterLinkActive } from '@angular/router';
 import { UiIcon } from '../icon/icon';
+import { mediaQuerySignal } from '../theme/media-queries';
 import type { UiNavDestination, UiWindowClass } from './navigation';
 
 export const MEDIUM = '(min-width: 600px)';
@@ -40,12 +32,12 @@ export class UiAdaptiveShell {
   /** Accessible name of the navigation landmark. */
   readonly navigationLabel = input.required<string>();
 
-  private readonly breakpoints = toSignal(inject(BreakpointObserver).observe([MEDIUM, EXPANDED]));
+  private readonly medium = mediaQuerySignal(MEDIUM);
+  private readonly expanded = mediaQuerySignal(EXPANDED);
 
   readonly windowClass = computed<UiWindowClass>(() => {
-    const state = this.breakpoints();
-    if (state?.breakpoints[EXPANDED]) return 'expanded';
-    if (state?.breakpoints[MEDIUM]) return 'medium';
+    if (this.expanded()) return 'expanded';
+    if (this.medium()) return 'medium';
     return 'compact';
   });
 }

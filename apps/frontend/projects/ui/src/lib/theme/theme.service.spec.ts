@@ -7,28 +7,15 @@ import {
 import { computeThemeVars } from '@smart/theme';
 import { APPEARANCE_STORE } from './appearance-store';
 import { MemoryAppearanceStore } from './memory-appearance-store';
-import { MEDIA_QUERIES, type MediaQueries } from './media-queries';
+import { MEDIA_QUERIES } from './media-queries';
 import { provideTheme } from './provide-theme';
+import { FakeMediaQueries } from './testing/fake-media-queries';
 import { THEME_ENGINE_LOADER, loadThemeEngine, type ThemeEngine } from './theme-engine';
 import { ThemeService } from './theme.service';
 
-class FakeMedia implements MediaQueries {
-  state: Record<string, boolean> = {};
-  private listeners: Record<string, ((matches: boolean) => void)[]> = {};
-  matches = (query: string) => this.state[query] ?? false;
-  listen = (query: string, callback: (matches: boolean) => void) => {
-    (this.listeners[query] ??= []).push(callback);
-    return () => undefined;
-  };
-  emit(query: string, value: boolean) {
-    this.state[query] = value;
-    this.listeners[query]?.forEach((callback) => callback(value));
-  }
-}
-
 async function setup(
   store = new MemoryAppearanceStore(),
-  media = new FakeMedia(),
+  media = new FakeMediaQueries(),
   options: { instance?: InstanceAppearance } = {},
 ) {
   TestBed.configureTestingModule({
@@ -61,7 +48,7 @@ describe('ThemeService', () => {
         providers: [
           provideTheme(),
           { provide: APPEARANCE_STORE, useValue: store },
-          { provide: MEDIA_QUERIES, useValue: new FakeMedia() },
+          { provide: MEDIA_QUERIES, useValue: new FakeMediaQueries() },
           { provide: THEME_ENGINE_LOADER, useValue: loader },
         ],
       });
@@ -204,12 +191,12 @@ describe('ThemeService', () => {
   it('prefers the copy of the server value on the device to config.json', async () => {
     const store = new MemoryAppearanceStore();
     store.instance = sharpInstance;
-    const { service } = await setup(store, new FakeMedia(), { instance: plumInstance });
+    const { service } = await setup(store, new FakeMediaQueries(), { instance: plumInstance });
     expect(service.instance()).toEqual(sharpInstance);
   });
 
   it('uses config.json without a stored copy and the build default without both', async () => {
-    const withConfig = await setup(new MemoryAppearanceStore(), new FakeMedia(), {
+    const withConfig = await setup(new MemoryAppearanceStore(), new FakeMediaQueries(), {
       instance: plumInstance,
     });
     expect(withConfig.service.instance()).toEqual(plumInstance);
@@ -219,17 +206,17 @@ describe('ThemeService', () => {
   });
 
   it('keeps the stored copy over config.json after a restart of the service', async () => {
-    const first = await setup(new MemoryAppearanceStore(), new FakeMedia(), {
+    const first = await setup(new MemoryAppearanceStore(), new FakeMediaQueries(), {
       instance: plumInstance,
     });
     first.service.adoptInstance(sharpInstance);
     TestBed.resetTestingModule();
-    const second = await setup(first.store, new FakeMedia(), { instance: plumInstance });
+    const second = await setup(first.store, new FakeMediaQueries(), { instance: plumInstance });
     expect(second.service.instance()).toEqual(sharpInstance);
   });
 
   it('adopts an instance stored in another tab', async () => {
-    const { service, store } = await setup(new MemoryAppearanceStore(), new FakeMedia(), {
+    const { service, store } = await setup(new MemoryAppearanceStore(), new FakeMediaQueries(), {
       instance: plumInstance,
     });
     store.instance = sharpInstance;
@@ -250,7 +237,7 @@ describe('ThemeService', () => {
     });
 
     it('falls back to config.json when the server has none stored', async () => {
-      const { service, store } = await setup(new MemoryAppearanceStore(), new FakeMedia(), {
+      const { service, store } = await setup(new MemoryAppearanceStore(), new FakeMediaQueries(), {
         instance: plumInstance,
       });
       service.adoptInstance(sharpInstance);
@@ -291,7 +278,7 @@ describe('ThemeService', () => {
     });
 
     it('reports a reset as null and shows config.json again', async () => {
-      const { service, store } = await setup(new MemoryAppearanceStore(), new FakeMedia(), {
+      const { service, store } = await setup(new MemoryAppearanceStore(), new FakeMediaQueries(), {
         instance: plumInstance,
       });
       service.setInstance(sharpInstance);
@@ -346,7 +333,7 @@ describe('ThemeService', () => {
   });
 
   it('keeps standard contrast in the cache while the system currently asks for more', async () => {
-    const media = new FakeMedia();
+    const media = new FakeMediaQueries();
     media.state['(prefers-contrast: more)'] = true;
     const { store } = await setup(new MemoryAppearanceStore(), media);
     expect(rootVar('--mat-sys-on-surface-variant')).toBe(

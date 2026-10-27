@@ -1,3 +1,6 @@
+import { existsSync, readFileSync } from 'node:fs';
+import path from 'node:path';
+
 // @smart/ui has three entries: `@smart/ui/shell` (eager part, for startup code), `@smart/ui` (the
 // barrel: shell plus everything else, for lazy pages) and `@smart/ui/forms` (form controls, theme
 // editor). They are kept apart so that code only lazy pages use is bundled with those pages.
@@ -38,7 +41,47 @@ const NO_FORMS_IN_THE_SHELL = {
     'its Material code into the initial bundle. Use it only in lazy feature pages.',
 };
 
-export function frontendRestrictedImports() {
+const MATERIAL = {
+  group: ['@angular/material', '@angular/material/*', '@angular/cdk', '@angular/cdk/*'],
+  message:
+    'This file is part of "@smart/ui/shell" and loads at startup: build it without Angular ' +
+    'Material/CDK, or load them on demand with import() (ADR-0011, addendum 2026-10-27).',
+};
+
+const SHELL_ENTRY = 'apps/frontend/projects/ui/src/shell.ts';
+
+const STATIC_IMPORT =
+  /(?:^|\n)\s*(?:import|export)\s(?!type\s)[^;]*?from\s*['"](\.{1,2}\/[^'"]+)['"]/g;
+
+/**
+ * The files the eager entry `@smart/ui/shell` loads, relative to the repository root: everything
+ * shell.ts reaches through static relative imports and re-exports (type-only ones are skipped, they
+ * are not bundled). import() is not followed, so a
+ * file loaded on demand stays outside.
+ */
+function shellEntryFiles(rootDir) {
+  const entry = path.join(rootDir, SHELL_ENTRY);
+  if (!existsSync(entry))
+    throw new Error(`lint config: the eager UI entry ${SHELL_ENTRY} is missing`);
+  const found = new Set();
+  const pending = [entry];
+  while (pending.length > 0) {
+    const file = pending.pop();
+    for (const [, specifier] of readFileSync(file, 'utf8').matchAll(STATIC_IMPORT)) {
+      const base = path.resolve(path.dirname(file), specifier);
+      const target = [`${base}.ts`, path.join(base, 'index.ts')].find((f) => existsSync(f));
+      if (!target || found.has(target)) continue;
+      found.add(target);
+      pending.push(target);
+    }
+  }
+  if (found.size === 0) throw new Error(`lint config: ${SHELL_ENTRY} re-exports no files`);
+  return [...found].map((file) => path.relative(rootDir, file).split(path.sep).join('/'));
+}
+
+/** @param {{ rootDir: string }} options */
+export function frontendRestrictedImports({ rootDir }) {
+  const shellFiles = shellEntryFiles(rootDir);
   return [
     {
       files: ['apps/frontend/src/**/*.ts'],
@@ -62,6 +105,11 @@ export function frontendRestrictedImports() {
           },
         ],
       },
+    },
+    {
+      // import() is no import declaration: loading Material on demand stays allowed.
+      files: shellFiles,
+      rules: { 'no-restricted-imports': ['error', { patterns: [MATERIAL] }] },
     },
   ];
 }

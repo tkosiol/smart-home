@@ -5,6 +5,7 @@ import { UiBadge } from '../badge/badge';
 import { UiIcon } from '../icon/icon';
 import { expectThemeMatrix, rgb } from '../testing/theme-matrix';
 import { ThemeMatrixStoryComponent, UiMatrixCell } from '../testing/theme-matrix.story-component';
+import { touchTargetSize } from '../testing/story-helpers';
 import { UiIconButton } from './icon-button';
 
 const meta: Meta<UiIconButton> = {
@@ -53,8 +54,9 @@ export const Link: StoryObj<UiIconButton> = {
     await userEvent.tab();
     await expect(link).toHaveFocus();
     await expect(args.pressed).not.toHaveBeenCalled();
-    const target = link.querySelector('.mat-mdc-button-touch-target')!.getBoundingClientRect();
+    const target = touchTargetSize(link);
     await expect(target.width).toBeGreaterThanOrEqual(48);
+    await expect(target.height).toBeGreaterThanOrEqual(48);
     await expect(canvas.getByRole('link', { name: '3 neue Benachrichtigungen' })).toBeVisible();
   },
 };
@@ -75,11 +77,16 @@ export const Tonal: StoryObj<UiIconButton> = {
   render: () => ({ template: tonalRow }),
   play: async ({ canvas }) => {
     const button = canvas.getByRole('button', { name: 'Übersicht anpassen' });
+    const style = getComputedStyle(button);
+    await expect(style.getPropertyValue('-webkit-tap-highlight-color')).toBe('rgba(0, 0, 0, 0)');
     const root = getComputedStyle(document.documentElement);
     await expect(getComputedStyle(button).backgroundColor).toBe(
       rgb(root.getPropertyValue('--mat-sys-surface-container-high').trim()),
     );
-    await expect(getComputedStyle(button).borderRadius).toBe('9999px');
+    // A full circle: the radius is half the width.
+    await expect(parseFloat(getComputedStyle(button).borderTopLeftRadius)).toBe(
+      button.getBoundingClientRect().width / 2,
+    );
     await expect(getComputedStyle(button.querySelector('ui-icon')!).color).toBe(
       rgb(root.getPropertyValue('--mat-sys-on-surface-variant').trim()),
     );

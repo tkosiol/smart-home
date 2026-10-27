@@ -50,6 +50,23 @@ describe('stylelint: only design tokens in component styles', () => {
     expect(await rulesFor(css)).toContain(rule);
   });
 
+  it('accepts --ui-* custom properties, the styling API of ui-* components', async () => {
+    const css = ':host {\n  --ui-button-text-color: currentcolor;\n}\n';
+    expect(await rulesFor(css)).toEqual([]);
+  });
+
+  it.each([
+    ['raw values in --ui-* properties', ':host {\n  --ui-x: 13px;\n}\n', 'unit-disallowed-list'],
+    ['hex colors in --ui-* properties', ':host {\n  --ui-x: #fff;\n}\n', 'color-no-hex'],
+    [
+      'tokens redefined in a component',
+      ':host {\n  --smart-x: 0;\n}\n',
+      'property-disallowed-list',
+    ],
+  ])('rejects %s', async (_name, css, rule) => {
+    expect(await rulesFor(css)).toContain(rule);
+  });
+
   it('accepts a BEM-style modifier class but not other casing', async () => {
     expect(await rulesFor(':host(.ui-icon--filled) {\n  opacity: 1;\n}\n')).toEqual([]);
     expect(await rulesFor('.uiIcon {\n  opacity: 1;\n}\n')).toContain('selector-class-pattern');

@@ -26,6 +26,25 @@ function render() {
 }
 
 describe('UiButton', () => {
+  it('is a native button without Material parts', () => {
+    const { fixture, button } = render();
+    const element = fixture.nativeElement as HTMLElement;
+    expect(button.classList).toContain('ui-button');
+    expect(element.querySelector('[class*="mat-"], [class*="mdc-"]')).toBeNull();
+  });
+
+  it('marks its variant on the host for styling', () => {
+    const { fixture } = render();
+    const host = (fixture.nativeElement as HTMLElement).querySelector('ui-button')!;
+    expect(host.getAttribute('data-variant')).toBe('filled');
+  });
+
+  it('fires pressed once per activation, not again for the key that caused it', () => {
+    const { button, host } = render();
+    button.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    button.click();
+    expect(host.count()).toBe(1);
+  });
   it('emits pressed on click', () => {
     const { button, host } = render();
     button.click();
@@ -82,6 +101,7 @@ describe('UiButton as a link', () => {
     expect(link.textContent).toContain('Räume');
     expect(link.querySelector('ui-icon')).not.toBeNull();
     expect(element.querySelector('button')).toBeNull();
+    expect(element.querySelector('ui-button')!.hasAttribute('data-icon')).toBe(true);
   });
 
   it('does not emit pressed', async () => {

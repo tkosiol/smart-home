@@ -1,8 +1,6 @@
 import { provideLocationMocks } from '@angular/common/testing';
-import { BreakpointObserver, type BreakpointState } from '@angular/cdk/layout';
 import { provideRouter, withDisabledInitialNavigation } from '@angular/router';
 import { applicationConfig, moduleMetadata, type Meta, type StoryObj } from '@storybook/angular';
-import { of } from 'rxjs';
 import { expect, userEvent } from 'storybook/test';
 import { UiBadge } from '../badge/badge';
 import { UiBanner } from '../banner/banner';
@@ -11,6 +9,8 @@ import { UiIconButton } from '../button/icon-button';
 import { UiIcon } from '../icon/icon';
 import { UiPage } from '../layout/page/page';
 import { UiTextField } from '../text-field/text-field';
+import { MEDIA_QUERIES } from '../theme/media-queries';
+import { forcedMediaQueries } from '../theme/testing/fake-media-queries';
 import { UiTopAppBar, UiTopAppBarActions } from '../top-app-bar/top-app-bar';
 import { EXPANDED, MEDIUM, UiAdaptiveShell, UiShellBanner, UiShellTopBar } from './adaptive-shell';
 import type { UiNavDestination, UiWindowClass } from './navigation';
@@ -78,16 +78,11 @@ type Story = StoryObj<UiAdaptiveShell>;
 
 /** Forces a window class regardless of the test runner's viewport width. */
 function forceWindowClass(windowClass: UiWindowClass) {
-  const state: BreakpointState = {
-    matches: windowClass !== 'compact',
-    breakpoints: {
-      [MEDIUM]: windowClass !== 'compact',
-      [EXPANDED]: windowClass === 'expanded',
-    },
-  };
-  return applicationConfig({
-    providers: [{ provide: BreakpointObserver, useValue: { observe: () => of(state) } }],
+  const queries = forcedMediaQueries({
+    [MEDIUM]: windowClass !== 'compact',
+    [EXPANDED]: windowClass === 'expanded',
   });
+  return applicationConfig({ providers: [{ provide: MEDIA_QUERIES, useValue: queries }] });
 }
 
 async function expectNavigation(
@@ -280,7 +275,7 @@ export const FokusUeberDerLeiste: Story = {
   },
 };
 
-/** Real BreakpointObserver: whichever form the runner's width selects must be shown. */
+/** Real media queries: whichever form the runner's width selects must be shown. */
 export const Breiten: Story = {
   play: async ({ canvasElement, canvas }) => {
     const windowClass = canvasElement

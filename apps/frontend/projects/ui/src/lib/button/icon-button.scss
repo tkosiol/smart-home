@@ -1,22 +1,32 @@
-@use '@angular/material' as mat;
+@use './control';
 
-// Tonal icon button (spec 2.2): a 48 px surface-container-high disc, as in the mockups. Icon and
-// state layer keep Material's on-surface-variant. Material's icon button has no container colour
-// token (only `matButton` has one), so the disc is the button element's own background; the size
-// goes through the override mixin.
-:host([data-variant='tonal']) {
-  @include mat.icon-button-overrides(
-    (
-      state-layer-size: var(--smart-size-touch),
-    )
-  );
+// M3 icon button on the shared control base. `standard` has no container; `tonal` sits on a
+// surface-container-high disc as large as the touch target (spec 2.2). Surrounding components set
+// the icon colour and size through --ui-icon-button-color and --ui-icon-button-size.
+:host {
+  display: inline-flex;
+}
 
-  button,
-  a {
-    background: var(--mat-sys-surface-container-high);
-  }
+.ui-icon-button {
+  @include control.base;
 
-  button:disabled {
-    background: color-mix(in srgb, var(--mat-sys-on-surface) 12%, transparent);
-  }
+  width: var(--ui-icon-button-size, var(--smart-size-icon-button));
+  height: var(--ui-icon-button-size, var(--smart-size-icon-button));
+  padding: 0;
+
+  // A circle with a finite radius (not corner-full's 9999px), so the pressed shape morph animates.
+  border-radius: calc(var(--ui-icon-button-size, var(--smart-size-icon-button)) / 2);
+  background: transparent;
+  color: var(--ui-icon-button-color, var(--mat-sys-on-surface-variant));
+}
+
+:host([data-variant='tonal']) .ui-icon-button {
+  width: var(--ui-icon-button-size, var(--smart-size-touch));
+  height: var(--ui-icon-button-size, var(--smart-size-touch));
+  border-radius: calc(var(--ui-icon-button-size, var(--smart-size-touch)) / 2);
+  background: var(--mat-sys-surface-container-high);
+}
+
+:host([data-variant='tonal']) .ui-icon-button:disabled {
+  background: color-mix(in srgb, var(--mat-sys-on-surface) 12%, transparent);
 }

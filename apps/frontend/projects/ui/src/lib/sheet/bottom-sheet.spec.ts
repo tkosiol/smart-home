@@ -1,4 +1,3 @@
-import { BreakpointObserver } from '@angular/cdk/layout';
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MATERIAL_ANIMATIONS } from '@angular/material/core';
@@ -7,6 +6,8 @@ import { Subject } from 'rxjs';
 import { MEDIUM } from '../adaptive-shell/adaptive-shell';
 import { UiAnnouncer } from '../announcer/announcer';
 import { UiButton } from '../button/button';
+import { MEDIA_QUERIES } from '../theme/media-queries';
+import { FakeMediaQueries } from '../theme/testing/fake-media-queries';
 import { UiBottomSheet } from './bottom-sheet';
 import { UiSheet, UiSheetActions } from './sheet';
 import { UI_SHEET_DATA, UiSheetRef } from './sheet-ref';
@@ -36,10 +37,7 @@ function setup(medium: boolean, router?: { events: Subject<unknown> }) {
     providers: [
       ...(router ? [{ provide: Router, useValue: router }] : []),
       { provide: MATERIAL_ANIMATIONS, useValue: { animationsDisabled: true } },
-      {
-        provide: BreakpointObserver,
-        useValue: { isMatched: (query: string) => medium && query === MEDIUM },
-      },
+      { provide: MEDIA_QUERIES, useValue: new FakeMediaQueries({ [MEDIUM]: medium }) },
     ],
   });
   return TestBed.inject(UiBottomSheet);

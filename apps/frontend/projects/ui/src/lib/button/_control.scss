@@ -1,0 +1,94 @@
+// Shared base of ui-button and ui-icon-button: a native <button> or <a> with an M3 state layer,
+// a touch target of at least --smart-size-touch, the pressed shape morph, a focus ring and a border
+// that forced colors modes make visible. Callers set background, color, size and padding;
+// the content sits in a `.content` span above the state layer.
+@mixin base {
+  position: relative;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+
+  // Invisible, but forced colors modes draw it, so the control keeps its outline there.
+  border: var(--smart-border-width) solid transparent;
+  border-radius: var(--smart-shape-control);
+  outline: none;
+  font: inherit;
+  text-decoration: none;
+  cursor: pointer;
+  user-select: none;
+  appearance: none;
+
+  // The state layer is the touch feedback; no grey tap rectangle from mobile browsers on top.
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    border-radius var(--smart-motion-duration-short) var(--smart-motion-easing-standard),
+    box-shadow var(--smart-motion-duration-short) var(--smart-motion-easing-standard);
+
+  // State layer: tinted in the content color, under the content (the positioned .content).
+  &::before {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: currentcolor;
+    opacity: 0;
+    content: '';
+    pointer-events: none;
+    transition: opacity var(--smart-motion-duration-short) var(--smart-motion-easing-standard);
+  }
+
+  > .content {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    min-width: 0;
+  }
+
+  // Touch target: at least --smart-size-touch in both directions, centred, invisible.
+  &::after {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: max(100%, var(--smart-size-touch));
+    height: max(100%, var(--smart-size-touch));
+    content: '';
+    transform: translate(-50%, -50%);
+  }
+
+  &:hover:not(:disabled)::before {
+    opacity: var(--smart-opacity-hover);
+  }
+
+  &:focus-visible::before,
+  &:active:not(:disabled)::before {
+    opacity: var(--smart-opacity-pressed);
+  }
+
+  &:active:not(:disabled) {
+    border-radius: var(--smart-shape-control-pressed);
+  }
+
+  // Keyboard focus: a solid ring; surrounding components may recolour it (--ui-focus-color).
+  &:focus-visible {
+    outline: var(--smart-focus-width) solid var(--ui-focus-color, var(--mat-sys-primary));
+    outline-offset: var(--smart-focus-offset);
+  }
+
+  &:disabled {
+    color: color-mix(in srgb, var(--mat-sys-on-surface) 38%, transparent);
+    cursor: default;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+
+    &::before {
+      transition: none;
+    }
+
+    &:active:not(:disabled) {
+      border-radius: var(--smart-shape-control);
+    }
+  }
+}

@@ -37,7 +37,9 @@ export default {
     ],
     'unit-disallowed-list': ['px', 'rem', 'em', 'pt', 'ms', 's'],
     'scss/no-dollar-variables': true,
-    'property-disallowed-list': ['/^--/'],
+    // Tokens are defined only in tokens/. A component may set --ui-* properties: the documented
+    // styling API one ui-* component offers another (e.g. the banner recolouring its buttons).
+    'property-disallowed-list': ['/^--(?!ui-)/'],
     'selector-disallowed-list': ['/\\.mat-/', '/\\.mdc-/', '/::ng-deep/'],
     'color-no-hex': true,
     'color-named': 'never',

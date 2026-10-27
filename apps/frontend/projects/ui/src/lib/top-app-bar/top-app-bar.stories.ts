@@ -5,6 +5,7 @@ import { UiIconButton } from '../button/icon-button';
 import { UiIcon } from '../icon/icon';
 import {
   expectNoHorizontalOverflow,
+  touchTargetSize,
   withNarrowFrame,
   withPhoneFrame,
 } from '../testing/story-helpers';
@@ -48,13 +49,10 @@ export const Schmal: StoryObj<UiTopAppBar> = {
     await expect(title.scrollHeight).toBeLessThanOrEqual(title.clientHeight);
     await expect(title.scrollWidth).toBeGreaterThan(title.clientWidth);
     for (const name of ['Benachrichtigungen', 'Einstellungen']) {
-      // Material's icon button is 40 px; its touch target (a 48 px pseudo-box) is what a finger hits.
-      const target = canvas
-        .getByRole('button', { name })
-        .querySelector('.mat-mdc-button-touch-target')!;
-      const rect = target.getBoundingClientRect();
-      await expect(rect.width).toBeGreaterThanOrEqual(48);
-      await expect(rect.height).toBeGreaterThanOrEqual(48);
+      // The icon button is 40 px; its touch target (a 48 px pseudo-box) is what a finger hits.
+      const target = touchTargetSize(canvas.getByRole('button', { name }));
+      await expect(target.width).toBeGreaterThanOrEqual(48);
+      await expect(target.height).toBeGreaterThanOrEqual(48);
     }
   },
 };
