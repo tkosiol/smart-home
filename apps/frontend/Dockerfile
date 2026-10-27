@@ -7,7 +7,7 @@ RUN pnpm install --frozen-lockfile --ignore-scripts --filter "@smart/frontend...
  && pnpm --filter "@smart/frontend^..." build \
  && pnpm --filter @smart/frontend build
 
-FROM nginxinc/nginx-unprivileged:1.31.6-alpine3.24
+FROM nginxinc/nginx-unprivileged:1.31.7-alpine3.24
 # Pull in security fixes of Alpine packages released after the base image was built.
 USER root
 RUN apk upgrade --no-cache
