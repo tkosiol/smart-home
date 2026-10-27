@@ -34,8 +34,6 @@ import { ECHARTS_LOADER, type ChartHandle } from './echarts-loader';
 export type { UiChartBand, UiChartKind, UiChartPoint } from './chart-options';
 export type { UiChartRange } from './chart-axis';
 
-/** Below this plot width the labels thin out (the weekday instead of "Today", every second Monday). */
-const NARROW_BELOW = 420;
 let nextId = 0;
 
 interface AxisPointerEvent {
@@ -128,7 +126,7 @@ export class UiChart {
       markers: this.markers(),
       colors,
       locale: this.format.locale(),
-      narrow: this.width() < NARROW_BELOW,
+      width: this.width(),
     });
   });
 

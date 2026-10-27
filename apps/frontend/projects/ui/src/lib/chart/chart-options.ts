@@ -31,7 +31,8 @@ export interface ChartModelInput {
   readonly markers: readonly string[];
   readonly colors: ChartColors;
   readonly locale: string;
-  readonly narrow: boolean;
+  /** Width of the drawing area in px (0 before the first measurement). */
+  readonly width: number;
 }
 
 export interface ChartModel {
@@ -45,7 +46,21 @@ export interface ChartModel {
 const NBSP = ' ';
 const STEPS = [0.5, 1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000];
 const LABEL_SIZE = 12;
+/** Below this width the time labels thin out (the weekday instead of "Today", every second Monday). */
+const NARROW_BELOW = 420;
+/** Rough width of a label character, for the question whether an end label fits centred. */
+const CHAR_WIDTH = LABEL_SIZE * 0.55;
 const GRID = { left: 6, right: 10, top: 22, bottom: 26 };
+/**
+ * Diameters of the dots; their 2 px edge straddles the outline, so the "now" dot is a 4 px
+ * primary disc in a 6 px card-coloured ring, a watering ring 3.5 in 5.5, the hovered point 5 in 7.
+ */
+const DOT = { now: 10, marker: 9, hover: 12, edge: 2 };
+/**
+ * Painting order (zrender `z`): band, hairlines with their labels, then the area and line over
+ * them (a label's halo must not notch the line), the dots on top.
+ */
+const Z = { band: 1, lines: 2, series: 3, dots: 4 };
 
 /**
  * The value range and the gridline values. Without `domain` the range is rounded outward to a
@@ -172,7 +187,8 @@ export function buildChartModel(input: ChartModelInput): ChartModel {
       label: {
         show: true,
         position: 'insideStartTop',
-        distance: [8, 2],
+        // 8 px in from the left edge, the baseline 5 px above the line
+        distance: [8, 3],
         formatter: threshold ? band.valueLabel : valueText(value),
         ...text,
         ...halo,
@@ -185,8 +201,8 @@ export function buildChartModel(input: ChartModelInput): ChartModel {
     name: 'marker',
     coord: [times[index]!, points[index]!.value],
     symbol: 'circle',
-    symbolSize: 10,
-    itemStyle: { color: colors.card, borderColor: colors.primary, borderWidth: 2 },
+    symbolSize: DOT.marker,
+    itemStyle: { color: colors.card, borderColor: colors.primary, borderWidth: DOT.edge },
   });
   const seen = new Set<number>();
   for (const marker of input.markers) {
@@ -203,31 +219,34 @@ export function buildChartModel(input: ChartModelInput): ChartModel {
       name: 'now',
       coord: [times[last]!, points[last]!.value],
       symbol: 'circle',
-      symbolSize: 12,
-      itemStyle: { color: colors.primary, borderColor: colors.card, borderWidth: 2.5 },
+      symbolSize: DOT.now,
+      itemStyle: { color: colors.primary, borderColor: colors.card, borderWidth: DOT.edge },
     });
   }
 
+  // The hovered point: always primary in a card-coloured ring, also below the threshold.
+  const dot = { color: colors.primary, borderColor: colors.card, borderWidth: DOT.edge };
   const line: Record<string, unknown> = {
     type: 'line',
     data: main,
-    z: 3,
+    z: Z.series,
     showSymbol: false,
     symbol: 'circle',
-    symbolSize: 10,
+    symbolSize: DOT.hover,
     connectNulls: false,
     silent: false,
     // No line colour of its own: the stroke then follows the item colour or the visual map.
     lineStyle: { width: 2, cap: 'round', join: 'round' },
-    itemStyle: { color: colors.primary, borderColor: colors.card, borderWidth: 2 },
-    emphasis: { scale: 1, lineStyle: { width: 2 } },
+    itemStyle: dot,
+    emphasis: { scale: 1, lineStyle: { width: 2 }, itemStyle: dot },
     markLine: {
       silent: true,
       symbol: ['none', 'none'],
       animation: false,
+      z: Z.lines,
       data: lines,
     },
-    markPoint: { silent: true, animation: false, label: { show: false }, data: marks },
+    markPoint: { silent: true, animation: false, label: { show: false }, z: Z.dots, data: marks },
     ...(kind === 'step' ? { step: 'end' } : { smooth: true, smoothMonotone: 'x' }),
     ...(ribbon
       ? {}
@@ -251,6 +270,7 @@ export function buildChartModel(input: ChartModelInput): ChartModel {
     line['markArea'] = {
       silent: true,
       animation: false,
+      z: Z.band,
       itemStyle: { color: withAlpha(colors.dryContainer, alpha.band), borderRadius: 4 },
       data: [
         [
@@ -259,7 +279,9 @@ export function buildChartModel(input: ChartModelInput): ChartModel {
             label: {
               show: true,
               position: 'insideTopLeft',
+              // 8 px in from the left edge; the baseline 15 px below the threshold line
               distance: 8,
+              offset: [0, -3],
               formatter: band.label,
               ...text,
               ...halo,
@@ -309,11 +331,21 @@ export function buildChartModel(input: ChartModelInput): ChartModel {
         new Date(from).toISOString(),
         new Date(to).toISOString(),
         input.timeZone,
-        input.narrow,
+        input.width < NARROW_BELOW,
         input.locale,
       )
     : [];
   const labelText = new Map(labels.map((label) => [Date.parse(label.t), label.text]));
+
+  // The end labels sit centred on their instant like all others, unless that would leave the
+  // chart: then the first starts and the last ends at its instant (as in the design).
+  const plotWidth = Math.max(input.width - GRID.left - GRID.right, 0);
+  const x = (t: string) => GRID.left + ((Date.parse(t) - from) / (to - from || 1)) * plotWidth;
+  const halfWidth = (text: string) => (text.length * CHAR_WIDTH) / 2;
+  const first = labels[0];
+  const last = labels[labels.length - 1];
+  const alignMinLabel = first && x(first.t) - halfWidth(first.text) < 0 ? 'left' : 'center';
+  const alignMaxLabel = last && x(last.t) + halfWidth(last.text) > input.width ? 'right' : 'center';
 
   const option: ChartOption = {
     animation: false,
@@ -333,9 +365,10 @@ export function buildChartModel(input: ChartModelInput): ChartModel {
         hideOverlap: true,
         showMinLabel: true,
         showMaxLabel: true,
-        alignMinLabel: 'left',
-        alignMaxLabel: 'right',
-        margin: 8,
+        alignMinLabel,
+        alignMaxLabel,
+        // the baseline 6 px above the lower edge
+        margin: 10,
         ...text,
       },
     },

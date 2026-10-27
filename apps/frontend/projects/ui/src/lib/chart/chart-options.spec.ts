@@ -44,7 +44,7 @@ function input(overrides: Partial<ChartModelInput> = {}): ChartModelInput {
     markers: [],
     colors: COLORS,
     locale: 'de',
-    narrow: false,
+    width: 636,
     ...overrides,
   };
 }
@@ -75,11 +75,26 @@ describe('buildChartModel', () => {
     expect(main.lineStyle.width).toBe(2);
   });
 
-  it('uses the stronger washes in dark mode', () => {
-    const dark = buildChartModel(input({ colors: { ...COLORS, dark: true } }));
-    expect(series(dark.option)[0].areaStyle.color.colorStops[0].color).toBe(
-      withAlpha(COLORS.primary, 0.26),
-    );
+  it('uses the stronger washes and hairlines in dark mode', () => {
+    const band = { below: 25, label: 'too dry', valueLabel: '25 %' };
+    const dark = series(
+      buildChartModel(
+        input({ colors: { ...COLORS, dark: true }, domain: { min: 0, max: 80 }, band }),
+      ).option,
+    )[0];
+    expect(dark.areaStyle.color.colorStops[0].color).toBe(withAlpha(COLORS.primary, 0.26));
+    expect(dark.markArea.itemStyle.color).toBe(withAlpha(COLORS.dryContainer, 0.5));
+    const [threshold, gridline] = dark.markLine.data;
+    expect(threshold.lineStyle.color).toBe(withAlpha(COLORS.dry, 0.6));
+    expect(gridline.lineStyle.color).toBe(withAlpha(COLORS.outlineVariant, 0.7));
+  });
+
+  it('paints the band, then the hairlines and labels, then the line, then the dots', () => {
+    const band = { below: 25, label: 'too dry', valueLabel: '25 %' };
+    const main = series(buildChartModel(input({ domain: { min: 0, max: 80 }, band })).option)[0];
+    expect(main.markArea.z).toBeLessThan(main.markLine.z);
+    expect(main.markLine.z).toBeLessThan(main.z);
+    expect(main.z).toBeLessThan(main.markPoint.z);
   });
 
   it('draws a step as a step line without smoothing', () => {
@@ -164,6 +179,9 @@ describe('buildChartModel', () => {
     expect(from.yAxis).toBe(0);
     expect(to.yAxis).toBe(25);
     expect(from.label.formatter).toBe('too dry');
+    // 8 px in, baseline 15 px below the threshold: ECharts takes one distance for both axes
+    expect(from.label.distance).toBe(8);
+    expect(from.label.offset).toEqual([0, -3]);
     expect(main.markArea.itemStyle.color).toBe(withAlpha(COLORS.dryContainer, 0.42));
     const threshold = main.markLine.data.find((d: any) => d.yAxis === 25);
     expect(threshold.label.formatter).toBe('25 %');
@@ -183,8 +201,10 @@ describe('buildChartModel', () => {
     const labels = main.markLine.data.map((d: any) => d.label.formatter);
     expect(labels).toEqual(['20 %', '40 %', '60 %', '80 %']);
     expect(main.markLine.data[0].label.position).toBe('insideStartTop');
+    expect(main.markLine.data[0].label.distance).toEqual([8, 3]);
     expect(main.markLine.silent).toBe(true);
     expect(main.markLine.data[0].label.textBorderColor).toBe(COLORS.card);
+    expect(main.markLine.data[0].label.textBorderWidth).toBe(3);
   });
 
   it('uses the band threshold as the step when it fits the domain', () => {
@@ -208,6 +228,22 @@ describe('buildChartModel', () => {
     expect(rings[0].itemStyle.borderColor).toBe(COLORS.primary);
     expect(now.itemStyle.color).toBe(COLORS.primary);
     expect(now.itemStyle.borderColor).toBe(COLORS.card);
+    // the design: "now" is a 4 px disc in a 6 px ring, a watering ring 3.5 in 5.5 (2 px edges)
+    expect([now.symbolSize, now.itemStyle.borderWidth]).toEqual([10, 2]);
+    expect([rings[0].symbolSize, rings[0].itemStyle.borderWidth]).toEqual([9, 2]);
+  });
+
+  it('shows the hovered point as a primary 5 px disc in a 7 px card ring, even below the band', () => {
+    const band = { below: 25, label: 'too dry', valueLabel: '25 %' };
+    const main = series(buildChartModel(input({ domain: { min: 0, max: 80 }, band })).option)[0];
+    expect(main.showSymbol).toBe(false);
+    expect(main.symbolSize).toBe(12);
+    expect(main.emphasis.scale).toBe(1);
+    expect(main.emphasis.itemStyle).toEqual({
+      color: COLORS.primary,
+      borderColor: COLORS.card,
+      borderWidth: 2,
+    });
   });
 
   it('shows no axis pointer content and snaps the line to the points', () => {
@@ -234,8 +270,40 @@ describe('buildChartModel', () => {
     expect(axis.axisLabel.formatter(Date.parse(labels[0]!.t))).toBe(labels[0]!.text);
     expect(axis.axisLine.show).toBe(false);
     expect(axis.axisTick.show).toBe(false);
+    expect(axis.axisLabel.margin).toBe(10);
     expect(axis.max).toBe(END);
     expect(axis.min).toBe(END - 24 * HOUR);
+    // "18 Uhr" 5 h after the start and "12 Uhr" 1 h before the end both fit centred
+    expect(axis.axisLabel.alignMinLabel).toBe('center');
+    expect(axis.axisLabel.alignMaxLabel).toBe('center');
+    // before the first measurement (width 0) the end labels hug their instants
+    const unmeasured = buildChartModel(input({ width: 0 })).option['xAxis'] as any;
+    expect(unmeasured.axisLabel.alignMinLabel).toBe('left');
+    expect(unmeasured.axisLabel.alignMaxLabel).toBe('right');
+  });
+
+  it('ends "Today" at the right edge, centres the weekday of a full day, thins out when narrow', () => {
+    const week = Array.from({ length: 7 * 24 }, (_, i) => ({ t: at(7 * 24 - 1 - i), value: 30 }));
+    const wide = buildChartModel(input({ points: week, range: '7d', width: 636 }));
+    const wideAxis = wide.option['xAxis'] as any;
+    const wideTexts = wideAxis.axisLabel.customValues.map(wideAxis.axisLabel.formatter);
+    // "Heute" is centred on the day's first 13 h: 32 px of text end before the right edge
+    expect(wideTexts.at(-1)).toBe('Heute');
+    expect(wideAxis.axisLabel.alignMaxLabel).toBe('center');
+    expect(wideAxis.axisLabel.alignMinLabel).toBe('center');
+
+    const narrow = buildChartModel(input({ points: week, range: '7d', width: 256 }));
+    const narrowAxis = narrow.option['xAxis'] as any;
+    expect(narrowAxis.axisLabel.customValues.map(narrowAxis.axisLabel.formatter)).not.toContain(
+      'Heute',
+    );
+
+    const month = Array.from({ length: 28 }, (_, i) => ({ t: at((27 - i) * 24), value: 30 }));
+    const axis = buildChartModel(input({ points: month, range: '28d', width: 636 })).option[
+      'xAxis'
+    ] as any;
+    expect(axis.axisLabel.formatter(END)).toBe('Heute');
+    expect(axis.axisLabel.alignMaxLabel).toBe('right');
   });
 
   it('fixes the value axis to the given domain, otherwise to a rounded range with air', () => {

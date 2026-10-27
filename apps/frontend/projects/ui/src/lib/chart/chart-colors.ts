@@ -12,10 +12,13 @@ export interface ChartColors {
   readonly dark: boolean;
 }
 
-/** Opacity of the washes per colour scheme; the roles stay, only their strength differs. */
+/**
+ * Opacity of the washes per colour scheme (the approved design); the roles stay, only their
+ * strength differs: the dark scheme needs stronger hairlines on its darker card.
+ */
 export function chartAlphas(dark: boolean) {
   return dark
-    ? { area: 0.26, ribbon: 0.22, band: 0.5, grid: 0.55, threshold: 0.55, pointer: 0.7 }
+    ? { area: 0.26, ribbon: 0.22, band: 0.5, grid: 0.7, threshold: 0.6, pointer: 0.7 }
     : { area: 0.2, ribbon: 0.16, band: 0.42, grid: 0.55, threshold: 0.55, pointer: 0.7 };
 }
 

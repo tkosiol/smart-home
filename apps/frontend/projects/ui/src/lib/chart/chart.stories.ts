@@ -66,10 +66,11 @@ function temperature(days: number): UiChartPoint[] {
   });
 }
 
+/** Whole percent steps: 87 % for the first stretch, then 86, 85, 84. */
 function battery(hours: number): UiChartPoint[] {
   return Array.from({ length: hours }, (_, index) => ({
     t: new Date(NOW - (hours - 1 - index) * HOUR).toISOString(),
-    value: Math.floor(87 - (3.3 * index) / hours),
+    value: 87 - Math.floor((3.6 * index) / hours),
   }));
 }
 
@@ -102,9 +103,13 @@ const labelsOf = (svg: SVGElement) =>
     (node.textContent ?? '').replace(/\u00a0/g, ' ').trim(),
   );
 
-const template = `<ui-chart style="margin: 16px" [points]="points" [kind]="kind" [range]="range"
-  [resolutionMinutes]="resolutionMinutes" [timeZone]="timeZone" [unit]="unit" [domain]="domain"
-  [band]="band" [markers]="markers" [label]="label" [description]="description" />`;
+// On a card (the "Verlauf" card's surface): labels and dots carry halos in the card colour.
+const template = `<div class="story-card" style="padding: 16px;
+    background: var(--mat-sys-surface-container-low); border-radius: var(--smart-shape-card)">
+  <ui-chart [points]="points" [kind]="kind" [range]="range"
+    [resolutionMinutes]="resolutionMinutes" [timeZone]="timeZone" [unit]="unit" [domain]="domain"
+    [band]="band" [markers]="markers" [label]="label" [description]="description" />
+</div>`;
 
 const week = soil(7 * 24);
 
@@ -181,13 +186,16 @@ export const Stunden24: Story = {
   },
 };
 
+const month = soil(28 * 24);
+
 export const Wochen4: Story = {
   args: {
-    points: soil(28 * 24).points,
+    points: month.points,
     range: '28d',
     resolutionMinutes: 60,
     domain: { min: 0, max: 80 },
     band: BAND,
+    markers: month.waterings,
     label: 'Bodenfeuchte, 4 Wochen',
     description: 'Bodenfeuchte der letzten 4 Wochen.',
   },
@@ -222,7 +230,6 @@ export const StufenBatterie: Story = {
     kind: 'step',
     range: '7d',
     resolutionMinutes: 60,
-    domain: { min: 0, max: 100 },
     label: 'Batterie, 7 Tage',
     description: 'Batterie der letzten 7 Tage, langsam fallend.',
   },
