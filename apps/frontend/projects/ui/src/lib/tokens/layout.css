@@ -35,6 +35,9 @@
   --smart-size-icon-sm: 20px;
   --smart-size-icon-md: 24px;
   --smart-size-icon-lg: 40px;
+  /* Plot height of ui-chart; the large one from the Expanded window class */
+  --smart-size-chart: 200px;
+  --smart-size-chart-large: 240px;
   --smart-size-grid-sm: 160px;
   --smart-size-grid-md: 240px;
   --smart-size-grid-lg: 320px;

@@ -40,3 +40,10 @@ export { UiStatusChip, type UiStatusChipTone } from './lib/status-chip/status-ch
 export { UiBottomSheet } from './lib/sheet/bottom-sheet';
 export { UiSheet, UiSheetActions } from './lib/sheet/sheet';
 export { UI_SHEET_DATA, UiSheetRef, type UiSheetPresentation } from './lib/sheet/sheet-ref';
+export {
+  UiChart,
+  type UiChartBand,
+  type UiChartKind,
+  type UiChartPoint,
+  type UiChartRange,
+} from './lib/chart/chart';

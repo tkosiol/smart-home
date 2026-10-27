@@ -1,0 +1,49 @@
+:host {
+  position: relative;
+  display: block;
+  height: var(--smart-size-chart);
+  border-radius: var(--mat-sys-corner-medium);
+  touch-action: pan-y;
+  cursor: crosshair;
+
+  // Labels and halos are painted with the card colour, so the chart sits on a card.
+  color: var(--mat-sys-on-surface-variant);
+  font: var(--mat-sys-label-medium);
+  -webkit-tap-highlight-color: transparent;
+}
+
+// From the Expanded window class the chart is taller (spec 4.1).
+:host([data-large]) {
+  height: var(--smart-size-chart-large);
+}
+
+:host(:focus-visible) {
+  outline: var(--smart-focus-width) solid var(--ui-focus-color, var(--mat-sys-primary));
+  outline-offset: var(--smart-focus-offset);
+}
+
+.canvas {
+  width: 100%;
+  height: 100%;
+}
+
+.empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  font: var(--mat-sys-body-medium);
+}
+
+// For screen readers only: the text alternative that aria-describedby points to.
+.description {
+  position: absolute;
+  width: var(--smart-border-width);
+  height: var(--smart-border-width);
+  margin: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

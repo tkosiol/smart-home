@@ -22,18 +22,18 @@ Hintergrund: `docs/superpowers/specs/2026-10-11-etappe-3-design-system-design.md
 
 ## Bausteine
 
-| Gruppe      | Komponenten                                                                                                                        |
-| ----------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| Layout      | `ui-page`, `ui-section`, `ui-stack`, `ui-grid`, `ui-grid-item`                                                                     |
-| Rahmen      | `ui-adaptive-shell` (Slots `uiShellTopBar`, `uiShellBanner`), `ui-top-app-bar` (Aktionen über `uiTopAppBarActions`), `ui-badge`    |
-| Bedienung   | `ui-button`, `ui-icon-button`, `ui-switch`, `ui-segmented-button`, `ui-select`, `ui-chip-set`, `ui-color-field`, `ui-reorder-list` |
-| Inhalt      | `ui-card`, `ui-list`, `ui-list-item`, `ui-empty-state`, `ui-skeleton`, `ui-icon`, `ui-value-display`, `ui-progress-band`           |
-| Status      | `ui-status-hero`, `ui-status-entry`, `ui-status-chip`, `ui-device-hero`, `ui-device-pod`, `ui-pod-row`, `ui-room-card`             |
-| Sheet       | `UiBottomSheet` (Service), `ui-sheet` (Rahmen), `UI_SHEET_DATA`, `UiSheetRef`                                                      |
-| Formular    | `ui-text-field`                                                                                                                    |
-| Theme       | `ui-theme-editor` (Modi personal/instance), ThemeService, provideTheme                                                             |
-| Rückmeldung | `ui-banner`, `UiSnackbar`, `UiAnnouncer` (Services)                                                                                |
-| Zeit        | `uiDateTime`, `uiRelativeTime`, `UiFormatContext`, `UiClock`                                                                       |
+| Gruppe      | Komponenten                                                                                                                          |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Layout      | `ui-page`, `ui-section`, `ui-stack`, `ui-grid`, `ui-grid-item`                                                                       |
+| Rahmen      | `ui-adaptive-shell` (Slots `uiShellTopBar`, `uiShellBanner`), `ui-top-app-bar` (Aktionen über `uiTopAppBarActions`), `ui-badge`      |
+| Bedienung   | `ui-button`, `ui-icon-button`, `ui-switch`, `ui-segmented-button`, `ui-select`, `ui-chip-set`, `ui-color-field`, `ui-reorder-list`   |
+| Inhalt      | `ui-card`, `ui-list`, `ui-list-item`, `ui-empty-state`, `ui-skeleton`, `ui-icon`, `ui-value-display`, `ui-progress-band`, `ui-chart` |
+| Status      | `ui-status-hero`, `ui-status-entry`, `ui-status-chip`, `ui-device-hero`, `ui-device-pod`, `ui-pod-row`, `ui-room-card`               |
+| Sheet       | `UiBottomSheet` (Service), `ui-sheet` (Rahmen), `UI_SHEET_DATA`, `UiSheetRef`                                                        |
+| Formular    | `ui-text-field`                                                                                                                      |
+| Theme       | `ui-theme-editor` (Modi personal/instance), ThemeService, provideTheme                                                               |
+| Rückmeldung | `ui-banner`, `UiSnackbar`, `UiAnnouncer` (Services)                                                                                  |
+| Zeit        | `uiDateTime`, `uiRelativeTime`, `UiFormatContext`, `UiClock`                                                                         |
 
 Neues Symbol: Namen in `src/lib/icon/icons.json` eintragen, dann `pnpm icons:build`.
 
@@ -83,6 +83,7 @@ Farbfamilien (`UiTone` in `src/lib/tone.ts`) rendern Komponenten als `data-tone`
   - **Overlays im Sheet:** Material-Overlays aus dem Sheet-Inhalt (Auswahlfeld-Panel von `ui-select`, Snackbar, Tooltip) rendern außerhalb des modalen `<dialog>`; dort ist alles inert, sie sind nicht erreichbar. Deshalb vorerst weder `ui-select`, `UiSnackbar` noch Tooltips in ein Sheet legen.
 - **Ansagen:** `UiAnnouncer` hält eine eigene Live-Region am Ende des `body` (kein CDK `LiveAnnouncer`, derselbe Chunk-Grund); während ein Sheet offen ist, wandert sie in den Dialog, weil alles außerhalb eines modalen `<dialog>` inert ist.
 - **Fortschrittsband:** `ui-progress-band` ist ein `meter` mit `label` (Name) und `valueText` (`aria-valuetext`, beide übersetzt vom Aufrufer). `band` `{ from, to, tone }` markiert einen Bereich in der Container-Farbe; liegt der Wert darin, nimmt die Füllung die kräftige Farbe des Bands, sonst `primary`. Bei `prefers-reduced-motion` gleitet nichts.
+- **Diagramm:** `ui-chart` zeichnet Verläufe mit Apache ECharts (SVG, `animation: false`), das erst nach dem ersten Rendern per `import()` lädt (`echarts-loader.ts` → `echarts-setup.ts`, eigener Lazy-Chunk, nie im initialen Bundle). Eingaben: `points` (`{ t, value, min?, max? }`), `kind` (`area`, `ribbon`, `step`), `range`, `resolutionMinutes` (Lücke ab dem Doppelten), `timeZone`, `unit`, `domain`, `band`, `markers`, `label`, `description`; Ausgabe `scrubbed` (Index oder `null`). Farben liest es aus den CSS-Variablen der Rollen und neu bei Theme-Wechsel; die Höhe ist `--smart-size-chart`, ab Expanded `--smart-size-chart-large`. Tastatur: ← → Pos1 Ende Esc. Die Optionen baut `chart-options.ts` rein (ohne ECharts testbar); jsdom kann nicht zeichnen, das Zeichnen prüft Storybook.
 
 ## Instanz-Theme
 
