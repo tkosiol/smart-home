@@ -38,4 +38,26 @@ export class LoadedList<T> {
       if (request === this.requests) this.onError(error);
     }
   }
+
+  /** Replaces the entry with the same `id`, else appends; does nothing until the list is loaded. */
+  upsert(item: T & { readonly id: string }): void {
+    if (!this.loaded()) return;
+    this.items.update((items) => {
+      const index = items.findIndex((other) => (other as { id?: unknown }).id === item.id);
+      return index < 0 ? [...items, item] : items.map((other, i) => (i === index ? item : other));
+    });
+  }
+
+  /** Drops the entry with that `id`; does nothing until the list is loaded. */
+  remove(id: string): void {
+    if (!this.loaded()) return;
+    this.items.update((items) => items.filter((other) => (other as { id?: unknown }).id !== id));
+  }
+
+  /** Sets the whole list as the server's answer (`loaded` true); answers still on their way are ignored. */
+  replace(items: readonly T[]): void {
+    this.requests++;
+    this.items.set(items);
+    this.loaded.set(true);
+  }
 }

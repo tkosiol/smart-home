@@ -28,6 +28,8 @@ import {
 import { ApiError } from '../../core/api';
 import { AuthService } from '../../core/auth';
 import { HouseholdContext, injectHouseholdErrorHandler, LoadedList } from '../../core/household';
+import { injectLive } from '../../core/live';
+import { RefreshGuard } from '../../core/refresh';
 import { GATEWAY_TONE, gatewayState, statusKey } from './gateway-status';
 import { GatewaysApi } from './gateways.api';
 import { GatewayRegisterForm } from './register-form';
@@ -196,9 +198,10 @@ export class GatewaysPage {
   protected readonly isPlatformAdmin = computed(() => this.auth.me()?.isPlatformAdmin === true);
 
   protected readonly statusKey = statusKey;
+  private readonly refresh = new RefreshGuard();
   protected readonly gateways = new LoadedList<Gateway>(
     (id) => this.api.list(id),
-    (error) => this.handleError(error),
+    this.refresh.quietNetworkFailure((error) => this.handleError(error)),
   );
   protected readonly rows = computed(() =>
     this.gateways
@@ -231,6 +234,10 @@ export class GatewaysPage {
     effect(() => {
       const id = this.currentId();
       untracked(() => void this.gateways.load(id));
+    });
+    injectLive({
+      'gateway.status': (gateway) => this.gateways.upsert(gateway),
+      resync: () => void this.refresh.run(() => this.gateways.load(this.currentId(), true)),
     });
   }
 

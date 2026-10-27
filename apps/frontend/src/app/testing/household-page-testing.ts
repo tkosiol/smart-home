@@ -6,6 +6,8 @@ import { vi } from 'vitest';
 import { API_FETCH } from '../core/api';
 import { AuthService, ME_CACHE } from '../core/auth';
 import { HouseholdContext } from '../core/household';
+import { LiveService } from '../core/live';
+import { FakeLive } from './live-testing';
 import { MemoryMeCache, TEST_ME, json } from './auth-testing';
 import { settle, setupPage } from './page-testing';
 
@@ -36,6 +38,7 @@ export async function openHouseholdPage(
   // While a gate is up, answers to every request but `GET /me` wait for it (a slow server).
   let gate: Promise<void> | undefined;
   const snackbar = { show: vi.fn().mockResolvedValue(undefined) };
+  const live = new FakeLive();
   const harness = await setupPage([...routes, { path: '**', children: [] }], language, [
     {
       provide: API_FETCH,
@@ -53,6 +56,7 @@ export async function openHouseholdPage(
     },
     { provide: ME_CACHE, useValue: new MemoryMeCache() },
     { provide: UiSnackbar, useValue: snackbar },
+    { provide: LiveService, useValue: live },
   ]);
   await TestBed.inject(AuthService).load();
   await harness.navigateByUrl(url);
@@ -64,6 +68,7 @@ export async function openHouseholdPage(
     calls,
     state,
     snackbar,
+    live,
     router: TestBed.inject(Router),
     auth: TestBed.inject(AuthService),
     household: TestBed.inject(HouseholdContext),

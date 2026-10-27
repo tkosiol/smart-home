@@ -30,7 +30,8 @@ import type { IconName } from '@smart/ui/shell';
 import { UiTextField } from '@smart/ui/forms';
 import { ApiError } from '../../core/api';
 import { HouseholdContext, injectHouseholdErrorHandler, LoadedList } from '../../core/household';
-import { RefreshGuard, refreshWhileVisible } from '../../core/refresh';
+import { injectLive } from '../../core/live';
+import { RefreshGuard } from '../../core/refresh';
 import { ICONS, readingValue, type ReadingValue } from './device-pod';
 import { DevicesApi } from './devices.api';
 
@@ -160,7 +161,17 @@ export class NewHardware {
         void this.hardware.load(id);
       });
     });
-    refreshWhileVisible(this.refresh, () => this.hardware.load(this.currentId(), true));
+    injectLive({
+      'hardware.updated': (item) => this.hardware.upsert(item),
+      'hardware.removed': ({ id }) => {
+        this.hardware.remove(id);
+        this.names.update((names) =>
+          Object.fromEntries(Object.entries(names).filter(([other]) => other !== id)),
+        );
+        this.invalid.update((invalid) => new Set([...invalid].filter((other) => other !== id)));
+      },
+      resync: () => void this.refresh.run(() => this.hardware.load(this.currentId(), true)),
+    });
   }
 
   protected nameOf(item: Hardware): string {

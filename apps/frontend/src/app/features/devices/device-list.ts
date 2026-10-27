@@ -1,13 +1,14 @@
 import { DestroyRef, computed, effect, inject, untracked } from '@angular/core';
 import type { Device } from '@smart/contracts';
 import { HouseholdContext, injectHouseholdErrorHandler, LoadedList } from '../../core/household';
-import { RefreshGuard, refreshWhileVisible } from '../../core/refresh';
+import { injectLive } from '../../core/live';
+import { RefreshGuard } from '../../core/refresh';
 import { DevicesApi } from './devices.api';
 
 /**
  * The devices of the current household: loaded when the context is created, again when the
- * household changes and every minute while the tab is visible (a refresh that fails for lack of a
- * connection keeps the old values quietly). Call it in an injection context.
+ * household changes, and kept up to date by live events (after a reconnect it is loaded again; a
+ * load that fails for lack of a connection keeps the old values quietly). Call it in an injection context.
  */
 export function injectDeviceList(): LoadedList<Device> {
   const household = inject(HouseholdContext);
@@ -25,6 +26,9 @@ export function injectDeviceList(): LoadedList<Device> {
     const id = currentId();
     untracked(() => void devices.load(id));
   });
-  refreshWhileVisible(refresh, () => devices.load(currentId(), true));
+  injectLive({
+    'device.state': (device) => devices.upsert(device),
+    resync: () => void refresh.run(() => devices.load(currentId(), true)),
+  });
   return devices;
 }

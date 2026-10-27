@@ -252,44 +252,42 @@ describe('attention page', () => {
     expect(pageText(page.element)).toContain('2 devices unreachable · 1 hour ago');
   });
 
-  describe('refresh', () => {
-    const visibility = (state: DocumentVisibilityState) =>
-      vi.spyOn(document, 'visibilityState', 'get').mockReturnValue(state);
+  describe('live', () => {
     const gets = (page: OpenedHouseholdPage) =>
       page.calls.filter((call) => call.method === 'GET' && call.path.endsWith('/attention'));
 
-    it('loads again after 60 seconds and shows what changed', async () => {
-      vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    it('shows the notices a live event brings', async () => {
       const page = await open({ items: [attentionItem('soil_dry', 'Ficus')] });
+      page.live.emit('attention.changed', { items: [] });
+      await flush(page);
+      expect(pageText(page.element)).toContain('Nichts zu tun');
       expect(gets(page)).toHaveLength(1);
+    });
+
+    it('loads again after a reconnect and shows what changed', async () => {
+      const page = await open({ items: [attentionItem('soil_dry', 'Ficus')] });
       page.server.state.items = [];
-      await vi.advanceTimersByTimeAsync(60_500);
+      page.live.resync();
       await flush(page);
       expect(gets(page)).toHaveLength(2);
       expect(pageText(page.element)).toContain('Nichts zu tun');
     });
 
-    it('asks once when the tick and the tab coming back meet a slow refresh', async () => {
-      vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
-      const page = await open({ items: mixed() });
+    it('does not let an answer that was on its way undo a live event', async () => {
+      const page = await open({ items: [attentionItem('soil_dry', 'Ficus')] });
       const release = page.hold();
-      await vi.advanceTimersByTimeAsync(60_500);
-      document.dispatchEvent(new Event('visibilitychange'));
-      await vi.advanceTimersByTimeAsync(60_000);
-      expect(gets(page)).toHaveLength(2);
+      page.server.state.items = [attentionItem('soil_dry', 'Ficus')];
+      page.live.resync();
+      page.live.emit('attention.changed', { items: [] });
       release();
       await flush(page);
-      document.dispatchEvent(new Event('visibilitychange'));
-      await flush(page);
-      expect(gets(page)).toHaveLength(3);
+      expect(pageText(page.element)).toContain('Nichts zu tun');
     });
 
-    it('does not load while the tab is hidden', async () => {
+    it('does not load every 60 seconds any more', async () => {
       vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
       const page = await open({ items: mixed() });
-      visibility('hidden');
       await vi.advanceTimersByTimeAsync(180_000);
-      await flush(page);
       expect(gets(page)).toHaveLength(1);
     });
   });

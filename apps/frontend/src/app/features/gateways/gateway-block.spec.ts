@@ -114,21 +114,31 @@ describe('gateway overview block', () => {
     await shown(page, 'Noch kein Gateway registriert.');
   });
 
-  it('asks once when the tick and the tab coming back meet a slow refresh', async () => {
+  it('shows a gateway status event: a changed state, a new gateway, a revoked one gone', async () => {
+    const page = await open([gateway('gw-aaaaaaaa', 'Flur')]);
+    await shown(page, 'Gateway online');
+    page.live.emit('gateway.status', gateway('gw-aaaaaaaa', 'Flur', { bridgeStatus: 'offline' }));
+    await shown(page, 'Gateway offline');
+    page.live.emit('gateway.status', gateway('gw-bbbbbbbb', 'Keller'));
+    await shown(page, 'Keller');
+    page.live.emit(
+      'gateway.status',
+      gateway('gw-bbbbbbbb', 'Keller', { revokedAt: '2026-10-14T11:59:00Z' }),
+    );
+    await flush(page);
+    expect(pageText(page.element)).not.toContain('Keller');
+  });
+
+  it('loads again after a reconnect, and not every minute any more', async () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
     const page = await open([gateway('gw-aaaaaaaa', 'Flur')]);
     const gets = () => page.calls.filter((call) => call.path.endsWith('/gateways'));
     await flush(page);
     expect(gets()).toHaveLength(1);
-    const release = page.hold();
-    await vi.advanceTimersByTimeAsync(60_500);
-    document.dispatchEvent(new Event('visibilitychange'));
-    await vi.advanceTimersByTimeAsync(60_000);
+    await vi.advanceTimersByTimeAsync(180_000);
+    expect(gets()).toHaveLength(1);
+    page.live.resync();
+    await flush(page);
     expect(gets()).toHaveLength(2);
-    release();
-    await flush(page);
-    document.dispatchEvent(new Event('visibilitychange'));
-    await flush(page);
-    expect(gets()).toHaveLength(3);
   });
 });
