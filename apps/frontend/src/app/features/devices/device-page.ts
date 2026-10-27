@@ -300,6 +300,11 @@ export class DevicePage {
     if (device.id !== this.deviceId) return;
     // A refresh that was asked before this change may still be on its way with the old values.
     this.requests++;
+    // The first load's answer is dropped by the bump above: this event is the first sight.
+    if (this.device() === null) {
+      this.name.set(device.name);
+      this.notFound.set(false);
+    }
     this.device.set(device);
   }
 

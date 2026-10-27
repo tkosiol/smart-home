@@ -331,6 +331,27 @@ describe('device page', () => {
       expect(nameValue(page)).toBe('Thymian');
     });
 
+    it('fills the name field when an event comes before the first answer', async () => {
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => (release = resolve));
+      const page = await open({
+        household: member,
+        wrap: (respond) => async (call) => {
+          const answer = respond(call);
+          if (call.method !== 'GET' || !call.path.endsWith('/devices/dev-1')) return answer;
+          await gate;
+          return answer;
+        },
+      });
+      await flush(page);
+      page.live.emit('device.state', moist(55));
+      await flush(page);
+      release();
+      await flush(page);
+      expect(hero(page)?.textContent).toContain('55');
+      expect(nameValue(page)).toBe(sensor.name);
+    });
+
     it('does not let an answer that was already on its way undo an event', async () => {
       let release!: () => void;
       const gate = new Promise<void>((resolve) => (release = resolve));
