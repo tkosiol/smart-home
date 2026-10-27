@@ -108,7 +108,7 @@ const template = `<div class="story-card" style="padding: 16px;
     background: var(--mat-sys-surface-container-low); border-radius: var(--smart-shape-card)">
   <ui-chart [points]="points" [kind]="kind" [range]="range"
     [resolutionMinutes]="resolutionMinutes" [timeZone]="timeZone" [unit]="unit" [domain]="domain"
-    [band]="band" [markers]="markers" [label]="label" [description]="description" />
+    [band]="band" [markers]="markers" [from]="from" [to]="to" [label]="label" [description]="description" />
 </div>`;
 
 const week = soil(7 * 24);
@@ -272,6 +272,38 @@ export const Luecke: Story = {
   render: (args) => ({ props: args, template }),
   play: async ({ canvasElement }) => {
     await drawn(canvasElement);
+  },
+};
+
+/** Readings far apart: no line reaches any of them, so each is drawn as a small dot. */
+const lonely: UiChartPoint[] = [60, 50, 40, 30].map((hoursAgo, index) => ({
+  t: new Date(NOW - hoursAgo * HOUR).toISOString(),
+  value: 30 + index * 5,
+}));
+
+export const EinzelnePunkte: Story = {
+  args: {
+    points: lonely,
+    range: '7d',
+    resolutionMinutes: 60,
+    from: new Date(NOW - 7 * DAY).toISOString(),
+    to: new Date(NOW).toISOString(),
+    domain: { min: 0, max: 80 },
+    label: 'Bodenfeuchte, 7 Tage, einzelne Messwerte',
+    description: 'Bodenfeuchte der letzten 7 Tage; vier einzelne Messwerte ohne Linie dazwischen.',
+  },
+  render: (args) => ({ props: args, template }),
+  play: async ({ canvasElement }) => {
+    const svg = await drawn(canvasElement);
+    // a 6 px dot (the unit circle scaled by 3) per reading; the line series draws no symbols
+    await waitFor(() => {
+      const dots = [...svg.querySelectorAll('path[transform]')].filter(
+        (path) =>
+          path.getAttribute('fill') !== 'none' &&
+          /^matrix\(3,0,0,3,/.test(path.getAttribute('transform') ?? ''),
+      );
+      return expect(dots).toHaveLength(lonely.length);
+    });
   },
 };
 

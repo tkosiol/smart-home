@@ -1,4 +1,4 @@
-import { LineChart } from 'echarts/charts';
+import { LineChart, ScatterChart } from 'echarts/charts';
 import {
   AxisPointerComponent,
   GridComponent,
@@ -16,6 +16,7 @@ import type { ChartEngine, ChartHandle } from './echarts-loader';
 // reaches this file, and only through import().
 use([
   LineChart,
+  ScatterChart,
   GridComponent,
   MarkAreaComponent,
   MarkLineComponent,
