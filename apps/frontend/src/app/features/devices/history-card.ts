@@ -12,6 +12,8 @@ import {
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { TranslocoPipe, TranslocoService } from '@jsverse/transloco';
+import { filter, scan } from 'rxjs';
+import { marker } from '@jsverse/transloco-keys-manager/marker';
 import {
   HISTORY_RANGES,
   historySummary,
@@ -24,15 +26,18 @@ import {
   UiButton,
   UiCard,
   UiChart,
+  UiClock,
+  UiFigure,
   UiFormatContext,
   UiIconButton,
   type UiOption,
-  UiList,
-  UiListItem,
   UiRelativeTimePipe,
   UiSkeleton,
   UiStack,
+  type UiTableColumn,
+  type UiTableRow,
   UiValueDisplay,
+  UiValueTable,
 } from '@smart/ui';
 import { UiChipSet, UiSegmentedButton, type UiChipOption } from '@smart/ui/forms';
 import { ApiError } from '../../core/api';
@@ -59,6 +64,31 @@ import {
 export const HISTORY_REFRESH_MS = 300_000;
 const DEFAULT_RANGE: HistoryRange = '7d';
 
+/** The texts this card composes in code: root keys, marked so the key check finds them. */
+const KEYS = {
+  now: marker('app.devices.history.now'),
+  watered: marker('app.devices.history.watered'),
+  separator: marker('app.devices.history.separator'),
+  empty: marker('app.devices.history.empty'),
+  error: marker('app.devices.history.error.text'),
+  chartLabel: marker('app.devices.history.chart.label'),
+  column: {
+    time: marker('app.devices.history.column.time'),
+    day: marker('app.devices.history.column.day'),
+    mean: marker('app.devices.history.column.mean'),
+    span: marker('app.devices.history.column.span'),
+  },
+} as const;
+
+/** The note of a table row: "zeitweise zu trocken", "gegossen" or both. */
+function noteKeyOf(row: TableRow): string {
+  return row.notes.length === 2
+    ? NOTE_KEYS.both
+    : row.notes[0] === 'dry'
+      ? NOTE_KEYS.dry
+      : NOTE_KEYS.watered;
+}
+
 /**
  * The "Verlauf" of a device (spec 4.3): one reading at a time (chips, the main value first) over
  * 24 hours, 7 days or 4 weeks, as a chart or, on request, a table. Above the chart stands the value
@@ -74,15 +104,15 @@ const DEFAULT_RANGE: HistoryRange = '7d';
     UiCard,
     UiChart,
     UiChipSet,
+    UiFigure,
     UiIconButton,
-    UiList,
-    UiListItem,
-    UiRelativeTimePipe,
     UiSegmentedButton,
     UiSkeleton,
     UiStack,
     UiValueDisplay,
+    UiValueTable,
   ],
+  providers: [UiRelativeTimePipe],
   template: `
     <ui-card variant="low" [level]="2" [heading]="'devices.history.title' | transloco">
       <ui-icon-button
@@ -93,7 +123,7 @@ const DEFAULT_RANGE: HistoryRange = '7d';
         [label]="'devices.history.table' | transloco"
         (pressed)="table.set(!table())"
       />
-      <ui-stack gap="md">
+      <ui-stack gap="lg">
         @if (options().length > 1) {
           <ui-chip-set
             [label]="'devices.history.capability' | transloco"
@@ -104,81 +134,46 @@ const DEFAULT_RANGE: HistoryRange = '7d';
         }
         <div aria-live="polite">
           <ui-value-display
-            size="large"
+            size="readout"
             [value]="readout().value"
             [unit]="readout().unit ?? undefined"
+            [label]="readoutLine()"
           />
-          <p>
-            @if (readout().label; as label) {
-              {{ label }}
-              @if (readout().dry) {
-                {{ 'devices.history.separator' | transloco }}
-                {{ dryKey | transloco }}
-              }
-            } @else {
-              {{ 'devices.history.now' | transloco }}
-              @if (lastWatering(); as watered) {
-                {{ 'devices.history.separator' | transloco }}
-                {{ 'devices.history.watered' | transloco: { time: watered | uiRelativeTime } }}
-              }
-            }
-          </p>
         </div>
-        @switch (state()) {
-          @case ('loading') {
-            <ui-skeleton variant="block" />
-          }
-          @case ('failed') {
-            <ui-stack gap="sm" align="start">
-              <p>{{ 'devices.history.error.text' | transloco }}</p>
+        <ui-figure [caption]="caption()" [message]="message()">
+          @switch (state()) {
+            @case ('loading') {
+              <ui-skeleton variant="chart" />
+            }
+            @case ('failed') {
               <ui-button variant="tonal" (pressed)="retry()">{{
                 'devices.history.error.retry' | transloco
               }}</ui-button>
-            </ui-stack>
-          }
-          @default {
-            @if (chart(); as chart) {
-              @if (table()) {
-                <ui-list>
-                  @for (row of rows(); track row.key) {
-                    <ui-list-item
-                      [headline]="row.headline"
-                      [supporting]="row.notes.length > 0 ? (noteKey(row) | transloco) : undefined"
-                      [trailingText]="row.value"
-                    />
-                  }
-                </ui-list>
-              } @else {
-                <ui-chart
-                  [points]="chart.points"
-                  [kind]="chart.kind"
-                  [range]="range()"
-                  [resolutionMinutes]="chart.resolutionMinutes"
-                  [timeZone]="timeZone()"
-                  [unit]="unit()"
-                  [domain]="chart.domain"
-                  [band]="band()"
-                  [markers]="chart.markers"
-                  [label]="'devices.history.chart.label' | transloco: chartWords()"
-                  [description]="'devices.history.chart.description' | transloco: chartWords()"
-                  (scrubbed)="scrub.set($event)"
-                />
+            }
+            @default {
+              @if (chart(); as chart) {
+                @if (table()) {
+                  <ui-value-table [columns]="columns()" [rows]="rows()" [label]="chartLabel()" />
+                } @else {
+                  <ui-chart
+                    [points]="chart.points"
+                    [kind]="chart.kind"
+                    [range]="range()"
+                    [resolutionMinutes]="chart.resolutionMinutes"
+                    [timeZone]="timeZone()"
+                    [unit]="unit()"
+                    [domain]="chart.domain"
+                    [band]="band()"
+                    [markers]="chart.markers"
+                    [label]="chartLabel()"
+                    [description]="'devices.history.chart.description' | transloco: chartWords()"
+                    (scrubbed)="scrub.set($event)"
+                  />
+                }
               }
-              @if (summary().length > 0) {
-                <p>
-                  @for (part of summary(); track part.key; let first = $first) {
-                    @if (!first) {
-                      {{ 'devices.history.separator' | transloco }}
-                    }
-                    {{ part.key | transloco: part.params }}
-                  }
-                </p>
-              }
-            } @else {
-              <p>{{ 'devices.history.empty' | transloco }}</p>
             }
           }
-        }
+        </ui-figure>
         <ui-segmented-button
           fullWidth
           [label]="'devices.history.range' | transloco"
@@ -199,7 +194,17 @@ export class HistoryCard {
   private readonly handleError = injectHouseholdErrorHandler();
   private readonly format = inject(UiFormatContext);
   private readonly transloco = inject(TranslocoService);
+  private readonly relativeTime = inject(UiRelativeTimePipe);
+  private readonly clock = inject(UiClock);
   private readonly language = toSignal(this.transloco.langChanges$);
+  /** Counts the translations loaded so far: a text asked before its scope was in is asked again. */
+  private readonly loaded = toSignal(
+    this.transloco.events$.pipe(
+      filter((event) => event.type === 'translationLoadSuccess'),
+      scan((count) => count + 1, 0),
+    ),
+    { initialValue: 0 },
+  );
 
   protected readonly locale = this.format.locale;
   protected readonly timeZone = this.format.timeZone;
@@ -226,7 +231,6 @@ export class HistoryCard {
     })),
   );
 
-  protected readonly dryKey = DRY_KEY;
   protected readonly range = signal<HistoryRange>(DEFAULT_RANGE);
   protected readonly rangeOptions = computed<UiOption<HistoryRange>[]>(() =>
     HISTORY_RANGES.map((value) => ({ value, label: this.text(RANGE_KEYS[value]) ?? value })),
@@ -271,12 +275,6 @@ export class HistoryCard {
       : [];
   });
   protected readonly lastWatering = computed(() => this.waterings().at(-1) ?? null);
-  protected readonly rows = computed<TableRow[]>(() => {
-    const history = this.history();
-    return history
-      ? tableRowsOf(history, this.threshold(), this.waterings(), this.locale(), this.timeZone())
-      : [];
-  });
 
   /** The value above the chart: the pointer's point, else the device's current value. */
   protected readonly readout = computed(() => {
@@ -288,7 +286,13 @@ export class HistoryCard {
       return {
         value: formatNumber(point.value, locale),
         unit: this.unit(),
-        label: pointLabel(point.t, view.resolutionMinutes, locale, this.timeZone()),
+        label: pointLabel(
+          point.t,
+          view.resolutionMinutes,
+          locale,
+          this.timeZone(),
+          this.clock.now(),
+        ),
         dry: threshold !== null && point.value < threshold,
       };
     }
@@ -302,6 +306,23 @@ export class HistoryCard {
     };
   });
 
+  /**
+   * The line under the value: at rest "Jetzt · zuletzt gegossen vor 3 Tagen" (the watering only
+   * when the period holds one), under the pointer "Fr., 23. Okt., 23–24 Uhr · zu trocken".
+   */
+  protected readonly readoutLine = computed(() => {
+    const readout = this.readout();
+    const separator = ` ${this.text(KEYS.separator) ?? '·'} `;
+    if (readout.label !== null) {
+      return readout.dry ? `${readout.label}${separator}${this.text(DRY_KEY)}` : readout.label;
+    }
+    const now = this.text(KEYS.now) ?? '';
+    const watered = this.lastWatering();
+    if (watered === null) return now;
+    const time = this.relativeTime.transform(watered);
+    return `${now}${separator}${this.text(KEYS.watered, { time })}`;
+  });
+
   /** The words that name the chart and describe it for screen readers. */
   protected readonly chartWords = computed(() => {
     this.language();
@@ -311,6 +332,52 @@ export class HistoryCard {
       .map((part) => this.transloco.translate(part.key, part.params))
       .join(' · ');
     return { capability, range: this.text(SPAN_KEYS[this.range()]) ?? '', summary };
+  });
+  /** "Bodenfeuchte, letzte 7 Tage": the name of the chart and of the table. */
+  protected readonly chartLabel = computed(
+    () => this.text(KEYS.chartLabel, this.chartWords()) ?? '',
+  );
+  /** The summary under the chart; none for a period without values. */
+  protected readonly caption = computed(() => this.chartWords().summary || undefined);
+  /** What stands in the chart's place: the error, or that the period holds no values. */
+  protected readonly message = computed(() => {
+    const state = this.state();
+    if (state === 'failed') return this.text(KEYS.error) ?? undefined;
+    if (state === 'ready' && this.chart() === null) return this.text(KEYS.empty) ?? undefined;
+    return undefined;
+  });
+
+  /** 4 weeks list days (day, mean, low to high); the other periods list buckets (time, value). */
+  private readonly daily = computed(() => {
+    const history = this.history();
+    return history !== null && history.range === '28d' && history.days.length > 0;
+  });
+  protected readonly columns = computed<UiTableColumn[]>(() => {
+    const label = (key: string) => this.text(key) ?? '';
+    return this.daily()
+      ? [
+          { label: label(KEYS.column.day) },
+          { label: label(KEYS.column.mean) },
+          { label: label(KEYS.column.span) },
+        ]
+      : [{ label: label(KEYS.column.time) }, { label: this.chartWords().capability }];
+  });
+  protected readonly rows = computed<UiTableRow[]>(() => {
+    const history = this.history();
+    if (!history) return [];
+    const rows = tableRowsOf(
+      history,
+      this.threshold(),
+      this.waterings(),
+      this.locale(),
+      this.timeZone(),
+      this.clock.now(),
+    );
+    return rows.map((row) => ({
+      key: row.key,
+      cells: [row.label, ...row.values],
+      note: row.notes.length > 0 ? (this.text(noteKeyOf(row)) ?? undefined) : undefined,
+    }));
   });
 
   private requests = 0;
@@ -360,14 +427,6 @@ export class HistoryCard {
     );
   }
 
-  protected noteKey(row: TableRow): string {
-    return row.notes.length === 2
-      ? NOTE_KEYS.both
-      : row.notes[0] === 'dry'
-        ? NOTE_KEYS.dry
-        : NOTE_KEYS.watered;
-  }
-
   /**
    * Fetches one history. Each call starts a new request number and only the newest one may write:
    * the answer to an earlier choice of reading or period, or to an older refresh, is dropped when
@@ -401,9 +460,10 @@ export class HistoryCard {
     }
   }
 
-  /** A text of a translation key, again when the language changes. */
-  private text(key: string | null): string | null {
+  /** A text of a translation key, again when the language changes or its scope arrives. */
+  private text(key: string | null, params?: Record<string, string | number>): string | null {
     this.language();
-    return key === null ? null : this.transloco.translate(key);
+    this.loaded();
+    return key === null ? null : this.transloco.translate(key, params);
   }
 }

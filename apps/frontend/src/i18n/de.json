@@ -220,7 +220,23 @@
           "7d": "letzte 7 Tage",
           "28d": "letzte 4 Wochen"
         },
-        "dry": "zu trocken"
+        "dry": "zu trocken",
+        "now": "Jetzt",
+        "watered": "zuletzt gegossen {{ time }}",
+        "separator": "·",
+        "empty": "Noch keine Messwerte in diesem Zeitraum",
+        "error": {
+          "text": "Der Verlauf konnte nicht geladen werden."
+        },
+        "chart": {
+          "label": "{{ capability }}, {{ range }}"
+        },
+        "column": {
+          "time": "Zeit",
+          "day": "Tag",
+          "mean": "Mittel",
+          "span": "Tief–Hoch"
+        }
       }
     },
     "household": {

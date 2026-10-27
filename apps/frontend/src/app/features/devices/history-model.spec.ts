@@ -172,6 +172,23 @@ describe('pointLabel', () => {
     expect(pointLabel('2026-10-23T12:15:00Z', 15, 'de', BERLIN)).toContain('14:15–14:30');
   });
 
+  it('names today and yesterday as such, seen from now in household time', () => {
+    const now = Date.parse('2026-10-14T12:00:00Z'); // 14:00 in Berlin
+    expect(pointLabel('2026-10-14T11:00:00Z', 60, 'de', BERLIN, now)).toBe('Heute, 13–14 Uhr');
+    // The first hour of a day starts at 0, not 24 (only a bucket's end at midnight reads 24).
+    expect(pointLabel('2026-10-13T22:00:00Z', 60, 'de', BERLIN, now)).toMatch(
+      /^Heute, 0?0–0?1 Uhr$/,
+    );
+    expect(pointLabel('2026-10-13T21:00:00Z', 60, 'de', BERLIN, now)).toMatch(
+      /^Gestern, 23 Uhr.24 Uhr$/,
+    );
+    expect(pointLabel('2026-10-12T21:00:00Z', 60, 'de', BERLIN, now)).toMatch(/^Mo\., 12\. Okt\./);
+    expect(pointLabel('2026-10-14T11:00:00Z', 60, 'en', BERLIN, now)).toMatch(/^Today, /);
+    expect(pointLabel('2026-10-13T10:00:00Z', 1440, 'en', BERLIN, now)).toBe('Yesterday');
+    // Without `now` every day is dated.
+    expect(pointLabel('2026-10-14T11:00:00Z', 60, 'de', BERLIN)).toMatch(/^Mi\., 14\. Okt\./);
+  });
+
   it('names the day only for a daily value', () => {
     const label = pointLabel('2026-10-05T12:00:00Z', 1440, 'de', BERLIN);
     expect(label).toContain('5. Okt.');
@@ -189,10 +206,13 @@ describe('withUnit', () => {
 describe('tableRowsOf', () => {
   it('lists hourly values newest first', () => {
     const history = historyOf('soil_moisture', '7d');
-    const rows = tableRowsOf(history, 25, [], 'de', BERLIN);
+    const rows = tableRowsOf(history, 25, [], 'de', BERLIN, Date.parse(history.to));
     expect(rows).toHaveLength(168);
+    expect(rows[0]!.label).toMatch(/^Heute, /);
+    expect(rows[24]!.label).toMatch(/^Gestern, /);
     expect(rows[0]!.key).toBe(history.points.at(-1)!.t);
-    expect(rows[0]!.value).toBe(withUnit(history.points.at(-1)!.avg, '%', 'de'));
+    expect(rows[48]!.label).toMatch(/Okt\., \d{1,2}[–-]\d{1,2} Uhr/);
+    expect(rows[0]!.values).toEqual([withUnit(history.points.at(-1)!.avg, '%', 'de')]);
     expect(rows[0]!.notes).toEqual([]);
   });
 
@@ -202,7 +222,7 @@ describe('tableRowsOf', () => {
     expect(rows).toHaveLength(28);
     expect(rows[0]!.key).toBe(history.days.at(-1)!.date);
     const oldest = rows.at(-1)!;
-    expect(oldest.value).toContain('19');
+    expect(oldest.values).toEqual([withUnit(20, '%', 'de'), `19–${withUnit(21, '%', 'de')}`]);
     expect(oldest.notes).toEqual(['dry']);
     const watered = rows.find((r) => r.key === history.days[1]!.date)!;
     expect(watered.notes).toEqual(['watered']);

@@ -57,6 +57,8 @@ const toggleTable = async (page: OpenedHouseholdPage) => {
   card(page).querySelector<HTMLButtonElement>('button[aria-label="Werte als Tabelle"]')!.click();
   await flush(page);
 };
+const headers = (page: OpenedHouseholdPage) =>
+  [...card(page).querySelectorAll('thead th')].map((cell) => cell.textContent?.trim());
 const chart = (page: OpenedHouseholdPage) =>
   page.harness.fixture.debugElement.query(By.directive(UiChart));
 const chartInputs = (page: OpenedHouseholdPage) => chart(page).componentInstance as UiChart;
@@ -275,11 +277,16 @@ describe('history card', () => {
       expect(chart(page)).toBeNull();
       const toggle = card(page).querySelector('ui-icon-button button')!;
       expect(toggle.getAttribute('aria-pressed')).toBe('true');
-      const rows = card(page).querySelectorAll('ui-list-item');
+      const rows = card(page).querySelectorAll('tbody tr');
       expect(rows).toHaveLength(168);
       expect(rows[0]!.textContent).toContain('Uhr');
+      expect(headers(page)).toEqual(['Zeit', 'Bodenfeuchte']);
+      expect(
+        card(page).querySelector('ui-value-table [role="group"]')?.getAttribute('aria-label'),
+      ).toBe('Bodenfeuchte, letzte 7 Tage');
       await toggleTable(page);
       expect(chart(page)).toBeTruthy();
+      expect(card(page).querySelector('table')).toBeNull();
     });
 
     it('lists 4 weeks per day', async () => {
@@ -288,9 +295,11 @@ describe('history card', () => {
       });
       await choose(page, '4 Wochen');
       await toggleTable(page);
-      const rows = [...card(page).querySelectorAll('ui-list-item')];
+      const rows = [...card(page).querySelectorAll('tbody tr')];
       expect(rows).toHaveLength(28);
-      expect(rows.at(-1)!.textContent).toContain('zeitweise zu trocken');
+      expect(headers(page)).toEqual(['Tag', 'Mittel', 'Tief–Hoch']);
+      expect(rows.at(-1)!.querySelectorAll('td')).toHaveLength(3);
+      expect(rows.at(-1)!.querySelector('td .note')?.textContent).toBe('zeitweise zu trocken');
     });
   });
 
@@ -298,7 +307,7 @@ describe('history card', () => {
     it('shows a skeleton while loading', async () => {
       const slow = gate();
       const page = await open({ before: () => slow.promise });
-      expect(card(page).querySelector('ui-skeleton')).not.toBeNull();
+      expect(card(page).querySelector('ui-skeleton')?.getAttribute('data-variant')).toBe('chart');
       expect(chart(page)).toBeNull();
       slow.release();
       await flush(page);
@@ -309,9 +318,12 @@ describe('history card', () => {
       const page = await open({
         history: (capability, range) => ({ ...historyOf(capability, range), points: [] }),
       });
-      expect(cardText(page)).toContain('Noch keine Messwerte in diesem Zeitraum');
+      expect(card(page).querySelector('ui-figure .message')?.textContent).toBe(
+        'Noch keine Messwerte in diesem Zeitraum',
+      );
       expect(chart(page)).toBeNull();
       expect(cardText(page)).not.toContain('Tief');
+      expect(card(page).querySelector('figcaption')).toBeNull();
     });
 
     it('offers to try again after an error', async () => {
@@ -320,7 +332,9 @@ describe('history card', () => {
         history: (capability, range): DeviceHistory | Response =>
           fail ? apiError('internal', 500) : historyOf(capability, range),
       });
-      expect(cardText(page)).toContain('Der Verlauf konnte nicht geladen werden.');
+      expect(card(page).querySelector('ui-figure .message')?.textContent).toBe(
+        'Der Verlauf konnte nicht geladen werden.',
+      );
       expect(chart(page)).toBeNull();
       fail = false;
       await press(page, 'Erneut versuchen');

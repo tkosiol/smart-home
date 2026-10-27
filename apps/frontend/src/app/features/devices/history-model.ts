@@ -214,38 +214,68 @@ function countsTo24(locale: string): boolean {
   return known;
 }
 
+const relativeDays = new Map<string, Intl.RelativeTimeFormat>();
+
+/** "Heute" or "Gestern" when the day of `t` is today or yesterday seen from `now`, else null. */
+function relativeDay(t: string, now: number, locale: string, timeZone: string): string | null {
+  const day = localDate(t, timeZone);
+  const offset =
+    day === localDate(new Date(now).toISOString(), timeZone)
+      ? 0
+      : day === localDate(new Date(now - DAY_MINUTES * 60_000).toISOString(), timeZone)
+        ? -1
+        : null;
+  if (offset === null) return null;
+  let format = relativeDays.get(locale);
+  if (!format) {
+    format = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' });
+    relativeDays.set(locale, format);
+  }
+  // The language's own word ("heute", "today"), starting the label with a capital.
+  const word = format.format(offset, 'day');
+  return word.charAt(0).toLocaleUpperCase(locale) + word.slice(1);
+}
+
 /**
  * The time a point stands for, in household time: the bucket ("Fr., 23. Okt., 23–24 Uhr", "Fr.,
- * 23. Okt., 14:15–14:30") or, for a daily value, the day ("Mo., 5. Okt.").
+ * 23. Okt., 14:15–14:30") or, for a daily value, the day ("Mo., 5. Okt."). Given `now`, today
+ * and yesterday are named as such ("Heute, 14–15 Uhr").
  */
 export function pointLabel(
   t: string,
   resolutionMinutes: number,
   locale: string,
   timeZone: string,
+  now?: number,
 ): string {
   const start = Date.parse(t);
-  const date = new Intl.DateTimeFormat(locale, {
-    timeZone,
-    weekday: 'short',
-    day: 'numeric',
-    month: 'short',
-  }).format(start);
+  const date =
+    (now === undefined ? null : relativeDay(t, now, locale, timeZone)) ??
+    new Intl.DateTimeFormat(locale, {
+      timeZone,
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short',
+    }).format(start);
   if (resolutionMinutes >= DAY_MINUTES) return date;
   const end = start + resolutionMinutes * 60_000;
   const hourly = resolutionMinutes % 60 === 0;
-  const timeFormat = new Intl.DateTimeFormat(locale, {
+  const options: Intl.DateTimeFormatOptions = {
     timeZone,
     hour: hourly ? 'numeric' : '2-digit',
     minute: hourly ? undefined : '2-digit',
-    hourCycle: hourly && countsTo24(locale) ? 'h24' : undefined,
-  });
-  // A bucket that ends at midnight would make `formatRange` add both dates: join the two times
-  // ("23 Uhr–24 Uhr").
+  };
+  const timeFormat = new Intl.DateTimeFormat(locale, options);
+  // A bucket that ends at midnight would make `formatRange` add both dates: join the two times,
+  // the end as "24 Uhr" where the language counts to 24 ("23 Uhr–24 Uhr"; a bucket that starts
+  // at midnight keeps its "0").
   const time =
     localDate(t, timeZone) === localDate(new Date(end).toISOString(), timeZone)
       ? timeFormat.formatRange(start, end)
-      : `${timeFormat.format(start)}–${timeFormat.format(end)}`;
+      : `${timeFormat.format(start)}–${new Intl.DateTimeFormat(locale, {
+          ...options,
+          hourCycle: hourly && countsTo24(locale) ? 'h24' : undefined,
+        }).format(end)}`;
   return `${date}, ${time}`;
 }
 
@@ -259,17 +289,21 @@ function localDate(t: string, timeZone: string): string {
   }).format(Date.parse(t));
 }
 
-/** One line of the table; `notes` become the second line ("zeitweise zu trocken · gegossen"). */
+/**
+ * One line of the table: the time or the day, its values (one per bucket; mean and low to high
+ * per day) and the notes that become the second line ("zeitweise zu trocken · gegossen").
+ */
 export interface TableRow {
   readonly key: string;
-  readonly headline: string;
-  readonly value: string;
+  readonly label: string;
+  readonly values: readonly string[];
   readonly notes: readonly ('dry' | 'watered')[];
 }
 
 /**
  * The values as a table, newest first: 24 hours and 7 days per bucket (time, value), 4 weeks per
- * day (day, mean, low to high) with a note on days that were too dry or had a watering.
+ * day (day, mean, low to high) with a note on days that were too dry or had a watering. Given
+ * `now`, today and yesterday are named as such.
  */
 export function tableRowsOf(
   history: DeviceHistory,
@@ -277,6 +311,7 @@ export function tableRowsOf(
   waterings: readonly string[],
   locale: string,
   timeZone: string,
+  now?: number,
 ): TableRow[] {
   const { unit } = history;
   if (history.range === '28d' && history.days.length > 0) {
@@ -288,8 +323,11 @@ export function tableRowsOf(
         if (wateredDays.has(day.date)) notes.push('watered');
         return {
           key: day.date,
-          headline: pointLabel(dayMiddle(day.date, timeZone), DAY_MINUTES, locale, timeZone),
-          value: `${withUnit(day.avg, unit, locale)} · ${formatNumber(day.min, locale)}–${withUnit(day.max, unit, locale)}`,
+          label: pointLabel(dayMiddle(day.date, timeZone), DAY_MINUTES, locale, timeZone, now),
+          values: [
+            withUnit(day.avg, unit, locale),
+            `${formatNumber(day.min, locale)}–${withUnit(day.max, unit, locale)}`,
+          ],
           notes,
         };
       })
@@ -299,8 +337,8 @@ export function tableRowsOf(
   return history.points
     .map((point): TableRow => ({
       key: point.t,
-      headline: pointLabel(point.t, minutes, locale, timeZone),
-      value: withUnit(point.avg, unit, locale),
+      label: pointLabel(point.t, minutes, locale, timeZone, now),
+      values: [withUnit(point.avg, unit, locale)],
       notes: [],
     }))
     .reverse();

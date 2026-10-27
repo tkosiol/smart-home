@@ -57,16 +57,10 @@
     "table": "Werte als Tabelle",
     "capability": "Messwert",
     "range": "Zeitraum",
-    "now": "Jetzt",
-    "watered": "zuletzt gegossen {{ time }}",
-    "separator": "·",
-    "empty": "Noch keine Messwerte in diesem Zeitraum",
     "error": {
-      "text": "Der Verlauf konnte nicht geladen werden.",
       "retry": "Erneut versuchen"
     },
     "chart": {
-      "label": "{{ capability }}, {{ range }}",
       "description": "{{ capability }}, {{ range }}. {{ summary }}"
     }
   }
