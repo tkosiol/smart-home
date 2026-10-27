@@ -6,6 +6,7 @@ const HOUR_MS = 3_600_000;
  * Materializes `measurements_hourly` for history the refresh policy does not cover (it only
  * looks back 7 days), e.g. right after the view was created on a database with old readings.
  *
+ * Only numeric readings count (the aggregate ignores value_num IS NULL rows).
  * "What is missing" is decided by comparing the oldest raw reading with the oldest
  * *materialized* bucket. The view itself cannot be asked (real-time aggregation also returns
  * rows derived from raw data), so we read the materialization hypertable behind it, found
@@ -22,7 +23,9 @@ export async function backfillHourly(url: string): Promise<{ from: Date; to: Dat
     onnotice: () => undefined,
   });
   try {
-    const [raw] = await sql<{ first: Date | null }[]>`select min(time) as first from measurements`;
+    const [raw] = await sql<
+      { first: Date | null }[]
+    >`select min(time) as first from measurements where value_num is not null`;
     if (!raw?.first) {
       console.log('hourly aggregate: nothing to backfill');
       return null;

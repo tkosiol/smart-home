@@ -98,6 +98,23 @@ describe('measurements_hourly', () => {
     expect(await backfillHourly(url)).toBeNull();
   });
 
+  it('ignores older text readings: the second backfill is a no-op', async () => {
+    const old = startOfHour(Date.now()) - 20 * 24 * HOUR;
+    await sql`insert into measurements (time, device_id, capability, value_text)
+      values (${new Date(old + 1000)}, ${deviceId}, 'mode', 'auto')`;
+    await insert(old + 3 * HOUR, 4);
+
+    const range = await backfillHourly(url);
+    expect(range?.from.getTime()).toBe(old + 3 * HOUR);
+    expect(await backfillHourly(url)).toBeNull();
+  });
+
+  it('returns null when there are only text readings', async () => {
+    await sql`insert into measurements (time, device_id, capability, value_text)
+      values (${new Date(Date.now() - 20 * 24 * HOUR)}, ${deviceId}, 'mode', 'auto')`;
+    expect(await backfillHourly(url)).toBeNull();
+  });
+
   it('picks up late-delivered readings after a refresh of their window', async () => {
     const base = startOfHour(Date.now()) - 10 * HOUR;
     await insert(base + 60_000, 10);
