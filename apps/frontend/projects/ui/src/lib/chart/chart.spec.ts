@@ -7,37 +7,12 @@ import { THEME_ENGINE_LOADER } from '../theme/theme-engine';
 import { ThemeService } from '../theme/theme.service';
 import { provideUiTranslocoTesting } from '../testing/i18n-testing';
 import { UiChart, type UiChartBand, type UiChartPoint } from './chart';
-import { ECHARTS_LOADER, type ChartEngine, type ChartHandle } from './echarts-loader';
+import { FakeChart } from './chart-testing';
+import { ECHARTS_LOADER, type ChartEngine } from './echarts-loader';
 
 const HOUR = 3_600_000;
 const END = Date.parse('2026-10-27T12:00:00.000Z');
 const at = (hoursAgo: number) => new Date(END - hoursAgo * HOUR).toISOString();
-
-class FakeChart implements ChartHandle {
-  readonly options: Record<string, unknown>[] = [];
-  readonly actions: { type: string; [key: string]: unknown }[] = [];
-  readonly handlers = new Map<string, (event: never) => void>();
-  disposed = false;
-  resized = 0;
-  setOption(option: Record<string, unknown>) {
-    this.options.push(option);
-  }
-  resize() {
-    this.resized++;
-  }
-  dispatchAction(action: { type: string; [key: string]: unknown }) {
-    this.actions.push(action);
-  }
-  on(event: string, handler: (event: never) => void) {
-    this.handlers.set(event, handler);
-  }
-  dispose() {
-    this.disposed = true;
-  }
-  emit(event: string, payload: unknown = {}) {
-    this.handlers.get(event)!(payload as never);
-  }
-}
 
 @Component({
   imports: [UiChart],

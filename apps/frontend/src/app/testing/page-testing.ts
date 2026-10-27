@@ -3,6 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { provideRouter, type Routes } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import type { Language } from '@smart/contracts';
+import { provideUiChartTesting } from '@smart/ui/testing';
 import { BROWSER_LANGUAGES, LANGUAGE_STORE, provideI18n } from '../core/i18n';
 
 /**
@@ -19,6 +20,8 @@ export async function setupPage(routes: Routes, language: Language, providers: P
         useValue: { load: () => language, save: () => undefined, watch: () => () => undefined },
       },
       { provide: BROWSER_LANGUAGES, useValue: [language] },
+      // ui-chart draws nothing in jsdom (ECharts would look for a canvas and complain).
+      provideUiChartTesting(),
       ...providers,
     ],
   });
