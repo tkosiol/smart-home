@@ -159,9 +159,25 @@ test.describe.serial('devices from the simulator', () => {
     await expect(card.getByRole('radio', { name: '24 h' })).toBeChecked();
     await expect(card.locator('ui-chart')).toBeVisible();
 
+    // The 4 weeks (daily values): the chart or its empty text, never the error state. The
+    // simulator has only minutes of data, so the table has today's row once a reading exists.
+    await card.getByRole('radio', { name: '4 Wochen' }).click();
+    await expect(card.getByRole('radio', { name: '4 Wochen' })).toBeChecked();
+    await expect(card.getByText('Der Verlauf konnte nicht geladen werden.')).toHaveCount(0);
+    await expect(
+      card.locator('ui-chart').or(card.getByText('Noch keine Messwerte in diesem Zeitraum')),
+    ).toBeVisible();
     await card.getByRole('button', { name: 'Werte als Tabelle' }).click();
+    await expect(
+      card
+        .locator('ui-value-table tbody tr')
+        .first()
+        .or(card.getByText('Noch keine Messwerte in diesem Zeitraum')),
+    ).toBeVisible();
+    await expect(card.getByText('Der Verlauf konnte nicht geladen werden.')).toHaveCount(0);
+
+    await card.getByRole('radio', { name: '24 h' }).click();
     await expect(card.locator('ui-value-table tbody tr').first()).toBeVisible();
-    expect(await card.locator('ui-value-table tbody tr').count()).toBeGreaterThan(0);
   });
 
   test('a member of the household sees the device but not "Neu erkannt"', async ({ browser }) => {

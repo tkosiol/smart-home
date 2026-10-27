@@ -201,7 +201,7 @@ Heute übernimmt `warning` die `error`-Rollen (`packages/theme/src/status.ts`); 
 
 ## 7. Komponenten in `@smart/ui`
 
-Alle neuen Bausteine nur in `public-api.ts` oder `forms.ts`, nie in `shell.ts`; ECharts und das Bottom Sheet laden als eigene Chunks per `import()`. Nach jedem Baustein `pnpm build` und die Größe des initialen Bundles prüfen (Grenze 480 kB, Stand rund 472,7 kB). Texte: einfache Bausteine über Inputs, zusammengesetzte mit eigenen `ui.*`-Schlüsseln.
+Alle neuen Bausteine nur in `public-api.ts` oder `forms.ts`, nie in `shell.ts`; ECharts und das Bottom Sheet laden als eigene Chunks per `import()`. Nach jedem Baustein `pnpm build` und die Größe des initialen Bundles prüfen (Grenze und Stand: siehe CLAUDE.md). Texte: einfache Bausteine über Inputs, zusammengesetzte mit eigenen `ui.*`-Schlüsseln.
 
 | Baustein           | Zweck                                                                          | Inputs / Outputs                                                                                                                          |
 | ------------------ | ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
