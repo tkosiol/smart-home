@@ -149,8 +149,12 @@ export class UiChart {
       const chart = this.chart();
       const model = this.model();
       if (!chart) return;
-      this.current = null;
       chart.setOption(model ? model.option : { series: [] }, { notMerge: true });
+      // A redraw drops the guide: tell the consumer, whose readout would otherwise go stale.
+      if (this.current !== null) {
+        this.current = null;
+        untracked(() => this.scrubbed.emit(null));
+      }
     });
 
     afterNextRender(() => {

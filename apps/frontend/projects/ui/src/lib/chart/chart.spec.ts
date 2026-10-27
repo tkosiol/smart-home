@@ -209,6 +209,18 @@ describe('UiChart', () => {
     expect(scrubbed).toEqual([0, null]);
   });
 
+  it('reports null when new points drop an active scrub, and stays quiet without one', async () => {
+    const { fixture, host, flush, scrubbed } = await setup();
+    await flush();
+    fixture.componentInstance.points.update((points) => [...points]);
+    await flush();
+    expect(scrubbed).toEqual([]);
+    host().dispatchEvent(key('Home'));
+    fixture.componentInstance.points.update((points) => [...points]);
+    await flush();
+    expect(scrubbed).toEqual([0, null]);
+  });
+
   it('disposes the chart with the component, also when it loads late', async () => {
     const { fixture, chart, flush } = await setup();
     await flush();
