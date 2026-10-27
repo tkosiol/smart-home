@@ -8,6 +8,7 @@ import {
   meSchema,
   type DeviceHistory,
 } from '@smart/contracts';
+import postgres from 'postgres';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
 import { inject } from 'vitest';
@@ -114,6 +115,9 @@ describe('device history API', () => {
     query: string,
     who: Person = f.owner,
   ): Promise<DeviceHistory> => {
+    // What the refresh policy does within 30 minutes in operation: readings older than its
+    // watermark only reach the hourly aggregate through a refresh.
+    await connection.sql`call refresh_continuous_aggregate('measurements_hourly', null, null)`;
     const response = await get(
       `${HOUSEHOLDS}/${f.householdId}/devices/${f.deviceId}/history?${query}`,
       who,
@@ -124,6 +128,22 @@ describe('device history API', () => {
   beforeAll(async () => {
     const url = await createFreshDatabase(originalUrl);
     await runMigrations(url);
+    // Pin the state the background scheduler may reach at any moment: the refresh policy has
+    // materialized up to an hour ago (so older readings inserted later are invalidations, not
+    // real-time rows) and does not run again next to the refreshes in history().
+    const admin = postgres(url, { max: 1, onnotice: () => undefined });
+    try {
+      const [job] = await admin<{ id: number }[]>`
+        select job_id as id from timescaledb_information.jobs
+        where proc_name = 'policy_refresh_continuous_aggregate'`;
+      if (!job) throw new Error('no refresh policy');
+      await admin`select alter_job(${job.id}, scheduled => false)`;
+      await admin`insert into measurements (time, device_id, capability, value_num)
+        values (now() - interval '2 hours', ${UNKNOWN_ID}, 'soil_moisture', 1)`;
+      await admin`call run_job(${job.id})`;
+    } finally {
+      await admin.end();
+    }
     process.env.DATABASE_URL = url;
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(CLOCK)
