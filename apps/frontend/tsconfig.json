@@ -17,7 +17,8 @@
     "paths": {
       "@smart/ui": ["./projects/ui/src/public-api.ts"],
       "@smart/ui/forms": ["./projects/ui/src/forms.ts"],
-      "@smart/ui/shell": ["./projects/ui/src/shell.ts"]
+      "@smart/ui/shell": ["./projects/ui/src/shell.ts"],
+      "@smart/ui/testing": ["./projects/ui/src/testing.ts"]
     }
   },
   "angularCompilerOptions": {

@@ -255,6 +255,36 @@ describe('frontend boundaries and UI rules', () => {
       ['no-restricted-imports'],
     ],
     [
+      'feature spec → @smart/ui/testing (stand-ins for specs)',
+      'apps/frontend/src/app/features/devices/devices.page.spec.ts',
+      "import { x } from '@smart/ui/testing';\nexport const u = x;",
+      [],
+    ],
+    [
+      'test helper → @smart/ui/testing',
+      'apps/frontend/src/app/testing/page-testing.ts',
+      "import { x } from '@smart/ui/testing';\nexport const u = x;",
+      [],
+    ],
+    [
+      'core spec → @smart/ui/testing',
+      'apps/frontend/src/app/core/auth/auth.service.spec.ts',
+      "import { x } from '@smart/ui/testing';\nexport const u = x;",
+      [],
+    ],
+    [
+      'feature → @smart/ui/testing (would bundle the stand-ins)',
+      'apps/frontend/src/app/features/devices/devices.page.ts',
+      page("import { x } from '@smart/ui/testing';\nexport const u = x;"),
+      ['no-restricted-imports'],
+    ],
+    [
+      'core → @smart/ui/testing (would bundle the stand-ins)',
+      'apps/frontend/src/app/core/auth/auth.service.ts',
+      "import { x } from '@smart/ui/testing';\nexport const u = x;",
+      ['no-restricted-imports'],
+    ],
+    [
       'feature → DatePipe',
       'apps/frontend/src/app/features/devices/devices.page.ts',
       page("import { DatePipe } from '@angular/common';\nexport const p = DatePipe;"),

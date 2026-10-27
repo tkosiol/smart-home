@@ -1,40 +1,84 @@
-@use '@angular/material' as mat;
+@use '../button/control';
 
+// M3 Expressive connected button group (spec 4.2) on the shared control base of the buttons:
+// tonal segments 2 px apart, no dividers, the outer ends full and the inner corners small; the
+// chosen segment is a quiet pill in secondary-container. Pressed, every corner takes the pressed
+// shape of the control base, like the buttons' corners.
 :host {
-  display: inline-block;
-  max-width: 100%;
-
-  // Material's height token is the line height of a segment's content, so it acts as a minimum:
-  // a segment whose label wraps grows with the label (see `.segment`).
-  @include mat.button-toggle-overrides(
-    (
-      height: var(--smart-size-touch),
-    )
-  );
-}
-
-// Material keeps the group and its segments on one unbreakable line, so long labels pushed the
-// group wider than a 320px screen. The group is capped at the available width; each segment
-// starts from its padding (incl. the selected checkmark, so the chosen option is not squeezed),
-// the rest is shared out evenly, and no segment grows past its one-line width, so short labels
-// stay whole and long ones wrap. Wide enough, every segment is one line. `flex: 1 1 0` is the
-// fallback where `flex-basis: min-content` is unsupported.
-mat-button-toggle-group {
+  display: inline-flex;
   max-width: 100%;
 }
 
-mat-button-toggle {
+:host([data-full-width]) {
+  display: flex;
+}
+
+:host([data-full-width]) .group {
+  flex: 1;
+}
+
+:host([data-full-width]) .segment {
+  max-width: none;
+}
+
+.group {
+  display: flex;
+  gap: var(--smart-space-2xs);
+  max-width: 100%;
+}
+
+// Each segment starts from its one-line width; the rest is shared out evenly, and no segment
+// grows past its one-line width, so short labels stay whole and long ones wrap on a narrow
+// screen instead of pushing the group wider. `flex: 1 1 0` is the fallback where
+// `flex-basis: min-content` is unsupported.
+.segment {
+  @include control.base;
+
   flex: 1 1 0;
   flex-basis: min-content;
   min-width: var(--smart-size-touch);
   max-width: max-content;
+  min-height: var(--smart-size-button);
+  padding-block: var(--smart-space-sm);
+  padding-inline: var(--smart-space-lg);
+  border-radius: var(--smart-shape-segment-inner);
+  background: var(--mat-sys-surface-container-high);
+  color: var(--mat-sys-on-surface);
+  font: var(--mat-sys-label-large);
+  letter-spacing: var(--mat-sys-label-large-tracking);
+  transition:
+    border-radius var(--smart-motion-duration-short) var(--smart-motion-easing-standard),
+    background-color var(--smart-motion-duration-short) var(--smart-motion-easing-standard),
+    color var(--smart-motion-duration-short) var(--smart-motion-easing-standard);
 }
 
-// Our own label wrapper: wraps at word boundaries first (long German words anywhere), with the
-// label line height for its own lines, and never wider than its segment.
-.segment {
-  display: inline-flex;
-  align-items: center;
+// The outer ends: a finite pill radius (not corner-full's 9999px), so the shape morph animates.
+.segment:first-child {
+  border-start-start-radius: calc(var(--smart-size-button) / 2);
+  border-end-start-radius: calc(var(--smart-size-button) / 2);
+}
+
+.segment:last-child {
+  border-start-end-radius: calc(var(--smart-size-button) / 2);
+  border-end-end-radius: calc(var(--smart-size-button) / 2);
+}
+
+.segment[aria-checked='true'] {
+  border-radius: calc(var(--smart-size-button) / 2);
+  background: var(--mat-sys-secondary-container);
+  color: var(--mat-sys-on-secondary-container);
+}
+
+// Disabled (M3): container on-surface 12 %, content on-surface 38 % (restated after the chosen
+// colours, which would otherwise win over the control base's).
+.segment:disabled {
+  background: color-mix(in srgb, var(--mat-sys-on-surface) 12%, transparent);
+  color: color-mix(in srgb, var(--mat-sys-on-surface) 38%, transparent);
+}
+
+// The label wraps at word boundaries first (long German words anywhere), never wider than its
+// segment, with the label line height for its own lines.
+.content {
   gap: var(--smart-space-sm);
   max-width: 100%;
   line-height: var(--mat-sys-label-large-line-height);
@@ -44,4 +88,26 @@ mat-button-toggle {
 
 ui-icon {
   flex: none;
+}
+
+// Nothing morphs without motion: the resting shapes stay while pressed, where the control base
+// (which also drops the transitions) would fall back to corner-full for every corner.
+@media (prefers-reduced-motion: reduce) {
+  .segment:active:not(:disabled) {
+    border-radius: var(--smart-shape-segment-inner);
+  }
+
+  .segment:first-child:active:not(:disabled) {
+    border-start-start-radius: calc(var(--smart-size-button) / 2);
+    border-end-start-radius: calc(var(--smart-size-button) / 2);
+  }
+
+  .segment:last-child:active:not(:disabled) {
+    border-start-end-radius: calc(var(--smart-size-button) / 2);
+    border-end-end-radius: calc(var(--smart-size-button) / 2);
+  }
+
+  .segment[aria-checked='true']:active:not(:disabled) {
+    border-radius: calc(var(--smart-size-button) / 2);
+  }
 }

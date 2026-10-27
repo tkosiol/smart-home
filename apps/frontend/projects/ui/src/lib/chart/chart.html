@@ -1,0 +1,5 @@
+<div class="canvas" #canvas aria-hidden="true"></div>
+@if (isEmpty()) {
+  <p class="empty">{{ 'ui.chart.empty' | transloco }}</p>
+}
+<p class="description" [id]="descriptionId">{{ description() }}</p>

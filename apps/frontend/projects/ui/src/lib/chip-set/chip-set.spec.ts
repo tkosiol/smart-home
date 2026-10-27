@@ -18,7 +18,7 @@ type Room = 'kitchen' | 'bath' | 'office';
 class Host {
   readonly options: readonly UiOption<Room>[] = [
     { value: 'kitchen', label: 'Küche' },
-    { value: 'bath', label: 'Bad' },
+    { value: 'bath', label: 'Bad', icon: 'water_drop' },
     { value: 'office', label: 'Büro' },
   ];
   readonly selected = signal<readonly Room[]>(['bath']);
@@ -27,16 +27,23 @@ class Host {
 }
 
 function options(fixture: { nativeElement: HTMLElement }) {
-  return [...fixture.nativeElement.querySelectorAll('[role="option"]')] as HTMLElement[];
+  return [...fixture.nativeElement.querySelectorAll('[role="option"]')] as HTMLButtonElement[];
+}
+
+function press(target: HTMLElement, key: string): void {
+  target.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
 }
 
 describe('UiChipSet', () => {
-  it('is a named listbox reflecting the bound selection', () => {
+  it('is a named listbox of native buttons reflecting the bound selection', () => {
     const fixture = TestBed.createComponent(Host);
     fixture.detectChanges();
-    expect(fixture.nativeElement.querySelector('[role="listbox"]').getAttribute('aria-label')).toBe(
-      'Räume',
-    );
+    const listbox = fixture.nativeElement.querySelector('[role="listbox"]') as HTMLElement;
+    expect(listbox.getAttribute('aria-label')).toBe('Räume');
+    expect(listbox.getAttribute('aria-multiselectable')).toBe('true');
+    expect(listbox.getAttribute('aria-orientation')).toBe('horizontal');
+    expect(fixture.nativeElement.querySelector('[class*="mat-"], [class*="mdc-"]')).toBeNull();
+    expect(options(fixture).every((option) => option.tagName === 'BUTTON')).toBe(true);
     expect(options(fixture).map((o) => o.getAttribute('aria-selected'))).toEqual([
       'false',
       'true',
@@ -44,11 +51,23 @@ describe('UiChipSet', () => {
     ]);
   });
 
+  it('shows a check mark on a selected chip instead of its icon', () => {
+    const fixture = TestBed.createComponent(Host);
+    fixture.detectChanges();
+    const [kitchen, bath] = options(fixture);
+    expect(kitchen!.querySelector('ui-icon')).toBeNull();
+    expect(bath!.querySelector('ui-icon')?.textContent).toBe(String.fromCodePoint(0xe5ca));
+    fixture.componentInstance.selected.set([]);
+    fixture.detectChanges();
+    expect(bath!.querySelector('ui-icon')?.textContent).toBe(String.fromCodePoint(0xe798));
+  });
+
   it('adds and removes values in multiple mode', () => {
     const fixture = TestBed.createComponent(Host);
     fixture.detectChanges();
     options(fixture)[0]!.click();
     fixture.detectChanges();
+    // The selection is written in the order of the options, not of the clicks.
     expect(fixture.componentInstance.selected()).toEqual(['kitchen', 'bath']);
     options(fixture)[1]!.click();
     fixture.detectChanges();
@@ -59,6 +78,13 @@ describe('UiChipSet', () => {
     const fixture = TestBed.createComponent(Host);
     fixture.componentInstance.multiple.set(false);
     fixture.detectChanges();
+    expect(
+      fixture.nativeElement.querySelector('[role="listbox"]').getAttribute('aria-multiselectable'),
+    ).toBe('false');
+    options(fixture)[2]!.click();
+    fixture.detectChanges();
+    expect(fixture.componentInstance.selected()).toEqual(['office']);
+    // The chosen chip stays chosen (a single choice cannot be emptied).
     options(fixture)[2]!.click();
     fixture.detectChanges();
     expect(fixture.componentInstance.selected()).toEqual(['office']);
@@ -68,11 +94,46 @@ describe('UiChipSet', () => {
     const fixture = TestBed.createComponent(Host);
     fixture.componentInstance.disabled.set(true);
     fixture.detectChanges();
-    expect(
-      options(fixture).every((option) => option.getAttribute('aria-disabled') === 'true'),
-    ).toBe(true);
+    expect(options(fixture).every((option) => option.disabled)).toBe(true);
     options(fixture)[0]!.click();
     fixture.detectChanges();
+    expect(fixture.componentInstance.selected()).toEqual(['bath']);
+  });
+
+  it('puts only the first selected chip in the tab order', () => {
+    const fixture = TestBed.createComponent(Host);
+    fixture.detectChanges();
+    expect(options(fixture).map((option) => option.tabIndex)).toEqual([-1, 0, -1]);
+    fixture.componentInstance.selected.set([]);
+    fixture.detectChanges();
+    expect(options(fixture).map((option) => option.tabIndex)).toEqual([0, -1, -1]);
+  });
+
+  it('moves the focus with the arrow keys without changing the selection', () => {
+    const fixture = TestBed.createComponent(Host);
+    fixture.detectChanges();
+    const [kitchen, bath, office] = options(fixture) as [
+      HTMLButtonElement,
+      HTMLButtonElement,
+      HTMLButtonElement,
+    ];
+    bath.focus();
+    press(bath, 'ArrowRight');
+    fixture.detectChanges();
+    expect(document.activeElement).toBe(office);
+    expect(options(fixture).map((option) => option.tabIndex)).toEqual([-1, -1, 0]);
+    press(office, 'ArrowRight');
+    fixture.detectChanges();
+    expect(document.activeElement).toBe(kitchen);
+    press(kitchen, 'ArrowLeft');
+    fixture.detectChanges();
+    expect(document.activeElement).toBe(office);
+    press(office, 'Home');
+    fixture.detectChanges();
+    expect(document.activeElement).toBe(kitchen);
+    press(kitchen, 'End');
+    fixture.detectChanges();
+    expect(document.activeElement).toBe(office);
     expect(fixture.componentInstance.selected()).toEqual(['bath']);
   });
 });

@@ -51,3 +51,15 @@
 mat-card-content {
   overflow-wrap: anywhere;
 }
+
+// An action in the header row stays at the end, its own size, the heading takes the rest. The
+// projected element belongs to the caller's view, so it is wrapped in an element of this one.
+mat-card-header {
+  align-items: center;
+}
+
+.header-action {
+  flex: none;
+  margin-inline-start: auto;
+  padding-inline-start: var(--smart-space-sm);
+}

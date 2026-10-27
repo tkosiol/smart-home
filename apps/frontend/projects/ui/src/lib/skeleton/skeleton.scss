@@ -18,6 +18,15 @@
   border-radius: var(--mat-sys-corner-medium);
 }
 
+// chart: the place of a ui-chart, at its height (spec 6c-1 4.3)
+:host([data-variant='chart']) .shape {
+  height: var(--smart-size-chart);
+}
+
+:host([data-variant='chart'][data-large]) .shape {
+  height: var(--smart-size-chart-large);
+}
+
 :host([data-variant='circle']) .shape {
   width: var(--smart-size-icon-lg);
   height: var(--smart-size-icon-lg);

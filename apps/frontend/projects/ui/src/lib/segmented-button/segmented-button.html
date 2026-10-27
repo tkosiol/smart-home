@@ -1,18 +1,21 @@
-<mat-button-toggle-group
-  [value]="value()"
-  [disabled]="disabled()"
-  [hideSingleSelectionIndicator]="false"
-  [attr.aria-label]="label()"
-  (change)="select($event)"
->
-  @for (option of options(); track option.value) {
-    <mat-button-toggle [value]="option.value">
-      <span class="segment">
+<div class="group" role="radiogroup" [attr.aria-label]="label()">
+  @for (option of options(); track option.value; let index = $index) {
+    <button
+      class="segment"
+      type="button"
+      role="radio"
+      [attr.aria-checked]="option.value === value()"
+      [tabindex]="index === tabbable() ? 0 : -1"
+      [disabled]="disabled()"
+      (click)="select(option.value)"
+      (keydown)="onKeydown($event, index)"
+    >
+      <span class="content">
         @if (option.icon; as icon) {
           <ui-icon [name]="icon" size="sm" />
         }
         <span class="text">{{ option.label }}</span>
       </span>
-    </mat-button-toggle>
+    </button>
   }
-</mat-button-toggle-group>
+</div>

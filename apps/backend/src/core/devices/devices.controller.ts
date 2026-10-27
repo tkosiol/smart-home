@@ -2,7 +2,9 @@ import { Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from
 import {
   deviceCreateSchema,
   deviceUpdateSchema,
+  historyQuerySchema,
   type Device,
+  type DeviceHistory,
   type Hardware,
 } from '@smart/contracts';
 import * as z from 'zod';
@@ -12,6 +14,7 @@ import {
   RequireRole,
   type HouseholdRequest,
 } from '../households/index.js';
+import { DeviceHistoryService } from './device-history.service.js';
 import { DevicesService } from './devices.service.js';
 
 /** Only unassigned hardware can be listed; the parameter leaves room for other views. */
@@ -20,7 +23,10 @@ const hardwareQuerySchema = z.object({ state: z.literal('unassigned') });
 @Controller('v1/households/:householdId')
 @UseGuards(HouseholdGuard)
 export class DevicesController {
-  constructor(private readonly devices: DevicesService) {}
+  constructor(
+    private readonly devices: DevicesService,
+    private readonly histories: DeviceHistoryService,
+  ) {}
 
   @Get('hardware')
   @RequireRole('owner')
@@ -45,6 +51,20 @@ export class DevicesController {
   @RequireRole('viewer')
   get(@Req() request: HouseholdRequest, @Param('deviceId') deviceId: string): Promise<Device> {
     return this.devices.get(membershipOf(request).householdId, deviceId);
+  }
+
+  @Get('devices/:deviceId/history')
+  @RequireRole('viewer')
+  history(
+    @Req() request: HouseholdRequest,
+    @Param('deviceId') deviceId: string,
+    @Query() query: unknown,
+  ): Promise<DeviceHistory> {
+    return this.histories.get(
+      membershipOf(request).householdId,
+      deviceId,
+      historyQuerySchema.parse(query),
+    );
   }
 
   @Patch('devices/:deviceId')

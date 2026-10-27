@@ -51,5 +51,17 @@
     "descriptionReadOnly": "Ab diesen Werten meldet die App einen Hinweis.",
     "save": "Grenzwerte speichern",
     "reset": "Auf Standard zurücksetzen"
+  },
+  "history": {
+    "title": "Verlauf",
+    "table": "Werte als Tabelle",
+    "capability": "Messwert",
+    "range": "Zeitraum",
+    "error": {
+      "retry": "Erneut versuchen"
+    },
+    "chart": {
+      "description": "{{ capability }}, {{ range }}. {{ summary }}"
+    }
   }
 }

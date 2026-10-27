@@ -38,6 +38,7 @@ export const ICON_CODEPOINTS = {
   sensors: 0xe51e,
   settings: 0xe8b8,
   swap_horiz: 0xe8d4,
+  table_rows: 0xf101,
   thermostat: 0xf076,
   tune: 0xe429,
   warning: 0xe002,

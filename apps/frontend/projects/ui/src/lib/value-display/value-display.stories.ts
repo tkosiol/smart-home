@@ -24,6 +24,7 @@ export const Groessen: StoryObj<UiValueDisplay> = {
       <div style="display: grid; gap: 16px; max-width: 420px">
         ${soilHero}
         <ui-value-display size="large" value="80" unit="%" label="Helligkeit" />
+        <ui-value-display size="readout" value="42" unit="%" label="Jetzt · zuletzt gegossen vor 3 Tagen" />
         <div style="display: flex; gap: 8px">
           <ui-value-display value="21,8" unit="°C" label="Temperatur" />
           <ui-value-display value="72" unit="%" label="Batterie" />
@@ -41,6 +42,18 @@ export const Groessen: StoryObj<UiValueDisplay> = {
     await expect(getComputedStyle(hero).fontWeight).toBe('600');
     for (const value of canvasElement.querySelectorAll('.value')) {
       await expect(getComputedStyle(value).fontVariantNumeric).toBe('tabular-nums');
+    }
+    // The readout: headline-medium, its unit and label as supporting text in on-surface-variant.
+    const root = getComputedStyle(document.documentElement);
+    const readout = canvasElement.querySelector('[data-size="readout"] .value')!;
+    await expect(getComputedStyle(readout).fontSize).toBe('28px');
+    await expect(getComputedStyle(readout).fontWeight).toBe('600');
+    for (const part of canvasElement.querySelectorAll(
+      '[data-size="readout"] .unit, [data-size="readout"] .label',
+    )) {
+      await expect(getComputedStyle(part).color).toBe(
+        rgb(root.getPropertyValue('--mat-sys-on-surface-variant').trim()),
+      );
     }
     // The label inherits the surface's on-colour, like the value, and precedes it in the hero.
     const heroLabel = canvasElement.querySelector('[data-size="hero"] .label')!;

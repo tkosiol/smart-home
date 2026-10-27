@@ -86,6 +86,10 @@
     "reorderList": {
       "moved": "{{name}}: Position {{position}} von {{count}}",
       "movedUnnamed": "Position {{position}} von {{count}}"
+    },
+    "chart": {
+      "roleDescription": "Diagramm",
+      "empty": "Keine Verlaufsdaten"
     }
   }
 }

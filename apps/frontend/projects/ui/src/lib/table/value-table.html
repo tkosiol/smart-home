@@ -1,0 +1,25 @@
+<div class="scroll" tabindex="0" role="group" [attr.aria-label]="label()">
+  <table class="table">
+    <thead>
+      <tr>
+        @for (column of columns(); track $index) {
+          <th scope="col" [attr.data-align]="aligns()[$index]">{{ column.label }}</th>
+        }
+      </tr>
+    </thead>
+    <tbody>
+      @for (row of rows(); track row.key) {
+        <tr>
+          @for (cell of row.cells; track $index) {
+            <td [attr.data-align]="aligns()[$index]">
+              {{ cell }}
+              @if ($first && row.note) {
+                <span class="note">{{ row.note }}</span>
+              }
+            </td>
+          }
+        </tr>
+      }
+    </tbody>
+  </table>
+</div>

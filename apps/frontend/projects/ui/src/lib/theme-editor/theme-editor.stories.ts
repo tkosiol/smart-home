@@ -5,6 +5,7 @@ import { expect, userEvent, waitFor } from 'storybook/test';
 import {
   expectNoBrokenWords,
   expectNoHorizontalOverflow,
+  touchTargetSize,
   withPhoneFrame,
 } from '../testing/story-helpers';
 import { waitForTranslations } from '../testing/storybook-environment';
@@ -26,10 +27,15 @@ export default meta;
 const editor = (mode: 'personal' | 'instance') =>
   `<ui-theme-editor mode="${mode}" [(instance)]="instance" [(personal)]="personal" />`;
 
-/** Segments and color swatches are sized by the editor; both must be 48 × 48 px or larger. */
+/**
+ * Segments (40 px high, their touch target is the control base's invisible box) and color
+ * swatches are sized by the editor; both must reach 48 × 48 px.
+ */
 const expectTouchTargets = async (root: Element) => {
   for (const control of root.querySelectorAll<HTMLElement>('[role="radio"], .swatch')) {
-    const { height, width } = control.getBoundingClientRect();
+    const { height, width } = control.matches('[role="radio"]')
+      ? touchTargetSize(control)
+      : control.getBoundingClientRect();
     await expect(height, control.outerHTML.slice(0, 80)).toBeGreaterThanOrEqual(48);
     await expect(width, control.outerHTML.slice(0, 80)).toBeGreaterThanOrEqual(48);
   }

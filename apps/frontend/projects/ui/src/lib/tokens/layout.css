@@ -1,5 +1,7 @@
 /* Spacing, size, line and motion tokens. Fixed lengths and durations are only allowed in tokens/. */
 :root {
+  /* Gap between the segments of a connected button group (M3 Expressive) */
+  --smart-space-2xs: 2px;
   --smart-space-xs: 4px;
   --smart-space-sm: 8px;
   --smart-space-md: 12px;
@@ -13,6 +15,10 @@
   /* M3 common button and icon button (their touch target stays --smart-size-touch) */
   --smart-size-button: 40px;
   --smart-size-icon-button: 40px;
+  /* Chips: 40 px visible, the touch target stays --smart-size-touch (design spec 10) */
+  --smart-size-chip: 40px;
+  /* Faded edge of a row that scrolls sideways (chips), where more content follows */
+  --smart-size-scroll-fade: 40px;
   --smart-size-top-app-bar: 64px;
   /* Top app bar with the large title (compact windows) */
   --smart-size-top-app-bar-large: 72px;
@@ -29,6 +35,9 @@
   --smart-size-icon-sm: 20px;
   --smart-size-icon-md: 24px;
   --smart-size-icon-lg: 40px;
+  /* Plot height of ui-chart; the large one from the Expanded window class */
+  --smart-size-chart: 200px;
+  --smart-size-chart-large: 240px;
   --smart-size-grid-sm: 160px;
   --smart-size-grid-md: 240px;
   --smart-size-grid-lg: 320px;
@@ -38,6 +47,8 @@
   --smart-size-pod-width: 140px;
   --smart-size-pod-height: 116px;
   --smart-size-icon-container: 40px;
+  /* Rows of ui-value-table (M3 data table: 40 px header and rows) */
+  --smart-size-table-row: 40px;
   /* Track height of ui-progress-band */
   --smart-size-progress-band: 12px;
   --smart-focus-width: 3px;

@@ -9,6 +9,7 @@
       @if (description(); as description) {
         <p mat-card-subtitle class="subtitle">{{ description }}</p>
       }
+      <div class="header-action"><ng-content select="[uiCardHeaderAction]" /></div>
     </mat-card-header>
   }
   <mat-card-content>

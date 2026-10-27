@@ -26,4 +26,13 @@
   grid-template-columns: repeat(auto-fill, minmax(min(var(--smart-size-grid-lg), 100%), 1fr));
 }
 
+// split: one column, two from the Expanded window class (the host gets data-wide there).
+:host([data-min='split']) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+:host([data-min='split'][data-wide]) {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 @include gap.rules;

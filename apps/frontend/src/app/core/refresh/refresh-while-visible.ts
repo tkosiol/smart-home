@@ -41,18 +41,22 @@ export class RefreshGuard {
 }
 
 /**
- * Runs `reload` through `guard` every minute while the tab is visible, and when it becomes visible
+ * Runs `reload` through `guard` every `intervalMs` (a minute) while the tab is visible, and when it becomes visible
  * again; a tick or a visibility change that meets a load still running does nothing. The first
  * load is the caller's. Ends with the injection context's lifetime. Call it in an injection
  * context.
  */
-export function refreshWhileVisible(guard: RefreshGuard, reload: () => Promise<unknown>): void {
+export function refreshWhileVisible(
+  guard: RefreshGuard,
+  reload: () => Promise<unknown>,
+  intervalMs: number = REFRESH_MS,
+): void {
   const document = inject(DOCUMENT);
   const reloadIfVisible = () => {
     // The load reports its own errors; a rejection here would only be unhandled.
     if (document.visibilityState === 'visible') void guard.run(reload).catch(() => undefined);
   };
-  const timer = setInterval(reloadIfVisible, REFRESH_MS);
+  const timer = setInterval(reloadIfVisible, intervalMs);
   document.addEventListener('visibilitychange', reloadIfVisible);
   inject(DestroyRef).onDestroy(() => {
     clearInterval(timer);

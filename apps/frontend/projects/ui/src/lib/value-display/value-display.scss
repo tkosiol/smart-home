@@ -69,6 +69,30 @@
   font: var(--mat-sys-body-medium);
 }
 
+// readout: the value above a chart (the "Verlauf" card): headline-medium, the unit a quiet label
+// and the label the supporting line right below ("Jetzt · zuletzt gegossen vor 3 Tagen").
+:host([data-size='readout']) {
+  gap: var(--smart-space-2xs);
+}
+
+:host([data-size='readout']) .value {
+  font: var(--mat-sys-headline-medium);
+  font-weight: var(--smart-font-weight-semibold);
+  letter-spacing: var(--smart-type-tracking-tight);
+}
+
+:host([data-size='readout']) .unit {
+  color: var(--mat-sys-on-surface-variant);
+  font: var(--mat-sys-label-large);
+  font-weight: var(--smart-font-weight-medium);
+  letter-spacing: var(--mat-sys-label-large-tracking);
+}
+
+:host([data-size='readout']) .label {
+  color: var(--mat-sys-on-surface-variant);
+  font: var(--mat-sys-body-medium);
+}
+
 // hero: the main value of the device page; its label stands above it as a section label
 :host([data-size='hero']) {
   gap: var(--smart-space-sm);

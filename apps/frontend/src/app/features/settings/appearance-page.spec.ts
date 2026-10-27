@@ -48,9 +48,7 @@ describe('appearance page', () => {
 
     expect(element.querySelector('h1')?.textContent?.trim()).toBe(title);
     expect(element.querySelector('h2')?.textContent?.trim()).toBe(label);
-    expect(element.querySelector('mat-button-toggle-group')?.getAttribute('aria-label')).toBe(
-      label,
-    );
+    expect(element.querySelector('[role="radiogroup"]')?.getAttribute('aria-label')).toBe(label);
     expect(element.querySelector('ui-theme-editor')).not.toBeNull();
   });
 
@@ -73,11 +71,9 @@ describe('appearance page', () => {
 
   it('marks the active language', async () => {
     const { element } = await open('en');
-    const language = element.querySelector('mat-button-toggle-group')!;
-    const pressed = [...language.querySelectorAll('mat-button-toggle')].filter((toggle) =>
-      toggle.classList.contains('mat-button-toggle-checked'),
-    );
-    expect(pressed.map((toggle) => toggle.textContent?.trim())).toEqual(['English']);
+    const language = element.querySelector('[role="radiogroup"]')!;
+    const checked = [...language.querySelectorAll('[role="radio"][aria-checked="true"]')];
+    expect(checked.map((radio) => radio.textContent?.trim())).toEqual(['English']);
   });
 
   it('applies the chosen mode to the personal appearance at once', async () => {

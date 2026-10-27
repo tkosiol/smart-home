@@ -1,22 +1,36 @@
-<mat-chip-listbox
-  [multiple]="multiple()"
-  [disabled]="disabled()"
+<div
+  #row
+  class="row"
+  role="listbox"
+  aria-orientation="horizontal"
   [attr.aria-label]="label()"
-  (change)="change($event)"
+  [attr.aria-multiselectable]="multiple()"
+  (scroll)="measure()"
 >
-  @for (option of options(); track option.value) {
-    <mat-chip-option
-      [value]="option.value"
-      [selected]="selected().includes(option.value)"
+  @for (option of options(); track option.value; let index = $index) {
+    <button
+      class="chip"
+      type="button"
+      role="option"
+      [class.chip--leading]="isSelected(option.value) || !!option.icon"
+      [attr.aria-selected]="isSelected(option.value)"
+      [tabindex]="index === tabbable() ? 0 : -1"
       [disabled]="disabled()"
+      (click)="toggle(option.value, index, $event)"
+      (focus)="onFocus(index)"
+      (keydown)="onKeydown($event, index)"
     >
-      @if (option.icon; as icon) {
-        <ui-icon matChipAvatar [name]="icon" size="sm" />
-      }
-      <span class="label">{{ option.label }}</span>
-      @if (option.count !== undefined) {
-        <span class="count">{{ option.count }}</span>
-      }
-    </mat-chip-option>
+      <span class="content">
+        @if (isSelected(option.value)) {
+          <ui-icon name="check" size="sm" />
+        } @else if (option.icon; as icon) {
+          <ui-icon [name]="icon" size="sm" />
+        }
+        <span class="label">{{ option.label }}</span>
+        @if (option.count !== undefined) {
+          <span class="count">{{ option.count }}</span>
+        }
+      </span>
+    </button>
   }
-</mat-chip-listbox>
+</div>

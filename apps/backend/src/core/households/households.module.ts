@@ -46,6 +46,6 @@ import { MembershipsRepository } from './memberships.repository.js';
     { provide: ME_HOUSEHOLDS, useExisting: MeHouseholdsSource },
   ],
   // The guard and the memberships serve other core modules' `v1/households/:householdId` routes.
-  exports: [ME_HOUSEHOLDS, HouseholdGuard, MembershipsRepository],
+  exports: [ME_HOUSEHOLDS, HouseholdGuard, MembershipsRepository, HouseholdsRepository],
 })
 export class HouseholdsModule {}

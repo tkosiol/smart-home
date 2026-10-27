@@ -1,30 +1,100 @@
-@use '@angular/material' as mat;
+@use '../button/control';
 
+// Filter chips (spec 4.2) on the shared control base of the buttons: tonal when unselected
+// (surface-container-high, no outline), secondary-container with a check mark when selected,
+// 40 px high with the 48 px touch target. The row never wraps: where the chips are wider than
+// the row, it scrolls sideways with a hidden scrollbar, snapping chips and a faded edge where
+// more follow.
 :host {
   display: block;
+  min-width: 0;
   max-width: 100%;
+}
 
-  // Material's filter chip is 32px high and has no separate touch target; the whole chip is the
-  // target, so it is raised to the 48px touch size.
-  // Chips are pills in the new design (spec 2.1).
-  @include mat.chips-overrides(
-    (
-      container-height: var(--smart-size-touch),
-      container-shape-radius: var(--smart-shape-control),
-    )
+.row {
+  display: flex;
+  gap: var(--smart-space-sm);
+
+  // Room for the touch targets and focus rings, which the scroll box would otherwise clip; the
+  // negative margin keeps the row's footprint at the chip height.
+  margin-block: calc(-1 * var(--smart-space-sm));
+  padding-block: var(--smart-space-sm);
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-padding-inline: var(--smart-size-scroll-fade);
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+}
+
+// The edge that hides more chips fades out (the mask only uses the alpha of the colour).
+:host([data-fade='right']) .row {
+  mask-image: linear-gradient(
+    to right,
+    currentcolor calc(100% - var(--smart-size-scroll-fade)),
+    transparent
   );
 }
 
-// Material keeps a chip's label on one line, so a long label pushed the chip past a 320px screen.
-// Our label wraps instead (long German words anywhere), and the chip grows with it.
-mat-chip-option {
-  height: auto;
-  min-height: var(--smart-size-touch);
+:host([data-fade='left']) .row {
+  mask-image: linear-gradient(to right, transparent, currentcolor var(--smart-size-scroll-fade));
 }
 
-.label {
-  white-space: normal;
-  overflow-wrap: anywhere;
+:host([data-fade='both']) .row {
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    currentcolor var(--smart-size-scroll-fade),
+    currentcolor calc(100% - var(--smart-size-scroll-fade)),
+    transparent
+  );
+}
+
+.chip {
+  @include control.base;
+
+  flex: none;
+  height: var(--smart-size-chip);
+  padding-block: 0;
+  padding-inline: var(--smart-space-lg);
+
+  // A pill with a finite radius (not corner-full's 9999px), so the pressed shape morph animates.
+  border-radius: calc(var(--smart-size-chip) / 2);
+  background: var(--mat-sys-surface-container-high);
+  color: var(--mat-sys-on-surface-variant);
+  font: var(--mat-sys-label-large);
+  letter-spacing: var(--mat-sys-label-large-tracking);
+  white-space: nowrap;
+  scroll-snap-align: start;
+  transition:
+    border-radius var(--smart-motion-duration-short) var(--smart-motion-easing-standard),
+    background-color var(--smart-motion-duration-short) var(--smart-motion-easing-standard),
+    color var(--smart-motion-duration-short) var(--smart-motion-easing-standard);
+}
+
+// With a leading icon or the check mark the chip starts closer to its edge (M3: 8 px).
+.chip--leading {
+  padding-inline-start: var(--smart-space-sm);
+}
+
+.content {
+  gap: var(--smart-space-sm);
+}
+
+// M3 filter chip: the leading icon is primary until the chip is selected.
+.chip:not([aria-selected='true'], :disabled) ui-icon {
+  color: var(--mat-sys-primary);
+}
+
+.chip[aria-selected='true'] {
+  background: var(--mat-sys-secondary-container);
+  color: var(--mat-sys-on-secondary-container);
+}
+
+// Disabled (M3): container on-surface 12 %, content on-surface 38 % (restated after the selected
+// colours, which would otherwise win over the control base's).
+.chip:disabled {
+  background: color-mix(in srgb, var(--mat-sys-on-surface) 12%, transparent);
+  color: color-mix(in srgb, var(--mat-sys-on-surface) 38%, transparent);
 }
 
 // The count is part of the option's name ("Alle 20"): as an inline-block it gets a word separator

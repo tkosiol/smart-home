@@ -1,0 +1,60 @@
+:host {
+  display: block;
+  min-width: 0;
+}
+
+// Never shorter than a chart with its caption line: the card keeps its size while a history
+// loads, when a period has no values and when the table takes the chart's place.
+.figure {
+  display: flex;
+  flex-direction: column;
+  gap: var(--smart-space-sm);
+  min-width: 0;
+  min-height: calc(
+    var(--smart-size-chart) + var(--smart-space-sm) + var(--mat-sys-body-small-line-height)
+  );
+  margin: 0;
+}
+
+:host([data-large]) .figure {
+  min-height: calc(
+    var(--smart-size-chart-large) + var(--smart-space-sm) + var(--mat-sys-body-small-line-height)
+  );
+}
+
+.body {
+  min-width: 0;
+}
+
+// A message stands centred where the chart would be, the content (an action) beneath it.
+.body--message {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--smart-space-md);
+  height: var(--smart-size-chart);
+  padding: var(--smart-space-lg);
+  text-align: center;
+}
+
+:host([data-large]) .body--message {
+  height: var(--smart-size-chart-large);
+}
+
+.message {
+  margin: 0;
+  color: var(--mat-sys-on-surface-variant);
+  font: var(--mat-sys-body-medium);
+  overflow-wrap: anywhere;
+}
+
+// The caption reads as supporting text, its numbers in tabular digits like the values above.
+.caption {
+  color: var(--mat-sys-on-surface-variant);
+  font: var(--mat-sys-body-small);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: var(--mat-sys-body-small-tracking);
+  overflow-wrap: anywhere;
+}

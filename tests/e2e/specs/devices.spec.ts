@@ -140,6 +140,46 @@ test.describe.serial('devices from the simulator', () => {
     await expect(page).toHaveURL(/\/geraete\/[0-9a-f-]+$/);
   });
 
+  test('the history card charts the soil moisture and offers a table', async ({ page }) => {
+    await page.goto('/geraete');
+    await pod(page, 'Pflanze 1').getByRole('link').click();
+    await expect(heading(page, 'Pflanze 1')).toBeVisible();
+    const card = page
+      .locator('ui-card')
+      .filter({ has: page.getByRole('heading', { name: 'Verlauf' }) });
+    await expect(card).toBeVisible();
+    // Reports arrive every few seconds: reload until the chart has data (no chart while empty).
+    await expect(async () => {
+      await page.reload();
+      await expect(card.locator('ui-chart')).toBeVisible({ timeout: 5_000 });
+    }).toPass({ timeout: REPORTS });
+    await expect(card.getByRole('group', { name: /Bodenfeuchte/ }).first()).toBeVisible();
+
+    await card.getByRole('radio', { name: '24 h' }).click();
+    await expect(card.getByRole('radio', { name: '24 h' })).toBeChecked();
+    await expect(card.locator('ui-chart')).toBeVisible();
+
+    // The 4 weeks (daily values): the chart or its empty text, never the error state. The
+    // simulator has only minutes of data, so the table has today's row once a reading exists.
+    await card.getByRole('radio', { name: '4 Wochen' }).click();
+    await expect(card.getByRole('radio', { name: '4 Wochen' })).toBeChecked();
+    await expect(card.getByText('Der Verlauf konnte nicht geladen werden.')).toHaveCount(0);
+    await expect(
+      card.locator('ui-chart').or(card.getByText('Noch keine Messwerte in diesem Zeitraum')),
+    ).toBeVisible();
+    await card.getByRole('button', { name: 'Werte als Tabelle' }).click();
+    await expect(
+      card
+        .locator('ui-value-table tbody tr')
+        .first()
+        .or(card.getByText('Noch keine Messwerte in diesem Zeitraum')),
+    ).toBeVisible();
+    await expect(card.getByText('Der Verlauf konnte nicht geladen werden.')).toHaveCount(0);
+
+    await card.getByRole('radio', { name: '24 h' }).click();
+    await expect(card.locator('ui-value-table tbody tr').first()).toBeVisible();
+  });
+
   test('a member of the household sees the device but not "Neu erkannt"', async ({ browser }) => {
     const { link } = await inviteThroughApi('theme', MEMBER.email, 'member');
     // A new person: the saved state of `theme`, which this file uses, must not apply.

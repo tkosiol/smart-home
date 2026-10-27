@@ -27,5 +27,7 @@ export class UiIconButton {
   readonly type = input<'button' | 'submit'>('button');
   readonly disabled = input(false, { transform: booleanAttribute });
   readonly route = input<string>();
+  /** Makes it a toggle button: `aria-pressed` follows this value; unset, it is a plain button. */
+  readonly toggled = input<boolean | undefined>(undefined);
   readonly pressed = output<void>();
 }

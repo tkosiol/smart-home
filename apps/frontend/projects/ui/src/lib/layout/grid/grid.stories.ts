@@ -69,3 +69,14 @@ export const VolleBreite: StoryObj<UiGrid> = {
     await expect(next.left).toBeGreaterThan(filled.left);
   },
 };
+
+/** One column on a phone, two equal columns from the Expanded window class, however wide. */
+export const Geteilt: StoryObj<UiGrid> = {
+  render: () => ({
+    template: `<div style="width: 1100px"><ui-grid data-testid="grid" min="split"><div style="padding: 16px; outline: 1px dashed">Werte</div><div style="padding: 16px; outline: 1px dashed">Verlauf</div></ui-grid></div>`,
+  }),
+  play: async ({ canvas }) => {
+    const columns = getComputedStyle(canvas.getByTestId('grid')).gridTemplateColumns.split(' ');
+    await expect(columns.length).toBe(matchMedia('(min-width: 840px)').matches ? 2 : 1);
+  },
+};

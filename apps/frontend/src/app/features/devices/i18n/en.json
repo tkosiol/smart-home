@@ -51,5 +51,17 @@
     "descriptionReadOnly": "From these values the app raises a notice.",
     "save": "Save thresholds",
     "reset": "Reset to standard"
+  },
+  "history": {
+    "title": "History",
+    "table": "Show values as a table",
+    "capability": "Reading",
+    "range": "Period",
+    "error": {
+      "retry": "Try again"
+    },
+    "chart": {
+      "description": "{{ capability }}, {{ range }}. {{ summary }}"
+    }
   }
 }

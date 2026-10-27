@@ -196,6 +196,48 @@
           "standard": "Standard",
           "custom": "Customised (standard: {{ standard }})"
         }
+      },
+      "history": {
+        "range": {
+          "24h": "24 h",
+          "7d": "7 days",
+          "28d": "4 weeks"
+        },
+        "summary": {
+          "low": "Low {{ value }}",
+          "high": "High {{ value }}",
+          "dryHours": "{{ n }} h too dry",
+          "dryMinutes": "{{ n }} min too dry",
+          "waterings": "{{ n }}× watered"
+        },
+        "note": {
+          "dry": "too dry at times",
+          "watered": "watered",
+          "both": "too dry at times · watered"
+        },
+        "span": {
+          "24h": "last 24 hours",
+          "7d": "last 7 days",
+          "28d": "last 4 weeks"
+        },
+        "dry": "too dry",
+        "now": "Now",
+        "last": "Last reading: {{ time }}",
+        "watered": "last watered {{ time }}",
+        "separator": "·",
+        "empty": "No readings in this period yet",
+        "error": {
+          "text": "The history could not be loaded."
+        },
+        "chart": {
+          "label": "{{ capability }}, {{ range }}"
+        },
+        "column": {
+          "time": "Time",
+          "day": "Day",
+          "mean": "Mean",
+          "span": "Low–high"
+        }
       }
     },
     "household": {

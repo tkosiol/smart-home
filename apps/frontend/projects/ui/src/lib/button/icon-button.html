@@ -8,6 +8,7 @@
     [type]="type()"
     [disabled]="disabled()"
     [attr.aria-label]="label()"
+    [attr.aria-pressed]="toggled() ?? null"
     (click)="pressed.emit()"
   >
     <ng-container [ngTemplateOutlet]="content" />

@@ -380,14 +380,15 @@ Neu entdeckte Hardware ist „nicht zugeordnet“ und kann einem bestehenden log
 
 **Telemetrie**
 
-| Tabelle               | Wesentliche Felder                                                                                                                                                   |
-| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `device_state`        | `device_id` (PK), `state` (JSON, letzter Gesamtstand), `last_seen_at`, `availability`                                                                                |
-| `measurements`        | Hypertable: `time`, `device_id`, `capability`, `value_num` (double), `value_text`, `flags` (z. B. „Zeitstempel ersetzt“); Unique (`device_id`, `capability`, `time`) |
-| `measurements_hourly` | Continuous Aggregate (UTC-Stunden): `avg`, `min`, `max`, `last`, `sum`, `count` für numerische Werte (**ab Etappe 6c**; 6a speichert nur `measurements`)             |
+| Tabelle               | Wesentliche Felder                                                                                                                                                          |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `device_state`        | `device_id` (PK), `state` (JSON, letzter Gesamtstand), `last_seen_at`, `availability`                                                                                       |
+| `measurements`        | Hypertable: `time`, `device_id`, `capability`, `value_num` (double), `value_text`, `flags` (z. B. „Zeitstempel ersetzt“); Unique (`device_id`, `capability`, `time`)        |
+| `measurements_hourly` | Continuous Aggregate (UTC-Stunden): `avg`, `min`, `max`, `last`, `sum`, `count` für numerische Werte (**seit Etappe 6c-1**; Echtzeit-Aggregation, Details in der Spec 6c-1) |
 
 - Chunk-Intervall 7 Tage; Kompression nach 7 Tagen (`segmentby device_id, capability`); Rohdaten-Retention 1 Jahr; Stundenaggregat unbegrenzt.
-- Refresh-Policy des Aggregats mit `start_offset` von 7 Tagen, damit nachgelieferte Pufferdaten berücksichtigt werden.
+- Refresh-Policy des Aggregats mit `start_offset` von 7 Tagen, damit nachgelieferte Pufferdaten berücksichtigt werden. Die Echtzeit-Aggregation ist an: die laufende Stunde kommt aus den Rohdaten dazu.
+- Das Aggregat entsteht in der Migration mit `WITH NO DATA`; die Historie rechnet der Migrationsschritt (`src/migrate.ts`) nach den Migrationen nach, weil `refresh_continuous_aggregate` nicht in einer Transaktion laufen darf.
 - **Tageswerte** werden zur Abfragezeit aus `measurements_hourly` berechnet: `time_bucket('1 day', bucket, <household.timezone>)`, Durchschnitt als `sum(sum)/sum(count)`. Dadurch korrekt bei 23-/25-Stunden-Tagen.
 - `binary` wird als 0/1 in `value_num` gespeichert, `enum` in `value_text`. `composite` und `text` landen nur in `device_state`. Einstellungen (`is_setting`) werden gar nicht gespeichert.
 
@@ -424,7 +425,7 @@ Der MQTT-Konsument abonniert die Präfixe aller registrierten, nicht gesperrten 
 
 **Retained-Nachrichten:** Der Broker spielt beim Abonnieren die zuletzt gehaltene Nachricht je Topic ab; sie ist keine frische Meldung. Eine retained Gerätenachricht ohne eigenen plausiblen Zeitstempel wird ignoriert, eine mit Zeitstempel zählt nur, wenn sie neuer ist als der gespeicherte Stand. Die retained Geräteliste (`bridge/devices`) wird dagegen immer ausgewertet, so entsteht die erkannte Hardware auch für Geräte, die gerade nichts melden.
 
-Fehler einer Nachricht beenden nie den Konsumenten; Nutzdaten werden nie protokolliert. Nachrichten werden nacheinander verarbeitet, damit keine der Geräteliste oder Umbenennung vorauseilt. Beim Herunterfahren wird der Batch-Puffer geleert. Das Stundenaggregat (`measurements_hourly`) entsteht erst in 6b und rechnet die Historie dann nach.
+Fehler einer Nachricht beenden nie den Konsumenten; Nutzdaten werden nie protokolliert. Nachrichten werden nacheinander verarbeitet, damit keine der Geräteliste oder Umbenennung vorauseilt. Beim Herunterfahren wird der Batch-Puffer geleert. Das Stundenaggregat (`measurements_hourly`) entsteht seit 6c-1 und rechnet die Historie beim Migrationsschritt nach (8.4).
 
 ### 8.6 Datenfluss: Befehle
 
@@ -460,7 +461,7 @@ Fehler einer Nachricht beenden nie den Konsumenten; Nutzdaten werden nie protoko
 - Einheitliches Fehlerformat `{ code, params, traceId }`; Fehlercodes als Enum in `@smart/contracts`.
 - Mandantentrennung: Guards prüfen Haushalt und Rolle (`@RequireRole('member')`); Repository-Methoden für haushaltsbezogene Daten verlangen die `householdId` als Pflichtparameter.
 - Rate-Limiting (`@nestjs/throttler`) auf allen Auth-Endpunkten.
-- Telemetrie-Abfrage: `GET /api/v1/devices/:id/telemetry?capability=&from=&to=&resolution=auto|raw|hour|day` (bei `auto` je nach Zeitraum).
+- Verlauf eines Messwerts (seit 6c-1): `GET /api/v1/households/:householdId/devices/:deviceId/history?capability=<key>&range=24h|7d|28d` (Rolle `viewer`). `24h` liefert 15-Minuten-Werte aus den Rohdaten, `7d` und `28d` Stundenwerte aus `measurements_hourly`, dazu Tageswerte in der Zeitzone des Haushalts; Schema `deviceHistorySchema` in `@smart/contracts`. Eine freie Telemetrie-Abfrage mit `from`/`to` gibt es nicht.
 - Health: `/api/health/live` (Prozess läuft), `/api/health/ready` (DB und Broker erreichbar).
 
 ### 8.10 Hintergrundjobs
@@ -557,7 +558,7 @@ Signal-basierte Services pro Feature (kein NgRx). Typen aus `@smart/contracts`; 
 
 ### 10.9 Weitere Bausteine
 
-- **Diagramme:** Apache ECharts (tree-shaken), gekapselt in `ui-chart`, Farben aus Tokens, Markierungsbereiche (z. B. „zu trocken“).
+- **Diagramme:** Apache ECharts (tree-shaken), gekapselt in `ui-chart` und erst nach dem ersten Rendern lazy geladen (nie im initialen Bundle), SVG-Renderer, Farben aus Tokens, Markierungsbereiche (z. B. „zu trocken“).
 - **PWA:** Angular Service Worker; installierbar; App-Shell offline mit Offline-Banner; Web-Push über `SwPush`; Hinweis „Neue Version verfügbar“.
 - **Schriften/Icons:** Roboto Flex und Material Symbols, selbst gehostet (keine Anfragen an Google).
 - **i18n:** Transloco, Deutsch und Englisch, Sprachumschalter, Übersetzungsdateien pro Feature (lazy geladen), CI prüft fehlende/ungenutzte Schlüssel. Die API liefert Fehlercodes, keine Texte.
