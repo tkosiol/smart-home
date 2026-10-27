@@ -1,9 +1,5 @@
-import { DOCUMENT } from '@angular/common';
-import { DestroyRef, computed, inject, signal } from '@angular/core';
+import { computed, signal } from '@angular/core';
 import { ApiError } from '../api';
-
-/** How often shown values are fetched again while the page is in view. */
-export const REFRESH_MS = 60_000;
 
 /** A request that failed for lack of a connection: not worth a message every minute. */
 export function isNetworkFailure(error: unknown): boolean {
@@ -38,28 +34,4 @@ export class RefreshGuard {
       if (!(this.refreshing() && isNetworkFailure(error))) handle(error);
     };
   }
-}
-
-/**
- * Runs `reload` through `guard` every `intervalMs` (a minute) while the tab is visible, and when it becomes visible
- * again; a tick or a visibility change that meets a load still running does nothing. The first
- * load is the caller's. Ends with the injection context's lifetime. Call it in an injection
- * context.
- */
-export function refreshWhileVisible(
-  guard: RefreshGuard,
-  reload: () => Promise<unknown>,
-  intervalMs: number = REFRESH_MS,
-): void {
-  const document = inject(DOCUMENT);
-  const reloadIfVisible = () => {
-    // The load reports its own errors; a rejection here would only be unhandled.
-    if (document.visibilityState === 'visible') void guard.run(reload).catch(() => undefined);
-  };
-  const timer = setInterval(reloadIfVisible, intervalMs);
-  document.addEventListener('visibilitychange', reloadIfVisible);
-  inject(DestroyRef).onDestroy(() => {
-    clearInterval(timer);
-    document.removeEventListener('visibilitychange', reloadIfVisible);
-  });
 }
