@@ -10,7 +10,7 @@ import { AppModule } from '../src/app.module.js';
 import { configureApp } from '../src/app.setup.js';
 import { DEVICE_MESSAGE_HANDLER, type DeviceMessageHandler } from '../src/core/devices/index.js';
 import { GATEWAY_STATUS_CHANGED, GatewayEvents } from '../src/core/gateways/index.js';
-import { LIVE_OPTIONS } from '../src/core/live/index.js';
+import { LIVE_OPTIONS, LiveHub } from '../src/core/live/index.js';
 import { SESSION_COOKIE, SessionService, UsersRepository } from '../src/core/identity/index.js';
 import {
   DATABASE,
@@ -242,6 +242,20 @@ describe('live event stream of a household', () => {
     await connection.sql`
       delete from memberships where household_id = ${home.id} and user_id = ${home.viewer.id}`;
     await untilEnded(stream);
+  });
+
+  it('drops a client from the hub when it disconnects', async () => {
+    const home = await household();
+    const hub = app.get(LiveHub);
+    const stream = await open(`/api/v1/households/${home.id}/events`, home.viewer.cookie);
+    await stream.waitFor(': connected');
+    expect(hub.watching(home.id)).toBe(true);
+    stream.close();
+    const deadline = Date.now() + 4000;
+    while (hub.watching(home.id) && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    expect(hub.watching(home.id)).toBe(false);
   });
 
   it('ends open streams when the app shuts down', async () => {

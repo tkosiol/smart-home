@@ -26,7 +26,15 @@ export class LiveController {
     const membership = membershipOf(request);
     const { user: session } = request;
     if (!session) throw new ApiError(HttpStatus.UNAUTHORIZED, 'auth.required');
+    // Before the first await: a client that leaves meanwhile must not be registered afterwards.
+    let gone = false;
+    const registration: { remove?: () => void } = {};
+    response.on('close', () => {
+      gone = true;
+      registration.remove?.();
+    });
     const user = await this.users.findById(session.id);
+    if (gone) return;
     response.status(200).set({
       'Content-Type': 'text/event-stream; charset=utf-8',
       'Cache-Control': 'no-cache, no-transform',
@@ -34,7 +42,7 @@ export class LiveController {
     });
     response.flushHeaders();
     response.write(SSE_CONNECTED);
-    const remove = this.hub.add({
+    registration.remove = this.hub.add({
       householdId: membership.householdId,
       userId: session.id,
       sessionId: session.sessionId,
@@ -42,6 +50,5 @@ export class LiveController {
       write: (chunk) => response.write(chunk),
       close: () => response.end(),
     });
-    request.on('close', remove);
   }
 }

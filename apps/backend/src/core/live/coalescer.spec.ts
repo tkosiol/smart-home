@@ -60,14 +60,41 @@ describe('Coalescer', () => {
     coalescer.dispose();
   });
 
-  it('reports a synchronous throw as well', () => {
+  it('reports a synchronous throw as well', async () => {
     const onError = vi.fn();
     const coalescer = new Coalescer(1000, onError);
     const boom = new Error('boom');
     coalescer.schedule('a', () => {
       throw boom;
     });
+    await vi.advanceTimersByTimeAsync(0);
     expect(onError).toHaveBeenCalledWith(boom);
+    coalescer.dispose();
+  });
+
+  it('starts the trailing run only after the in-flight run settled', async () => {
+    const coalescer = new Coalescer(100, vi.fn());
+    let settle: () => void = () => undefined;
+    const first = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          settle = resolve;
+        }),
+    );
+    const second = vi.fn(() => Promise.resolve());
+    const third = vi.fn(() => Promise.resolve());
+    coalescer.schedule('a', first);
+    coalescer.schedule('a', second);
+    coalescer.schedule('a', third);
+    await vi.advanceTimersByTimeAsync(500);
+    expect(second).not.toHaveBeenCalled();
+    expect(third).not.toHaveBeenCalled();
+    settle();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(second).not.toHaveBeenCalled();
+    expect(third).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(third).toHaveBeenCalledTimes(1);
     coalescer.dispose();
   });
 
