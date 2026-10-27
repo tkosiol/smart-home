@@ -1,4 +1,4 @@
-import { HttpStatus, Injectable } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import {
   type DeviceHistory,
   type HistoryQuery,
@@ -6,6 +6,7 @@ import {
   type HistoryResolution,
 } from '@smart/contracts';
 import { ApiError } from '../../platform/http/index.js';
+import { CLOCK, type Clock } from '../identity/index.js';
 import { HouseholdsRepository } from '../households/index.js';
 import { HistoryRepository } from '../telemetry/index.js';
 import { DevicesService } from './devices.service.js';
@@ -24,14 +25,10 @@ export class DeviceHistoryService {
     private readonly devices: DevicesService,
     private readonly history: HistoryRepository,
     private readonly households: HouseholdsRepository,
+    @Inject(CLOCK) private readonly clock: Clock,
   ) {}
 
-  async get(
-    householdId: string,
-    deviceId: string,
-    query: HistoryQuery,
-    now: Date = new Date(),
-  ): Promise<DeviceHistory> {
+  async get(householdId: string, deviceId: string, query: HistoryQuery): Promise<DeviceHistory> {
     // Throws the same 404 for unknown and foreign devices.
     const device = await this.devices.get(householdId, deviceId);
     // `capabilities` holds readable capabilities without settings.
@@ -40,7 +37,7 @@ export class DeviceHistoryService {
       throw new ApiError(HttpStatus.BAD_REQUEST, 'validation.failed');
     }
     const { hours, resolution } = RANGES[query.range];
-    const to = now;
+    const to = this.clock();
     const from = new Date(to.getTime() - hours * HOUR_MS);
     const points = await this.history.points(deviceId, capability.key, from, to, resolution);
     let days: DeviceHistory['days'] = [];

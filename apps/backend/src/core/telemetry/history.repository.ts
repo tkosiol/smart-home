@@ -62,7 +62,8 @@ export class HistoryRepository {
   /**
    * Calendar days of `timeZone` built from the hourly buckets of [`from`, `to`), ascending. A day
    * is `partial` when it starts before `from` or ends after `to`. Day length follows the zone
-   * (23, 24 or 25 hours); the end is computed in local time.
+   * (23, 24 or 25 hours); the end is computed in local time. In zones with sub-hour offsets an
+   * hourly bucket counts toward the local day of its start.
    */
   async days(
     deviceId: string,

@@ -13,7 +13,12 @@ import type { App } from 'supertest/types.js';
 import { inject } from 'vitest';
 import { AppModule } from '../src/app.module.js';
 import { configureApp } from '../src/app.setup.js';
-import { SESSION_COOKIE, SessionService, UsersRepository } from '../src/core/identity/index.js';
+import {
+  CLOCK,
+  SESSION_COOKIE,
+  SessionService,
+  UsersRepository,
+} from '../src/core/identity/index.js';
 import {
   DATABASE,
   type DatabaseConnection,
@@ -26,6 +31,8 @@ const HOUSEHOLDS = '/api/v1/households';
 const UNKNOWN_ID = '3b241101-e2bb-4255-8caf-4136c566a962';
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
+/** The clock of the app under test: fixed so that dates in the tests stay inside the ranges. */
+const NOW = Date.parse('2026-10-27T12:00:00Z');
 
 interface Person {
   id: string;
@@ -118,7 +125,10 @@ describe('device history API', () => {
     const url = await createFreshDatabase(originalUrl);
     await runMigrations(url);
     process.env.DATABASE_URL = url;
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
+      .overrideProvider(CLOCK)
+      .useValue(() => new Date(NOW))
+      .compile();
     app = moduleRef.createNestApplication<INestApplication<App>>();
     configureApp(app);
     await app.init();
@@ -147,7 +157,7 @@ describe('device history API', () => {
 
   it('serves 15 minute buckets for 24h and no days', async () => {
     const f = await fixture();
-    const now = Date.now();
+    const now = NOW;
     const slot = Math.floor((now - 2 * HOUR) / (15 * 60_000)) * 15 * 60_000;
     await insert(f, slot + 60_000, 10);
     await insert(f, slot + 120_000, 30);
@@ -165,7 +175,7 @@ describe('device history API', () => {
 
   it('serves hourly values for 7d', async () => {
     const f = await fixture();
-    const hour = Math.floor((Date.now() - 3 * DAY) / HOUR) * HOUR;
+    const hour = Math.floor((NOW - 3 * DAY) / HOUR) * HOUR;
     await insert(f, hour + 60_000, 10);
     await insert(f, hour + 120_000, 20);
     await insert(f, hour + HOUR + 60_000, 40);
@@ -182,7 +192,7 @@ describe('device history API', () => {
     const result = await history(f, 'capability=soil_moisture&range=28d');
     expect(result.resolution).toBe('1h');
     expect(result.days).toEqual([]);
-    await insert(f, Date.now() - 10 * DAY, 10);
+    await insert(f, NOW - 10 * DAY, 10);
     const filled = await history(f, 'capability=soil_moisture&range=28d');
     expect(filled.days).toHaveLength(1);
     expect(filled.days[0]).toMatchObject({ avg: 10, min: 10, max: 10, last: 10, partial: false });
@@ -217,8 +227,8 @@ describe('device history API', () => {
 
   it('marks the days at the edges of the range as partial', async () => {
     const f = await fixture('Europe/Berlin');
-    await insert(f, Date.now() - 28 * DAY + 2 * HOUR, 10);
-    await insert(f, Date.now() - 1000, 20);
+    await insert(f, NOW - 28 * DAY + 2 * HOUR, 10);
+    await insert(f, NOW - 1000, 20);
     const result = await history(f, 'capability=soil_moisture&range=28d');
     expect(result.days.length).toBeGreaterThanOrEqual(2);
     expect(result.days.at(0)?.partial).toBe(true);

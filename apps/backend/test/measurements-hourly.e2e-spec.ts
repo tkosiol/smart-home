@@ -40,6 +40,9 @@ describe('measurements_hourly', () => {
     url = await createFreshDatabase(DATABASE_URL);
     await runMigrations(url);
     sql = postgres(url, { max: 1, connection: { TimeZone: 'UTC' }, onnotice: () => undefined });
+    // The refresh policy must not run next to the manual refreshes of these tests.
+    await sql`select alter_job(job_id, scheduled => false) from timescaledb_information.jobs
+      where proc_name = 'policy_refresh_continuous_aggregate'`;
   });
 
   afterEach(async () => {
