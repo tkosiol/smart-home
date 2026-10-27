@@ -14,6 +14,9 @@ export type LiveHandlers = { [T in LiveEventType]?: (data: LiveEventData<T>) => 
 /** Reconnect wait: doubles from `firstMs` up to `maxMs`, spread by ±`jitter`. */
 export const LIVE_RETRY = { firstMs: 1000, maxMs: 30_000, jitter: 0.2 } as const;
 
+/** No bytes (the server pings every 25 s) for this long: the connection is taken as dead. */
+export const LIVE_IDLE_MS = 60_000;
+
 /** Runs a handler; one that throws must not disturb the others or the stream. */
 function safely(call: () => void): void {
   try {
@@ -24,7 +27,7 @@ function safely(call: () => void): void {
 }
 
 /**
- * One server-sent-events stream per signed-in household while something subscribes and the tab is
+ * One server-sent-events stream per signed-in (or offline) household while something subscribes and the tab is
  * visible. Dropped streams are opened again with a backoff, and every connect tells the
  * subscribers present to load their state again (`resync`): events missed meanwhile are not
  * replayed. A 401 goes to the unauthorized handler, a 403/404 stops the stream; both stay stopped
@@ -59,7 +62,10 @@ export class LiveService {
       const status = this.auth.status();
       const householdId = this.household.current()?.id;
       const wanted =
-        status === 'signedIn' && householdId && this.subscribers().length > 0 && this.visible();
+        (status === 'signedIn' || status === 'offline') &&
+        householdId &&
+        this.subscribers().length > 0 &&
+        this.visible();
       untracked(() => this.reconcile(`${status}|${householdId}`, wanted ? householdId : undefined));
     });
   }
@@ -75,6 +81,8 @@ export class LiveService {
     if (this.blocked !== pair) this.blocked = undefined;
     if (wanted !== undefined && this.blocked === pair) wanted = undefined;
     if (wanted === this.target) return;
+    // A new target starts with the short wait again.
+    this.failures = 0;
     this.close();
     this.target = wanted;
     if (wanted !== undefined) void this.connect(wanted, pair);
@@ -110,6 +118,8 @@ export class LiveService {
         return this.retry(householdId, pair, abort);
       }
       this.failures = 0;
+      // Opened although the app thinks the server is unreachable: ask for the session again.
+      if (this.auth.status() === 'offline') void this.auth.load();
       for (const subscriber of [...this.subscribers()]) {
         if (subscriber.resync) safely(subscriber.resync);
       }
@@ -131,13 +141,28 @@ export class LiveService {
   ): Promise<void> {
     const decoder = new TextDecoder();
     const parser = new SseParser();
-    signal.addEventListener('abort', () => void reader.cancel().catch(() => undefined));
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done || signal.aborted) return;
-      for (const message of parser.push(decoder.decode(value, { stream: true }))) {
-        this.dispatch(message.event, message.data);
+    const cancel = () => void reader.cancel().catch(() => undefined);
+    signal.addEventListener('abort', cancel);
+    // Pings count as bytes; a half-open connection never delivers any. Cancelling the reader ends
+    // the read without an abort, so the caller retries and resyncs.
+    let idle: ReturnType<typeof setTimeout> | undefined;
+    const arm = () => {
+      clearTimeout(idle);
+      idle = setTimeout(cancel, LIVE_IDLE_MS);
+    };
+    arm();
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done || signal.aborted) return;
+        arm();
+        for (const message of parser.push(decoder.decode(value, { stream: true }))) {
+          this.dispatch(message.event, message.data);
+        }
       }
+    } finally {
+      clearTimeout(idle);
+      signal.removeEventListener('abort', cancel);
     }
   }
 

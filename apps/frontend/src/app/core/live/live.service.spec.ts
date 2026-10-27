@@ -3,7 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { UNAUTHORIZED_HANDLER, API_FETCH } from '../api';
 import { AuthService, type AuthStatus } from '../auth';
 import { HouseholdContext } from '../household';
-import { LIVE_RETRY, LiveService } from './live.service';
+import { LIVE_IDLE_MS, LIVE_RETRY, LiveService } from './live.service';
 
 interface FakeStream {
   url: string;
@@ -16,6 +16,7 @@ describe('LiveService', () => {
   const status = signal<AuthStatus>('signedIn');
   const household = signal<{ id: string } | null>({ id: 'h1' });
   const unauthorized = vi.fn();
+  const load = vi.fn();
   let respond: (stream: FakeStream) => Response | Promise<Response | undefined> | undefined;
   let streams: FakeStream[];
   let calls: { url: string; init: RequestInit }[];
@@ -49,13 +50,14 @@ describe('LiveService', () => {
     status.set('signedIn');
     household.set({ id: 'h1' });
     unauthorized.mockReset();
+    load.mockReset();
     streams = [];
     calls = [];
     respond = () => undefined;
     visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
     TestBed.configureTestingModule({
       providers: [
-        { provide: AuthService, useValue: { status } },
+        { provide: AuthService, useValue: { status, load } },
         { provide: HouseholdContext, useValue: { current: household } },
         { provide: UNAUTHORIZED_HANDLER, useValue: unauthorized },
         {
@@ -364,5 +366,84 @@ describe('LiveService', () => {
     off();
     await settle(60_000);
     expect(calls).toHaveLength(1);
+  });
+
+  it('reconnects and resyncs after a minute without bytes', async () => {
+    const live = setup();
+    const resync = vi.fn();
+    live.subscribe({ resync });
+    await settle();
+    expect(LIVE_IDLE_MS).toBe(60_000);
+    await settle(LIVE_IDLE_MS - 1);
+    expect(calls).toHaveLength(1);
+    await settle(1);
+    await settle(1000);
+    expect(calls).toHaveLength(2);
+    expect(resync).toHaveBeenCalledTimes(2);
+  });
+
+  it('stays open while pings arrive', async () => {
+    const live = setup();
+    live.subscribe({});
+    await settle();
+    for (let i = 0; i < 10; i++) {
+      await settle(25_000);
+      streams[0].send(': ping\n\n');
+    }
+    await settle();
+    expect(calls).toHaveLength(1);
+    expect(calls[0].init.signal!.aborted).toBe(false);
+  });
+
+  it('stops the idle timer when the last subscriber leaves', async () => {
+    const live = setup();
+    const off = live.subscribe({});
+    await settle();
+    off();
+    await settle(LIVE_IDLE_MS * 3);
+    expect(calls).toHaveLength(1);
+  });
+
+  it('waits one second for the first failure after the household changed', async () => {
+    respond = () => new Response('', { status: 503 });
+    const live = setup();
+    live.subscribe({});
+    await settle();
+    await settle(1000);
+    await settle(2000);
+    await settle(4000);
+    expect(calls).toHaveLength(4);
+    household.set({ id: 'h2' });
+    await settle();
+    expect(calls).toHaveLength(5);
+    await settle(999);
+    expect(calls).toHaveLength(5);
+    await settle(1);
+    expect(calls).toHaveLength(6);
+  });
+
+  it('connects with a backoff while offline and reloads the session once open', async () => {
+    status.set('offline');
+    let fail = true;
+    respond = () => (fail ? new Response('', { status: 503 }) : undefined);
+    const live = setup();
+    live.subscribe({});
+    await settle();
+    expect(calls).toHaveLength(1);
+    await settle(1000);
+    expect(calls).toHaveLength(2);
+    expect(load).not.toHaveBeenCalled();
+    fail = false;
+    await settle(2000);
+    expect(calls).toHaveLength(3);
+    expect(load).toHaveBeenCalledOnce();
+  });
+
+  it('does not reload the session when it opens while signed in', async () => {
+    const live = setup();
+    live.subscribe({});
+    await settle();
+    expect(calls).toHaveLength(1);
+    expect(load).not.toHaveBeenCalled();
   });
 });
