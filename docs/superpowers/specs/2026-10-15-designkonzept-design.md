@@ -113,7 +113,7 @@ Seite `/raeume/:id`: Top App Bar mit Zurück und Raumname, Status-Hero nur für 
 - Kopf: Zurück, Name, Zeile „Art · Raum“, Overflow.
 - Hero-Karte in der Farbe der Geräteart: Label, Hauptwert (`--smart-type-value-hero`), Status-Chip, Fortschrittsleiste mit markiertem Zielbereich, „aktualisiert vor n min“.
 - Nebenwerte als drei Pods (`secondary-container`): Temperatur, Batterie, Signal; bei anderen Geräten die nächsten Messwerte nach `primaryCapability`.
-- Diagrammkarte (6c): Titel „Verlauf“, Segment „24 h | 7 Tage“, `ui-chart` mit Balken je Stunde (24 h) oder je Tag (7 Tage), Bereich „zu trocken“ als Band in `dry-container`, Balken unterhalb der Schwelle in `dry`; Legende als Text.
+- Diagrammkarte (6c): Titel „Verlauf“ (gebaut in 6c-1, Spec `2026-10-27-etappe-6c1-verlaeufe-design.md`), tonale Chips für den Messwert, `ui-chart` als **Linie mit Fläche** (statt Balken) und ruhige Segmentgruppe „24 h | 7 Tage | 4 Wochen“ darunter, Bereich „zu trocken“ als Band in `dry-container`, Linie unterhalb der Schwelle in `dry`; Zusammenfassung als Text, Umschalter „Werte als Tabelle“ (`ui-value-table`).
 - Darunter Pillen „Raum: …“ und „Grenzwerte“ (führt zur Karte „Grenzwerte“, Abschnitt 4.3).
 - Lampe: Hero mit Schalter, Schieberegler für Helligkeit, Chips für Farbtemperatur.
 
@@ -203,22 +203,22 @@ Heute übernimmt `warning` die `error`-Rollen (`packages/theme/src/status.ts`); 
 
 Alle neuen Bausteine nur in `public-api.ts` oder `forms.ts`, nie in `shell.ts`; ECharts und das Bottom Sheet laden als eigene Chunks per `import()`. Nach jedem Baustein `pnpm build` und die Größe des initialen Bundles prüfen (Grenze 480 kB, Stand rund 472,7 kB). Texte: einfache Bausteine über Inputs, zusammengesetzte mit eigenen `ui.*`-Schlüsseln.
 
-| Baustein           | Zweck                                                                          | Inputs / Outputs                                                                                                        |
-| ------------------ | ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
-| `ui-status-hero`   | Status-Block: Hero oder Ruhezeile                                              | `tone` (`calm`/`attention`/`critical`), `heading`, `count`, `criticalCount`, `moreLabel`, `moreRoute`; Inhalt: Einträge |
-| `ui-status-entry`  | Eintrag im Hero und in „Alle Hinweise“                                         | `icon`, `kindTone` (Statusfarbe oder Rolle), `title`, `subtitle`, `value`, `severityLabel`, `route`                     |
-| `ui-device-pod`    | Geräte-Pod, Link oder Schalter                                                 | `kind`, `icon`, `value`, `label`, `chip` (`{ text, tone }`), `route` oder `pressed` + `pending`; Output `toggled`       |
-| `ui-pod-row`       | horizontale Reihe mit Snap, Tastatur, Pfeilen ab Medium; umbrechend per `wrap` | `wrap`                                                                                                                  |
-| `ui-room-card`     | Raumkarte mit Kopf und Pod-Reihe                                               | `heading`, `route`, `summary` (`{ text, tone? }`); Inhalt: `ui-pod-row`                                                 |
-| `ui-value-display` | Wert mit Einheit und Label in drei Größen                                      | `value`, `unit`, `label`, `size` (`hero`/`large`/`medium`), `tone`                                                      |
-| `ui-progress-band` | Fortschrittsleiste mit markiertem Bereich                                      | `value`, `min`, `max`, `band` (`{ from, to, tone }`)                                                                    |
-| `ui-chart`         | ECharts-Kapselung (lazy), Farben aus Tokens                                    | `series`, `kind` (`bar`/`line`), `band`, `unit`, `description` (Textalternative); Zeitachse in Haushaltszone            |
-| `ui-chip-set`      | erweitert: Zähler je Chip, Mehrfachauswahl                                     | `options[].count`, `multiple`                                                                                           |
-| `ui-reorder-list`  | Liste mit Ziehgriff und Tastaturverschiebung (CDK Drag-Drop)                   | `items`, Output `reordered`; Inhalt je Zeile über Template                                                              |
-| `UiBottomSheet`    | Service für Sheets (Compact) und Dialoge (ab Medium)                           | `open(component, data)`                                                                                                 |
-| `ui-icon-button`   | erweitert: Variante `tonal`                                                    | `variant`                                                                                                               |
-| `ui-top-app-bar`   | erweitert: großer Titel auf Compact                                            | `size` (`small`/`large`)                                                                                                |
-| `ui-list-item`     | erweitert: Icon-Container in einer Rolle oder Statusfarbe                      | `leadingTone`                                                                                                           |
+| Baustein           | Zweck                                                                          | Inputs / Outputs                                                                                                                          |
+| ------------------ | ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `ui-status-hero`   | Status-Block: Hero oder Ruhezeile                                              | `tone` (`calm`/`attention`/`critical`), `heading`, `count`, `criticalCount`, `moreLabel`, `moreRoute`; Inhalt: Einträge                   |
+| `ui-status-entry`  | Eintrag im Hero und in „Alle Hinweise“                                         | `icon`, `kindTone` (Statusfarbe oder Rolle), `title`, `subtitle`, `value`, `severityLabel`, `route`                                       |
+| `ui-device-pod`    | Geräte-Pod, Link oder Schalter                                                 | `kind`, `icon`, `value`, `label`, `chip` (`{ text, tone }`), `route` oder `pressed` + `pending`; Output `toggled`                         |
+| `ui-pod-row`       | horizontale Reihe mit Snap, Tastatur, Pfeilen ab Medium; umbrechend per `wrap` | `wrap`                                                                                                                                    |
+| `ui-room-card`     | Raumkarte mit Kopf und Pod-Reihe                                               | `heading`, `route`, `summary` (`{ text, tone? }`); Inhalt: `ui-pod-row`                                                                   |
+| `ui-value-display` | Wert mit Einheit und Label in drei Größen                                      | `value`, `unit`, `label`, `size` (`hero`/`large`/`medium`), `tone`                                                                        |
+| `ui-progress-band` | Fortschrittsleiste mit markiertem Bereich                                      | `value`, `min`, `max`, `band` (`{ from, to, tone }`)                                                                                      |
+| `ui-chart`         | ECharts-Kapselung (lazy), Farben aus Tokens                                    | `points`, `kind` (`area`/`ribbon`/`step`), `range`, `band`, `markers`, `unit`, `description`; Zeitachse in Haushaltszone (gebaut in 6c-1) |
+| `ui-chip-set`      | erweitert: Zähler je Chip, Mehrfachauswahl                                     | `options[].count`, `multiple`                                                                                                             |
+| `ui-reorder-list`  | Liste mit Ziehgriff und Tastaturverschiebung (CDK Drag-Drop)                   | `items`, Output `reordered`; Inhalt je Zeile über Template                                                                                |
+| `UiBottomSheet`    | Service für Sheets (Compact) und Dialoge (ab Medium)                           | `open(component, data)`                                                                                                                   |
+| `ui-icon-button`   | erweitert: Variante `tonal`                                                    | `variant`                                                                                                                                 |
+| `ui-top-app-bar`   | erweitert: großer Titel auf Compact                                            | `size` (`small`/`large`)                                                                                                                  |
+| `ui-list-item`     | erweitert: Icon-Container in einer Rolle oder Statusfarbe                      | `leadingTone`                                                                                                                             |
 
 Feature-Code enthält weiterhin kein CSS; was fehlt, wird ein `ui-*`-Baustein. Material bleibt Implementierungsdetail der Bibliothek (Switch, Slider, Bottom Sheet, Dialog, Drag-Drop).
 
