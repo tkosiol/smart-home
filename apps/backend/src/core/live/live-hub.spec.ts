@@ -134,6 +134,16 @@ describe('LiveHub', () => {
     expect(owner.writes).toHaveLength(1);
   });
 
+  it('closes a client that connects after shutdown and does not register it', () => {
+    hub.onModuleDestroy();
+    const c = fake('owner');
+    const remove = hub.add(c);
+    expect(c.closed).toBe(1);
+    expect(hub.watching('h1')).toBe(false);
+    remove();
+    expect(c.closed).toBe(1);
+  });
+
   it('closes and removes a client whose buffer is full', () => {
     const c = fake('owner');
     c.full = true;

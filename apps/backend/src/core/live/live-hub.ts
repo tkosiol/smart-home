@@ -39,6 +39,7 @@ export class LiveHub implements OnModuleInit, OnModuleDestroy {
   private readonly clients = new Map<string, Set<LiveClient>>();
   private timer: NodeJS.Timeout | undefined;
   private beating = false;
+  private closed = false;
 
   constructor(
     private readonly sessions: SessionService,
@@ -57,12 +58,22 @@ export class LiveHub implements OnModuleInit, OnModuleDestroy {
   }
 
   onModuleDestroy(): void {
+    this.closed = true;
     clearInterval(this.timer);
     for (const set of [...this.clients.values()]) for (const client of [...set]) this.drop(client);
   }
 
   /** Registers the client; returns the function that unregisters it. */
   add(client: LiveClient): () => void {
+    if (this.closed) {
+      // Connected between shutdown and the HTTP server closing: end it so close() need not wait.
+      try {
+        client.close();
+      } catch (error) {
+        this.logger.warn(`Cannot close a live stream: ${describeError(error)}`);
+      }
+      return () => undefined;
+    }
     let set = this.clients.get(client.householdId);
     if (!set) this.clients.set(client.householdId, (set = new Set()));
     set.add(client);
