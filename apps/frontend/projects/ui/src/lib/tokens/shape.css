@@ -8,6 +8,8 @@
   --smart-shape-control: var(--mat-sys-corner-full);
   /* Buttons while pressed: the corners pull in (M3 Expressive shape morph) */
   --smart-shape-control-pressed: var(--mat-sys-corner-medium);
+  /* Inner corners of a connected button group; its outer ends stay --smart-shape-control */
+  --smart-shape-segment-inner: var(--mat-sys-corner-small);
   /* Chart bars */
   --smart-shape-bar: var(--mat-sys-corner-extra-small);
 }

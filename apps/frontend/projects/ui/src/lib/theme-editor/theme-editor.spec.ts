@@ -65,7 +65,7 @@ async function setup(mode: UiThemeEditorMode, language: Language = 'de') {
       .find((candidate) => candidate.textContent?.includes(label))!
       .querySelector('button') as HTMLButtonElement;
   const radio = (label: string) =>
-    [...element.querySelectorAll('mat-button-toggle button')].find((candidate) =>
+    [...element.querySelectorAll('[role="radio"]')].find((candidate) =>
       candidate.textContent?.includes(label),
     ) as HTMLButtonElement;
   const labels = () =>
@@ -76,9 +76,7 @@ async function setup(mode: UiThemeEditorMode, language: Language = 'de') {
 describe('UiThemeEditor in personal mode', () => {
   it('offers mode, contrast and own colors, but not shape and font', async () => {
     const { element, labels } = await setup('personal');
-    expect(element.querySelector('mat-button-toggle-group')?.getAttribute('aria-label')).toBe(
-      'Modus',
-    );
+    expect(element.querySelector('[role="radiogroup"]')?.getAttribute('aria-label')).toBe('Modus');
     expect(labels()).toContain('Kontrast');
     expect(labels()).not.toContain('Formen');
     expect(labels()).not.toContain('Schrift');
@@ -119,9 +117,7 @@ describe('UiThemeEditor in personal mode', () => {
 
   it('speaks English', async () => {
     const { element, labels } = await setup('personal', 'en');
-    expect(element.querySelector('mat-button-toggle-group')?.getAttribute('aria-label')).toBe(
-      'Mode',
-    );
+    expect(element.querySelector('[role="radiogroup"]')?.getAttribute('aria-label')).toBe('Mode');
     expect(labels()).toContain('Contrast');
   });
 });
@@ -139,7 +135,7 @@ describe('UiThemeEditor in instance mode', () => {
 
   it('edits colors, shape and font of the installation, but no personal settings', async () => {
     const { host, element, choose, refresh } = await setup('instance');
-    expect(element.querySelector('mat-button-toggle-group')).toBeNull();
+    expect(element.querySelector('[role="radiogroup"]')).toBeNull();
     await choose('Formen', 'Weich');
     await choose('Schrift', 'Figtree');
     (element.querySelector('button[aria-label="Pflaume"]') as HTMLButtonElement).click();
