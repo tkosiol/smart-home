@@ -185,6 +185,8 @@ describe('device history API', () => {
       { t: new Date(hour).toISOString(), avg: 15, min: 10, max: 20, last: 20 },
       { t: new Date(hour + HOUR).toISOString(), avg: 40, min: 40, max: 40, last: 40 },
     ]);
+    expect(result.days).toHaveLength(1);
+    expect(result.days[0]).toMatchObject({ min: 10, max: 40, last: 40 });
   });
 
   it('adds days for 28d', async () => {

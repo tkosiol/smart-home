@@ -18,7 +18,7 @@ const RANGES: Record<HistoryRange, { hours: number; resolution: HistoryResolutio
   '28d': { hours: 28 * 24, resolution: '1h' },
 };
 
-/** Numeric measurement histories of a device: buckets, and for 28 days also calendar days. */
+/** Numeric measurement histories of a device: buckets, and for 7 and 28 days also calendar days. */
 @Injectable()
 export class DeviceHistoryService {
   constructor(
@@ -41,7 +41,7 @@ export class DeviceHistoryService {
     const from = new Date(to.getTime() - hours * HOUR_MS);
     const points = await this.history.points(deviceId, capability.key, from, to, resolution);
     let days: DeviceHistory['days'] = [];
-    if (query.range === '28d') {
+    if (query.range !== '24h') {
       const household = await this.households.findById(householdId);
       if (!household) throw new ApiError(HttpStatus.NOT_FOUND, 'household.notFound');
       days = await this.history.days(deviceId, capability.key, from, to, household.timezone);
