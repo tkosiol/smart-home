@@ -389,13 +389,15 @@ describe('history card', () => {
     });
   });
 
-  describe('refresh', () => {
-    it('loads again every five minutes and keeps the values while it does', async () => {
-      vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+  describe('live', () => {
+    const report = (page: OpenedHouseholdPage, id = 'dev-1') =>
+      page.live.emit('device.state', { ...sensor, id });
+    const quiet = { toFake: ['setTimeout' as const, 'clearTimeout' as const] };
+
+    it('loads again when its device reports, without the skeleton', async () => {
       const page = await open();
-      await vi.advanceTimersByTimeAsync(299_000);
-      expect(historyCalls(page)).toHaveLength(1);
-      await vi.advanceTimersByTimeAsync(1_500);
+      report(page);
+      expect(card(page).querySelector('ui-skeleton')).toBeNull();
       await flush(page);
       expect(historyCalls(page)).toEqual([
         'capability=soil_moisture&range=7d',
@@ -404,19 +406,67 @@ describe('history card', () => {
       expect(chart(page)).toBeTruthy();
     });
 
-    it('keeps the old values when a refresh fails', async () => {
+    it('ignores the report of another device', async () => {
+      const page = await open();
+      report(page, 'dev-2');
+      await flush(page);
+      expect(historyCalls(page)).toHaveLength(1);
+    });
+
+    it('loads once at once and once more after the minute for five reports in ten seconds', async () => {
+      const page = await open();
+      vi.useFakeTimers(quiet);
+      for (let i = 0; i < 5; i++) {
+        report(page);
+        await vi.advanceTimersByTimeAsync(2_000);
+      }
+      expect(historyCalls(page)).toHaveLength(2);
+      await vi.advanceTimersByTimeAsync(49_000);
+      expect(historyCalls(page)).toHaveLength(2);
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(historyCalls(page)).toHaveLength(3);
+      await vi.advanceTimersByTimeAsync(120_000);
+      expect(historyCalls(page)).toHaveLength(3);
+    });
+
+    it('does not load every five minutes any more', async () => {
       vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+      const page = await open();
+      await vi.advanceTimersByTimeAsync(600_000);
+      expect(historyCalls(page)).toHaveLength(1);
+    });
+
+    it('loads again after a reconnect', async () => {
+      const page = await open();
+      page.live.resync();
+      await flush(page);
+      expect(historyCalls(page)).toHaveLength(2);
+    });
+
+    it('keeps the old values when a reload fails', async () => {
       let fail = false;
       const page = await open({
         history: (capability, range): DeviceHistory | Response =>
           fail ? apiError('internal', 500) : historyOf(capability, range),
       });
       fail = true;
-      await vi.advanceTimersByTimeAsync(300_500);
+      report(page);
       await flush(page);
       expect(historyCalls(page)).toHaveLength(2);
       expect(chart(page)).toBeTruthy();
       expect(cardText(page)).not.toContain('konnte nicht geladen');
+    });
+
+    it('does not load after it is gone', async () => {
+      const page = await open();
+      vi.useFakeTimers(quiet);
+      report(page);
+      report(page); // due at the end of the minute
+      await flush(page);
+      expect(historyCalls(page)).toHaveLength(2);
+      page.harness.fixture.destroy();
+      await vi.advanceTimersByTimeAsync(120_000);
+      expect(historyCalls(page)).toHaveLength(2);
     });
   });
 
