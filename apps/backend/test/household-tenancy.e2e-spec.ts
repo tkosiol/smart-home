@@ -90,6 +90,7 @@ const ENDPOINTS: {
     crossIds: true,
   },
   { route: 'GET /v1/households/:householdId/attention' },
+  { route: 'GET /v1/households/:householdId/events' },
   { route: 'GET /v1/households/:householdId/me/overview-layout' },
   {
     route: 'PUT /v1/households/:householdId/me/overview-layout',
