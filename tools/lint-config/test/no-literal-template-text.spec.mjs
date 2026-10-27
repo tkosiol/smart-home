@@ -114,6 +114,7 @@ const NON_TEXT_STRING_INPUTS = new Set([
   'moreRoute',
   'name',
   'route',
+  'timeZone',
 ]);
 
 const UI_LIB = join(import.meta.dirname, '../../../apps/frontend/projects/ui/src/lib');
