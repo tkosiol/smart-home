@@ -163,4 +163,33 @@ export function chartAxisLabels(
 
 ## Ergebnis und Übertrag
 
-(wird nach der Umsetzung ergänzt)
+Umgesetzt subagent-gestützt am 2026-10-27/28:
+
+- **Wer:** Contracts, Backend, Logik der UI-Tasks, E2E und Doku baute Sonnet. Task 4 (Chips, Segmente) baute Fable allein, bei Task 5 und 6 setzte Fable die Gestaltung auf. Reviews je Task übernahm Sonnet, Nachprüfungen Haiku, Task 6 und das Gesamt-Review Opus.
+- **Ergebnis:**
+  - Verlauf mit 24 h | 7 Tage | 4 Wochen für alle numerischen Messwerte.
+  - Stundenaggregat mit Nachrechnen im Migrationsschritt, im echten Stack geprüft.
+  - Initiales Bundle 412,75 kB (Grenze 425 kB). ECharts liegt in einem lazy Chunk mit rund 577 kB roh bzw. 165 kB komprimiert.
+  - Stack-E2E grün (67 Specs), Storybook 139/139.
+- **Über den Plan hinaus in `@smart/ui`:**
+  - `ui-chip-set` und `ui-segmented-button` nativ ohne Material (Listbox bzw. Radiogroup mit Roving Tabindex)
+  - `ui-figure`, `ui-value-table`, `ui-grid min="split"`, Kopf-Aktion in `ui-card`
+  - `ui-icon-button toggled`, `ui-segmented-button fullWidth`, Skeleton-Variante „chart“
+  - Testeinstieg `@smart/ui/testing` mit Diagramm-Ersatz für Specs der App; die Lint-Regel erlaubt ihn nur in Specs, mit Test
+
+### Entscheidungen während der Umsetzung
+
+- **Tage in Zonen mit Viertelstunden-Versatz** (z. B. `Pacific/Chatham`): Eine Stunde zählt zum lokalen Tag ihres Beginns, bis zu 45 Minuten können auf den Vortag fallen. Das folgt daraus, dass die Tage aus dem Stundenaggregat entstehen.
+- **„Heute“ und Stundenbeschriftungen** kommen aus `Intl`, nicht aus Übersetzungsschlüsseln.
+- **Service Worker:** Er lädt den ECharts-Chunk nach dem ersten Start im Hintergrund vor; Diagramme gehen so auch offline.
+- **Optische Prüfung der Karte:** Sie lief gegen `ng serve` mit nachgebildeter API, nicht gegen den lokalen Stack. Den echten Stack deckt der E2E-Test ab.
+- **Seltene Messungen** (Gesamt-Review): Die AY-303Z melden etwa alle 5 Minuten mit vollem Zustand, das Risiko ist daher gering. Trotzdem werden Einzelpunkte jetzt als Punkte gezeichnet, und die Stufenlinie der Batterie bricht an Lücken nie ab.
+- **Fenster bis „jetzt“:** Das Diagramm endet bei `to` der API. Ein veralteter Wert heißt „Zuletzt: …“ statt „Jetzt“ und bekommt keinen Jetzt-Punkt.
+- **Warnschwelle 400 kB** bleibt als Zielmarke (Fehler erst bei 425 kB, siehe #120).
+
+### Übertrag
+
+- #123: Kleinkram aus den Reviews (Gieß-Zählung je Zeitraum, Tastatur über 4 Wochen, Tests, Aufräumen).
+- #122: Geräte-Pod kürzt „19,1 °C“ (älter, beim Feinschliff gesehen).
+- **6c-2:** SSE inklusive `attention.changed`. Danach Räume, Befehle und Kopplung.
+- **Till:** Den Verlauf nach dem Deploy auf Staging mit den echten Sensordaten ansehen.
