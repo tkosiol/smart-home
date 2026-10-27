@@ -238,6 +238,18 @@ describe('devices page', () => {
       expect(podText(page, 'Basilikum')).toContain('55%');
     });
 
+    it('does not let a reload that was on its way undo a live event', async () => {
+      const page = await open({ devices: [sensor] });
+      await flush(page);
+      const release = page.hold();
+      page.live.resync();
+      page.live.emit('device.state', { ...sensor, state: { ...sensor.state, soil_moisture: 55 } });
+      release();
+      await flush(page);
+      expect(requests(page, 'GET', '/devices')).toHaveLength(2);
+      expect(podText(page, 'Basilikum')).toContain('55%');
+    });
+
     it('stays quiet and keeps the values when a reload after a reconnect finds no connection', async () => {
       const page = await open({ devices: [sensor] });
       await flush(page);

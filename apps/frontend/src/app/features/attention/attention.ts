@@ -17,8 +17,8 @@ export interface Attention {
 /**
  * The notices of the current household: loaded when the context is created, again when the
  * household changes, and kept up to date by live events (after a reconnect it is loaded again; a
- * load that fails for lack of a connection keeps the old state quietly). While `wantSummary` is true and nothing is open, the
- * devices are asked for as well, for the calm row. Call it in an injection context.
+ * load that fails for lack of a connection keeps the old state quietly). While `wantSummary` is
+ * true and nothing is open, the devices are asked for as well, for the calm row. Call it in an injection context.
  */
 export function injectAttention(wantSummary: Signal<boolean>): Attention {
   const household = inject(HouseholdContext);

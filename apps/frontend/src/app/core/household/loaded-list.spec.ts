@@ -163,5 +163,58 @@ describe('LoadedList', () => {
       await load;
       expect(list.items()).toEqual([{ id: 'new', n: 1 }]);
     });
+
+    describe('while a load is on its way', () => {
+      const rows = (...ids: string[]) => ids.map((id) => ({ id, n: 0 }));
+      async function inFlight(initial: Row[]) {
+        const answers = [deferred<Row[]>()];
+        let call = 0;
+        const list = new LoadedList<Row>(
+          async () => (call++ === 0 ? initial : answers[0]!.promise),
+          vi.fn(),
+        );
+        await list.load('h1');
+        const reload = list.load('h1', true);
+        return { list, reload, answer: answers[0]! };
+      }
+
+      it("keeps an upsert over the late answer and takes the answer's other entries", async () => {
+        const { list, reload, answer } = await inFlight(rows('a'));
+        list.upsert({ id: 'a', n: 5 });
+        answer.resolve([...rows('a', 'b')]);
+        await reload;
+        expect(list.items()).toEqual([
+          { id: 'a', n: 5 },
+          { id: 'b', n: 0 },
+        ]);
+      });
+
+      it('does not bring a removed entry back', async () => {
+        const { list, reload, answer } = await inFlight(rows('a', 'b'));
+        list.remove('a');
+        answer.resolve(rows('a', 'b'));
+        await reload;
+        expect(list.items().map((row) => row.id)).toEqual(['b']);
+      });
+
+      it('keeps an upserted entry the answer does not contain', async () => {
+        const { list, reload, answer } = await inFlight(rows('a'));
+        list.upsert({ id: 'z', n: 1 });
+        answer.resolve(rows('a'));
+        await reload;
+        expect(list.items().map((row) => row.id)).toEqual(['a', 'z']);
+      });
+
+      it('lets the latest change of an id win and forgets changes after the load', async () => {
+        const { list, reload, answer } = await inFlight(rows('a'));
+        list.remove('a');
+        list.upsert({ id: 'a', n: 7 });
+        answer.resolve(rows('a'));
+        await reload;
+        expect(list.items()).toEqual([{ id: 'a', n: 7 }]);
+        await list.load('h1', true);
+        expect(list.items()).toEqual([{ id: 'a', n: 0 }]);
+      });
+    });
   });
 });

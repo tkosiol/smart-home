@@ -8,7 +8,8 @@ import { DevicesApi } from './devices.api';
 /**
  * The devices of the current household: loaded when the context is created, again when the
  * household changes, and kept up to date by live events (after a reconnect it is loaded again; a
- * load that fails for lack of a connection keeps the old values quietly). Call it in an injection context.
+ * load that fails for lack of a connection keeps the old values quietly). Call it in an injection
+ * context.
  */
 export function injectDeviceList(): LoadedList<Device> {
   const household = inject(HouseholdContext);
