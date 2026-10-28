@@ -1,6 +1,6 @@
 import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import type { Language } from '@smart/contracts';
+import type { Device, Language } from '@smart/contracts';
 import { UiAnnouncer, UiClock } from '@smart/ui';
 import {
   OverviewSurface,
@@ -186,6 +186,30 @@ describe('status block', () => {
       );
     });
 
+    const reported = (lastSeenAt: string | null) => ({ id: 'a', lastSeenAt }) as Device;
+
+    it('moves the last message to a newer device report and ignores an older one', async () => {
+      const page = await open({ devices: [recent('a', '2026-10-14T11:50:00Z')] });
+      await shown(page, 'Gateway online · 1 Gerät · vor 10 Minuten');
+      page.live.emit('device.state', reported('2026-10-14T11:58:00Z'));
+      await shown(page, 'Gateway online · 1 Gerät · vor 2 Minuten');
+      page.live.emit('device.state', reported('2026-10-14T11:30:00Z'));
+      page.live.emit('device.state', reported(null));
+      await flush(page);
+      expect(pageText(page.element)).toContain('Gateway online · 1 Gerät · vor 2 Minuten');
+    });
+
+    it('loads the notices again after a reconnect', async () => {
+      const page = await open({ devices: [recent('a', '2026-10-14T11:50:00Z')] });
+      await shown(page, 'Alles in Ordnung');
+      const notices = () => page.calls.filter((call) => call.path.endsWith('/attention'));
+      expect(notices()).toHaveLength(1);
+      page.server.state.items = [attentionItem('soil_dry', 'Ficus')];
+      page.live.resync();
+      await shown(page, 'Ficus ist zu trocken');
+      expect(notices()).toHaveLength(2);
+    });
+
     it('says "1 Gerät" and leaves out a time nobody reported', async () => {
       const page = await open({ devices: [recent('a', null)] });
       await shown(page, 'Gateway online · 1 Gerät');
@@ -264,68 +288,66 @@ describe('status block', () => {
     const silent = attentionItem('device_silent', 'Sensor 1');
     const wet = attentionItem('soil_wet', 'Farn');
 
-    /** Lets the minute pass: the block loads the notices again. */
-    async function minute(page: OpenedHouseholdPage) {
-      await vi.advanceTimersByTimeAsync(60_500);
+    /** The server announces the notices it holds now. */
+    async function changed(
+      page: OpenedHouseholdPage & { server: ReturnType<typeof attentionServer> },
+    ) {
+      page.live.emit('attention.changed', { items: page.server.state.items });
       await flush(page);
     }
 
     it('says nothing about the first load, announces a new critical notice at once and other changes politely', async () => {
-      vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
       const page = await open({ items: [dry] });
       await shown(page, 'Ficus ist zu trocken');
       expect(page.announce).not.toHaveBeenCalled();
 
       page.server.state.items = [dry, silent];
-      await minute(page);
+      await changed(page);
       expect(page.announce).toHaveBeenLastCalledWith(
         'Kritisch: Sensor 1 meldet sich nicht',
         'assertive',
       );
 
       page.server.state.items = [dry, silent, wet];
-      await minute(page);
+      await changed(page);
       expect(page.announce).toHaveBeenLastCalledWith('Hinweise aktualisiert: 3 offen', 'polite');
       expect(page.announce).toHaveBeenCalledTimes(2);
 
       // The same notices with other values are no news.
       page.server.state.items = [{ ...dry, value: 3 }, silent, wet];
-      await minute(page);
+      await changed(page);
       expect(page.announce).toHaveBeenCalledTimes(2);
 
       page.server.state.items = [];
-      await minute(page);
+      await changed(page);
       expect(page.announce).toHaveBeenLastCalledWith('Keine offenen Hinweise', 'polite');
     });
 
     it('announces several new critical notices as a count', async () => {
-      vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
       const page = await open({ items: [] });
       await flush(page);
       page.server.state.items = [silent, attentionItem('device_silent', 'Sensor 2')];
-      await minute(page);
+      await changed(page);
       expect(page.announce).toHaveBeenLastCalledWith('2 neue kritische Hinweise', 'assertive');
     });
 
     it('does not repeat a critical notice that was already there', async () => {
-      vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
       const page = await open({ items: [silent] });
       await flush(page);
       page.server.state.items = [silent, dry];
-      await minute(page);
+      await changed(page);
       expect(page.announce).toHaveBeenCalledTimes(1);
       expect(page.announce).toHaveBeenLastCalledWith('Hinweise aktualisiert: 2 offen', 'polite');
     });
 
     it('announces only critical news while the block is hidden', async () => {
-      vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
       const page = await open({ hidden: true, items: [dry] });
       await flush(page);
       page.server.state.items = [dry, wet];
-      await minute(page);
+      await changed(page);
       expect(page.announce).not.toHaveBeenCalled();
       page.server.state.items = [dry, wet, silent];
-      await minute(page);
+      await changed(page);
       expect(page.announce).toHaveBeenCalledTimes(1);
       expect(page.announce).toHaveBeenLastCalledWith(
         'Kritisch: Sensor 1 meldet sich nicht',

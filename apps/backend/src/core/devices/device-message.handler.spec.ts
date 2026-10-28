@@ -2,7 +2,12 @@ import { Logger } from '@nestjs/common';
 import type { Capability } from '@smart/contracts';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MeasurementWriter } from '../telemetry/index.js';
-import { DEVICE_STATE_CHANGED, DeviceEvents } from './device-events.js';
+import {
+  DEVICE_CHANGED,
+  DEVICE_STATE_CHANGED,
+  DeviceEvents,
+  HARDWARE_CHANGED,
+} from './device-events.js';
 import { DeviceMessageProcessor } from './device-message.handler.js';
 import type { DevicesRepository } from './devices.repository.js';
 import type { HardwareRepository } from './hardware.repository.js';
@@ -10,6 +15,7 @@ import type { HardwareRepository } from './hardware.repository.js';
 const GW = 'gw-a1b2c3d4';
 const HARDWARE = '0b6f3a8e-1c47-4d2a-8c11-5f0a9b7d3e21';
 const DEVICE = '7d2c9e10-4b5a-4f3e-9a8d-1e6b0c2f4a55';
+const HOUSEHOLD = '3c1d5f77-0a2b-4e8c-b6d9-2f4a8e0c1b33';
 const NOW = new Date('2026-10-14T12:00:00.000Z');
 const SEEN = '2026-10-14T11:59:00.000Z';
 
@@ -48,6 +54,8 @@ describe('DeviceMessageProcessor', () => {
   let processor: DeviceMessageProcessor;
   let events: DeviceEvents;
   let changed: unknown[];
+  let deviceChanged: unknown[];
+  let hardwareChanged: unknown[];
 
   const handle = (payload: Record<string, unknown>, retained = false, receivedAt = NOW) =>
     processor.handle(GW, HARDWARE, payload, receivedAt, retained);
@@ -64,13 +72,18 @@ describe('DeviceMessageProcessor', () => {
     activeBinding.mockResolvedValue({
       id: 'b',
       deviceId: DEVICE,
+      householdId: HOUSEHOLD,
       hardwareId: HARDWARE,
       boundAt: NOW,
       unboundAt: null,
     });
     events = new DeviceEvents();
     changed = [];
+    deviceChanged = [];
+    hardwareChanged = [];
     events.on(DEVICE_STATE_CHANGED, (event) => changed.push(event));
+    events.on(DEVICE_CHANGED, (event) => deviceChanged.push(event));
+    events.on(HARDWARE_CHANGED, (event) => hardwareChanged.push(event));
     processor = new DeviceMessageProcessor(
       { capabilitiesOf, recordState: recordHardware } as unknown as HardwareRepository,
       {
@@ -95,14 +108,29 @@ describe('DeviceMessageProcessor', () => {
 
   it('announces a changed device state, and stays silent when nothing was stored', async () => {
     await handle({ soil_moisture: 31 });
-    expect(changed).toEqual([{ deviceId: DEVICE }]);
+    expect(changed).toEqual([{ householdId: HOUSEHOLD, deviceId: DEVICE }]);
+    expect(deviceChanged).toEqual([{ householdId: HOUSEHOLD, deviceId: DEVICE }]);
+    expect(hardwareChanged).toEqual([]);
 
     changed.length = 0;
+    deviceChanged.length = 0;
     recordDevice.mockResolvedValue(false);
     await handle({ soil_moisture: 30 });
+    expect(changed).toEqual([]);
+    expect(deviceChanged).toEqual([]);
+  });
+
+  it('announces free hardware only when its state was written', async () => {
     activeBinding.mockResolvedValue(undefined);
     await handle({ soil_moisture: 29 });
+    expect(hardwareChanged).toEqual([{ hardwareId: HARDWARE }]);
     expect(changed).toEqual([]);
+    expect(deviceChanged).toEqual([]);
+
+    hardwareChanged.length = 0;
+    recordHardware.mockResolvedValue(false);
+    await handle({ soil_moisture: 28 });
+    expect(hardwareChanged).toEqual([]);
   });
 
   it('with a device updates its state and stores readings at the measurement time', async () => {

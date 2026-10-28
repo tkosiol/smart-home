@@ -31,6 +31,7 @@ import {
   type GatewayStatusChanged,
 } from '../gateways/index.js';
 import { CLOCK, type Clock } from '../identity/index.js';
+import { ATTENTION_CHANGED, AttentionEvents, type AttentionChanged } from './attention-events.js';
 import { evaluate, openContacts, type DeviceSnapshot, type Snapshot } from './attention.rules.js';
 
 /** How often the time conditions (open too long, silent, gateway away) are looked at again. */
@@ -85,6 +86,7 @@ export class AttentionService implements OnModuleInit, OnModuleDestroy {
     private readonly hardware: HardwareRepository,
     private readonly gatewayEvents: GatewayEvents,
     private readonly deviceEvents: DeviceEvents,
+    private readonly attentionEvents: AttentionEvents,
     @Inject(CLOCK) private readonly clock: Clock,
   ) {}
 
@@ -209,16 +211,30 @@ export class AttentionService implements OnModuleInit, OnModuleDestroy {
       snapshot.devices.length === 0 &&
       snapshot.hardware.length === 0
     ) {
+      this.announce(householdId, previous?.items ?? [], []);
       return;
     }
     for (const device of snapshot.devices) this.deviceHouseholds.set(device.id, householdId);
     for (const gateway of snapshot.gateways) this.gatewayHouseholds.set(gateway.id, householdId);
     const before = { items: previous?.items ?? [], contactOpenSince: previous?.contactOpenSince };
+    const items = evaluate(snapshot, before, now);
     this.households.set(householdId, {
       snapshot,
-      items: evaluate(snapshot, before, now),
+      items,
       contactOpenSince: openContacts(snapshot, before, now),
     });
+    this.announce(householdId, before.items, items);
+  }
+
+  /** Tells the listeners when the household's items differ; a failing listener is only logged. */
+  private announce(householdId: string, before: AttentionItem[], after: AttentionItem[]): void {
+    if (JSON.stringify(before) === JSON.stringify(after)) return;
+    try {
+      const event: AttentionChanged = { householdId };
+      this.attentionEvents.emit(ATTENTION_CHANGED, event);
+    } catch (error) {
+      this.logger.warn(`Cannot announce changed attention items: ${describeError(error)}`);
+    }
   }
 
   /** Drops the household's state and its entries in the lookups. */

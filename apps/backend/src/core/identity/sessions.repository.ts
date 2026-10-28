@@ -38,6 +38,11 @@ export class SessionsRepository {
     return row;
   }
 
+  async findById(id: string): Promise<Session | undefined> {
+    const [row] = await this.connection.db.select().from(sessions).where(eq(sessions.id, id));
+    return row;
+  }
+
   async touch(id: string, lastSeenAt: Date, expiresAt: Date): Promise<void> {
     await this.connection.db
       .update(sessions)

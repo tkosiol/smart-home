@@ -2,7 +2,15 @@ import { Injectable, Logger } from '@nestjs/common';
 import type { Capability } from '@smart/contracts';
 import { Throttle } from '../gateways/index.js';
 import { MeasurementWriter, type NewMeasurementRow } from '../telemetry/index.js';
-import { DEVICE_STATE_CHANGED, DeviceEvents, type DeviceStateChanged } from './device-events.js';
+import {
+  DEVICE_CHANGED,
+  DEVICE_STATE_CHANGED,
+  DeviceEvents,
+  HARDWARE_CHANGED,
+  type DeviceChanged,
+  type DeviceStateChanged,
+  type HardwareChanged,
+} from './device-events.js';
 import type { DeviceMessageHandler } from './device-message-handler.js';
 import { DevicesRepository } from './devices.repository.js';
 import { HardwareRepository } from './hardware.repository.js';
@@ -115,7 +123,10 @@ export class DeviceMessageProcessor implements DeviceMessageHandler {
     if (retained && !recorded) return;
 
     const binding = await this.devices.activeBindingForHardware(hardwareId);
-    if (!binding) return;
+    if (!binding) {
+      if (recorded) this.events.emit(HARDWARE_CHANGED, { hardwareId } satisfies HardwareChanged);
+      return;
+    }
     const updated = await this.devices.recordState(binding.deviceId, state, time);
 
     const rows: NewMeasurementRow[] = [];
@@ -134,8 +145,12 @@ export class DeviceMessageProcessor implements DeviceMessageHandler {
     }
     this.writer.add(rows);
     if (updated) {
-      const changed: DeviceStateChanged = { deviceId: binding.deviceId };
-      this.events.emit(DEVICE_STATE_CHANGED, changed);
+      const { householdId, deviceId } = binding;
+      this.events.emit(DEVICE_STATE_CHANGED, {
+        householdId,
+        deviceId,
+      } satisfies DeviceStateChanged);
+      this.events.emit(DEVICE_CHANGED, { householdId, deviceId } satisfies DeviceChanged);
     }
   }
 

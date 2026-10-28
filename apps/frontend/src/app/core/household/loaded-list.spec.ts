@@ -97,4 +97,124 @@ describe('LoadedList', () => {
     expect(onError).toHaveBeenCalledExactlyOnceWith(error);
     expect(list.loaded()).toBe(false);
   });
+
+  describe('live changes', () => {
+    interface Row {
+      readonly id: string;
+      readonly n: number;
+    }
+    const loaded = async (rows: Row[]) => {
+      const list = new LoadedList<Row>(async () => rows, vi.fn());
+      await list.load('h1');
+      return list;
+    };
+
+    it('upsert replaces the entry with the same id in place, else appends', async () => {
+      const list = await loaded([
+        { id: 'a', n: 1 },
+        { id: 'b', n: 2 },
+      ]);
+      list.upsert({ id: 'a', n: 10 });
+      expect(list.items()).toEqual([
+        { id: 'a', n: 10 },
+        { id: 'b', n: 2 },
+      ]);
+      list.upsert({ id: 'c', n: 3 });
+      expect(list.items().map((row) => row.id)).toEqual(['a', 'b', 'c']);
+    });
+
+    it('remove drops the entry with that id and ignores an unknown one', async () => {
+      const list = await loaded([
+        { id: 'a', n: 1 },
+        { id: 'b', n: 2 },
+      ]);
+      list.remove('a');
+      list.remove('zzz');
+      expect(list.items()).toEqual([{ id: 'b', n: 2 }]);
+    });
+
+    it('upsert and remove do nothing until the list is loaded', () => {
+      const list = new LoadedList<Row>(async () => [], vi.fn());
+      list.upsert({ id: 'a', n: 1 });
+      list.remove('a');
+      expect(list.items()).toEqual([]);
+      expect(list.loaded()).toBe(false);
+    });
+
+    it('does nothing while a load without `keep` has emptied the list', async () => {
+      const slow = deferred<Row[]>();
+      const list = await loaded([{ id: 'a', n: 1 }]);
+      const fetch = vi.fn(() => slow.promise);
+      const other = new LoadedList<Row>(fetch, vi.fn());
+      void other.load('h1');
+      other.upsert({ id: 'a', n: 1 });
+      expect(other.items()).toEqual([]);
+      slow.resolve([]);
+      expect(list.items()).toHaveLength(1);
+    });
+
+    it('replace sets the list as loaded and ignores answers still on their way', async () => {
+      const slow = deferred<Row[]>();
+      const list = new LoadedList<Row>(() => slow.promise, vi.fn());
+      const load = list.load('h1');
+      list.replace([{ id: 'new', n: 1 }]);
+      expect(list.loaded()).toBe(true);
+      slow.resolve([{ id: 'old', n: 0 }]);
+      await load;
+      expect(list.items()).toEqual([{ id: 'new', n: 1 }]);
+    });
+
+    describe('while a load is on its way', () => {
+      const rows = (...ids: string[]) => ids.map((id) => ({ id, n: 0 }));
+      async function inFlight(initial: Row[]) {
+        const answers = [deferred<Row[]>()];
+        let call = 0;
+        const list = new LoadedList<Row>(
+          async () => (call++ === 0 ? initial : answers[0]!.promise),
+          vi.fn(),
+        );
+        await list.load('h1');
+        const reload = list.load('h1', true);
+        return { list, reload, answer: answers[0]! };
+      }
+
+      it("keeps an upsert over the late answer and takes the answer's other entries", async () => {
+        const { list, reload, answer } = await inFlight(rows('a'));
+        list.upsert({ id: 'a', n: 5 });
+        answer.resolve([...rows('a', 'b')]);
+        await reload;
+        expect(list.items()).toEqual([
+          { id: 'a', n: 5 },
+          { id: 'b', n: 0 },
+        ]);
+      });
+
+      it('does not bring a removed entry back', async () => {
+        const { list, reload, answer } = await inFlight(rows('a', 'b'));
+        list.remove('a');
+        answer.resolve(rows('a', 'b'));
+        await reload;
+        expect(list.items().map((row) => row.id)).toEqual(['b']);
+      });
+
+      it('keeps an upserted entry the answer does not contain', async () => {
+        const { list, reload, answer } = await inFlight(rows('a'));
+        list.upsert({ id: 'z', n: 1 });
+        answer.resolve(rows('a'));
+        await reload;
+        expect(list.items().map((row) => row.id)).toEqual(['a', 'z']);
+      });
+
+      it('lets the latest change of an id win and forgets changes after the load', async () => {
+        const { list, reload, answer } = await inFlight(rows('a'));
+        list.remove('a');
+        list.upsert({ id: 'a', n: 7 });
+        answer.resolve(rows('a'));
+        await reload;
+        expect(list.items()).toEqual([{ id: 'a', n: 7 }]);
+        await list.load('h1', true);
+        expect(list.items()).toEqual([{ id: 'a', n: 0 }]);
+      });
+    });
+  });
 });

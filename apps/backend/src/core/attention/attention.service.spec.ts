@@ -11,6 +11,7 @@ import {
   type HardwareWithCapabilities,
 } from '../devices/index.js';
 import { GATEWAY_STATUS_CHANGED, GatewayEvents, type GatewaysService } from '../gateways/index.js';
+import { ATTENTION_CHANGED, AttentionEvents, type AttentionChanged } from './attention-events.js';
 import { AttentionService, TICK_MS } from './attention.service.js';
 
 const HOUSEHOLD = 'household-1';
@@ -63,6 +64,8 @@ describe('AttentionService', () => {
   const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
   let gatewayEvents: GatewayEvents;
   let deviceEvents: DeviceEvents;
+  let attentionEvents: AttentionEvents;
+  const changed: AttentionChanged[] = [];
   let service: AttentionService;
 
   const items = (role: 'owner' | 'member' | 'viewer' = 'owner', admin = false) =>
@@ -87,6 +90,9 @@ describe('AttentionService', () => {
     listUnassigned.mockImplementation(() => Promise.resolve(unassigned));
     gatewayEvents = new GatewayEvents();
     deviceEvents = new DeviceEvents();
+    attentionEvents = new AttentionEvents();
+    changed.length = 0;
+    attentionEvents.on(ATTENTION_CHANGED, (event: AttentionChanged) => changed.push(event));
     service = new AttentionService(
       {
         list,
@@ -97,6 +103,7 @@ describe('AttentionService', () => {
       { listUnassigned } as unknown as HardwareRepository,
       gatewayEvents,
       deviceEvents,
+      attentionEvents,
       () => now,
     );
     service.onModuleInit();
@@ -111,6 +118,45 @@ describe('AttentionService', () => {
   it('computes the items of every household with a gateway at start', () => {
     expect(ids()).toEqual([]);
     expect(listActive).toHaveBeenCalledTimes(1);
+  });
+
+  describe('attention.changed', () => {
+    it('announces a new list and stays quiet when a recomputation changes nothing', async () => {
+      devices = [view('d1', { soil_moisture: 10 })];
+      deviceEvents.emit(DEVICE_STATE_CHANGED, { deviceId: 'd1' });
+      await service.idle();
+      expect(changed).toEqual([{ householdId: HOUSEHOLD }]);
+      await vi.advanceTimersByTimeAsync(TICK_MS);
+      await service.idle();
+      expect(ids()).toEqual(['soil_dry:d1']);
+      expect(changed).toHaveLength(1);
+    });
+
+    it('announces a household that became empty once, and not again', async () => {
+      devices = [view('d1', { soil_moisture: 10 })];
+      deviceEvents.emit(DEVICE_STATE_CHANGED, { deviceId: 'd1' });
+      await service.idle();
+      changed.length = 0;
+      gateways = [];
+      devices = [];
+      gatewayEvents.emit(GATEWAY_STATUS_CHANGED, { gatewayId: GATEWAY });
+      await service.idle();
+      expect(changed).toEqual([{ householdId: HOUSEHOLD }]);
+      await vi.advanceTimersByTimeAsync(TICK_MS);
+      await service.idle();
+      expect(changed).toHaveLength(1);
+    });
+
+    it('is not held up by a listener that throws', async () => {
+      attentionEvents.on(ATTENTION_CHANGED, () => {
+        throw new Error('listener failed');
+      });
+      devices = [view('d1', { soil_moisture: 10 })];
+      deviceEvents.emit(DEVICE_STATE_CHANGED, { deviceId: 'd1' });
+      await service.idle();
+      expect(ids()).toEqual(['soil_dry:d1']);
+      expect(warn).toHaveBeenCalled();
+    });
   });
 
   it('recomputes a device after it reported', async () => {
@@ -217,6 +263,7 @@ describe('AttentionService', () => {
       { listUnassigned } as unknown as HardwareRepository,
       new GatewayEvents(),
       new DeviceEvents(),
+      new AttentionEvents(),
       () => now,
     );
     let release: (gateways: Gateway[]) => void = () => undefined;
@@ -356,6 +403,7 @@ describe('AttentionService', () => {
         { listUnassigned } as unknown as HardwareRepository,
         new GatewayEvents(),
         new DeviceEvents(),
+        new AttentionEvents(),
         () => now,
       );
       expect(() => fresh.onModuleInit()).not.toThrow();

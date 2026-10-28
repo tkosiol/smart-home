@@ -291,30 +291,91 @@ describe('device page', () => {
     });
   });
 
-  describe('refresh', () => {
+  describe('live', () => {
     const hero = (page: OpenedHouseholdPage) => page.element.querySelector('ui-value-display');
-    const visibility = (state: DocumentVisibilityState) =>
-      vi.spyOn(document, 'visibilityState', 'get').mockReturnValue(state);
+    const nameValue = (page: OpenedHouseholdPage) =>
+      page.element.querySelector<HTMLInputElement>('ui-text-field[name="name"] input')?.value;
+    const moist = (value: number) => ({
+      ...sensor,
+      state: { ...sensor.state, soil_moisture: value },
+    });
 
-    it('loads again after 60 seconds and keeps what was typed', async () => {
-      vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    it('shows the event of this device and keeps what was typed', async () => {
       const page = await open({ household: member });
       await flush(page);
       typeInto(page, 'name', 'Thymian');
-      page.server.devices = [{ ...sensor, state: { ...sensor.state, soil_moisture: 55 } }];
-      await vi.advanceTimersByTimeAsync(59_000);
+      page.live.emit('device.state', moist(55));
+      await flush(page);
+      expect(hero(page)?.textContent).toContain('55');
+      expect(nameValue(page)).toBe('Thymian');
       expect(gets(page)).toHaveLength(1);
-      await vi.advanceTimersByTimeAsync(1_500);
+    });
+
+    it('ignores the event of another device', async () => {
+      const page = await open();
+      await flush(page);
+      page.live.emit('device.state', { ...moist(55), id: 'dev-2' });
+      await flush(page);
+      expect(hero(page)?.textContent).not.toContain('55');
+    });
+
+    it('loads again after a reconnect and keeps what was typed', async () => {
+      const page = await open({ household: member });
+      await flush(page);
+      typeInto(page, 'name', 'Thymian');
+      page.server.devices = [moist(55)];
+      page.live.resync();
       await flush(page);
       expect(gets(page)).toHaveLength(2);
       expect(hero(page)?.textContent).toContain('55');
-      expect(
-        page.element.querySelector<HTMLInputElement>('ui-text-field[name="name"] input')?.value,
-      ).toBe('Thymian');
+      expect(nameValue(page)).toBe('Thymian');
     });
 
-    it('does not let a refresh that was already on its way undo a rename', async () => {
-      vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    it('fills the name field when an event comes before the first answer', async () => {
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => (release = resolve));
+      const page = await open({
+        household: member,
+        wrap: (respond) => async (call) => {
+          const answer = respond(call);
+          if (call.method !== 'GET' || !call.path.endsWith('/devices/dev-1')) return answer;
+          await gate;
+          return answer;
+        },
+      });
+      await flush(page);
+      page.live.emit('device.state', moist(55));
+      await flush(page);
+      release();
+      await flush(page);
+      expect(hero(page)?.textContent).toContain('55');
+      expect(nameValue(page)).toBe(sensor.name);
+    });
+
+    it('does not let an answer that was already on its way undo an event', async () => {
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => (release = resolve));
+      let slowGets = 0;
+      const page = await open({
+        wrap: (respond) => async (call) => {
+          const answer = respond(call);
+          if (call.method !== 'GET' || !call.path.endsWith('/devices/dev-1')) return answer;
+          if (++slowGets < 2) return answer;
+          await gate;
+          return answer;
+        },
+      });
+      await flush(page);
+      page.live.resync();
+      await flush(page);
+      expect(gets(page)).toHaveLength(2);
+      page.live.emit('device.state', moist(55));
+      release();
+      await flush(page);
+      expect(hero(page)?.textContent).toContain('55');
+    });
+
+    it('does not let an answer that was already on its way undo a rename', async () => {
       let release!: () => void;
       const gate = new Promise<void>((resolve) => (release = resolve));
       let slowGets = 0;
@@ -330,7 +391,8 @@ describe('device page', () => {
         },
       });
       await flush(page);
-      await vi.advanceTimersByTimeAsync(60_500);
+      page.live.resync();
+      await flush(page);
       expect(gets(page)).toHaveLength(2);
       typeInto(page, 'name', 'Thymian');
       await press(page, 'Speichern');
@@ -340,34 +402,12 @@ describe('device page', () => {
       expect(page.element.querySelector('h1')?.textContent?.trim()).toBe('Thymian');
     });
 
-    it('asks once when the tick and the tab coming back meet a slow refresh', async () => {
+    it('does not load every 60 seconds any more', async () => {
       vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
       const page = await open();
       await flush(page);
-      const release = page.hold();
-      await vi.advanceTimersByTimeAsync(60_500);
-      document.dispatchEvent(new Event('visibilitychange'));
-      await vi.advanceTimersByTimeAsync(60_000);
-      expect(gets(page)).toHaveLength(2);
-      release();
-      await flush(page);
-      document.dispatchEvent(new Event('visibilitychange'));
-      await flush(page);
-      expect(gets(page)).toHaveLength(3);
-    });
-
-    it('does not load while the tab is hidden', async () => {
-      vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
-      const page = await open();
-      await flush(page);
-      visibility('hidden');
       await vi.advanceTimersByTimeAsync(180_000);
-      await flush(page);
       expect(gets(page)).toHaveLength(1);
-      visibility('visible');
-      document.dispatchEvent(new Event('visibilitychange'));
-      await flush(page);
-      expect(gets(page)).toHaveLength(2);
     });
   });
 });

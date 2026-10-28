@@ -151,7 +151,7 @@ export class ThresholdsCard {
   );
   private readonly deviceId = computed(() => this.device().id);
 
-  // What was typed is kept across the minute's refresh: it starts again only when the device's own
+  // What was typed is kept across live updates: it starts again only when the device's own
   // thresholds change (after a save, or when someone else changed them).
   protected readonly texts = linkedSignal<string, Partial<Record<ThresholdKey, string>>>({
     source: this.identity,

@@ -215,66 +215,95 @@ describe('devices page', () => {
     });
   });
 
-  describe('refresh', () => {
-    const visibility = (state: DocumentVisibilityState) =>
-      vi.spyOn(document, 'visibilityState', 'get').mockReturnValue(state);
-
-    it('loads again every 60 seconds while the tab is visible', async () => {
-      vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+  describe('live', () => {
+    it('shows a device event: a changed value and a new device', async () => {
       const page = await open({ devices: [sensor] });
       await flush(page);
+      page.live.emit('device.state', { ...sensor, state: { ...sensor.state, soil_moisture: 55 } });
+      await flush(page);
+      expect(podText(page, 'Basilikum')).toContain('55%');
+      page.live.emit('device.state', device('dev-2', 'Minze'));
+      await flush(page);
+      expect(podText(page, 'Minze')).toBeTruthy();
       expect(requests(page, 'GET', '/devices')).toHaveLength(1);
+    });
+
+    it('loads the devices and the new hardware again after a reconnect', async () => {
+      const page = await open({ devices: [sensor] });
+      await flush(page);
       page.server.devices = [{ ...sensor, state: { ...sensor.state, soil_moisture: 55 } }];
-      await vi.advanceTimersByTimeAsync(59_000);
-      expect(requests(page, 'GET', '/devices')).toHaveLength(1);
-      await vi.advanceTimersByTimeAsync(1_500);
+      page.live.resync();
       await flush(page);
       expect(requests(page, 'GET', '/devices')).toHaveLength(2);
       expect(podText(page, 'Basilikum')).toContain('55%');
     });
 
-    it('does not load while the tab is hidden, and does when it comes back', async () => {
-      vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    it('does not let a reload that was on its way undo a live event', async () => {
       const page = await open({ devices: [sensor] });
       await flush(page);
-      visibility('hidden');
-      await vi.advanceTimersByTimeAsync(180_000);
-      await flush(page);
-      expect(requests(page, 'GET', '/devices')).toHaveLength(1);
-      visibility('visible');
-      document.dispatchEvent(new Event('visibilitychange'));
-      await flush(page);
-      expect(requests(page, 'GET', '/devices')).toHaveLength(2);
-    });
-
-    it('asks once when the tick and the tab coming back meet a slow refresh', async () => {
-      vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
-      const page = await open({ devices: [sensor], hardware: [newSensor] });
-      await flush(page);
       const release = page.hold();
-      await vi.advanceTimersByTimeAsync(60_500);
-      document.dispatchEvent(new Event('visibilitychange'));
-      await vi.advanceTimersByTimeAsync(60_000);
-      expect(requests(page, 'GET', '/devices')).toHaveLength(2);
-      expect(requests(page, 'GET', '/hardware?state=unassigned')).toHaveLength(2);
+      page.live.resync();
+      page.live.emit('device.state', { ...sensor, state: { ...sensor.state, soil_moisture: 55 } });
       release();
       await flush(page);
-      document.dispatchEvent(new Event('visibilitychange'));
-      await flush(page);
-      expect(requests(page, 'GET', '/devices')).toHaveLength(3);
+      expect(requests(page, 'GET', '/devices')).toHaveLength(2);
+      expect(podText(page, 'Basilikum')).toContain('55%');
     });
 
-    it('keeps the values and stays quiet when a refresh finds no connection', async () => {
-      vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    it('stays quiet and keeps the values when a reload after a reconnect finds no connection', async () => {
       const page = await open({ devices: [sensor] });
       await flush(page);
       page.server.fail = () => {
         throw new TypeError('offline');
       };
-      await vi.advanceTimersByTimeAsync(60_500);
+      page.live.resync();
       await flush(page);
       expect(page.snackbar.show).not.toHaveBeenCalled();
       expect(podText(page, 'Basilikum')).toContain('41,3');
+    });
+
+    it('does not load every 60 seconds any more', async () => {
+      vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+      const page = await open({ devices: [sensor], hardware: [newSensor] });
+      await flush(page);
+      await vi.advanceTimersByTimeAsync(180_000);
+      expect(requests(page, 'GET', '/devices')).toHaveLength(1);
+      expect(requests(page, 'GET', '/hardware?state=unassigned')).toHaveLength(1);
+    });
+
+    describe('new hardware', () => {
+      const card = (page: OpenedHouseholdPage) => page.element.querySelector('app-new-hardware');
+      const nameInput = (page: OpenedHouseholdPage) =>
+        page.element.querySelector<HTMLInputElement>(
+          'app-new-hardware ui-text-field[name="name"] input',
+        )!;
+
+      it('shows hardware that is reported and drops one that is gone', async () => {
+        const page = await open({ devices: [sensor], hardware: [newSensor] });
+        await flush(page);
+        page.live.emit('hardware.updated', hardware('bbbb', 'Zigbee Sensor 8'));
+        await flush(page);
+        expect(pageText(card(page) as HTMLElement)).toContain('Zigbee Sensor 8');
+        page.live.emit('hardware.removed', { id: 'bbbb' });
+        await flush(page);
+        expect(pageText(card(page) as HTMLElement)).not.toContain('Zigbee Sensor 8');
+        expect(pageText(card(page) as HTMLElement)).toContain('Zigbee Sensor 7');
+      });
+
+      it('forgets the typed name and the error of hardware that is gone', async () => {
+        const page = await open({ devices: [sensor], hardware: [newSensor] });
+        await flush(page);
+        typeInto(page, 'name', '   ');
+        await press(page, 'Hinzufügen');
+        expect(pageText(card(page) as HTMLElement)).toContain('Bitte gib einen Namen');
+        page.live.emit('hardware.removed', { id: 'aaaa' });
+        await flush(page);
+        expect(card(page)?.querySelector('ui-card')).toBeNull();
+        page.live.emit('hardware.updated', newSensor);
+        await flush(page);
+        expect(nameInput(page).value).toBe('Zigbee Sensor 7');
+        expect(pageText(card(page) as HTMLElement)).not.toContain('Bitte gib einen Namen');
+      });
     });
   });
 });

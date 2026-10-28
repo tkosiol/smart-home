@@ -89,6 +89,35 @@ describe('GatewaysService', () => {
     ]);
   });
 
+  describe('find', () => {
+    const withLookup = (rows: GatewayRow[]): GatewaysService =>
+      new GatewaysService(
+        {
+          findById: (id: string) => Promise.resolve(rows.find((r) => r.id === id)),
+        } as unknown as GatewaysRepository,
+        {} as Env,
+        () => now,
+        noStatusMemory,
+        new GatewayEvents(),
+      );
+
+    it('returns the gateway with its household, a revoked one too', async () => {
+      const subject = withLookup([
+        row(),
+        row({ id: 'gw-bbbbbbbb', householdId: 'other', revokedAt: NOW }),
+      ]);
+      expect((await subject.find('gw-a1b2c3d4'))?.householdId).toBe('household');
+      expect((await subject.find('gw-a1b2c3d4'))?.gateway).toMatchObject({ id: 'gw-a1b2c3d4' });
+      const revoked = await subject.find('gw-bbbbbbbb');
+      expect(revoked?.householdId).toBe('other');
+      expect(revoked?.gateway.revokedAt).toBe(NOW.toISOString());
+    });
+
+    it('returns undefined for an unknown ID', async () => {
+      expect(await withLookup([row()]).find('gw-cccccccc')).toBeUndefined();
+    });
+  });
+
   describe('registering while a status arrives', () => {
     it('applies a status that reached the memory between recall and insert', async () => {
       const ca = createTestCa();

@@ -126,8 +126,9 @@ describe('hardware writes of the device ingest', () => {
       const deviceId = await bound(gatewayId, 'Tomatoes');
       const other = await bound(gatewayId, 'Basil');
 
-      await hardware.setAvailability(await idOf(gatewayId, 'Tomatoes'), 'online');
+      const touched = await hardware.setAvailability(await idOf(gatewayId, 'Tomatoes'), 'online');
 
+      expect(touched).toEqual([{ deviceId, householdId }]);
       expect((await rowOf(gatewayId, '0x00000000000000a1')).availability).toBe('online');
       expect(await deviceAvailability(deviceId)).toBe('online');
       // Neither another device nor its hardware is touched.
@@ -144,7 +145,7 @@ describe('hardware writes of the device ingest', () => {
       const deviceId = await bound(gatewayId, 'Moved');
       await sql`update device_bindings set unbound_at = now() where device_id = ${deviceId}`;
 
-      await hardware.setAvailability(await idOf(gatewayId, 'Moved'), 'online');
+      expect(await hardware.setAvailability(await idOf(gatewayId, 'Moved'), 'online')).toEqual([]);
 
       expect((await rowOf(gatewayId, '0x00000000000000b1')).availability).toBe('online');
       expect(await deviceAvailability(deviceId)).toBe('unknown');
@@ -153,7 +154,7 @@ describe('hardware writes of the device ingest', () => {
     it('works for hardware without a device', async () => {
       const gatewayId = await gateway();
       await hardware.upsertFromBridge(gatewayId, [sensor('0x00000000000000c1', 'Free')], now);
-      await hardware.setAvailability(await idOf(gatewayId, 'Free'), 'offline');
+      expect(await hardware.setAvailability(await idOf(gatewayId, 'Free'), 'offline')).toEqual([]);
       expect((await rowOf(gatewayId, '0x00000000000000c1')).availability).toBe('offline');
     });
   });
@@ -228,7 +229,9 @@ describe('hardware writes of the device ingest', () => {
       await hardware.recordJoined(a, '0x00000000000000f1', 'joining', now);
       await hardware.recordJoined(b, '0x00000000000000f1', 'joining', now);
 
-      await hardware.setInterviewState(a, '0x00000000000000f1', 'IN_PROGRESS');
+      const id = await hardware.setInterviewState(a, '0x00000000000000f1', 'IN_PROGRESS');
+
+      expect(id).toBe(await idOf(a, 'joining'));
 
       expect((await rowOf(a, '0x00000000000000f1')).interview_state).toBe('IN_PROGRESS');
       expect((await rowOf(b, '0x00000000000000f1')).interview_state).toBe('PENDING');
@@ -236,7 +239,9 @@ describe('hardware writes of the device ingest', () => {
 
     it('does nothing for an address the gateway does not have', async () => {
       const gatewayId = await gateway();
-      await hardware.setInterviewState(gatewayId, '0x00000000000000f9', 'FAILED');
+      expect(
+        await hardware.setInterviewState(gatewayId, '0x00000000000000f9', 'FAILED'),
+      ).toBeUndefined();
       expect(await hardware.listNames(gatewayId)).toEqual([]);
     });
   });
@@ -249,6 +254,76 @@ describe('hardware writes of the device ingest', () => {
       expect(await hardware.rename(gatewayId, 'Before', 'After')).toBe(id);
       expect(await hardware.findByName(gatewayId, 'After')).toMatchObject({ id });
       expect(await hardware.rename(gatewayId, 'Before', 'Again')).toBeUndefined();
+    });
+  });
+
+  describe('upsertFromBridge ids', () => {
+    it('lists the hardware that was added, updated or removed', async () => {
+      const gatewayId = await gateway();
+      const first = await hardware.upsertFromBridge(
+        gatewayId,
+        [sensor('0x0000000000000c01', 'One'), sensor('0x0000000000000c02', 'Two')],
+        now,
+      );
+      const one = await idOf(gatewayId, 'One');
+      const two = await idOf(gatewayId, 'Two');
+      expect([...first.ids].sort()).toEqual([one, two].sort());
+
+      const second = await hardware.upsertFromBridge(
+        gatewayId,
+        [sensor('0x0000000000000c01', 'One')],
+        later,
+      );
+      expect([...second.ids].sort()).toEqual([one, two].sort());
+      expect((await hardware.upsertFromBridge(gatewayId, [], later)).ids).toEqual([one]);
+    });
+  });
+
+  describe('listingOf', () => {
+    it('gives free hardware with its household', async () => {
+      const gatewayId = await gateway();
+      await hardware.upsertFromBridge(gatewayId, [sensor('0x0000000000000d01', 'Free one')], now);
+      const id = await idOf(gatewayId, 'Free one');
+      const result = await hardware.listingOf(id);
+      expect(result?.householdId).toBe(householdId);
+      expect(result?.listed).toMatchObject({ id, friendlyName: 'Free one' });
+      expect(result?.listed?.capabilities).toHaveLength(1);
+      // It is what the household's list of new hardware shows.
+      expect((await hardware.listUnassigned(householdId)).map((row) => row.id)).toContain(id);
+    });
+
+    it('is not listed once assigned, removed or when its gateway is revoked', async () => {
+      const gatewayId = await gateway();
+      await hardware.upsertFromBridge(
+        gatewayId,
+        [sensor('0x0000000000000d02', 'Assigned'), sensor('0x0000000000000d03', 'Gone')],
+        now,
+      );
+      await bound(gatewayId, 'Assigned');
+      await hardware.markLeft(gatewayId, '0x0000000000000d03', now);
+      const revoked = await gateway();
+      await hardware.upsertFromBridge(revoked, [sensor('0x0000000000000d04', 'Orphan')], now);
+      await sql`update gateways set revoked_at = now() where id = ${revoked}`;
+
+      for (const [id, name] of [
+        [await idOf(gatewayId, 'Assigned'), 'Assigned'],
+        [
+          (await sql<{ id: string }[]>`select id from hardware where friendly_name = 'Gone'`)[0]
+            ?.id ?? '',
+          'Gone',
+        ],
+        [
+          (await sql<{ id: string }[]>`select id from hardware where friendly_name = 'Orphan'`)[0]
+            ?.id ?? '',
+          'Orphan',
+        ],
+      ] as const) {
+        expect(await hardware.listingOf(id), name).toEqual({ householdId, listed: null });
+      }
+    });
+
+    it('is undefined for an unknown hardware', async () => {
+      expect(await hardware.listingOf('00000000-0000-4000-8000-000000000000')).toBeUndefined();
     });
   });
 

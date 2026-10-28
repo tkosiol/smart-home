@@ -180,6 +180,29 @@ test.describe.serial('devices from the simulator', () => {
     await expect(card.locator('ui-value-table tbody tr').first()).toBeVisible();
   });
 
+  test('a new reading shows on the open device page without a reload or a request', async ({
+    page,
+  }) => {
+    await page.goto('/geraete');
+    await pod(page, 'Pflanze 1').getByRole('link').click();
+    await expect(page).toHaveURL(/\/geraete\/[0-9a-f-]+$/);
+    await expectSoilMoisture(page);
+    // The temperature carries one decimal and noise on every report: it changes on most reports.
+    const temperature = pod(page, 'Temperatur', readingsOf(page));
+    await expect(temperature).toContainText(/\d/);
+    const first = await temperature.innerText();
+
+    // From here on, a request for the device would mean polling instead of the stream.
+    const requests: string[] = [];
+    page.on('request', (request) => {
+      if (/\/api\/v1\/households\/[^/]+\/devices\/[^/?]+(\?|$)/.test(request.url())) {
+        requests.push(request.url());
+      }
+    });
+    await expect.poll(async () => temperature.innerText(), { timeout: 45_000 }).not.toBe(first);
+    expect(requests).toEqual([]);
+  });
+
   test('a member of the household sees the device but not "Neu erkannt"', async ({ browser }) => {
     const { link } = await inviteThroughApi('theme', MEMBER.email, 'member');
     // A new person: the saved state of `theme`, which this file uses, must not apply.

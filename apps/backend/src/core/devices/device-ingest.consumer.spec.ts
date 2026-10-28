@@ -16,6 +16,7 @@ import type {
 } from '../../platform/mqtt/index.js';
 import type { NameMap } from './name-map.js';
 import type { DeviceMessageHandler } from './device-message-handler.js';
+import { DEVICE_CHANGED, DeviceEvents, HARDWARE_CHANGED } from './device-events.js';
 import { DeviceIngestConsumer } from './device-ingest.consumer.js';
 import type { HardwareRepository, Z2mDevice } from './hardware.repository.js';
 
@@ -83,6 +84,8 @@ describe('DeviceIngestConsumer', () => {
   let now: Date;
   let mqtt: FakeMqtt;
   let events: GatewayEvents;
+  let deviceEvents: DeviceEvents;
+  let announced: [string, unknown][];
   let active: ActiveGateway[];
   let stored: Map<string, { id: string; friendlyName: string }[]>;
   let consumer: DeviceIngestConsumer;
@@ -116,6 +119,11 @@ describe('DeviceIngestConsumer', () => {
     now = T0;
     mqtt = new FakeMqtt();
     events = new GatewayEvents();
+    deviceEvents = new DeviceEvents();
+    announced = [];
+    for (const name of [DEVICE_CHANGED, HARDWARE_CHANGED]) {
+      deviceEvents.on(name, (event) => announced.push([name, event]));
+    }
     active = [{ id: GW, householdId: 'household', topicPrefix: prefix(GW) }];
     stored = new Map();
     for (const mock of [
@@ -130,7 +138,7 @@ describe('DeviceIngestConsumer', () => {
     ]) {
       mock.mockReset();
     }
-    upsertFromBridge.mockResolvedValue({ upserted: 0, removed: 0 });
+    upsertFromBridge.mockResolvedValue({ upserted: 0, removed: 0, ids: [] });
     // After an upsert the database holds the listed devices under ids `h-<ieee>`.
     listNames.mockImplementation((gatewayId) => Promise.resolve(stored.get(gatewayId) ?? []));
     upsertFromBridge.mockImplementation((gatewayId, devices: readonly Z2mDevice[]) => {
@@ -141,13 +149,17 @@ describe('DeviceIngestConsumer', () => {
           friendlyName: device.friendlyName,
         })),
       );
-      return Promise.resolve({ upserted: devices.length, removed: 0 });
+      return Promise.resolve({
+        upserted: devices.length,
+        removed: 0,
+        ids: devices.map((device) => `${gatewayId}:${device.ieeeAddress}`),
+      });
     });
     recordJoined.mockResolvedValue('h-joined');
-    setInterviewState.mockResolvedValue();
+    setInterviewState.mockResolvedValue(undefined);
     markLeft.mockResolvedValue(undefined);
     rename.mockResolvedValue(undefined);
-    setAvailability.mockResolvedValue();
+    setAvailability.mockResolvedValue([]);
     handle.mockResolvedValue();
     log.mockClear();
     warn.mockClear();
@@ -166,6 +178,7 @@ describe('DeviceIngestConsumer', () => {
       { handle },
       mqtt as unknown as MqttConnection,
       () => now,
+      deviceEvents,
     );
   });
 
@@ -249,6 +262,7 @@ describe('DeviceIngestConsumer', () => {
           { handle },
           mqtt as unknown as MqttConnection,
           () => now,
+          deviceEvents,
         );
         consumer.onModuleInit();
         await consumer.idle();
@@ -273,6 +287,7 @@ describe('DeviceIngestConsumer', () => {
         { handle },
         mqtt as unknown as MqttConnection,
         () => now,
+        deviceEvents,
       );
       consumer.onModuleInit();
       await new Promise((resolve) => setImmediate(resolve));
@@ -297,6 +312,7 @@ describe('DeviceIngestConsumer', () => {
           { handle },
           mqtt as unknown as MqttConnection,
           () => now,
+          deviceEvents,
         );
         consumer.onModuleInit();
         await consumer.idle();
@@ -321,6 +337,7 @@ describe('DeviceIngestConsumer', () => {
           { handle },
           mqtt as unknown as MqttConnection,
           () => now,
+          deviceEvents,
         );
         consumer.onModuleInit();
         await consumer.idle();
@@ -864,6 +881,85 @@ describe('DeviceIngestConsumer', () => {
       expect(setAvailability).not.toHaveBeenCalled();
       await send(`${prefix(OTHER)}/bridge/devices`, JSON.parse(fixture), true);
       expect(setAvailability).toHaveBeenCalledWith(`${OTHER}:0x00000000000000a7`, 'online');
+    });
+  });
+
+  describe('announcements', () => {
+    const hw = (hardwareId: string): [string, unknown] => [HARDWARE_CHANGED, { hardwareId }];
+    const event = (type: string, data: unknown) =>
+      send(`${prefix(GW)}/bridge/event`, { type, data });
+
+    beforeEach(async () => {
+      await start();
+    });
+
+    it('announces the hardware of a bridge list that was stored', async () => {
+      upsertFromBridge.mockResolvedValue({ upserted: 2, removed: 1, ids: ['h1', 'h2', 'h3'] });
+      await send(`${prefix(GW)}/bridge/devices`, JSON.parse(fixture));
+      expect(announced).toEqual([hw('h1'), hw('h2'), hw('h3')]);
+    });
+
+    it('announces nothing for a list that is thrown away', async () => {
+      await send(`${prefix(GW)}/bridge/devices`, 'garbage');
+      expect(announced).toEqual([]);
+    });
+
+    it('announces the hardware that joined, was interviewed, left or was renamed', async () => {
+      await event('device_joined', { friendly_name: 'new', ieee_address: '0x00000000000000c1' });
+      expect(announced).toEqual([hw('h-joined')]);
+
+      announced.length = 0;
+      setInterviewState.mockResolvedValue('h-int');
+      await event('device_interview', {
+        friendly_name: 'new',
+        ieee_address: '0x00000000000000c1',
+        status: 'successful',
+      });
+      expect(announced).toEqual([hw('h-int')]);
+
+      announced.length = 0;
+      markLeft.mockResolvedValue({ id: 'h-left', friendlyName: 'new' });
+      await event('device_leave', { friendly_name: 'new', ieee_address: '0x00000000000000c1' });
+      expect(announced).toEqual([hw('h-left')]);
+
+      announced.length = 0;
+      rename.mockResolvedValue('h-renamed');
+      await event('device_renamed', { from: 'a', to: 'b' });
+      expect(announced).toEqual([hw('h-renamed')]);
+    });
+
+    it('announces nothing when an event matched no hardware', async () => {
+      await event('device_interview', {
+        friendly_name: 'x',
+        ieee_address: '0x00000000000000c1',
+        status: 'failed',
+      });
+      await event('device_leave', { friendly_name: 'x', ieee_address: '0x00000000000000c1' });
+      await event('device_renamed', { from: 'a', to: 'b' });
+      expect(announced).toEqual([]);
+    });
+
+    it('announces the hardware and the devices on it for an availability', async () => {
+      await send(`${prefix(GW)}/bridge/devices`, JSON.parse(fixture));
+      announced.length = 0;
+      setAvailability.mockResolvedValue([{ deviceId: 'd1', householdId: 'hh' }]);
+      await send(`${prefix(GW)}/Pflanze 3/availability`, 'online');
+      expect(announced).toEqual([
+        hw(`${GW}:0x00000000000000a3`),
+        [DEVICE_CHANGED, { householdId: 'hh', deviceId: 'd1' }],
+      ]);
+    });
+
+    it('announces the hardware of an availability that was kept until the list came', async () => {
+      active.push({ id: OTHER, householdId: 'household', topicPrefix: prefix(OTHER) });
+      events.emit(GATEWAY_REGISTERED, { gatewayId: OTHER, topicPrefix: prefix(OTHER) });
+      await consumer.idle();
+      await send(`${prefix(OTHER)}/Lampe/availability`, 'online', true);
+      announced.length = 0;
+      setAvailability.mockResolvedValue([{ deviceId: 'd2', householdId: 'hh' }]);
+      await send(`${prefix(OTHER)}/bridge/devices`, JSON.parse(fixture), true);
+      expect(announced).toContainEqual(hw(`${OTHER}:0x00000000000000a7`));
+      expect(announced).toContainEqual([DEVICE_CHANGED, { householdId: 'hh', deviceId: 'd2' }]);
     });
   });
 });

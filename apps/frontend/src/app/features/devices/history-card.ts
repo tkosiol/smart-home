@@ -42,7 +42,8 @@ import {
 import { UiChipSet, UiSegmentedButton, type UiChipOption } from '@smart/ui/forms';
 import { ApiError } from '../../core/api';
 import { HouseholdContext, injectHouseholdErrorHandler } from '../../core/household';
-import { RefreshGuard, refreshWhileVisible } from '../../core/refresh';
+import { injectLive, throttled } from '../../core/live';
+import { RefreshGuard } from '../../core/refresh';
 import { NO_VALUE } from './device-pod';
 import { capabilityLabelKey, formatNumber } from './device-values';
 import { DevicesApi } from './devices.api';
@@ -63,8 +64,13 @@ import {
   type TableRow,
 } from './history-model';
 
-/** How often the shown history is fetched again while the page is in view. */
-export const HISTORY_REFRESH_MS = 300_000;
+/** The shortest time between two reloads caused by the device's reports. */
+const RELOAD_WINDOW_MS = 60_000;
+/**
+ * The backend writes buffered readings once a second, and the event goes out when one is buffered:
+ * a reload started by an event waits this long so it sees the reading that caused it.
+ */
+const WRITER_SETTLE_MS = 2_000;
 const DEFAULT_RANGE: HistoryRange = '7d';
 
 /** The texts this card composes in code: root keys, marked so the key check finds them. */
@@ -97,7 +103,7 @@ function noteKeyOf(row: TableRow): string {
  * The "Verlauf" of a device (spec 4.3): one reading at a time (chips, the main value first) over
  * 24 hours, 7 days or 4 weeks, as a chart or, on request, a table. Above the chart stands the value
  * (the current one, or the one under the pointer with the time it stands for), below it what
- * happened in the period. The history is fetched again every five minutes; an answer to an older
+ * happened in the period. The history is fetched again when the device reports (at most once a minute); an answer to an older
  * choice of reading or period never replaces the current one.
  */
 @Component({
@@ -441,9 +447,8 @@ export class HistoryCard {
         void this.load(householdId, deviceId, key, range, true);
       });
     });
-    refreshWhileVisible(
-      this.refresh,
-      () =>
+    const reload = () =>
+      void this.refresh.run(() =>
         this.load(
           this.household.current()?.id,
           this.deviceId(),
@@ -451,8 +456,23 @@ export class HistoryCard {
           this.range(),
           false,
         ),
-      HISTORY_REFRESH_MS,
-    );
+      );
+    const reloads = throttled(RELOAD_WINDOW_MS, reload);
+    let settling: ReturnType<typeof setTimeout> | undefined;
+    inject(DestroyRef).onDestroy(() => {
+      clearTimeout(settling);
+      reloads.dispose();
+    });
+    injectLive({
+      'device.state': (device) => {
+        if (device.id !== this.deviceId() || settling !== undefined) return;
+        settling = setTimeout(() => {
+          settling = undefined;
+          reloads.trigger();
+        }, WRITER_SETTLE_MS);
+      },
+      resync: reload,
+    });
   }
 
   protected chooseRange(range: HistoryRange | undefined): void {

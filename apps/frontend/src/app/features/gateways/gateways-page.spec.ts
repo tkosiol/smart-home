@@ -626,4 +626,33 @@ describe('gateways page', () => {
       expect(pageText(page.element)).not.toContain('Noch keine Gateways');
     });
   });
+
+  describe('live', () => {
+    it('shows a changed gateway and a new one', async () => {
+      const page = await open();
+      expect(entryText(page, 'Flur')).toContain('Bridge: Online');
+      page.live.emit('gateway.status', { ...flur, bridgeStatus: 'offline' });
+      page.harness.detectChanges();
+      expect(entryText(page, 'Flur')).toContain('Bridge: Offline');
+      page.live.emit('gateway.status', gateway('gw-eeeeeeee', 'Dach'));
+      page.harness.detectChanges();
+      expect(entry(page, 'Dach')).toBeTruthy();
+      expect(page.calls.filter((call) => call.path === `${base}/gateways`)).toHaveLength(1);
+    });
+
+    it('loads again after a reconnect and stays quiet when there is no connection', async () => {
+      const page = await open();
+      page.server.gateways = [flur, keller, gateway('gw-eeeeeeee', 'Dach')];
+      page.live.resync();
+      await flush(page);
+      expect(entry(page, 'Dach')).toBeTruthy();
+      page.server.fail = () => {
+        throw new TypeError('offline');
+      };
+      page.live.resync();
+      await flush(page);
+      expect(page.snackbar.show).not.toHaveBeenCalled();
+      expect(entry(page, 'Dach')).toBeTruthy();
+    });
+  });
 });

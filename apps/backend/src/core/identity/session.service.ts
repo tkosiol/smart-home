@@ -66,6 +66,14 @@ export class SessionService {
     return { ...base, refreshed: true, expiresAt };
   }
 
+  /** Whether the session is neither revoked nor expired (idle or absolute); does not extend it. */
+  async isActive(sessionId: string): Promise<boolean> {
+    const session = await this.sessions.findById(sessionId);
+    if (!session || session.revokedAt) return false;
+    const now = this.clock();
+    return session.expiresAt > now && session.absoluteExpiresAt > now;
+  }
+
   async revoke(sessionId: string): Promise<void> {
     await this.sessions.revoke(sessionId, this.clock());
   }

@@ -2,10 +2,12 @@ export {
   GATEWAY_REGISTERED,
   GATEWAY_REVOKED,
   GATEWAY_STATUS_CHANGED,
+  GATEWAY_TOUCHED,
   GatewayEvents,
   type GatewayRegistered,
   type GatewayRevoked,
   type GatewayStatusChanged,
+  type GatewayTouched,
 } from './gateway-events.js';
 export {
   GATEWAY_STATUS_MEMORY,

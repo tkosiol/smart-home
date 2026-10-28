@@ -14,7 +14,12 @@ import type { App } from 'supertest/types.js';
 import { inject } from 'vitest';
 import { AppModule } from '../src/app.module.js';
 import { configureApp } from '../src/app.setup.js';
-import { DEVICE_THRESHOLDS_CHANGED, DeviceEvents } from '../src/core/devices/index.js';
+import {
+  DEVICE_CHANGED,
+  DEVICE_THRESHOLDS_CHANGED,
+  DeviceEvents,
+  HARDWARE_CHANGED,
+} from '../src/core/devices/index.js';
 import { SESSION_COOKIE, SessionService, UsersRepository } from '../src/core/identity/index.js';
 import {
   DATABASE,
@@ -240,6 +245,36 @@ describe('hardware and devices of a household', () => {
       expect(deviceSchema.parse(one.body)).toEqual(created);
       const unassigned = await get(`${HOUSEHOLDS}/${h.id}/hardware?state=unassigned`, h.owner);
       expect(unassigned.body).toEqual([]);
+    });
+
+    it('announces the device and the hardware that is assigned now', async () => {
+      const h = await household();
+      const hardwareId = await addHardware(h.gatewayId, 'bed-1');
+      const log: [string, unknown][] = [];
+      const bus = app.get(DeviceEvents);
+      const listeners = [DEVICE_CHANGED, HARDWARE_CHANGED].map((name) => {
+        const listener = (event: unknown) => log.push([name, event]);
+        bus.on(name, listener);
+        return [name, listener] as const;
+      });
+      try {
+        const response = await post(`${HOUSEHOLDS}/${h.id}/devices`, h.owner, {
+          hardwareId,
+          name: 'Bed',
+        }).expect(201);
+        const created = deviceSchema.parse(response.body);
+        expect(log).toEqual([
+          [DEVICE_CHANGED, { householdId: h.id, deviceId: created.id }],
+          [HARDWARE_CHANGED, { hardwareId }],
+        ]);
+        await patch(`${HOUSEHOLDS}/${h.id}/devices/${created.id}`, h.owner, {
+          name: 'Roses',
+        }).expect(200);
+        expect(log).toHaveLength(3);
+        expect(log[2]).toEqual([DEVICE_CHANGED, { householdId: h.id, deviceId: created.id }]);
+      } finally {
+        for (const [name, listener] of listeners) bus.off(name, listener);
+      }
     });
 
     it('is for owners only and creates nothing for members', async () => {

@@ -32,7 +32,8 @@ import {
 import { UiTextField } from '@smart/ui/forms';
 import { ApiError } from '../../core/api';
 import { HouseholdContext, injectHouseholdErrorHandler } from '../../core/household';
-import { RefreshGuard, isNetworkFailure, refreshWhileVisible } from '../../core/refresh';
+import { injectLive } from '../../core/live';
+import { RefreshGuard, isNetworkFailure } from '../../core/refresh';
 import { heroOf, kindKey, sidePodsOf } from './device-hero';
 import { capabilityLabelKey, isBatteryLow } from './device-values';
 import { DevicesApi } from './devices.api';
@@ -44,7 +45,7 @@ import { ThresholdsCard } from './thresholds-card';
  * One device (spec 3.3): the hero with its main value, status and target range,
  * the next readings as pods, when it last reported, a banner while it is offline or its battery is
  * low, its history (next to the values from the Expanded window class) and the thresholds; members
- * can rename it and change the thresholds. The values are fetched again every minute.
+ * can rename it and change the thresholds. The values follow live events.
  */
 @Component({
   selector: 'app-device-page',
@@ -242,7 +243,7 @@ export class DevicePage {
     return role !== undefined && hasRole(role, 'member');
   });
 
-  // The typed name is kept across the minute's refresh: only the first load of a household's
+  // The typed name is kept across live updates and reloads: only the first load of a household's
   // device (and a successful rename) sets it.
   protected readonly name = linkedSignal<string | undefined, string>({
     source: this.currentId,
@@ -267,7 +268,10 @@ export class DevicePage {
         void this.load(id);
       });
     });
-    refreshWhileVisible(this.refresh, () => this.load(this.currentId()));
+    injectLive({
+      'device.state': (device) => this.updated(device),
+      resync: () => void this.refresh.run(() => this.load(this.currentId())),
+    });
   }
 
   private async load(householdId: string | undefined): Promise<void> {
@@ -296,6 +300,11 @@ export class DevicePage {
     if (device.id !== this.deviceId) return;
     // A refresh that was asked before this change may still be on its way with the old values.
     this.requests++;
+    // The first load's answer is dropped by the bump above: this event is the first sight.
+    if (this.device() === null) {
+      this.name.set(device.name);
+      this.notFound.set(false);
+    }
     this.device.set(device);
   }
 

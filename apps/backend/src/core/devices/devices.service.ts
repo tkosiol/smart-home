@@ -9,7 +9,14 @@ import {
 } from '@smart/contracts';
 import { ApiError } from '../../platform/http/index.js';
 import { isUuid } from '../households/index.js';
-import { DeviceEvents, DEVICE_THRESHOLDS_CHANGED } from './device-events.js';
+import {
+  DEVICE_CHANGED,
+  DEVICE_THRESHOLDS_CHANGED,
+  DeviceEvents,
+  HARDWARE_CHANGED,
+  type DeviceChanged,
+  type HardwareChanged,
+} from './device-events.js';
 import { DevicesRepository, type DeviceView } from './devices.repository.js';
 import { HardwareRepository, type HardwareWithCapabilities } from './hardware.repository.js';
 
@@ -76,6 +83,12 @@ export class DevicesService {
     }
     const view = await this.devices.get(householdId, result.device.id);
     if (!view) throw new Error('created device is not readable');
+    this.events.emit(DEVICE_CHANGED, {
+      householdId,
+      deviceId: view.id,
+    } satisfies DeviceChanged);
+    // The hardware is assigned now and leaves the list of new hardware.
+    this.events.emit(HARDWARE_CHANGED, { hardwareId: input.hardwareId } satisfies HardwareChanged);
     return toDevice(view);
   }
 
@@ -119,6 +132,7 @@ export class DevicesService {
     if (updated.thresholdsChanged) {
       this.events.emit(DEVICE_THRESHOLDS_CHANGED, { householdId, deviceId });
     }
+    this.events.emit(DEVICE_CHANGED, { householdId, deviceId } satisfies DeviceChanged);
     return toDevice(updated.view);
   }
 }

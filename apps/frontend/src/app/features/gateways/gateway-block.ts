@@ -11,7 +11,8 @@ import { TranslocoPipe } from '@jsverse/transloco';
 import type { Gateway } from '@smart/contracts';
 import { UiRelativeTimePipe, UiStack, UiStatusEntry } from '@smart/ui';
 import { HouseholdContext, injectHouseholdErrorHandler, LoadedList } from '../../core/household';
-import { RefreshGuard, refreshWhileVisible } from '../../core/refresh';
+import { injectLive } from '../../core/live';
+import { RefreshGuard } from '../../core/refresh';
 import { GATEWAY_TONE, gatewayState } from './gateway-status';
 import { GatewaysApi } from './gateways.api';
 import { provideGatewaysTexts } from './gateways-texts';
@@ -89,6 +90,9 @@ export class GatewayBlock {
       const id = this.currentId();
       untracked(() => void this.gateways.load(id));
     });
-    refreshWhileVisible(this.refresh, () => this.gateways.load(this.currentId(), true));
+    injectLive({
+      'gateway.status': (gateway) => this.gateways.upsert(gateway),
+      resync: () => void this.refresh.run(() => this.gateways.load(this.currentId(), true)),
+    });
   }
 }
