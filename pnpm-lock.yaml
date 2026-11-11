@@ -287,8 +287,8 @@ importers:
         specifier: ^7.0.0
         version: 7.3.1(supports-color@7.2.0)
       testcontainers:
-        specifier: 12.2.0
-        version: 12.2.0(supports-color@7.2.0)
+        specifier: 12.2.1
+        version: 12.2.1(supports-color@7.2.0)
       typescript:
         specifier: 6.0.3
         version: 6.0.3
@@ -9249,8 +9249,8 @@ packages:
     resolution: {integrity: sha512-u9E6A+ZDYdp7a4WnarkXPZOx8Ilz46+kby6p1yZ8zsGTz9gYa6FIS7lj2oezzNKmtdyyJNNmmXDppga5GB7kSw==}
     engines: {node: '>=18'}
 
-  testcontainers@12.2.0:
-    resolution: {integrity: sha512-Pd0c2eU0DdIuK+Pb3c+vmBUdKjDLgxZmPecQGESFAKyn5LTqSaSw8l7htfMlLwabb/QsUILe6XkxMJw8Ly/ThA==}
+  testcontainers@12.2.1:
+    resolution: {integrity: sha512-JfbCyOvLdzatwgqUI3AvYCwRW0P5mCkKQVBPO8U5qSH1efC2kHvnfWmi9VHloy1rAFG2MEqWZObRH4bq0gU1kQ==}
     engines: {node: '>= 22.22'}
 
   text-decoder@1.2.7:
@@ -13480,7 +13480,7 @@ snapshots:
 
   '@testcontainers/postgresql@12.2.0(supports-color@7.2.0)':
     dependencies:
-      testcontainers: 12.2.0(supports-color@7.2.0)
+      testcontainers: 12.2.1(supports-color@7.2.0)
     transitivePeerDependencies:
       - bare-abort-controller
       - bare-buffer
@@ -19598,7 +19598,7 @@ snapshots:
       glob: 10.5.0
       minimatch: 10.2.6
 
-  testcontainers@12.2.0(supports-color@7.2.0):
+  testcontainers@12.2.1(supports-color@7.2.0):
     dependencies:
       '@balena/dockerignore': 1.0.2
       '@types/dockerode': 4.0.2
