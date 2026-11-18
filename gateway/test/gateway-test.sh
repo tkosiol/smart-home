@@ -366,11 +366,17 @@ check "QoS 0 outage: the VPS subscriber is ready (a probe came through)" 'docker
 mosquitto_container=$(compose ps -q mosquitto)
 docker network disconnect "$NET" "$mosquitto_container"
 local_bridge_state() { local_sub -t "gw/$GATEWAY_ID/bridge/connection" -F '%p' -C 1 -W 2 2> /dev/null; }
-for _ in $(seq 1 60); do
-  [ "$(local_bridge_state)" = 0 ] && break
-  sleep 1
-done
-check "QoS 0 outage: the bridge noticed the lost link (local notification 0)" '[ "$(local_bridge_state)" = 0 ]'
+# The bridge needs more than one keepalive interval to notice (ping, then no answer), so wait up to 90 s. The
+# check judges the wait itself: reading the notification a second time would fail on a single slow or failed
+# `exec` although the bridge had already noticed.
+bridge_noticed_within() {
+  for _ in $(seq 1 "$1"); do
+    [ "$(local_bridge_state)" = 0 ] && return 0
+    sleep 1
+  done
+  return 1
+}
+check "QoS 0 outage: the bridge noticed the lost link (local notification 0)" 'bridge_noticed_within 90'
 for i in $(seq 1 20); do local_pub -q 0 -t zigbee2mqtt/buf0 -m "q0-$i" > /dev/null 2>&1; done
 docker network connect "$NET" "$mosquitto_container"
 for _ in $(seq 1 60); do
