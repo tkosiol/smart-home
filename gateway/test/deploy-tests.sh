@@ -431,6 +431,18 @@ teardown
 setup; mkdir -p "$PI_DIR/migration"; echo "rolled-back 20260101T000000Z 999999 rollback" > "$PI_DIR/migration/status"
 check "after rolled-back a new --migrate is allowed (the old stack runs, the new data folder is empty)" '[ "$(SMART_PI_OLD_STACK="$OLD" deploy --migrate)" = 0 ]'
 teardown
+# The first status line of a rerun replaces the stale one of the earlier run (dead pid) while the poll reads it: the
+# poll must not pair the pid of the old line with the new line (that read "vanished" for a run that was alive).
+setup; mkdir -p "$PI_DIR/migration"; echo "rolled-back 20260101T000000Z 999999 rollback" > "$PI_DIR/migration/status"
+sleep 30 &
+live_pid=$!
+export SMART_PI_OLD_STACK="$OLD" STUB_NO_START=1 SMART_DEPLOY_STAMP=20260202T000000Z SMART_DEPLOY_MIGRATE_TIMEOUT=3
+export STUB_CUT_FINISH="$PI_DIR/migration/status|running 20260202T000000Z $live_pid copy"
+check "a rerun that writes its first status while the poll reads the stale line is not reported as vanished" '[ "$(deploy --migrate)" = 1 ] && grep -q "gave up waiting" "$OUT" && ! grep -q "UNKNOWN" "$OUT"'
+kill "$live_pid"
+wait "$live_pid" 2> /dev/null
+echo "done 20260202T000000Z $live_pid end" > "$PI_DIR/migration/status"
+teardown
 setup; mkdir -p "$PI_DIR/zigbee2mqtt-data"; echo x > "$PI_DIR/zigbee2mqtt-data/database.db"; export STUB_LIST_OLD=1
 check "a plain deploy refuses while the old stack's zigbee2mqtt container runs, names it and the way out" '[ "$(deploy)" = 1 ] && grep -q "old-stack-zigbee2mqtt-1" "$OUT" && grep -q "docker-compose.yml" "$OUT" && grep -q "sudo docker ps" "$OUT" && ! grep -q "^rsync" "$CALLS" && no_stack_calls && no_changes_on_pi'
 check "deploy --fresh refuses too" '[ "$(deploy --fresh)" = 1 ] && grep -q "old-stack-zigbee2mqtt-1" "$OUT" && ! grep -q "^rsync" "$CALLS"'
