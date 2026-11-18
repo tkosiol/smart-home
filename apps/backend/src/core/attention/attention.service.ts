@@ -31,8 +31,11 @@ import {
   type GatewayStatusChanged,
 } from '../gateways/index.js';
 import { CLOCK, type Clock } from '../identity/index.js';
+import { MeasurementsRepository } from '../telemetry/index.js';
 import { ATTENTION_CHANGED, AttentionEvents, type AttentionChanged } from './attention-events.js';
 import {
+  BATTERY_HYSTERESIS,
+  SOIL_HYSTERESIS,
   evaluateWithHeld,
   openContacts,
   type DeviceSnapshot,
@@ -41,6 +44,9 @@ import {
 
 /** How often the time conditions (open too long, silent, gateway away) are looked at again. */
 export const TICK_MS = 30_000;
+
+/** How far back the stored readings are searched for the start of a condition (after a restart). */
+export const SINCE_LOOKBACK_MS = 90 * 86_400_000;
 
 interface HouseholdState {
   snapshot: Snapshot;
@@ -83,6 +89,8 @@ export class AttentionService implements OnModuleInit, OnModuleDestroy {
   private readonly deviceHouseholds = new Map<string, string>();
   private readonly gatewayHouseholds = new Map<string, string>();
   /** When each gateway was first seen here; the start of the wait for one never heard from. */
+  /** Per item ID the start of its condition from the readings; `null`: no reading found. */
+  private readonly sinceFound = new Map<string, Date | null>();
   private readonly gatewaysKnown = new Map<string, Date>();
   private readonly queued = new Set<string>();
   private tail: Promise<unknown> = Promise.resolve();
@@ -92,6 +100,7 @@ export class AttentionService implements OnModuleInit, OnModuleDestroy {
     private readonly gateways: GatewaysService,
     private readonly devices: DevicesRepository,
     private readonly hardware: HardwareRepository,
+    private readonly measurements: MeasurementsRepository,
     private readonly gatewayEvents: GatewayEvents,
     private readonly deviceEvents: DeviceEvents,
     private readonly attentionEvents: AttentionEvents,
@@ -149,7 +158,8 @@ export class AttentionService implements OnModuleInit, OnModuleDestroy {
     // A device of a gateway that is not active (revoked) is left out, as in `reload`.
     const shown = view && state.snapshot.gateways.some((gateway) => gateway.id === view.gatewayId);
     const devices = shown ? [...others, toDeviceSnapshot(view)] : others;
-    this.apply(householdId, { ...state.snapshot, devices });
+    const snapshot = { ...state.snapshot, devices };
+    this.apply(householdId, snapshot, await this.sinceHints(householdId, snapshot));
   }
 
   /** Resolves when the recomputations requested so far are done. */
@@ -183,7 +193,7 @@ export class AttentionService implements OnModuleInit, OnModuleDestroy {
     const crlNextUpdate = crlWarned ? ((await this.gateways.crlNextUpdate()) ?? null) : null;
     const known = new Set(active.map((gateway) => gateway.id));
     const seen = this.clock();
-    this.apply(householdId, {
+    const snapshot: Snapshot = {
       gateways: active.map((gateway) => ({
         id: gateway.id,
         name: gateway.name,
@@ -205,14 +215,19 @@ export class AttentionService implements OnModuleInit, OnModuleDestroy {
         firstSeenAt: row.firstSeenAt,
       })),
       crlNextUpdate,
-    });
+    };
+    this.apply(householdId, snapshot, await this.sinceHints(householdId, snapshot));
   }
 
   /**
    * Stores the household's items for the snapshot. A household with nothing in it (no gateway,
    * device or hardware) is not kept: `ensureComputed` makes it again when someone asks.
    */
-  private apply(householdId: string, snapshot: Snapshot): void {
+  private apply(
+    householdId: string,
+    snapshot: Snapshot,
+    sinceHints: ReadonlyMap<string, Date>,
+  ): void {
     const now = this.clock();
     const previous = this.households.get(householdId);
     this.forget(householdId);
@@ -230,6 +245,7 @@ export class AttentionService implements OnModuleInit, OnModuleDestroy {
       items: previous?.items ?? [],
       held: previous?.held,
       contactOpenSince: previous?.contactOpenSince,
+      sinceHints,
     };
     const { items, held } = evaluateWithHeld(snapshot, before, now);
     this.households.set(householdId, {
@@ -250,6 +266,66 @@ export class AttentionService implements OnModuleInit, OnModuleDestroy {
     } catch (error) {
       this.logger.warn(`Cannot announce changed attention items: ${describeError(error)}`);
     }
+  }
+
+  /**
+   * For each soil and battery condition that holds now without an item from before (the first
+   * computation after a start, or a device seen for the first time), when it began according to
+   * the stored readings: the start of the run of readings beyond the threshold. Without a reading
+   * (or when the lookup fails) there is no hint and the item starts at the last report.
+   */
+  private async sinceHints(householdId: string, snapshot: Snapshot): Promise<Map<string, Date>> {
+    const state = this.households.get(householdId);
+    const known = new Set([...(state?.items ?? []), ...(state?.held ?? [])].map((i) => i.id));
+    const from = new Date(this.clock().getTime() - SINCE_LOOKBACK_MS);
+    const hints = new Map<string, Date>();
+    const lookups: Promise<void>[] = [];
+    const consider = (
+      id: string,
+      value: unknown,
+      capability: string,
+      below: number | null,
+      margin: number,
+      deviceId: string,
+    ): void => {
+      if (typeof value !== 'number' || below === null || !(value < below)) {
+        this.sinceFound.delete(id);
+        return;
+      }
+      if (known.has(id)) return;
+      if (!this.sinceFound.has(id)) {
+        lookups.push(
+          this.measurements.runStart(deviceId, capability, below, below + margin, from).then(
+            (start) => void this.sinceFound.set(id, start),
+            (error: unknown) =>
+              this.logger.warn(`Cannot read the start of an item: ${describeError(error)}`),
+          ),
+        );
+      }
+    };
+    for (const device of snapshot.devices) {
+      const { soilMoistureMin, batteryMin } = device.thresholds;
+      const { soil_moisture: moisture, battery } = device.state;
+      consider(
+        `soil_dry:${device.id}`,
+        moisture,
+        'soil_moisture',
+        soilMoistureMin,
+        SOIL_HYSTERESIS,
+        device.id,
+      );
+      consider(
+        `battery_low:${device.id}`,
+        battery,
+        'battery',
+        batteryMin,
+        BATTERY_HYSTERESIS,
+        device.id,
+      );
+    }
+    await Promise.all(lookups);
+    for (const [id, start] of this.sinceFound) if (start !== null) hints.set(id, start);
+    return hints;
   }
 
   private knownSince(gatewayId: string, now: Date): Date {

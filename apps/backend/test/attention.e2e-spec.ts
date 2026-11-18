@@ -228,6 +228,35 @@ describe('attention items of a household', () => {
     app.get(AttentionEvents).off(ATTENTION_CHANGED, listener);
   });
 
+  it('starts since at the first stored reading of the current run (as after a restart)', async () => {
+    const home = await household();
+    const deviceId = await addPlant(home, 'Ficus', { soil_moisture: 10, battery: 90 });
+    const base = Date.now();
+    const daysAgo = (days: number): string => new Date(base - days * 86_400_000).toISOString();
+    // Dry long ago, well again, then dry from 4 days ago on; 26 % is inside the margin and
+    // neither starts nor ends the run.
+    const readings: [number, number][] = [
+      [8, 24],
+      [6, 50],
+      [5, 26],
+      [4, 20],
+      [3, 26],
+      [2, 12],
+      [1, 10],
+    ];
+    for (const [days, value] of readings) {
+      await connection.sql`
+        insert into measurements (time, device_id, capability, value_num)
+        values (${daysAgo(days)}::timestamptz, ${deviceId}, 'soil_moisture', ${value})`;
+    }
+
+    await attention.recomputeHousehold(home.id);
+
+    const [item] = await itemsOf(home, home.owner);
+    expect(item).toMatchObject({ id: `soil_dry:${deviceId}`, kind: 'soil_dry' });
+    expect(item?.since).toBe(daysAgo(4));
+  });
+
   it('hides a household from people who are not its members', async () => {
     const home = await household();
     const stranger = await signedIn();

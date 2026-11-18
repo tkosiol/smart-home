@@ -72,6 +72,11 @@ export interface Previous {
   held?: readonly AttentionItem[];
   /** Per device the time its contact was first seen open, while it stays open. */
   contactOpenSince?: ReadonlyMap<string, Date>;
+  /**
+   * Per item ID the time its condition began, known from stored readings. Used for an item that
+   * did not exist before (after a restart); an item that existed keeps its own `since`.
+   */
+  sinceHints?: ReadonlyMap<string, Date>;
 }
 
 export const NOTHING_BEFORE: Previous = { items: [] };
@@ -150,6 +155,7 @@ export function openContacts(snapshot: Snapshot, previous: Previous, now: Date):
  * - An item keeps the `since` of the same item in `previous` while its condition holds, and the
  *   soil and battery items end only beyond the hysteresis margin, also over a silent phase
  *   of the device or an offline gateway (`held`).
+ * - A new item takes the hint of `previous.sinceHints` (from stored readings), if any.
  * - Otherwise `since` is when the condition's cause began: the gateway's last status change, the
  *   device's last report, when the contact was first seen open, when the hardware was discovered.
  *
@@ -176,12 +182,18 @@ export function evaluateWithHeld(
   };
   const add: Add = (kind, subject, since, item) => {
     const id = `${kind}:${subject}`;
+    const hint = previous.sinceHints?.get(id);
     items.push({
       ...item,
       id,
       kind,
       severity: SEVERITY_OF[kind],
-      since: (before.has(id) ? new Date(before.get(id)?.since ?? since) : since).toISOString(),
+      since: (before.has(id)
+        ? new Date(before.get(id)?.since ?? since)
+        : hint !== undefined && hint.getTime() <= now.getTime()
+          ? hint
+          : since
+      ).toISOString(),
       params: item.params ?? {},
     });
   };

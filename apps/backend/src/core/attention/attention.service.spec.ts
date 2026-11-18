@@ -11,8 +11,9 @@ import {
   type HardwareWithCapabilities,
 } from '../devices/index.js';
 import { GATEWAY_STATUS_CHANGED, GatewayEvents, type GatewaysService } from '../gateways/index.js';
+import type { MeasurementsRepository } from '../telemetry/index.js';
 import { ATTENTION_CHANGED, AttentionEvents, type AttentionChanged } from './attention-events.js';
-import { AttentionService, TICK_MS } from './attention.service.js';
+import { AttentionService, SINCE_LOOKBACK_MS, TICK_MS } from './attention.service.js';
 
 const HOUSEHOLD = 'household-1';
 const GATEWAY = 'gw-aaaaaaaa';
@@ -61,6 +62,7 @@ describe('AttentionService', () => {
   const get = vi.fn<DevicesRepository['get']>();
   const listDevices = vi.fn<DevicesRepository['list']>();
   const listUnassigned = vi.fn<HardwareRepository['listUnassigned']>();
+  const runStart = vi.fn<MeasurementsRepository['runStart']>();
   const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
   let gatewayEvents: GatewayEvents;
   let deviceEvents: DeviceEvents;
@@ -79,7 +81,8 @@ describe('AttentionService', () => {
     gateways = [gateway()];
     devices = [view('d1', { soil_moisture: 60 })];
     unassigned = [];
-    for (const mock of [list, listActive, get, listDevices, listUnassigned, warn]) mock.mockReset();
+    for (const mock of [list, listActive, get, listDevices, listUnassigned, runStart, warn])
+      mock.mockReset();
     warn.mockImplementation(() => undefined);
     list.mockImplementation(() => Promise.resolve(gateways));
     listActive.mockResolvedValue([
@@ -88,6 +91,7 @@ describe('AttentionService', () => {
     listDevices.mockImplementation(() => Promise.resolve(devices));
     get.mockImplementation((_household, id) => Promise.resolve(devices.find((d) => d.id === id)));
     listUnassigned.mockImplementation(() => Promise.resolve(unassigned));
+    runStart.mockResolvedValue(null);
     gatewayEvents = new GatewayEvents();
     deviceEvents = new DeviceEvents();
     attentionEvents = new AttentionEvents();
@@ -101,6 +105,7 @@ describe('AttentionService', () => {
       } as unknown as GatewaysService,
       { list: listDevices, get } as unknown as DevicesRepository,
       { listUnassigned } as unknown as HardwareRepository,
+      { runStart } as unknown as MeasurementsRepository,
       gatewayEvents,
       deviceEvents,
       attentionEvents,
@@ -277,6 +282,67 @@ describe('AttentionService', () => {
     expect(items()[0]?.since).toBe(START.toISOString());
   });
 
+  describe('since from the stored readings (#99)', () => {
+    const DAYS_AGO = new Date(START.getTime() - 4 * 24 * 60 * MINUTE);
+
+    it('starts a dry plant at the first reading of its run, not at the last report', async () => {
+      runStart.mockImplementation((_device, capability) =>
+        Promise.resolve(capability === 'soil_moisture' ? DAYS_AGO : null),
+      );
+      devices = [view('d1', { soil_moisture: 10 })];
+      await service.recomputeHousehold(HOUSEHOLD);
+      expect(items()[0]).toMatchObject({ id: 'soil_dry:d1', since: DAYS_AGO.toISOString() });
+      expect(runStart).toHaveBeenCalledWith(
+        'd1',
+        'soil_moisture',
+        25,
+        28,
+        new Date(START.getTime() - SINCE_LOOKBACK_MS),
+      );
+    });
+
+    it('does the same for a low battery, with its own margin', async () => {
+      runStart.mockImplementation((_device, capability) =>
+        Promise.resolve(capability === 'battery' ? DAYS_AGO : null),
+      );
+      devices = [view('d1', { battery: 4 })];
+      await service.recomputeHousehold(HOUSEHOLD);
+      expect(items()[0]).toMatchObject({ id: 'battery_low:d1', since: DAYS_AGO.toISOString() });
+      expect(runStart).toHaveBeenCalledWith('d1', 'battery', 20, 25, expect.any(Date));
+    });
+
+    it('asks once for an item that stays, and not at all for one that exists already', async () => {
+      runStart.mockResolvedValue(DAYS_AGO);
+      devices = [view('d1', { soil_moisture: 10 })];
+      await service.recomputeHousehold(HOUSEHOLD);
+      await service.recomputeHousehold(HOUSEHOLD);
+      await service.recomputeDevice(HOUSEHOLD, 'd1');
+      expect(runStart).toHaveBeenCalledTimes(1);
+      expect(items()[0]?.since).toBe(DAYS_AGO.toISOString());
+    });
+
+    it('does not ask for a healthy device', async () => {
+      devices = [view('d1', { soil_moisture: 60, battery: 90 })];
+      await service.recomputeHousehold(HOUSEHOLD);
+      expect(runStart).not.toHaveBeenCalled();
+    });
+
+    it('falls back to the last report when there is no reading', async () => {
+      devices = [view('d1', { soil_moisture: 10 })];
+      await service.recomputeHousehold(HOUSEHOLD);
+      expect(items()[0]?.since).toBe(START.toISOString());
+    });
+
+    it('logs a failing lookup and still computes the items', async () => {
+      runStart.mockRejectedValueOnce(new Error('database down'));
+      devices = [view('d1', { soil_moisture: 10 })];
+      await service.recomputeHousehold(HOUSEHOLD);
+      expect(ids()).toEqual(['soil_dry:d1']);
+      expect(items()[0]?.since).toBe(START.toISOString());
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('Cannot read the start'));
+    });
+  });
+
   it('filters by role: hardware for owners, certificates for owners and platform admins', async () => {
     unassigned = [
       {
@@ -320,6 +386,7 @@ describe('AttentionService', () => {
       } as unknown as GatewaysService,
       { list: listDevices, get } as unknown as DevicesRepository,
       { listUnassigned } as unknown as HardwareRepository,
+      { runStart } as unknown as MeasurementsRepository,
       new GatewayEvents(),
       new DeviceEvents(),
       new AttentionEvents(),
@@ -460,6 +527,7 @@ describe('AttentionService', () => {
         { list, listActive } as unknown as GatewaysService,
         { list: listDevices, get } as unknown as DevicesRepository,
         { listUnassigned } as unknown as HardwareRepository,
+        { runStart } as unknown as MeasurementsRepository,
         new GatewayEvents(),
         new DeviceEvents(),
         new AttentionEvents(),

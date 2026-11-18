@@ -419,6 +419,45 @@ describe('evaluate', () => {
     });
   });
 
+  describe('since hints (#99)', () => {
+    const hint = ago(3 * 24 * HOUR);
+    const hints = (...ids: string[]): Previous => ({
+      items: [],
+      sinceHints: new Map(ids.map((id) => [id, hint])),
+    });
+
+    it('starts a new soil and battery item at the hint instead of the last report', () => {
+      const items = run(
+        { devices: [withState({ soil_moisture: 10, battery: 3 })] },
+        hints('soil_dry:dev-1', 'battery_low:dev-1'),
+      );
+      expect(items.map((item) => [item.id, item.since])).toEqual(
+        expect.arrayContaining([
+          ['soil_dry:dev-1', hint.toISOString()],
+          ['battery_low:dev-1', hint.toISOString()],
+        ]),
+      );
+    });
+
+    it('prefers the item that exists already over a hint', () => {
+      const [first] = run({ devices: [withState({ soil_moisture: 10 })] });
+      const [again] = run(
+        { devices: [withState({ soil_moisture: 10 })] },
+        { items: first ? [first] : [], sinceHints: new Map([['soil_dry:dev-1', hint]]) },
+      );
+      expect(again?.since).toBe(first?.since);
+    });
+
+    it('never puts a hint in the future', () => {
+      const future = new Map([['soil_dry:dev-1', new Date(NOW.getTime() + HOUR)]]);
+      const [item] = run(
+        { devices: [withState({ soil_moisture: 10 })] },
+        { items: [], sinceHints: future },
+      );
+      expect(item?.since).toBe(ago(MINUTE).toISOString());
+    });
+  });
+
   describe('gateway_offline', () => {
     const offlineSince = (minutes: number, rest: Partial<GatewaySnapshot> = {}) =>
       gateway({ bridgeStatus: 'offline', statusChangedAt: ago(minutes * MINUTE), ...rest });
