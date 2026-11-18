@@ -31,15 +31,34 @@ import {
   type GatewayStatusChanged,
 } from '../gateways/index.js';
 import { CLOCK, type Clock } from '../identity/index.js';
+import { MeasurementsRepository } from '../telemetry/index.js';
 import { ATTENTION_CHANGED, AttentionEvents, type AttentionChanged } from './attention-events.js';
-import { evaluate, openContacts, type DeviceSnapshot, type Snapshot } from './attention.rules.js';
+import {
+  BATTERY_HYSTERESIS,
+  SOIL_HYSTERESIS,
+  evaluateWithHeld,
+  openContacts,
+  type DeviceSnapshot,
+  type Snapshot,
+} from './attention.rules.js';
 
 /** How often the time conditions (open too long, silent, gateway away) are looked at again. */
 export const TICK_MS = 30_000;
 
+/** How far back the stored readings are searched for the start of a condition (after a restart). */
+export const SINCE_LOOKBACK_MS = 90 * 86_400_000;
+
+interface RunLookup {
+  householdId: string;
+  deviceId: string;
+  key: string;
+  start: Date | null;
+}
+
 interface HouseholdState {
   snapshot: Snapshot;
   items: AttentionItem[];
+  held: AttentionItem[];
   contactOpenSince: Map<string, Date>;
 }
 
@@ -76,6 +95,12 @@ export class AttentionService implements OnModuleInit, OnModuleDestroy {
   /** Which household a device or a gateway of the computed state belongs to. */
   private readonly deviceHouseholds = new Map<string, string>();
   private readonly gatewayHouseholds = new Map<string, string>();
+  /**
+   * Per item ID what the stored readings say about its condition (the start of an open run of
+   * readings beyond the threshold, `null` for none), asked once per `key` (threshold, and whether
+   * the reading is beyond it or inside the margin).
+   */
+  private readonly runs = new Map<string, RunLookup>();
   private readonly queued = new Set<string>();
   private tail: Promise<unknown> = Promise.resolve();
   private timer: NodeJS.Timeout | undefined;
@@ -84,6 +109,7 @@ export class AttentionService implements OnModuleInit, OnModuleDestroy {
     private readonly gateways: GatewaysService,
     private readonly devices: DevicesRepository,
     private readonly hardware: HardwareRepository,
+    private readonly measurements: MeasurementsRepository,
     private readonly gatewayEvents: GatewayEvents,
     private readonly deviceEvents: DeviceEvents,
     private readonly attentionEvents: AttentionEvents,
@@ -141,7 +167,8 @@ export class AttentionService implements OnModuleInit, OnModuleDestroy {
     // A device of a gateway that is not active (revoked) is left out, as in `reload`.
     const shown = view && state.snapshot.gateways.some((gateway) => gateway.id === view.gatewayId);
     const devices = shown ? [...others, toDeviceSnapshot(view)] : others;
-    this.apply(householdId, { ...state.snapshot, devices });
+    const snapshot = { ...state.snapshot, devices };
+    this.apply(householdId, snapshot, await this.sinceHints(householdId, snapshot));
   }
 
   /** Resolves when the recomputations requested so far are done. */
@@ -166,7 +193,7 @@ export class AttentionService implements OnModuleInit, OnModuleDestroy {
 
   private async reload(householdId: string): Promise<void> {
     const [gateways, devices, hardware] = await Promise.all([
-      this.gateways.list(householdId),
+      this.gateways.listRegistered(householdId),
       this.devices.list(householdId),
       this.hardware.listUnassigned(householdId),
     ]);
@@ -174,7 +201,7 @@ export class AttentionService implements OnModuleInit, OnModuleDestroy {
     const crlWarned = active.some((gateway) => gateway.warnings.includes('crlExpiring'));
     const crlNextUpdate = crlWarned ? ((await this.gateways.crlNextUpdate()) ?? null) : null;
     const known = new Set(active.map((gateway) => gateway.id));
-    this.apply(householdId, {
+    const snapshot: Snapshot = {
       gateways: active.map((gateway) => ({
         id: gateway.id,
         name: gateway.name,
@@ -183,6 +210,7 @@ export class AttentionService implements OnModuleInit, OnModuleDestroy {
         statusChangedAt:
           gateway.statusChangedAt === null ? null : new Date(gateway.statusChangedAt),
         lastMessageAt: gateway.lastMessageAt === null ? null : new Date(gateway.lastMessageAt),
+        registeredAt: gateway.registeredAt,
         certExpiresAt: new Date(gateway.certExpiresAt),
         warnings: gateway.warnings,
       })),
@@ -195,14 +223,19 @@ export class AttentionService implements OnModuleInit, OnModuleDestroy {
         firstSeenAt: row.firstSeenAt,
       })),
       crlNextUpdate,
-    });
+    };
+    this.apply(householdId, snapshot, await this.sinceHints(householdId, snapshot));
   }
 
   /**
    * Stores the household's items for the snapshot. A household with nothing in it (no gateway,
    * device or hardware) is not kept: `ensureComputed` makes it again when someone asks.
    */
-  private apply(householdId: string, snapshot: Snapshot): void {
+  private apply(
+    householdId: string,
+    snapshot: Snapshot,
+    sinceHints: ReadonlyMap<string, Date>,
+  ): void {
     const now = this.clock();
     const previous = this.households.get(householdId);
     this.forget(householdId);
@@ -216,11 +249,17 @@ export class AttentionService implements OnModuleInit, OnModuleDestroy {
     }
     for (const device of snapshot.devices) this.deviceHouseholds.set(device.id, householdId);
     for (const gateway of snapshot.gateways) this.gatewayHouseholds.set(gateway.id, householdId);
-    const before = { items: previous?.items ?? [], contactOpenSince: previous?.contactOpenSince };
-    const items = evaluate(snapshot, before, now);
+    const before = {
+      items: previous?.items ?? [],
+      held: previous?.held,
+      contactOpenSince: previous?.contactOpenSince,
+      sinceHints,
+    };
+    const { items, held } = evaluateWithHeld(snapshot, before, now);
     this.households.set(householdId, {
       snapshot,
       items,
+      held,
       contactOpenSince: openContacts(snapshot, before, now),
     });
     this.announce(householdId, before.items, items);
@@ -235,6 +274,75 @@ export class AttentionService implements OnModuleInit, OnModuleDestroy {
     } catch (error) {
       this.logger.warn(`Cannot announce changed attention items: ${describeError(error)}`);
     }
+  }
+
+  /**
+   * After a start the items are gone, but the readings are stored. For each soil and battery
+   * condition beyond its threshold without an item from before (first computation after a start,
+   * a device seen for the first time) the readings tell when the run began: the first reading
+   * below the threshold after the last one at or above threshold plus margin. A reading inside the
+   * margin is looked up only in the first computation of a household after a start, where only the
+   * history knows that the item is still open; later, a raised threshold must not revive an old
+   * run. Without such a run, or when the lookup fails (logged), there is no hint and the rules
+   * decide from the current reading alone.
+   */
+  private async sinceHints(householdId: string, snapshot: Snapshot): Promise<Map<string, Date>> {
+    const state = this.households.get(householdId);
+    const firstComputation = state === undefined;
+    const known = new Set([...(state?.items ?? []), ...(state?.held ?? [])].map((i) => i.id));
+    const from = new Date(this.clock().getTime() - SINCE_LOOKBACK_MS);
+    const own = new Set(snapshot.devices.map((device) => device.id));
+    for (const [id, lookup] of this.runs) {
+      if (lookup.householdId === householdId && !own.has(lookup.deviceId)) this.runs.delete(id);
+    }
+    const lookups: Promise<void>[] = [];
+    const consider = (
+      device: DeviceSnapshot,
+      kind: 'soil_dry' | 'battery_low',
+      value: unknown,
+      capability: string,
+      below: number | null,
+      margin: number,
+    ): void => {
+      const id = `${kind}:${device.id}`;
+      // At or beyond threshold plus margin an item is over whatever the history says.
+      if (typeof value !== 'number' || below === null || !(value < below + margin)) {
+        this.runs.delete(id);
+        return;
+      }
+      if (known.has(id)) return;
+      const margined = !(value < below);
+      const key = `${below}:${margined ? 'margin' : 'beyond'}`;
+      if (this.runs.get(id)?.key === key) return;
+      // Inside the margin only the history of a restart can tell that the item is still open. Later
+      // the item's own state is the truth: a threshold raised over a value inside its new margin
+      // starts nothing, however low earlier readings were.
+      if (margined && !firstComputation) {
+        this.runs.delete(id);
+        return;
+      }
+      lookups.push(
+        this.measurements.runStart(device.id, capability, below, below + margin, from).then(
+          (start) => void this.runs.set(id, { householdId, deviceId: device.id, key, start }),
+          (error: unknown) =>
+            this.logger.warn(`Cannot read the start of an item: ${describeError(error)}`),
+        ),
+      );
+    };
+    for (const device of snapshot.devices) {
+      const { soilMoistureMin, batteryMin } = device.thresholds;
+      const { soil_moisture: moisture, battery } = device.state;
+      consider(device, 'soil_dry', moisture, 'soil_moisture', soilMoistureMin, SOIL_HYSTERESIS);
+      consider(device, 'battery_low', battery, 'battery', batteryMin, BATTERY_HYSTERESIS);
+    }
+    await Promise.all(lookups);
+    const hints = new Map<string, Date>();
+    for (const [id, lookup] of this.runs) {
+      if (lookup.householdId === householdId && lookup.start !== null && own.has(lookup.deviceId)) {
+        hints.set(id, lookup.start);
+      }
+    }
+    return hints;
   }
 
   /** Drops the household's state and its entries in the lookups. */
