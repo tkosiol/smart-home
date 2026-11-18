@@ -127,6 +127,38 @@ describe('measurements_hourly', () => {
     expect(rows[0]).toMatchObject({ avg: 11, count: '1' });
   });
 
+  it('only warns when the refresh after the migrations fails; a later one catches up', async () => {
+    const old = startOfHour(Date.now()) - 10 * HOUR;
+    await insert(old + 60_000, 254, 'brightness');
+    await backfillHourly(url);
+    await sql`update measurements set value_num = 100 where capability = 'brightness'`;
+
+    // Writes to the materialization wait for the lock and give up after lock_timeout.
+    const [db] = await sql<{ name: string }[]>`select current_database() as name`;
+    await sql`alter database ${sql(db.name)} set lock_timeout = '300ms'`;
+    const [view] = await sql<{ schema: string; name: string }[]>`
+      select materialization_hypertable_schema as schema, materialization_hypertable_name as name
+      from timescaledb_information.continuous_aggregates where view_name = 'measurements_hourly'`;
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const locker = postgres(url, { max: 1, onnotice: () => undefined });
+    try {
+      await locker.begin(async (tx) => {
+        await tx`lock table ${tx(view.schema)}.${tx(view.name)} in exclusive mode`;
+        await expect(backfillHourly(url)).resolves.toBeNull();
+      });
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining('hourly aggregate: refresh failed'),
+      );
+    } finally {
+      warn.mockRestore();
+      await locker.end();
+    }
+    expect((await hourly('brightness'))[0]).toMatchObject({ max: 254 });
+
+    await backfillHourly(url);
+    expect((await hourly('brightness'))[0]).toMatchObject({ max: 100 });
+  });
+
   it('returns null on an empty database', async () => {
     expect(await backfillHourly(url)).toBeNull();
   });

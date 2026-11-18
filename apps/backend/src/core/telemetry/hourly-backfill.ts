@@ -41,7 +41,7 @@ export async function backfillHourly(url: string): Promise<{ from: Date; to: Dat
       return null;
     }
     const backfilled = await backfillHistory(sql, from, to);
-    await refresh(sql, from, to);
+    await refreshChanged(sql, from, to);
     return backfilled;
   } finally {
     await sql.end();
@@ -76,6 +76,21 @@ async function backfillHistory(
   await refresh(sql, from, to);
   console.log(`hourly aggregate: backfilled ${from.toISOString()} to ${to.toISOString()}`);
   return { from, to };
+}
+
+/**
+ * Computes again the hours a data migration changed. A failure only warns: the migrations are
+ * committed by now, and a failed migrate step would make the deploy keep the previous release,
+ * which cannot read the new schema. The invalidations stay logged, so the refresh policy (last
+ * 7 days) or the next deploy catches up.
+ */
+async function refreshChanged(sql: postgres.Sql, from: Date, to: Date): Promise<void> {
+  try {
+    await refresh(sql, from, to);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    console.warn(`hourly aggregate: refresh failed, the next refresh catches up (${reason})`);
+  }
 }
 
 /** Refreshes the window, waiting for a refresh that runs already. */
