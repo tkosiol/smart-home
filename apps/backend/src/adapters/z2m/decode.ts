@@ -34,7 +34,9 @@ function decodeValue(capability: StoredCapability, raw: unknown): unknown {
   if (key === 'brightness' && typeof raw === 'number') {
     const max =
       typeof native.max === 'number' && native.max > 0 ? native.max : DEFAULT_BRIGHTNESS_MAX;
-    return Math.round((raw / max) * 100);
+    const percent = Math.round((raw / max) * 100);
+    // Z2M 1–3 of 254 would round to 0: a lamp that is on must not read as off.
+    return raw > 0 ? Math.max(percent, 1) : percent;
   }
   if (key === 'color_temp' && typeof raw === 'number') {
     return raw > 0 ? Math.round(MIRED_PER_KELVIN / raw) : undefined;

@@ -63,6 +63,15 @@ describe('decodeZ2mReport', () => {
     expect(decodeZ2mReport({ brightness: 'x' }, caps).values).toEqual({ brightness: 'x' });
   });
 
+  it('shows a lamp at its lowest level as 1 %, not as off', () => {
+    const caps = [cap('brightness', 'numeric', { property: 'brightness', max: 254 })];
+    const decode = (brightness: number): unknown =>
+      decodeZ2mReport({ brightness }, caps).values.brightness;
+    expect(decode(1)).toBe(1);
+    expect(decode(0)).toBe(0);
+    expect(decode(254)).toBe(100);
+  });
+
   it('scales brightness by 254 when no usable maximum is stored', () => {
     const caps = [cap('brightness', 'numeric', { property: 'brightness', max: 0 })];
     expect(decodeZ2mReport({ brightness: 127 }, caps).values).toEqual({ brightness: 50 });
