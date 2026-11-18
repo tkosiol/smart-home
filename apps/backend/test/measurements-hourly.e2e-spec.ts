@@ -97,6 +97,19 @@ describe('measurements_hourly', () => {
     expect(await backfillHourly(url)).toBeNull();
   });
 
+  it('computes an hour again whose readings changed after it was materialized', async () => {
+    const old = startOfHour(Date.now()) - 20 * 24 * HOUR;
+    await insert(old + 60_000, 254, 'brightness');
+    await backfillHourly(url);
+    expect((await hourly('brightness'))[0]).toMatchObject({ max: 254 });
+
+    // What a data migration does: the hour's materialization is stale until refreshed.
+    await sql`update measurements set value_num = 100 where capability = 'brightness'`;
+    expect((await hourly('brightness'))[0]).toMatchObject({ max: 254 });
+    expect(await backfillHourly(url)).toBeNull();
+    expect((await hourly('brightness'))[0]).toMatchObject({ max: 100 });
+  });
+
   it('returns null on an empty database', async () => {
     expect(await backfillHourly(url)).toBeNull();
   });
