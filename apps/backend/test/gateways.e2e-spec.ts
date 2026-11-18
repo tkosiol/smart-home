@@ -207,7 +207,7 @@ describe('gateways', () => {
       const issued = ca.issue();
       const at = new Date('2026-10-14T08:00:00Z');
       recall.mockImplementation((id) =>
-        id === issued.id ? { bridge: 'online', z2m: 'offline', at } : undefined,
+        id === issued.id ? { bridge: 'online', service: 'offline', at } : undefined,
       );
       const response = await register(admin, householdId, issued.certificate).expect(201);
       expect(gatewaySchema.parse(response.body)).toMatchObject({

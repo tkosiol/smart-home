@@ -87,14 +87,14 @@ describe('DeviceIngestConsumer', () => {
   let deviceEvents: DeviceEvents;
   let announced: [string, unknown][];
   let active: ActiveGateway[];
-  let stored: Map<string, { id: string; friendlyName: string }[]>;
+  let stored: Map<string, { id: string; address: string }[]>;
   let consumer: DeviceIngestConsumer;
   const upsertFromBridge = vi.fn<HardwareRepository['upsertFromBridge']>();
-  const listNames = vi.fn<HardwareRepository['listNames']>();
+  const listAddresses = vi.fn<HardwareRepository['listAddresses']>();
   const recordJoined = vi.fn<HardwareRepository['recordJoined']>();
-  const setInterviewState = vi.fn<HardwareRepository['setInterviewState']>();
+  const setSetupState = vi.fn<HardwareRepository['setSetupState']>();
   const markLeft = vi.fn<HardwareRepository['markLeft']>();
-  const rename = vi.fn<HardwareRepository['rename']>();
+  const readdress = vi.fn<HardwareRepository['readdress']>();
   const setAvailability = vi.fn<HardwareRepository['setAvailability']>();
   const handle = vi.fn<DeviceMessageHandler['handle']>();
   const log = vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
@@ -128,11 +128,11 @@ describe('DeviceIngestConsumer', () => {
     stored = new Map();
     for (const mock of [
       upsertFromBridge,
-      listNames,
+      listAddresses,
       recordJoined,
-      setInterviewState,
+      setSetupState,
       markLeft,
-      rename,
+      readdress,
       setAvailability,
       handle,
     ]) {
@@ -140,25 +140,25 @@ describe('DeviceIngestConsumer', () => {
     }
     upsertFromBridge.mockResolvedValue({ upserted: 0, removed: 0, ids: [] });
     // After an upsert the database holds the listed devices under ids `h-<ieee>`.
-    listNames.mockImplementation((gatewayId) => Promise.resolve(stored.get(gatewayId) ?? []));
+    listAddresses.mockImplementation((gatewayId) => Promise.resolve(stored.get(gatewayId) ?? []));
     upsertFromBridge.mockImplementation((gatewayId, devices: readonly Z2mDevice[]) => {
       stored.set(
         gatewayId,
         devices.map((device) => ({
-          id: `${gatewayId}:${device.ieeeAddress}`,
-          friendlyName: device.friendlyName,
+          id: `${gatewayId}:${device.externalId}`,
+          address: device.address ?? '',
         })),
       );
       return Promise.resolve({
         upserted: devices.length,
         removed: 0,
-        ids: devices.map((device) => `${gatewayId}:${device.ieeeAddress}`),
+        ids: devices.map((device) => `${gatewayId}:${device.externalId}`),
       });
     });
     recordJoined.mockResolvedValue('h-joined');
-    setInterviewState.mockResolvedValue(undefined);
+    setSetupState.mockResolvedValue(undefined);
     markLeft.mockResolvedValue(undefined);
-    rename.mockResolvedValue(undefined);
+    readdress.mockResolvedValue(undefined);
     setAvailability.mockResolvedValue([]);
     handle.mockResolvedValue();
     log.mockClear();
@@ -168,11 +168,11 @@ describe('DeviceIngestConsumer', () => {
       events,
       {
         upsertFromBridge,
-        listNames,
+        listAddresses,
         recordJoined,
-        setInterviewState,
+        setSetupState,
         markLeft,
-        rename,
+        readdress,
         setAvailability,
       } as unknown as HardwareRepository,
       { handle },
@@ -199,7 +199,7 @@ describe('DeviceIngestConsumer', () => {
       vi.useFakeTimers();
       try {
         active = [{ id: GW, householdId: 'household', topicPrefix: prefix(GW) }];
-        stored.set(GW, [{ id: 'hw-1', friendlyName: 'sensor-1' }]);
+        stored.set(GW, [{ id: 'hw-1', address: 'sensor-1' }]);
         await start();
         handle.mockImplementation(() => new Promise<void>(() => undefined));
         mqtt.publish(`${prefix(GW)}/sensor-1`, '{"soil_moisture":40}');
@@ -258,7 +258,7 @@ describe('DeviceIngestConsumer', () => {
         consumer = new DeviceIngestConsumer(
           { listActive } as unknown as GatewaysService,
           events,
-          { listNames } as unknown as HardwareRepository,
+          { listAddresses } as unknown as HardwareRepository,
           { handle },
           mqtt as unknown as MqttConnection,
           () => now,
@@ -283,7 +283,7 @@ describe('DeviceIngestConsumer', () => {
           listActive: () => new Promise((resolve) => (release = resolve)),
         } as unknown as GatewaysService,
         events,
-        { listNames } as unknown as HardwareRepository,
+        { listAddresses } as unknown as HardwareRepository,
         { handle },
         mqtt as unknown as MqttConnection,
         () => now,
@@ -308,7 +308,7 @@ describe('DeviceIngestConsumer', () => {
         consumer = new DeviceIngestConsumer(
           { listActive } as unknown as GatewaysService,
           events,
-          { listNames } as unknown as HardwareRepository,
+          { listAddresses } as unknown as HardwareRepository,
           { handle },
           mqtt as unknown as MqttConnection,
           () => now,
@@ -333,7 +333,7 @@ describe('DeviceIngestConsumer', () => {
         consumer = new DeviceIngestConsumer(
           { listActive } as unknown as GatewaysService,
           events,
-          { listNames } as unknown as HardwareRepository,
+          { listAddresses } as unknown as HardwareRepository,
           { handle },
           mqtt as unknown as MqttConnection,
           () => now,
@@ -369,8 +369,8 @@ describe('DeviceIngestConsumer', () => {
 
     it('does not subscribe to a gateway that is revoked while its names are loading', async () => {
       await start();
-      let release: (names: { id: string; friendlyName: string }[]) => void = () => undefined;
-      listNames.mockReturnValueOnce(new Promise((resolve) => (release = resolve)));
+      let release: (names: { id: string; address: string }[]) => void = () => undefined;
+      listAddresses.mockReturnValueOnce(new Promise((resolve) => (release = resolve)));
       events.emit(GATEWAY_REGISTERED, { gatewayId: OTHER, topicPrefix: prefix(OTHER) });
       events.emit(GATEWAY_REVOKED, { gatewayId: OTHER });
       release([]);
@@ -381,10 +381,10 @@ describe('DeviceIngestConsumer', () => {
     it('does not subscribe when the consumer was destroyed while the names were loading', async () => {
       consumer.onModuleInit();
       await consumer.idle();
-      let release: (names: { id: string; friendlyName: string }[]) => void = () => undefined;
-      listNames.mockReturnValueOnce(new Promise((resolve) => (release = resolve)));
+      let release: (names: { id: string; address: string }[]) => void = () => undefined;
+      listAddresses.mockReturnValueOnce(new Promise((resolve) => (release = resolve)));
       events.emit(GATEWAY_REGISTERED, { gatewayId: OTHER, topicPrefix: prefix(OTHER) });
-      await vi.waitFor(() => expect(listNames).toHaveBeenCalledTimes(2));
+      await vi.waitFor(() => expect(listAddresses).toHaveBeenCalledTimes(2));
       const destroying = consumer.onModuleDestroy();
       release([]);
       await destroying;
@@ -392,7 +392,7 @@ describe('DeviceIngestConsumer', () => {
     });
 
     it('takes the names from the database on start', async () => {
-      stored.set(GW, [{ id: 'h-lamp', friendlyName: 'Lampe' }]);
+      stored.set(GW, [{ id: 'h-lamp', address: 'Lampe' }]);
       await start();
       await send(`${prefix(GW)}/Lampe`, { state: 'ON' });
       expect(handle).toHaveBeenCalledWith(GW, 'h-lamp', { state: 'ON' }, T0, false);
@@ -408,16 +408,17 @@ describe('DeviceIngestConsumer', () => {
       expect(gatewayId).toBe(GW);
       expect(at).toEqual(T0);
       expect(devices).toHaveLength(7);
-      const lamp = devices?.find((device) => device.friendlyName === 'Lampe');
+      const lamp = devices?.find((device) => device.address === 'Lampe');
       expect(lamp).toMatchObject({
-        ieeeAddress: '0x00000000000000a7',
+        externalId: '0x00000000000000a7',
+        name: 'Lampe',
         vendor: 'IKEA',
         model: 'LED1624G9',
-        interviewState: 'SUCCESSFUL',
+        setupState: 'ready',
       });
       expect(lamp?.capabilities.map((capability) => capability.key)).toContain('brightness');
-      expect(lamp?.definition).toMatchObject({ model: 'LED1624G9' });
-      const plant = devices?.find((device) => device.friendlyName === 'Pflanze 1');
+      expect(lamp?.native).toMatchObject({ model: 'LED1624G9' });
+      const plant = devices?.find((device) => device.address === 'Pflanze 1');
       expect(
         plant?.capabilities.find((capability) => capability.key === 'soil_warning')?.isSetting,
       ).toBe(true);
@@ -438,16 +439,37 @@ describe('DeviceIngestConsumer', () => {
       ]);
       expect(upsertFromBridge.mock.calls[0]?.[1]).toEqual([
         {
-          ieeeAddress: '0x00000000000000b1',
-          friendlyName: 'mystery',
+          externalId: '0x00000000000000b1',
+          address: 'mystery',
+          name: 'mystery',
           vendor: 'ACME',
           model: 'X-1',
           description: null,
-          definition: {},
-          interviewState: 'FAILED',
+          native: {},
+          setupState: 'failed',
           capabilities: [],
         },
       ]);
+    });
+
+    it.each([
+      ['PENDING', 'pairing'],
+      ['IN_PROGRESS', 'pairing'],
+      ['SUCCESSFUL', 'ready'],
+      ['FAILED', 'failed'],
+      ['SOMETHING_NEW', 'unknown'],
+      [undefined, 'unknown'],
+    ])('stores the interview state %s of a listed device as %s', async (interview, setupState) => {
+      await start();
+      await send(`${prefix(GW)}/bridge/devices`, [
+        {
+          ieee_address: '0x00000000000000b2',
+          friendly_name: 'plant',
+          type: 'EndDevice',
+          interview_state: interview,
+        },
+      ]);
+      expect(upsertFromBridge.mock.calls[0]?.[1][0]?.setupState).toBe(setupState);
     });
 
     it('keeps the valid entries when one is malformed, and drops only that one', async () => {
@@ -471,7 +493,7 @@ describe('DeviceIngestConsumer', () => {
         second,
       ]);
       expect(upsertFromBridge).toHaveBeenCalledTimes(1);
-      expect(upsertFromBridge.mock.calls[0]?.[1].map((device) => device.friendlyName)).toEqual([
+      expect(upsertFromBridge.mock.calls[0]?.[1].map((device) => device.address)).toEqual([
         first?.friendly_name,
         'failed interview',
         second?.friendly_name,
@@ -743,12 +765,12 @@ describe('DeviceIngestConsumer', () => {
     });
 
     it('follows a rename: the new name leads to the hardware, the old one is discarded', async () => {
-      rename.mockResolvedValue(`${GW}:0x00000000000000a7`);
+      readdress.mockResolvedValue(`${GW}:0x00000000000000a7`);
       await send(`${prefix(GW)}/bridge/event`, {
         type: 'device_renamed',
         data: { from: 'Lampe', to: 'Stehlampe', homeassistant_rename: false },
       });
-      expect(rename).toHaveBeenCalledWith(GW, 'Lampe', 'Stehlampe');
+      expect(readdress).toHaveBeenCalledWith(GW, 'Lampe', 'Stehlampe', 'Stehlampe');
       await send(`${prefix(GW)}/Stehlampe`, { state: 'ON' });
       expect(handle).toHaveBeenCalledWith(
         GW,
@@ -767,25 +789,31 @@ describe('DeviceIngestConsumer', () => {
         type: 'device_joined',
         data: { friendly_name: '0x00000000000000c1', ieee_address: '0x00000000000000c1' },
       });
-      expect(recordJoined).toHaveBeenCalledWith(GW, '0x00000000000000c1', '0x00000000000000c1', T0);
+      expect(recordJoined).toHaveBeenCalledWith(
+        GW,
+        '0x00000000000000c1',
+        '0x00000000000000c1',
+        '0x00000000000000c1',
+        T0,
+      );
       await send(`${prefix(GW)}/0x00000000000000c1`, { battery: 80 });
       expect(handle).toHaveBeenCalledWith(GW, 'h-joined', { battery: 80 }, T0, false);
     });
 
     it.each([
-      ['started', 'IN_PROGRESS'],
-      ['successful', 'SUCCESSFUL'],
-      ['failed', 'FAILED'],
+      ['started', 'pairing'],
+      ['successful', 'ready'],
+      ['failed', 'failed'],
     ])('stores the interview status %s', async (status, state) => {
       await send(`${prefix(GW)}/bridge/event`, {
         type: 'device_interview',
         data: { friendly_name: 'Lampe', ieee_address: '0x00000000000000a7', status },
       });
-      expect(setInterviewState).toHaveBeenCalledWith(GW, '0x00000000000000a7', state);
+      expect(setSetupState).toHaveBeenCalledWith(GW, '0x00000000000000a7', state);
     });
 
     it('marks hardware that left as removed and discards its name', async () => {
-      markLeft.mockResolvedValue({ id: `${GW}:0x00000000000000a7`, friendlyName: 'Lampe' });
+      markLeft.mockResolvedValue({ id: `${GW}:0x00000000000000a7`, address: 'Lampe' });
       await send(`${prefix(GW)}/bridge/event`, {
         type: 'device_leave',
         data: { friendly_name: 'Lampe', ieee_address: '0x00000000000000a7' },
@@ -808,7 +836,7 @@ describe('DeviceIngestConsumer', () => {
       [
         'renamed',
         { type: 'device_renamed', data: { from: 'Lampe', to: 'Stehlampe' } },
-        rename,
+        readdress,
         `${GW}:0x00000000000000a7`,
       ],
     ])(
@@ -836,9 +864,9 @@ describe('DeviceIngestConsumer', () => {
       await send(`${prefix(GW)}/bridge/event`, { type: 'device_announce', data: {} });
       await send(`${prefix(GW)}/bridge/event`, { type: 'device_renamed', data: { from: 1 } });
       await send(`${prefix(GW)}/bridge/event`, 'garbage');
-      expect(rename).not.toHaveBeenCalled();
+      expect(readdress).not.toHaveBeenCalled();
       expect(recordJoined).not.toHaveBeenCalled();
-      expect(setInterviewState).not.toHaveBeenCalled();
+      expect(setSetupState).not.toHaveBeenCalled();
     });
   });
 
@@ -909,7 +937,7 @@ describe('DeviceIngestConsumer', () => {
       expect(announced).toEqual([hw('h-joined')]);
 
       announced.length = 0;
-      setInterviewState.mockResolvedValue('h-int');
+      setSetupState.mockResolvedValue('h-int');
       await event('device_interview', {
         friendly_name: 'new',
         ieee_address: '0x00000000000000c1',
@@ -918,12 +946,12 @@ describe('DeviceIngestConsumer', () => {
       expect(announced).toEqual([hw('h-int')]);
 
       announced.length = 0;
-      markLeft.mockResolvedValue({ id: 'h-left', friendlyName: 'new' });
+      markLeft.mockResolvedValue({ id: 'h-left', address: 'new' });
       await event('device_leave', { friendly_name: 'new', ieee_address: '0x00000000000000c1' });
       expect(announced).toEqual([hw('h-left')]);
 
       announced.length = 0;
-      rename.mockResolvedValue('h-renamed');
+      readdress.mockResolvedValue('h-renamed');
       await event('device_renamed', { from: 'a', to: 'b' });
       expect(announced).toEqual([hw('h-renamed')]);
     });

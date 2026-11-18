@@ -219,7 +219,7 @@ export class AttentionService implements OnModuleInit, OnModuleDestroy {
       hardware: hardware.map((row) => ({
         id: row.id,
         gatewayId: row.gatewayId,
-        name: row.friendlyName,
+        name: row.name,
         firstSeenAt: row.firstSeenAt,
       })),
       crlNextUpdate,

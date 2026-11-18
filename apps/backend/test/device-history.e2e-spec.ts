@@ -103,9 +103,9 @@ describe('device history API', () => {
       values (${gatewayId}, ${householdId}, 'Pi', ${`gw/${gatewayId}/z2m`}, 'fingerprint',
         now() + interval '1 year')`;
     const [row] = await connection.sql<{ id: string }[]>`
-      insert into hardware (gateway_id, ieee_address, friendly_name, vendor, model, availability,
+      insert into hardware (gateway_id, external_id, name, address, vendor, model, availability,
         last_state, first_seen_at, last_seen_at)
-      values (${gatewayId}, ${`0x${randomBytes(8).toString('hex')}`}, 'bed', 'Acme', 'AY-303Z',
+      values (${gatewayId}, ${`0x${randomBytes(8).toString('hex')}`}, 'bed', 'bed', 'Acme', 'AY-303Z',
         'online', '{}'::jsonb, now(), now())
       returning id`;
     if (!row) throw new Error('no hardware');

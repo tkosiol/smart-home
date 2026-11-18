@@ -72,7 +72,7 @@ describe('device ingest under load', () => {
     let hardwareId = '';
     await vi.waitFor(
       async () => {
-        const found = await hardware.findByName(gatewayId, 'Pflanze 1');
+        const found = await hardware.findByAddress(gatewayId, 'Pflanze 1');
         expect(found).toBeDefined();
         hardwareId = found?.id ?? '';
       },

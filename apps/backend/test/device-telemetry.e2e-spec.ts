@@ -31,13 +31,14 @@ const capability = (key: string, kind: Capability['kind'], enumValues?: string[]
 });
 
 const sensor = (ieee: string, name: string): Z2mDevice => ({
-  ieeeAddress: ieee,
-  friendlyName: name,
+  externalId: ieee,
+  address: name,
+  name,
   vendor: 'Acme',
   model: 'AY-303Z',
   description: null,
-  definition: { model: 'AY-303Z' },
-  interviewState: 'SUCCESSFUL',
+  native: { model: 'AY-303Z' },
+  setupState: 'ready',
   capabilities: [
     capability('soil_moisture', 'numeric'),
     capability('occupancy', 'binary'),
@@ -86,7 +87,7 @@ describe('readings of the device ingest', () => {
       [sensor(`0x${counter.toString(16).padStart(16, '0')}`, name)],
       received,
     );
-    const found = await hardware.findByName(gatewayId, name);
+    const found = await hardware.findByAddress(gatewayId, name);
     if (!found) throw new Error('no hardware');
     if (!withDevice) return { hardwareId: found.id };
     const created = await devices.createWithBinding(householdId, found.id, name);

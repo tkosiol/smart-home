@@ -138,7 +138,7 @@ describe('live event stream of a household', () => {
     const gatewayId = `gw-${randomBytes(4).toString('hex')}`;
     await connection.sql`
       insert into gateways (id, household_id, name, topic_prefix, cert_fingerprint, cert_expires_at,
-        bridge_status, z2m_status, status_changed_at, last_message_at)
+        bridge_status, service_status, status_changed_at, last_message_at)
       values (${gatewayId}, ${id}, 'Pi', ${`gw/${gatewayId}/z2m`}, 'fingerprint',
         now() + interval '1 year', 'online', 'online', now() - interval '1 hour', now())`;
     return { id, owner, viewer, gatewayId };
@@ -147,9 +147,9 @@ describe('live event stream of a household', () => {
   /** A plant sensor assigned to a device; returns the device and its hardware. */
   const addPlant = async (home: Household): Promise<{ deviceId: string; hardwareId: string }> => {
     const [row] = await connection.sql<{ id: string }[]>`
-      insert into hardware (gateway_id, ieee_address, friendly_name, vendor, model, availability,
+      insert into hardware (gateway_id, external_id, name, address, vendor, model, availability,
         last_state, first_seen_at, last_seen_at)
-      values (${home.gatewayId}, ${`0x${randomBytes(8).toString('hex')}`}, 'Ficus', 'AOYAN',
+      values (${home.gatewayId}, ${`0x${randomBytes(8).toString('hex')}`}, 'Ficus', 'Ficus', 'AOYAN',
         'AY-303Z', 'online', '{}'::jsonb, now(), now())
       returning id`;
     if (!row) throw new Error('no hardware');

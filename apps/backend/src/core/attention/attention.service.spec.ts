@@ -472,7 +472,7 @@ describe('AttentionService', () => {
       {
         id: 'hw-1',
         gatewayId: GATEWAY,
-        friendlyName: 'New',
+        name: 'New',
         firstSeenAt: START,
       } as HardwareWithCapabilities,
     ];

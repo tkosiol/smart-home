@@ -90,7 +90,7 @@ export class GatewayStatusConsumer implements OnModuleInit, OnModuleDestroy {
         this.onStatus(topic, parseConnection(payload), 'bridge');
       }),
       this.mqtt.subscribe('gw/+/z2m/bridge/state', (topic, payload) => {
-        this.onStatus(topic, parseBridgeState(payload), 'z2m');
+        this.onStatus(topic, parseBridgeState(payload), 'service');
       }),
       this.mqtt.subscribe('gw/+/z2m/#', (topic, _payload, retained) => {
         // A retained message is a replay on subscribing, not a sign that the gateway is alive.

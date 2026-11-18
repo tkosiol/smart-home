@@ -23,7 +23,7 @@ import { createTestCa, randomGatewayId, type TestCa } from './helpers/test-pki.j
 
 interface StatusRow {
   bridge_status: string;
-  z2m_status: string;
+  service_status: string;
   status_changed_at: Date | null;
   last_message_at: Date | null;
 }
@@ -73,7 +73,7 @@ describe('gateway status from the broker', () => {
   };
   const rowOf = async (id: string): Promise<StatusRow> => {
     const [row] = await sql<StatusRow[]>`
-      select bridge_status, z2m_status, status_changed_at, last_message_at
+      select bridge_status, service_status, status_changed_at, last_message_at
       from gateways where id = ${id}`;
     if (!row) throw new Error(`no gateway ${id}`);
     return row;
@@ -156,11 +156,11 @@ describe('gateway status from the broker', () => {
     const id = randomGatewayId();
     await insertGateway(id);
     await publish(`gw/${id}/z2m/bridge/state`, 'online');
-    await eventually(async () => expect((await rowOf(id)).z2m_status).toBe('online'));
+    await eventually(async () => expect((await rowOf(id)).service_status).toBe('online'));
     await publish(`gw/${id}/z2m/bridge/state`, '{"state":"offline"}');
-    await eventually(async () => expect((await rowOf(id)).z2m_status).toBe('offline'));
+    await eventually(async () => expect((await rowOf(id)).service_status).toBe('offline'));
     await publish(`gw/${id}/z2m/bridge/state`, '{"state":"online"}');
-    await eventually(async () => expect((await rowOf(id)).z2m_status).toBe('online'));
+    await eventually(async () => expect((await rowOf(id)).service_status).toBe('online'));
   });
 
   it('shows a gateway as online right after registering it when it spoke before', async () => {
@@ -168,7 +168,7 @@ describe('gateway status from the broker', () => {
     await publish(`gw/${issued.id}/bridge/connection`, '1', true);
     await publish(`gw/${issued.id}/z2m/bridge/state`, '{"state":"online"}', true);
     const memory = app.get<GatewayStatusMemory>(GATEWAY_STATUS_MEMORY);
-    await eventually(() => expect(memory.recall(issued.id)?.z2m).toBe('online'));
+    await eventually(() => expect(memory.recall(issued.id)?.service).toBe('online'));
     now = new Date();
     const gateway = await app
       .get(GatewaysService)
@@ -187,7 +187,7 @@ describe('gateway status from the broker', () => {
     await flush();
     expect(await rowOf(id)).toEqual({
       bridge_status: 'offline',
-      z2m_status: 'unknown',
+      service_status: 'unknown',
       status_changed_at: null,
       last_message_at: null,
     });

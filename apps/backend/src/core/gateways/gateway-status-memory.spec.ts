@@ -8,11 +8,11 @@ describe('StatusMemory', () => {
     const memory = new StatusMemory(10);
     expect(memory.recall('gw-00000001')).toBeUndefined();
     memory.record('gw-00000001', 'bridge', 'online', at(1));
-    memory.record('gw-00000001', 'z2m', 'offline', at(2));
-    memory.record('gw-00000001', 'z2m', 'offline', at(3));
+    memory.record('gw-00000001', 'service', 'offline', at(2));
+    memory.record('gw-00000001', 'service', 'offline', at(3));
     expect(memory.recall('gw-00000001')).toEqual({
       bridge: 'online',
-      z2m: 'offline',
+      service: 'offline',
       at: at(2),
     });
   });

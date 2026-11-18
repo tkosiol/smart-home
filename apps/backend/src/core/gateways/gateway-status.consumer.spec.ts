@@ -137,7 +137,7 @@ describe('GatewayStatusConsumer', () => {
     ])('reads %j as %s', async (payload, status) => {
       mqtt.publish(`gw/${ID}/z2m/bridge/state`, payload, true);
       await settle();
-      expect(applyStatus).toHaveBeenCalledWith(ID, 'z2m', status, T0);
+      expect(applyStatus).toHaveBeenCalledWith(ID, 'service', status, T0);
     });
 
     it.each([
@@ -189,7 +189,7 @@ describe('GatewayStatusConsumer', () => {
       await settle();
       expect(memory.recall(ID)).toEqual({
         bridge: 'online',
-        z2m: 'online',
+        service: 'online',
         at: new Date(T0.getTime() + 5000),
       });
       expect(changes).toEqual([]);
@@ -268,7 +268,7 @@ describe('GatewayStatusConsumer', () => {
     it('still takes the status from a live bridge/state message', async () => {
       mqtt.publish(`gw/${ID}/z2m/bridge/state`, 'online');
       await settle();
-      expect(applyStatus).toHaveBeenCalledWith(ID, 'z2m', 'online', T0);
+      expect(applyStatus).toHaveBeenCalledWith(ID, 'service', 'online', T0);
       expect(touch).not.toHaveBeenCalled();
     });
 

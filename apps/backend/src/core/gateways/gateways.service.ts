@@ -87,7 +87,7 @@ export class GatewaysService {
     const now = this.clock();
     const certificate = readGatewayCertificate(input.certificate, ca, now);
     const recalled = this.memory.recall(certificate.id);
-    const heard = recalled?.bridge !== undefined || recalled?.z2m !== undefined;
+    const heard = recalled?.bridge !== undefined || recalled?.service !== undefined;
     const inserted = await this.gateways.insert({
       id: certificate.id,
       householdId,
@@ -97,7 +97,7 @@ export class GatewaysService {
       certExpiresAt: certificate.expiresAt,
       createdAt: now,
       ...(recalled?.bridge && { bridgeStatus: recalled.bridge }),
-      ...(recalled?.z2m && { z2mStatus: recalled.z2m }),
+      ...(recalled?.service && { serviceStatus: recalled.service }),
       ...(heard && { statusChangedAt: recalled.at ?? now }),
     });
     // The same message whether the ID is taken in this or another household.
@@ -119,13 +119,13 @@ export class GatewaysService {
   ): Promise<GatewayRow> {
     const latest = this.memory.recall(row.id);
     let result = row;
-    for (const kind of ['bridge', 'z2m'] as const) {
+    for (const kind of ['bridge', 'service'] as const) {
       const status = latest?.[kind];
       if (status === undefined || status === (recalled?.[kind] ?? 'unknown')) continue;
       await this.gateways.applyStatus(row.id, kind, status, now);
       result = {
         ...result,
-        ...(kind === 'bridge' ? { bridgeStatus: status } : { z2mStatus: status }),
+        ...(kind === 'bridge' ? { bridgeStatus: status } : { serviceStatus: status }),
         statusChangedAt: now,
       };
     }
@@ -156,7 +156,7 @@ export class GatewaysService {
       kind: row.kind,
       topicPrefix: row.topicPrefix,
       bridgeStatus: row.bridgeStatus,
-      serviceStatus: row.z2mStatus,
+      serviceStatus: row.serviceStatus,
       statusChangedAt: iso(row.statusChangedAt),
       lastMessageAt: iso(row.lastMessageAt),
       certExpiresAt: row.certExpiresAt.toISOString(),

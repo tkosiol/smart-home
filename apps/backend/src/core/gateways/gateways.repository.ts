@@ -65,12 +65,12 @@ export class GatewaysRepository {
     status: GatewayStatus,
     now: Date,
   ): Promise<StatusOutcome> {
-    const column = kind === 'bridge' ? gateways.bridgeStatus : gateways.z2mStatus;
+    const column = kind === 'bridge' ? gateways.bridgeStatus : gateways.serviceStatus;
     const active = and(eq(gateways.id, id), isNull(gateways.revokedAt));
     const changed = await this.connection.db
       .update(gateways)
       .set({
-        ...(kind === 'bridge' ? { bridgeStatus: status } : { z2mStatus: status }),
+        ...(kind === 'bridge' ? { bridgeStatus: status } : { serviceStatus: status }),
         statusChangedAt: now,
       })
       .where(and(active, ne(column, status)))

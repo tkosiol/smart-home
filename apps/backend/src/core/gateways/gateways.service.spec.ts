@@ -21,7 +21,7 @@ const row = (overrides: Partial<GatewayRow> = {}): GatewayRow => ({
   kind: 'z2m',
   topicPrefix: 'gw/gw-a1b2c3d4/z2m',
   bridgeStatus: 'unknown',
-  z2mStatus: 'unknown',
+  serviceStatus: 'unknown',
   statusChangedAt: null,
   lastMessageAt: null,
   certFingerprint: 'fingerprint',
@@ -128,7 +128,7 @@ describe('GatewaysService', () => {
           calls += 1;
           return calls === 1
             ? { bridge: 'online', at: NOW }
-            : { bridge: 'online', z2m: 'online', at: NOW };
+            : { bridge: 'online', service: 'online', at: NOW };
         });
         const applyStatus = vi.fn(() => Promise.resolve('changed' as const));
         const insert = vi.fn((values: NewGatewayRow) =>
@@ -145,7 +145,7 @@ describe('GatewaysService', () => {
           name: 'Pi',
           certificate: issued.certificate,
         });
-        expect(applyStatus.mock.calls).toEqual([[issued.id, 'z2m', 'online', NOW]]);
+        expect(applyStatus.mock.calls).toEqual([[issued.id, 'service', 'online', NOW]]);
         expect(gateway.bridgeStatus).toBe('online');
         expect(gateway.serviceStatus).toBe('online');
         expect(gateway.statusChangedAt).toBe(NOW.toISOString());

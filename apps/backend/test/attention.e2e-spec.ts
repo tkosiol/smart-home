@@ -84,7 +84,7 @@ describe('attention items of a household', () => {
     const gatewayId = `gw-${randomBytes(4).toString('hex')}`;
     await connection.sql`
       insert into gateways (id, household_id, name, topic_prefix, cert_fingerprint, cert_expires_at,
-        bridge_status, z2m_status, status_changed_at, last_message_at)
+        bridge_status, service_status, status_changed_at, last_message_at)
       values (${gatewayId}, ${id}, 'Pi', ${`gw/${gatewayId}/z2m`}, 'fingerprint',
         now() + interval '1 year', 'online', 'online', now() - interval '1 hour', now())`;
     return { id, owner, viewer, gatewayId };
@@ -98,9 +98,9 @@ describe('attention items of a household', () => {
     assign = true,
   ): Promise<string> => {
     const [row] = await connection.sql<{ id: string }[]>`
-      insert into hardware (gateway_id, ieee_address, friendly_name, vendor, model, availability,
+      insert into hardware (gateway_id, external_id, name, address, vendor, model, availability,
         last_state, first_seen_at, last_seen_at)
-      values (${who.gatewayId}, ${`0x${randomBytes(8).toString('hex')}`}, ${name}, 'AOYAN',
+      values (${who.gatewayId}, ${`0x${randomBytes(8).toString('hex')}`}, ${name}, ${name}, 'AOYAN',
         'AY-303Z', 'online', ${JSON.stringify(state)}::jsonb, now(), now())
       returning id`;
     if (!row) throw new Error('no hardware');
@@ -285,7 +285,7 @@ describe('attention items of a household', () => {
     const home = await household();
     const registered = new Date(Date.now() - 10 * 60_000);
     await connection.sql`
-      update gateways set bridge_status = 'unknown', z2m_status = 'unknown',
+      update gateways set bridge_status = 'unknown', service_status = 'unknown',
         status_changed_at = null, last_message_at = null,
         created_at = ${registered.toISOString()}::timestamptz
       where id = ${home.gatewayId}`;

@@ -226,13 +226,13 @@ describe('household tenancy', () => {
       values (${gatewayId}, ${householdId}, 'Pi', ${`gw/${gatewayId}/z2m`}, 'fingerprint',
         now() + interval '1 year')`;
     // One piece of hardware that is a device and one that is still unassigned.
-    const hardwareRows = await connection.sql<{ id: string; friendly_name: string }[]>`
-      insert into hardware (gateway_id, ieee_address, friendly_name, first_seen_at)
-      values (${gatewayId}, ${`0x${gatewayId}1`}, 'bound', now()),
-        (${gatewayId}, ${`0x${gatewayId}2`}, 'free', now())
-      returning id, friendly_name`;
-    const bound = hardwareRows.find((row) => row.friendly_name === 'bound');
-    const free = hardwareRows.find((row) => row.friendly_name === 'free');
+    const hardwareRows = await connection.sql<{ id: string; name: string }[]>`
+      insert into hardware (gateway_id, external_id, name, address, first_seen_at)
+      values (${gatewayId}, ${`0x${gatewayId}1`}, 'bound', 'bound', now()),
+        (${gatewayId}, ${`0x${gatewayId}2`}, 'free', 'free', now())
+      returning id, name`;
+    const bound = hardwareRows.find((row) => row.name === 'bound');
+    const free = hardwareRows.find((row) => row.name === 'free');
     if (!bound || !free) throw new Error('no hardware');
     const device = await send('post', `${HOUSEHOLDS}/${householdId}/devices`, owner.cookie, {
       hardwareId: bound.id,

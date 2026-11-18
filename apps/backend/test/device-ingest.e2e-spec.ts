@@ -18,7 +18,8 @@ import { createTestCa, randomGatewayId, type TestCa } from './helpers/test-pki.j
 
 interface HardwareRecord {
   id: string;
-  friendly_name: string;
+  name: string;
+  address: string | null;
   vendor: string;
   model: string;
   availability: string;
@@ -84,10 +85,10 @@ describe('device ingest from the broker', () => {
   };
   const hardwareOf = (gatewayId: string): Promise<HardwareRecord[]> =>
     sql<HardwareRecord[]>`
-      select id, friendly_name, vendor, model, availability, last_state, last_seen_at, removed_at
-      from hardware where gateway_id = ${gatewayId} order by friendly_name`;
+      select id, name, address, vendor, model, availability, last_state, last_seen_at, removed_at
+      from hardware where gateway_id = ${gatewayId} order by name`;
   const named = async (gatewayId: string, name: string): Promise<HardwareRecord> => {
-    const row = (await hardwareOf(gatewayId)).find((entry) => entry.friendly_name === name);
+    const row = (await hardwareOf(gatewayId)).find((entry) => entry.name === name);
     if (!row) throw new Error(`no hardware ${name} of ${gatewayId}`);
     return row;
   };
@@ -157,7 +158,7 @@ describe('device ingest from the broker', () => {
   it('discovers the simulator fixture from a retained bridge/devices', async () => {
     await eventually(async () => expect(await hardwareOf(retainedGateway)).toHaveLength(7));
     const plants = (await hardwareOf(retainedGateway)).filter((row) =>
-      row.friendly_name.startsWith('Pflanze'),
+      row.name.startsWith('Pflanze'),
     );
     expect(plants).toHaveLength(6);
     expect(plants[0]).toMatchObject({ vendor: 'AOYAN', model: 'AY-303Z', removed_at: null });

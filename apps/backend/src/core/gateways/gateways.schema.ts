@@ -22,7 +22,8 @@ export const gateways = pgTable(
     /** Ingest and commands read the topic prefix from here (`gw/<id>/z2m`). */
     topicPrefix: text('topic_prefix').notNull(),
     bridgeStatus: text('bridge_status', { enum: GATEWAY_STATUSES }).notNull().default('unknown'),
-    z2mStatus: text('z2m_status', { enum: GATEWAY_STATUSES }).notNull().default('unknown'),
+    /** The gateway's software behind the broker connection (Zigbee2MQTT, later others). */
+    serviceStatus: text('service_status', { enum: GATEWAY_STATUSES }).notNull().default('unknown'),
     statusChangedAt: timestamptz('status_changed_at'),
     lastMessageAt: timestamptz('last_message_at'),
     /** SHA-256 of the certificate; the certificate itself is not stored. */
@@ -39,7 +40,10 @@ export const gateways = pgTable(
       'gateways_bridge_status_check',
       sql`${table.bridgeStatus} in (${inList(GATEWAY_STATUSES)})`,
     ),
-    check('gateways_z2m_status_check', sql`${table.z2mStatus} in (${inList(GATEWAY_STATUSES)})`),
+    check(
+      'gateways_service_status_check',
+      sql`${table.serviceStatus} in (${inList(GATEWAY_STATUSES)})`,
+    ),
   ],
 );
 

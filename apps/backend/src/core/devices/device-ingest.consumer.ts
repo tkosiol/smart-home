@@ -9,6 +9,7 @@ import type { Availability } from '@smart/contracts';
 import * as z from 'zod';
 import { describeError } from '../../platform/errors/index.js';
 import { MQTT_CONNECTION, MqttConnection, type Unsubscribe } from '../../platform/mqtt/index.js';
+import type { SetupState } from '../adapters/index.js';
 import {
   GATEWAY_REGISTERED,
   GATEWAY_REVOKED,
@@ -83,11 +84,19 @@ const interviewSchema = z.object({
 });
 const leaveSchema = z.object({ ieee_address: ieeeAddress });
 const renamedSchema = z.object({ from: friendlyName, to: friendlyName });
+/** Z2M's interview progress as neutral setup states (moves into the Z2M adapter). */
 const INTERVIEW_STATES = {
-  started: 'IN_PROGRESS',
-  successful: 'SUCCESSFUL',
-  failed: 'FAILED',
-} as const;
+  started: 'pairing',
+  successful: 'ready',
+  failed: 'failed',
+} as const satisfies Record<string, SetupState>;
+/** Z2M's `interview_state` of a listed device as a neutral setup state. */
+const SETUP_STATE_OF: Readonly<Record<string, SetupState>> = {
+  PENDING: 'pairing',
+  IN_PROGRESS: 'pairing',
+  SUCCESSFUL: 'ready',
+  FAILED: 'failed',
+};
 
 const parseJson = (payload: Buffer): unknown => {
   try {
@@ -114,17 +123,22 @@ function toZ2mDevice(entry: z.infer<typeof bridgeDeviceSchema>): Z2mDevice {
   const info = definitionInfoSchema.safeParse(entry.definition);
   const definition = info.success ? info.data : undefined;
   return {
-    ieeeAddress: entry.ieee_address,
-    friendlyName: entry.friendly_name,
+    externalId: entry.ieee_address,
+    address: entry.friendly_name,
+    name: entry.friendly_name,
     vendor: definition?.vendor ?? entry.manufacturer ?? '',
     model: definition?.model ?? entry.model_id ?? '',
     description: definition?.description ?? null,
     // As reported; a device Z2M does not support has none.
-    definition: isObject(entry.definition) ? entry.definition : {},
-    interviewState: entry.interview_state ?? 'UNKNOWN',
+    native: isObject(entry.definition) ? entry.definition : {},
+    setupState: SETUP_STATE_OF[entry.interview_state ?? ''] ?? 'unknown',
     capabilities: capabilitiesFromExposes(definition?.exposes ?? []),
   };
 }
+
+/** The stored addresses in the shape of the name map (Z2M addresses by `friendly_name`). */
+const namesOf = (rows: readonly { id: string; address: string }[]) =>
+  rows.map(({ id, address }) => ({ id, friendlyName: address }));
 
 type Route = 'devices' | 'event' | 'message';
 
@@ -270,7 +284,7 @@ export class DeviceIngestConsumer implements OnModuleInit, OnModuleDestroy {
   /** Subscribes to the gateway's prefix, with its names loaded first. */
   private async follow(gatewayId: string, topicPrefix: string): Promise<void> {
     if (this.subscriptions.has(gatewayId) || this.revoked.has(gatewayId) || this.destroyed) return;
-    const names = await this.hardware.listNames(gatewayId);
+    const names = namesOf(await this.hardware.listAddresses(gatewayId));
     if (this.subscriptions.has(gatewayId) || this.revoked.has(gatewayId) || this.destroyed) return;
     this.names.replace(gatewayId, names);
     this.subscriptions.set(
@@ -388,7 +402,7 @@ export class DeviceIngestConsumer implements OnModuleInit, OnModuleDestroy {
     if (valid === 0 && parsed.data.length > 0) return;
     const { ids } = await this.hardware.upsertFromBridge(gatewayId, devices, this.clock());
     for (const hardwareId of ids) this.announceHardware(hardwareId);
-    const names = await this.hardware.listNames(gatewayId);
+    const names = namesOf(await this.hardware.listAddresses(gatewayId));
     if (!this.subscriptions.has(gatewayId)) return;
     this.names.replace(gatewayId, names);
     for (const { id, friendlyName: name } of names) {
@@ -413,6 +427,7 @@ export class DeviceIngestConsumer implements OnModuleInit, OnModuleDestroy {
           gatewayId,
           joined.data.ieee_address,
           joined.data.friendly_name,
+          joined.data.friendly_name,
           now,
         );
         // The gateway may have been revoked while the row was written.
@@ -425,7 +440,7 @@ export class DeviceIngestConsumer implements OnModuleInit, OnModuleDestroy {
       case 'device_interview': {
         const interview = interviewSchema.safeParse(data);
         if (!interview.success) return this.discard('invalid', gatewayId, type);
-        const id = await this.hardware.setInterviewState(
+        const id = await this.hardware.setSetupState(
           gatewayId,
           interview.data.ieee_address,
           INTERVIEW_STATES[interview.data.status],
@@ -438,7 +453,7 @@ export class DeviceIngestConsumer implements OnModuleInit, OnModuleDestroy {
         if (!left.success) return this.discard('invalid', gatewayId, type);
         const gone = await this.hardware.markLeft(gatewayId, left.data.ieee_address, now);
         if (gone) {
-          this.names.remove(gatewayId, gone.friendlyName);
+          if (gone.address !== null) this.names.remove(gatewayId, gone.address);
           this.announceHardware(gone.id);
         }
         return;
@@ -447,7 +462,7 @@ export class DeviceIngestConsumer implements OnModuleInit, OnModuleDestroy {
         const renamed = renamedSchema.safeParse(data);
         if (!renamed.success) return this.discard('invalid', gatewayId, type);
         const { from, to } = renamed.data;
-        const id = await this.hardware.rename(gatewayId, from, to);
+        const id = await this.hardware.readdress(gatewayId, from, to, to);
         if (id !== undefined && this.subscriptions.has(gatewayId)) {
           this.names.rename(gatewayId, from, to, id);
         }
