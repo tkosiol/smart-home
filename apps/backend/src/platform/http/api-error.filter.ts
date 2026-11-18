@@ -53,6 +53,12 @@ export class ApiErrorFilter implements ExceptionFilter {
     } else if (isPlainBadRequest(exception)) {
       // Express maps malformed JSON bodies to a bare BadRequestException (message = parser text).
       this.send(response, HttpStatus.BAD_REQUEST, { code: 'validation.failed', traceId });
+    } else if (
+      exception instanceof HttpException &&
+      clientErrorStatus(exception.cause) !== undefined
+    ) {
+      // Nest (from 12.5) wraps body-parser failures (oversize body, ...) in an HttpException.
+      this.send(response, exception.getStatus(), { code: 'validation.failed', traceId });
     } else if (exception instanceof HttpException) {
       const body = exception.getResponse();
       const status = exception.getStatus();

@@ -16,6 +16,9 @@ const ALLOWED = new Set([
   'Unlicense',
   'CC0-1.0',
   'Python-2.0',
+  // PSF-2.0: the same permissive Python license under its newer SPDX id (argparse 3 via js-yaml);
+  // GPL-compatible according to the FSF.
+  'PSF-2.0',
   'MPL-2.0',
   // Zlib: permissive (pako 1.x is "MIT AND Zlib", pulled in by the icon font tooling).
   'Zlib',
