@@ -48,6 +48,13 @@ export const TICK_MS = 30_000;
 /** How far back the stored readings are searched for the start of a condition (after a restart). */
 export const SINCE_LOOKBACK_MS = 90 * 86_400_000;
 
+interface RunLookup {
+  householdId: string;
+  deviceId: string;
+  key: string;
+  start: Date | null;
+}
+
 interface HouseholdState {
   snapshot: Snapshot;
   items: AttentionItem[];
@@ -88,10 +95,12 @@ export class AttentionService implements OnModuleInit, OnModuleDestroy {
   /** Which household a device or a gateway of the computed state belongs to. */
   private readonly deviceHouseholds = new Map<string, string>();
   private readonly gatewayHouseholds = new Map<string, string>();
-  /** When each gateway was first seen here; the start of the wait for one never heard from. */
-  /** Per item ID the start of its condition from the readings; `null`: no reading found. */
-  private readonly sinceFound = new Map<string, Date | null>();
-  private readonly gatewaysKnown = new Map<string, Date>();
+  /**
+   * Per item ID what the stored readings say about its condition (the start of an open run of
+   * readings beyond the threshold, `null` for none), asked once per `key` (threshold, and whether
+   * the reading is beyond it or inside the margin).
+   */
+  private readonly runs = new Map<string, RunLookup>();
   private readonly queued = new Set<string>();
   private tail: Promise<unknown> = Promise.resolve();
   private timer: NodeJS.Timeout | undefined;
@@ -184,7 +193,7 @@ export class AttentionService implements OnModuleInit, OnModuleDestroy {
 
   private async reload(householdId: string): Promise<void> {
     const [gateways, devices, hardware] = await Promise.all([
-      this.gateways.list(householdId),
+      this.gateways.listRegistered(householdId),
       this.devices.list(householdId),
       this.hardware.listUnassigned(householdId),
     ]);
@@ -192,7 +201,6 @@ export class AttentionService implements OnModuleInit, OnModuleDestroy {
     const crlWarned = active.some((gateway) => gateway.warnings.includes('crlExpiring'));
     const crlNextUpdate = crlWarned ? ((await this.gateways.crlNextUpdate()) ?? null) : null;
     const known = new Set(active.map((gateway) => gateway.id));
-    const seen = this.clock();
     const snapshot: Snapshot = {
       gateways: active.map((gateway) => ({
         id: gateway.id,
@@ -202,7 +210,7 @@ export class AttentionService implements OnModuleInit, OnModuleDestroy {
         statusChangedAt:
           gateway.statusChangedAt === null ? null : new Date(gateway.statusChangedAt),
         lastMessageAt: gateway.lastMessageAt === null ? null : new Date(gateway.lastMessageAt),
-        knownSince: this.knownSince(gateway.id, seen),
+        registeredAt: gateway.registeredAt,
         certExpiresAt: new Date(gateway.certExpiresAt),
         warnings: gateway.warnings,
       })),
@@ -269,69 +277,62 @@ export class AttentionService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * For each soil and battery condition that holds now without an item from before (the first
-   * computation after a start, or a device seen for the first time), when it began according to
-   * the stored readings: the start of the run of readings beyond the threshold. Without a reading
-   * (or when the lookup fails) there is no hint and the item starts at the last report.
+   * After a start the items are gone, but the readings are stored. For each soil and battery
+   * condition that holds without an item from before (first computation after a start, a device
+   * seen for the first time) the readings tell whether a run beyond the threshold is still open,
+   * and when it began: the first reading below the threshold after the last one at or above
+   * threshold plus margin. That covers a reading inside the margin, where only the history knows
+   * that the item is still open. Without such a run, or when the lookup fails (logged), there is
+   * no hint and the rules decide from the current reading alone.
    */
   private async sinceHints(householdId: string, snapshot: Snapshot): Promise<Map<string, Date>> {
     const state = this.households.get(householdId);
     const known = new Set([...(state?.items ?? []), ...(state?.held ?? [])].map((i) => i.id));
     const from = new Date(this.clock().getTime() - SINCE_LOOKBACK_MS);
-    const hints = new Map<string, Date>();
+    const own = new Set(snapshot.devices.map((device) => device.id));
+    for (const [id, lookup] of this.runs) {
+      if (lookup.householdId === householdId && !own.has(lookup.deviceId)) this.runs.delete(id);
+    }
     const lookups: Promise<void>[] = [];
     const consider = (
-      id: string,
+      device: DeviceSnapshot,
+      kind: 'soil_dry' | 'battery_low',
       value: unknown,
       capability: string,
       below: number | null,
       margin: number,
-      deviceId: string,
     ): void => {
-      if (typeof value !== 'number' || below === null || !(value < below)) {
-        this.sinceFound.delete(id);
+      const id = `${kind}:${device.id}`;
+      // At or beyond threshold plus margin an item is over whatever the history says.
+      if (typeof value !== 'number' || below === null || !(value < below + margin)) {
+        this.runs.delete(id);
         return;
       }
       if (known.has(id)) return;
-      if (!this.sinceFound.has(id)) {
-        lookups.push(
-          this.measurements.runStart(deviceId, capability, below, below + margin, from).then(
-            (start) => void this.sinceFound.set(id, start),
-            (error: unknown) =>
-              this.logger.warn(`Cannot read the start of an item: ${describeError(error)}`),
-          ),
-        );
-      }
+      const key = `${below}:${value < below ? 'beyond' : 'margin'}`;
+      if (this.runs.get(id)?.key === key) return;
+      lookups.push(
+        this.measurements.runStart(device.id, capability, below, below + margin, from).then(
+          (start) => void this.runs.set(id, { householdId, deviceId: device.id, key, start }),
+          (error: unknown) =>
+            this.logger.warn(`Cannot read the start of an item: ${describeError(error)}`),
+        ),
+      );
     };
     for (const device of snapshot.devices) {
       const { soilMoistureMin, batteryMin } = device.thresholds;
       const { soil_moisture: moisture, battery } = device.state;
-      consider(
-        `soil_dry:${device.id}`,
-        moisture,
-        'soil_moisture',
-        soilMoistureMin,
-        SOIL_HYSTERESIS,
-        device.id,
-      );
-      consider(
-        `battery_low:${device.id}`,
-        battery,
-        'battery',
-        batteryMin,
-        BATTERY_HYSTERESIS,
-        device.id,
-      );
+      consider(device, 'soil_dry', moisture, 'soil_moisture', soilMoistureMin, SOIL_HYSTERESIS);
+      consider(device, 'battery_low', battery, 'battery', batteryMin, BATTERY_HYSTERESIS);
     }
     await Promise.all(lookups);
-    for (const [id, start] of this.sinceFound) if (start !== null) hints.set(id, start);
+    const hints = new Map<string, Date>();
+    for (const [id, lookup] of this.runs) {
+      if (lookup.householdId === householdId && lookup.start !== null && own.has(lookup.deviceId)) {
+        hints.set(id, lookup.start);
+      }
+    }
     return hints;
-  }
-
-  private knownSince(gatewayId: string, now: Date): Date {
-    const known = this.gatewaysKnown.get(gatewayId) ?? now;
-    this.gatewaysKnown.set(gatewayId, known);
-    return known;
   }
 
   /** Drops the household's state and its entries in the lookups. */

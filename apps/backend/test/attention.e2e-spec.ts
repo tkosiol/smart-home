@@ -257,6 +257,46 @@ describe('attention items of a household', () => {
     expect(item?.since).toBe(daysAgo(4));
   });
 
+  it('keeps a plant dry that reads inside the margin, if the stored run is still open', async () => {
+    const home = await household();
+    const open = await addPlant(home, 'Still dry', { soil_moisture: 26 });
+    const over = await addPlant(home, 'Recovered', { soil_moisture: 29 });
+    const base = Date.now();
+    const daysAgo = (days: number): string => new Date(base - days * 86_400_000).toISOString();
+    for (const [device, days, value] of [
+      [open, 3, 20],
+      [open, 1, 26],
+      [over, 3, 20],
+      [over, 1, 29],
+    ] as const) {
+      await connection.sql`
+        insert into measurements (time, device_id, capability, value_num)
+        values (${daysAgo(days)}::timestamptz, ${device}, 'soil_moisture', ${value})`;
+    }
+
+    await attention.recomputeHousehold(home.id);
+
+    const items = await itemsOf(home, home.owner);
+    expect(items.map((item) => item.id)).toEqual([`soil_dry:${open}`]);
+    expect(items[0]?.since).toBe(daysAgo(3));
+  });
+
+  it('reports a gateway nothing was heard from since its registration, also after a restart', async () => {
+    const home = await household();
+    const registered = new Date(Date.now() - 10 * 60_000);
+    await connection.sql`
+      update gateways set bridge_status = 'unknown', z2m_status = 'unknown',
+        status_changed_at = null, last_message_at = null,
+        created_at = ${registered.toISOString()}::timestamptz
+      where id = ${home.gatewayId}`;
+
+    await attention.recomputeHousehold(home.id);
+
+    const [item] = await itemsOf(home, home.owner);
+    expect(item).toMatchObject({ id: `gateway_offline:${home.gatewayId}`, severity: 'critical' });
+    expect(item?.since).toBe(registered.toISOString());
+  });
+
   it('hides a household from people who are not its members', async () => {
     const home = await household();
     const stranger = await signedIn();

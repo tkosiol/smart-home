@@ -29,7 +29,7 @@ const gateway = (overrides: Partial<GatewaySnapshot> = {}): GatewaySnapshot => (
   z2mStatus: 'online',
   statusChangedAt: ago(HOUR),
   lastMessageAt: ago(MINUTE),
-  knownSince: ago(24 * HOUR),
+  registeredAt: ago(24 * HOUR),
   certExpiresAt: new Date('2027-10-15T12:00:00.000Z'),
   warnings: [],
   ...overrides,
@@ -448,6 +448,40 @@ describe('evaluate', () => {
       expect(again?.since).toBe(first?.since);
     });
 
+    it('keeps an open run alive for a reading inside the margin (after a restart)', () => {
+      const items = run(
+        { devices: [withState({ soil_moisture: 26, battery: 22 })] },
+        hints('soil_dry:dev-1', 'battery_low:dev-1'),
+      );
+      expect(items.map((item) => [item.id, item.since])).toEqual(
+        expect.arrayContaining([
+          ['soil_dry:dev-1', hint.toISOString()],
+          ['battery_low:dev-1', hint.toISOString()],
+        ]),
+      );
+    });
+
+    it('ends nothing without a hint: a reading inside the margin alone is not dry', () => {
+      expect(run({ devices: [withState({ soil_moisture: 26, battery: 22 })] })).toEqual([]);
+    });
+
+    it('holds an open run of a silent device for its first report (after a restart)', () => {
+      const silent = withState(
+        { soil_moisture: 10 },
+        { availability: 'offline', lastSeenAt: ago(5 * HOUR) },
+      );
+      const first = evaluateWithHeld(snapshot({ devices: [silent] }), hints('soil_dry:dev-1'), NOW);
+      expect(first.items.map((item) => item.id)).toEqual(['device_silent:dev-1']);
+      const back = evaluateWithHeld(
+        snapshot({ devices: [withState({ soil_moisture: 26 })] }),
+        first,
+        NOW,
+      );
+      expect(back.items.map((item) => [item.id, item.since])).toEqual([
+        ['soil_dry:dev-1', hint.toISOString()],
+      ]);
+    });
+
     it('never puts a hint in the future', () => {
       const future = new Map([['soil_dry:dev-1', new Date(NOW.getTime() + HOUR)]]);
       const [item] = run(
@@ -486,16 +520,16 @@ describe('evaluate', () => {
     });
 
     describe('a gateway nothing was ever heard from', () => {
-      const unheard = (knownMinutes: number) =>
+      const unheard = (registeredMinutes: number) =>
         gateway({
           bridgeStatus: 'unknown',
           z2mStatus: 'unknown',
           statusChangedAt: null,
           lastMessageAt: null,
-          knownSince: ago(knownMinutes * MINUTE),
+          registeredAt: ago(registeredMinutes * MINUTE),
         });
 
-      it('gets the grace period of a gateway that is not online yet, from when it is known', () => {
+      it('gets the grace period of a gateway that is not online yet, from its registration', () => {
         expect(run({ gateways: [unheard(4.9)] })).toEqual([]);
         const [item] = run({ gateways: [unheard(5)] });
         expect(item).toMatchObject({
