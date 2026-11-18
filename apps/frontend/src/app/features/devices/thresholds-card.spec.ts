@@ -105,7 +105,7 @@ describe('thresholds card', () => {
       const lamp = device('dev-1', 'Lampe', {
         kind: 'light',
         capabilities: [capability('state', { kind: 'binary', writable: true })],
-        state: { state: 'ON' },
+        state: { state: true },
         effectiveThresholds: effectiveThresholds('light', {}),
       });
       const page = await open({ devices: [lamp] });

@@ -36,15 +36,24 @@ describe('formatReading', () => {
     });
   });
 
-  it('reads binary values given as booleans or ON/OFF', () => {
+  it('reads binary values given as booleans only', () => {
     const binary = capability({ key: 'contact', kind: 'binary' });
     expect(formatReading(binary, true, 'de')).toEqual({ kind: 'binary', on: true, style: 'yesNo' });
-    expect(formatReading(binary, 'OFF', 'de')).toEqual({
+    expect(formatReading(binary, false, 'de')).toEqual({
       kind: 'binary',
       on: false,
       style: 'yesNo',
     });
     expect(formatReading(binary, 'maybe', 'de')).toEqual({ kind: 'missing' });
+    expect(formatReading(binary, 'ON', 'de')).toEqual({ kind: 'missing' });
+  });
+
+  it('shows percent and Kelvin like other units', () => {
+    const nbsp = String.fromCharCode(0xa0);
+    const brightness = capability({ key: 'brightness', kind: 'numeric', unit: '%' });
+    const colorTemp = capability({ key: 'color_temp', kind: 'numeric', unit: 'K' });
+    expect(formatReading(brightness, 80, 'de')).toEqual({ kind: 'text', text: `80${nbsp}%` });
+    expect(formatReading(colorTemp, 2700, 'de')).toEqual({ kind: 'text', text: `2.700${nbsp}K` });
   });
 
   it('gives the dry warning and the switch state their own words', () => {
@@ -53,7 +62,7 @@ describe('formatReading', () => {
       on: true,
       style: 'dry',
     });
-    expect(formatReading(capability({ key: 'state', kind: 'binary' }), 'ON', 'de')).toEqual({
+    expect(formatReading(capability({ key: 'state', kind: 'binary' }), true, 'de')).toEqual({
       kind: 'binary',
       on: true,
       style: 'power',

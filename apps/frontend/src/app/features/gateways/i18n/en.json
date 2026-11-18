@@ -8,8 +8,11 @@
     "offline": "Offline",
     "unknown": "Unknown"
   },
+  "kind": {
+    "z2m": "Zigbee2MQTT"
+  },
   "entry": {
-    "status": "Bridge: {{ bridge }} · Zigbee2MQTT: {{ service }}",
+    "status": "Bridge: {{ bridge }} · {{ kind }}: {{ service }}",
     "lastMessage": "Last message {{ time }}",
     "noMessage": "No message received yet",
     "certExpires": "Certificate valid until {{ date }}",

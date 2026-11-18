@@ -1,5 +1,5 @@
 import type { GatewayStatus } from '@smart/contracts';
-import { statusKey } from './gateway-status';
+import { kindKey, statusKey } from './gateway-status';
 
 describe('statusKey', () => {
   it.each([
@@ -12,4 +12,10 @@ describe('statusKey', () => {
       expect(statusKey(status)).toBe(key);
     },
   );
+});
+
+describe('kindKey', () => {
+  it('is the translation key of the gateway kind', () => {
+    expect(kindKey('z2m')).toBe('gateways.kind.z2m');
+  });
 });

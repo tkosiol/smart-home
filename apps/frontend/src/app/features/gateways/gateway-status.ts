@@ -26,3 +26,11 @@ export const GATEWAY_TONE: Record<GatewayStatus, UiStatusEntryTone> = {
 export function statusKey(status: GatewayStatus): string {
   return `gateways.status.${status}`;
 }
+
+/**
+ * The translation key of the name of a gateway kind ("Zigbee2MQTT"). Built, so the key extraction
+ * is told about it here: t(gateways.kind.z2m)
+ */
+export function kindKey(kind: Gateway['kind']): string {
+  return `gateways.kind.${kind}`;
+}

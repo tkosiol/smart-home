@@ -102,7 +102,7 @@ describe('heroOf', () => {
     const lamp = device('d', 'Lampe', {
       kind: 'light',
       capabilities: [capability('state', { kind: 'binary', writable: true })],
-      state: { state: 'ON' },
+      state: { state: true },
     });
     expect(heroOf(lamp, 'de')).toMatchObject({ valueKey: 'app.devices.pod.on', missing: false });
   });
