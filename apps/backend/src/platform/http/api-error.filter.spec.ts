@@ -1,6 +1,7 @@
 import {
   type ArgumentsHost,
   BadRequestException,
+  HttpException,
   HttpStatus,
   Logger,
   NotFoundException,
@@ -88,6 +89,30 @@ describe('ApiErrorFilter', () => {
     });
     expect(error).not.toHaveBeenCalled();
   });
+
+  it.each([
+    [400, 'entity.parse.failed'],
+    [413, 'entity.too.large'],
+    [415, 'charset.unsupported'],
+  ])(
+    'keeps the %i status of a body-parser error that Nest wrapped in an HttpException',
+    (status, type) => {
+      const error = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+      const cause = Object.assign(new Error('request entity too large'), {
+        status,
+        statusCode: status,
+        type,
+        expose: true,
+      });
+      const result = run(new HttpException(cause.message, status, { cause }));
+      expect(result.status).toBe(status);
+      expect(apiErrorSchema.parse(result.body)).toEqual({
+        code: 'validation.failed',
+        traceId: 'trace-123',
+      });
+      expect(error).not.toHaveBeenCalled();
+    },
+  );
 
   it('does not mistake a 5xx status on a foreign error for a client error', () => {
     vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
