@@ -1069,5 +1069,5 @@ UPDATE "capabilities" SET "is_setting" = false WHERE "key" = 'state';
 ## Abschluss
 
 - Gesamtprüfung: `pnpm install --frozen-lockfile && pnpm format:check && pnpm lint && pnpm licenses:check && pnpm typecheck && pnpm test && pnpm test:tz && pnpm build`, `sh infra/compose/test/stack-test.sh`.
-- `git grep -nE -f /Users/tillkosiol/Projekte/smart/.local/private-patterns.txt -- .` ohne Treffer.
+- `git grep -nE -f .local/private-patterns.txt -- .` ohne Treffer.
 - PR „feat: gateway adapter layer (Zigbee2MQTT as first adapter)“ mit Zusammenfassung, Liste der Entscheidungen (Spec 11) und Hinweis auf die Migrationen 0010/0011.
