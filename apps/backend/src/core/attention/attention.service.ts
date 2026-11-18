@@ -287,6 +287,7 @@ export class AttentionService implements OnModuleInit, OnModuleDestroy {
    */
   private async sinceHints(householdId: string, snapshot: Snapshot): Promise<Map<string, Date>> {
     const state = this.households.get(householdId);
+    const firstComputation = state === undefined;
     const known = new Set([...(state?.items ?? []), ...(state?.held ?? [])].map((i) => i.id));
     const from = new Date(this.clock().getTime() - SINCE_LOOKBACK_MS);
     const own = new Set(snapshot.devices.map((device) => device.id));
@@ -309,8 +310,16 @@ export class AttentionService implements OnModuleInit, OnModuleDestroy {
         return;
       }
       if (known.has(id)) return;
-      const key = `${below}:${value < below ? 'beyond' : 'margin'}`;
+      const margined = !(value < below);
+      const key = `${below}:${margined ? 'margin' : 'beyond'}`;
       if (this.runs.get(id)?.key === key) return;
+      // Inside the margin only the history of a restart can tell that the item is still open. Later
+      // the item's own state is the truth: a threshold raised over a value inside its new margin
+      // starts nothing, however low earlier readings were.
+      if (margined && !firstComputation) {
+        this.runs.delete(id);
+        return;
+      }
       lookups.push(
         this.measurements.runStart(device.id, capability, below, below + margin, from).then(
           (start) => void this.runs.set(id, { householdId, deviceId: device.id, key, start }),

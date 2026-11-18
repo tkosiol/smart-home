@@ -311,6 +311,18 @@ describe('AttentionService', () => {
 
   describe('since from the stored readings (#99)', () => {
     const tenMinutesAgo = new Date(START.getTime() - 10 * MINUTE).toISOString();
+    /** A service that has not computed anything yet: the first computation after a start. */
+    const restarted = (): AttentionService =>
+      new AttentionService(
+        { listRegistered: list, listActive } as unknown as GatewaysService,
+        { list: listDevices, get } as unknown as DevicesRepository,
+        { listUnassigned } as unknown as HardwareRepository,
+        { runStart } as unknown as MeasurementsRepository,
+        new GatewayEvents(),
+        new DeviceEvents(),
+        new AttentionEvents(),
+        () => now,
+      );
     const DAYS_AGO = new Date(START.getTime() - 4 * 24 * 60 * MINUTE);
 
     it('starts a dry plant at the first reading of its run, not at the last report', async () => {
@@ -373,15 +385,20 @@ describe('AttentionService', () => {
     it('keeps a plant dry whose stored run is still open although it reads inside the margin', async () => {
       runStart.mockResolvedValue(DAYS_AGO);
       devices = [view('d1', { soil_moisture: 26 })];
-      await service.recomputeHousehold(HOUSEHOLD);
-      expect(items()[0]).toMatchObject({ id: 'soil_dry:d1', since: DAYS_AGO.toISOString() });
+      const after = restarted();
+      await after.recomputeHousehold(HOUSEHOLD);
+      expect(after.list(HOUSEHOLD, 'owner', false)[0]).toMatchObject({
+        id: 'soil_dry:d1',
+        since: DAYS_AGO.toISOString(),
+      });
       expect(runStart).toHaveBeenCalledWith('d1', 'soil_moisture', 25, 28, expect.any(Date));
     });
 
     it('shows nothing for a reading inside the margin without an open run', async () => {
       devices = [view('d1', { soil_moisture: 26, battery: 22 })];
-      await service.recomputeHousehold(HOUSEHOLD);
-      expect(ids()).toEqual([]);
+      const after = restarted();
+      await after.recomputeHousehold(HOUSEHOLD);
+      expect(after.list(HOUSEHOLD, 'owner', false)).toEqual([]);
     });
 
     it('does not ask for a reading beyond the margin', async () => {
@@ -404,12 +421,38 @@ describe('AttentionService', () => {
     it('asks again when the threshold changes, or when the reading crosses it', async () => {
       gateways = [gateway({ bridgeStatus: 'offline', statusChangedAt: tenMinutesAgo })];
       devices = [view('d1', { soil_moisture: 26 })];
-      await service.recomputeHousehold(HOUSEHOLD);
+      const after = restarted();
+      await after.recomputeHousehold(HOUSEHOLD);
       devices = [view('d1', { soil_moisture: 10 })];
-      await service.recomputeHousehold(HOUSEHOLD);
+      await after.recomputeHousehold(HOUSEHOLD);
       devices = [view('d1', { soil_moisture: 10 }, { thresholds: { soilMoistureMin: 40 } })];
-      await service.recomputeHousehold(HOUSEHOLD);
+      await after.recomputeHousehold(HOUSEHOLD);
       expect(runStart).toHaveBeenCalledTimes(3);
+    });
+
+    it('does not revive a run when the threshold is raised over a reading inside the new margin', async () => {
+      // Readings below 25 exist (22 %), but the plant was no problem under its minimum of 20.
+      runStart.mockResolvedValue(DAYS_AGO);
+      devices = [view('d1', { soil_moisture: 22 }, { thresholds: { soilMoistureMin: 20 } })];
+      await service.recomputeHousehold(HOUSEHOLD);
+      expect(ids()).toEqual([]);
+
+      devices = [view('d1', { soil_moisture: 26 }, { thresholds: { soilMoistureMin: 25 } })];
+      deviceEvents.emit(DEVICE_THRESHOLDS_CHANGED, { householdId: HOUSEHOLD, deviceId: 'd1' });
+      await service.idle();
+      expect(ids()).toEqual([]);
+      devices = [view('d1', { soil_moisture: 26 }, { thresholds: { soilMoistureMin: 25 } })];
+      await service.recomputeHousehold(HOUSEHOLD);
+      expect(ids()).toEqual([]);
+    });
+
+    it('does the same for the battery', async () => {
+      runStart.mockResolvedValue(DAYS_AGO);
+      devices = [view('d1', { battery: 18 }, { thresholds: { batteryMin: 15 } })];
+      await service.recomputeHousehold(HOUSEHOLD);
+      devices = [view('d1', { battery: 22 }, { thresholds: { batteryMin: 20 } })];
+      await service.recomputeDevice(HOUSEHOLD, 'd1');
+      expect(ids()).toEqual([]);
     });
 
     it('forgets what it asked when the device is healthy again', async () => {
