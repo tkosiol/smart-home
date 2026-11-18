@@ -595,4 +595,49 @@ describe('auth: e-mail code sign-in and sign-out', () => {
       await post(LOGOUT, {}, { cookies: [cookie] }).expect(204);
     });
   });
+
+  describe('signing in with a session cookie present', () => {
+    const signInWith = async (email: string, cookies: string[]): Promise<request.Response> => {
+      const nonce = await requestCode(email);
+      return verify(email, mailer.codeFor(email), nonce)
+        .set('Cookie', [...cookies, `${LOGIN_NONCE_COOKIE}=${nonce}`].join('; '))
+        .expect(200);
+    };
+    const sessionWorks = (cookie: string): request.Test =>
+      request(app.getHttpServer()).get('/api/v1/me').set('Cookie', cookie);
+    const cookieOf = (response: request.Response): string =>
+      `${SESSION_COOKIE}=${cookieValue(response, SESSION_COOKIE)}`;
+
+    it('revokes the old session of the same user when the new one is issued', async () => {
+      const email = await newUser();
+      const first = await signInWith(email, []);
+      const oldCookie = cookieOf(first);
+      await sessionWorks(oldCookie).expect(200);
+
+      const second = await signInWith(email, [oldCookie]);
+      expect(cookieOf(second)).not.toBe(oldCookie);
+      await sessionWorks(oldCookie).expect(401);
+      await sessionWorks(cookieOf(second)).expect(200);
+    });
+
+    it('revokes the old session of another user, which this browser replaces', async () => {
+      const oldCookie = cookieOf(await signInWith(await newUser(), []));
+      const second = await signInWith(await newUser(), [oldCookie]);
+      await sessionWorks(oldCookie).expect(401);
+      await sessionWorks(cookieOf(second)).expect(200);
+    });
+
+    it('keeps the old session when the code is wrong, and ignores a cookie of no session', async () => {
+      const email = await newUser();
+      const oldCookie = cookieOf(await signInWith(email, []));
+
+      const nonce = await requestCode(email);
+      await verify(email, wrongCode(mailer.codeFor(email)), nonce)
+        .set('Cookie', `${oldCookie}; ${LOGIN_NONCE_COOKIE}=${nonce}`)
+        .expect(400);
+      await sessionWorks(oldCookie).expect(200);
+
+      await signInWith(email, [`${SESSION_COOKIE}=not-a-session`]);
+    });
+  });
 });

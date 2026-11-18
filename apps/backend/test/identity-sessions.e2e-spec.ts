@@ -12,6 +12,7 @@ import {
   CurrentUser,
   SESSION_COOKIE,
   SessionService,
+  SessionsRepository,
   UsersRepository,
   emailLoginCodes,
   sessions,
@@ -144,6 +145,98 @@ describe('identity: users and sessions', () => {
       .get('/api/probe/me')
       .set('Cookie', cookie(token))
       .expect(401);
+  });
+
+  describe('revoked while being extended', () => {
+    it('touch updates nothing for a revoked, an idle-expired or an absolutely expired session', async () => {
+      const repository = app.get(SessionsRepository);
+      const { token } = await service.create(userId, 'email_code', 'Browser/1');
+      const valid = await service.validate(token);
+      if (!valid) throw new Error('expected a valid session');
+      const later = new Date(START.getTime() + 5 * 60_000);
+      const next = new Date(later.getTime() + 30 * DAY);
+
+      expect(await repository.touch(valid.sessionId, later, next)).toBe(true);
+      expect(await repository.touch(valid.sessionId, new Date(next.getTime()), next)).toBe(false);
+      await connection.sql`update sessions set absolute_expires_at = ${later.toISOString()}::timestamptz where id = ${valid.sessionId}`;
+      expect(await repository.touch(valid.sessionId, later, next)).toBe(false);
+
+      const other = await service.create(userId, 'email_code', 'Browser/2');
+      const otherValid = await service.validate(other.token);
+      if (!otherValid) throw new Error('expected a valid session');
+      await service.revoke(otherValid.sessionId);
+      const before = await sessionRow(otherValid.sessionId);
+      expect(await repository.touch(otherValid.sessionId, later, next)).toBe(false);
+      expect(await sessionRow(otherValid.sessionId)).toEqual(before);
+    });
+
+    it('treats a session revoked between lookup and touch as invalid and renews no cookie', async () => {
+      const { token } = await service.create(userId, 'email_code', 'Browser/1');
+      const repository = app.get(SessionsRepository);
+      const find = repository.findByTokenHash.bind(repository);
+      let id = '';
+      const spy = vi.spyOn(repository, 'findByTokenHash').mockImplementation(async (hash) => {
+        const row = await find(hash);
+        if (row) {
+          id = row.id;
+          await service.revoke(row.id);
+        }
+        return row ? { ...row, revokedAt: null } : row;
+      });
+      advance(120_000);
+      try {
+        expect(await service.validate(token)).toBeNull();
+        const response = await request(app.getHttpServer())
+          .get('/api/probe/me')
+          .set('Cookie', cookie(token))
+          .expect(401);
+        const header = (response.headers['set-cookie'] as unknown as string[] | undefined) ?? [];
+        expect(header.join('\n')).not.toContain(`${SESSION_COOKIE}=${token}`);
+      } finally {
+        spy.mockRestore();
+      }
+      const row = await sessionRow(id);
+      expect(row.lastSeenAt).toEqual(START);
+      expect(row.expiresAt).toEqual(new Date(START.getTime() + 30 * DAY));
+    });
+  });
+
+  describe('stale cookie on 401', () => {
+    const clearedHeader = (response: request.Response): string | undefined =>
+      (response.headers['set-cookie'] as unknown as string[] | undefined)?.find((line) =>
+        line.startsWith(`${SESSION_COOKIE}=;`),
+      );
+
+    it.each(['unknown', 'expired', 'revoked'])(
+      'clears the cookie for a %s session',
+      async (kind) => {
+        const { token } = await service.create(userId, 'email_code', 'Browser/1');
+        let sent = token;
+        if (kind === 'unknown') sent = `${token}x`;
+        if (kind === 'expired') advance(30 * DAY);
+        if (kind === 'revoked') {
+          const valid = await service.validate(token);
+          if (!valid) throw new Error('expected a valid session');
+          await service.revoke(valid.sessionId);
+        }
+        const response = await request(app.getHttpServer())
+          .get('/api/probe/me')
+          .set('Cookie', cookie(sent))
+          .expect(401);
+        const header = clearedHeader(response);
+        expect(header).toBeDefined();
+        const attributes = (header ?? '').split('; ');
+        expect(attributes).toEqual(
+          expect.arrayContaining(['Path=/', 'HttpOnly', 'Secure', 'SameSite=Lax']),
+        );
+        expect(header).toMatch(/Expires=Thu, 01 Jan 1970/);
+      },
+    );
+
+    it('leaves a request without a cookie alone', async () => {
+      const response = await request(app.getHttpServer()).get('/api/probe/me').expect(401);
+      expect(response.headers['set-cookie']).toBeUndefined();
+    });
   });
 
   describe('isActive', () => {

@@ -1,4 +1,4 @@
-import type { CookieOptions, Response } from 'express';
+import type { CookieOptions, Request, Response } from 'express';
 
 /** `__Host-` requires Secure, Path=/ and no Domain; localhost counts as a secure context. */
 export const SESSION_COOKIE = '__Host-session';
@@ -21,6 +21,12 @@ export function setSessionCookie(
     ...SESSION_COOKIE_OPTIONS,
     maxAge: Math.max(0, expiresAt.getTime() - now.getTime()),
   });
+}
+
+/** The raw session token of a request, or undefined without a (string) cookie. */
+export function readSessionToken(request: Request): string | undefined {
+  const value = (request.cookies as Record<string, unknown> | undefined)?.[SESSION_COOKIE];
+  return typeof value === 'string' ? value : undefined;
 }
 
 export function clearSessionCookie(res: Response): void {
