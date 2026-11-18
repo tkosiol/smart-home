@@ -231,10 +231,18 @@ EOF
 S_MIG_STATUS=$(cat << 'EOF'
 f=$1/migration/status
 if [ -s "$f" ]; then
+  # The pid and the line must belong together: a rerun replaces a stale line (dead pid) by its own while this reads,
+  # so the pid is taken again from the line read after the check, and the check repeats if it changed.
   pid=$(cut -d" " -f3 "$f")
-  if kill -0 "$pid" 2> /dev/null; then alive=alive; else alive=dead; fi
-  # Read AFTER the pid check: a run that finished in between has written its final state before it exited.
-  cat "$f"
+  for _ in 1 2 3; do
+    if kill -0 "$pid" 2> /dev/null; then alive=alive; else alive=dead; fi
+    # Read AFTER the pid check: a run that finished in between has written its final state before it exited.
+    line=$(cat "$f")
+    now=$(printf "%s\n" "$line" | cut -d" " -f3)
+    [ "$now" = "$pid" ] && break
+    pid=$now
+  done
+  echo "$line"
   echo "$alive"
 else
   echo none
