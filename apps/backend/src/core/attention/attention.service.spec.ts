@@ -218,6 +218,65 @@ describe('AttentionService', () => {
     expect(items()[0]?.value).toBe(12);
   });
 
+  describe('what a silent phase does not reset (#39)', () => {
+    it('keeps a dry plant dry over a silent phase and a report inside the margin', async () => {
+      devices = [view('d1', { soil_moisture: 10 })];
+      await service.recomputeHousehold(HOUSEHOLD);
+      const since = items()[0]?.since;
+
+      now = new Date(START.getTime() + 3 * 60 * MINUTE);
+      devices = [view('d1', { soil_moisture: 10 }, { availability: 'offline' })];
+      await service.recomputeDevice(HOUSEHOLD, 'd1');
+      expect(ids()).toEqual(['device_silent:d1']);
+
+      devices = [view('d1', { soil_moisture: 26 }, { lastSeenAt: now })];
+      await service.recomputeDevice(HOUSEHOLD, 'd1');
+      expect(ids()).toEqual(['soil_dry:d1']);
+      expect(items()[0]?.since).toBe(since);
+
+      devices = [view('d1', { soil_moisture: 29 }, { lastSeenAt: now })];
+      await service.recomputeDevice(HOUSEHOLD, 'd1');
+      expect(ids()).toEqual([]);
+    });
+
+    it('keeps it over an outage of the gateway, too', async () => {
+      devices = [view('d1', { soil_moisture: 10 })];
+      await service.recomputeHousehold(HOUSEHOLD);
+      gateways = [
+        gateway({
+          bridgeStatus: 'offline',
+          statusChangedAt: new Date(START.getTime() - 9 * MINUTE).toISOString(),
+        }),
+      ];
+      await service.recomputeHousehold(HOUSEHOLD);
+      expect(ids()).toEqual([`gateway_offline:${GATEWAY}`]);
+      gateways = [gateway()];
+      devices = [view('d1', { soil_moisture: 26 })];
+      await service.recomputeHousehold(HOUSEHOLD);
+      expect(ids()).toEqual(['soil_dry:d1']);
+    });
+  });
+
+  it('reports a gateway nothing was ever heard from once it has been known for 5 minutes', async () => {
+    gateways = [
+      gateway({
+        bridgeStatus: 'unknown',
+        z2mStatus: 'unknown',
+        statusChangedAt: null,
+        lastMessageAt: null,
+      }),
+    ];
+    devices = [view('d1', { soil_moisture: 60 }, { availability: 'offline' })];
+    await service.recomputeHousehold(HOUSEHOLD);
+    expect(ids()).toEqual([]);
+
+    now = new Date(START.getTime() + 5 * MINUTE);
+    await vi.advanceTimersByTimeAsync(TICK_MS);
+    await service.idle();
+    expect(ids()).toEqual([`gateway_offline:${GATEWAY}`]);
+    expect(items()[0]?.since).toBe(START.toISOString());
+  });
+
   it('filters by role: hardware for owners, certificates for owners and platform admins', async () => {
     unassigned = [
       {

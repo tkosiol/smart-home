@@ -32,7 +32,12 @@ import {
 } from '../gateways/index.js';
 import { CLOCK, type Clock } from '../identity/index.js';
 import { ATTENTION_CHANGED, AttentionEvents, type AttentionChanged } from './attention-events.js';
-import { evaluate, openContacts, type DeviceSnapshot, type Snapshot } from './attention.rules.js';
+import {
+  evaluateWithHeld,
+  openContacts,
+  type DeviceSnapshot,
+  type Snapshot,
+} from './attention.rules.js';
 
 /** How often the time conditions (open too long, silent, gateway away) are looked at again. */
 export const TICK_MS = 30_000;
@@ -40,6 +45,7 @@ export const TICK_MS = 30_000;
 interface HouseholdState {
   snapshot: Snapshot;
   items: AttentionItem[];
+  held: AttentionItem[];
   contactOpenSince: Map<string, Date>;
 }
 
@@ -76,6 +82,8 @@ export class AttentionService implements OnModuleInit, OnModuleDestroy {
   /** Which household a device or a gateway of the computed state belongs to. */
   private readonly deviceHouseholds = new Map<string, string>();
   private readonly gatewayHouseholds = new Map<string, string>();
+  /** When each gateway was first seen here; the start of the wait for one never heard from. */
+  private readonly gatewaysKnown = new Map<string, Date>();
   private readonly queued = new Set<string>();
   private tail: Promise<unknown> = Promise.resolve();
   private timer: NodeJS.Timeout | undefined;
@@ -174,6 +182,7 @@ export class AttentionService implements OnModuleInit, OnModuleDestroy {
     const crlWarned = active.some((gateway) => gateway.warnings.includes('crlExpiring'));
     const crlNextUpdate = crlWarned ? ((await this.gateways.crlNextUpdate()) ?? null) : null;
     const known = new Set(active.map((gateway) => gateway.id));
+    const seen = this.clock();
     this.apply(householdId, {
       gateways: active.map((gateway) => ({
         id: gateway.id,
@@ -183,6 +192,7 @@ export class AttentionService implements OnModuleInit, OnModuleDestroy {
         statusChangedAt:
           gateway.statusChangedAt === null ? null : new Date(gateway.statusChangedAt),
         lastMessageAt: gateway.lastMessageAt === null ? null : new Date(gateway.lastMessageAt),
+        knownSince: this.knownSince(gateway.id, seen),
         certExpiresAt: new Date(gateway.certExpiresAt),
         warnings: gateway.warnings,
       })),
@@ -216,11 +226,16 @@ export class AttentionService implements OnModuleInit, OnModuleDestroy {
     }
     for (const device of snapshot.devices) this.deviceHouseholds.set(device.id, householdId);
     for (const gateway of snapshot.gateways) this.gatewayHouseholds.set(gateway.id, householdId);
-    const before = { items: previous?.items ?? [], contactOpenSince: previous?.contactOpenSince };
-    const items = evaluate(snapshot, before, now);
+    const before = {
+      items: previous?.items ?? [],
+      held: previous?.held,
+      contactOpenSince: previous?.contactOpenSince,
+    };
+    const { items, held } = evaluateWithHeld(snapshot, before, now);
     this.households.set(householdId, {
       snapshot,
       items,
+      held,
       contactOpenSince: openContacts(snapshot, before, now),
     });
     this.announce(householdId, before.items, items);
@@ -235,6 +250,12 @@ export class AttentionService implements OnModuleInit, OnModuleDestroy {
     } catch (error) {
       this.logger.warn(`Cannot announce changed attention items: ${describeError(error)}`);
     }
+  }
+
+  private knownSince(gatewayId: string, now: Date): Date {
+    const known = this.gatewaysKnown.get(gatewayId) ?? now;
+    this.gatewaysKnown.set(gatewayId, known);
+    return known;
   }
 
   /** Drops the household's state and its entries in the lookups. */
