@@ -5,7 +5,7 @@ import type { UiSpace } from '../space';
 
 /**
  * Responsive grid: as many columns as fit, each at least `min` wide (never wider than the grid).
- * `xs` is the grid of side-value pods (three across a phone, spec 3.3). `split` is one column
+ * `xs` is the grid of side-value pods (three across a 390 px phone, spec 3.3). `split` is one column
  * up to the Expanded window class and two equal columns from there (the device page: values
  * left, history right), however wide the grid is.
  */
