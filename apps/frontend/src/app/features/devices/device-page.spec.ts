@@ -13,7 +13,7 @@ import {
   type OpenedHouseholdPage,
   type Responder,
 } from '../../testing/household-page-testing';
-import { capability, device, devicesServer, type DevicesServer } from './devices-testing';
+import { capability, device, devicesServer, notice, type DevicesServer } from './devices-testing';
 import { deviceRoutes } from './devices.routes';
 
 const owner = householdOf('Home', { role: 'owner' });
@@ -126,10 +126,76 @@ describe('device page', () => {
     it('says in words that the soil is too dry', async () => {
       const page = await open({
         devices: [device('dev-1', 'Ficus', { state: { soil_moisture: 12, battery: 90 } })],
+        attention: [notice('soil_dry', 'dev-1', 12)],
       });
       await flush(page);
       expect(meter(page)?.getAttribute('aria-valuetext')).toContain('zu trocken');
       expect(pageText(page.element)).toContain('trocken');
+    });
+
+    it('says dry at 26 % with an open soil_dry item (hysteresis), like the status block', async () => {
+      const page = await open({
+        devices: [device('dev-1', 'Ficus', { state: { soil_moisture: 26 } })],
+        attention: [notice('soil_dry', 'dev-1', 26)],
+      });
+      await flush(page);
+      expect(meter(page)?.getAttribute('aria-valuetext')).toContain('zu trocken');
+      expect(pageText(page.element)).toContain('trocken');
+    });
+
+    it('claims neither OK nor dry until the attention list is there', async () => {
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => (release = resolve));
+      const page = await open({
+        devices: [device('dev-1', 'Ficus', { state: { soil_moisture: 26 } })],
+        attention: [notice('soil_dry', 'dev-1', 26)],
+        wrap: (respond) => async (call) => {
+          const answer = respond(call);
+          if (call.method === 'GET' && call.path.endsWith('/attention')) await gate;
+          return answer;
+        },
+      });
+      await flush(page);
+      expect(meter(page)?.getAttribute('aria-valuetext')).toBe('26\u00a0%');
+      expect(pageText(page.element)).not.toContain('OK');
+      release();
+      await flush(page);
+      expect(meter(page)?.getAttribute('aria-valuetext')).toContain('zu trocken');
+    });
+
+    it('stays neutral when the attention list cannot be loaded', async () => {
+      const page = await open({
+        devices: [device('dev-1', 'Ficus', { state: { soil_moisture: 26 } })],
+        wrap: (respond) => (call) =>
+          call.path.endsWith('/attention') ? new Response(null, { status: 500 }) : respond(call),
+      });
+      await flush(page);
+      expect(meter(page)?.getAttribute('aria-valuetext')).toBe('26\u00a0%');
+      expect(pageText(page.element)).not.toContain('OK');
+    });
+
+    it('does not say dry at 24 % when the server has no soil_dry item', async () => {
+      const page = await open({
+        devices: [device('dev-1', 'Ficus', { state: { soil_moisture: 24 } })],
+      });
+      await flush(page);
+      expect(meter(page)?.getAttribute('aria-valuetext')).not.toContain('zu trocken');
+      expect(pageText(page.element)).not.toContain('trocken');
+    });
+
+    it('follows attention.changed without a reload', async () => {
+      const page = await open({
+        devices: [device('dev-1', 'Ficus', { state: { soil_moisture: 26 } })],
+      });
+      await flush(page);
+      expect(pageText(page.element)).not.toContain('trocken');
+      page.live.emit('attention.changed', { items: [notice('soil_dry', 'dev-1', 26)] });
+      await flush(page);
+      expect(pageText(page.element)).toContain('trocken');
+      page.live.emit('attention.changed', { items: [notice('soil_dry', 'dev-2', 20)] });
+      await flush(page);
+      expect(pageText(page.element)).not.toContain('trocken');
+      expect(gets(page)).toHaveLength(1);
     });
 
     it('says in words that the soil is too wet', async () => {
@@ -140,6 +206,7 @@ describe('device page', () => {
             effectiveThresholds: { ...sensor.effectiveThresholds, soilMoistureMax: 70 },
           }),
         ],
+        attention: [notice('soil_wet', 'dev-1', 85)],
       });
       await flush(page);
       expect(meter(page)?.getAttribute('aria-valuetext')).toContain('zu nass');
@@ -207,6 +274,7 @@ describe('device page', () => {
           state: { soil_moisture: 30, battery: 15 },
         }),
       ],
+      attention: [notice('battery_low', 'dev-1', 15)],
     });
     await flush(page);
     const text = pageText(page.element);
@@ -215,25 +283,17 @@ describe('device page', () => {
   });
 
   it.each([
-    [10, 15, false],
-    [30, 25, true],
-    [20, 20, false],
-  ])(
-    'hints at a low battery by the own limit of the device (limit %i, battery %i)',
-    async (batteryMin, level, hinted) => {
-      const base = device('x', 'x').effectiveThresholds;
-      const page = await open({
-        devices: [
-          device('dev-1', 'Garten', {
-            state: { soil_moisture: 30, battery: level },
-            effectiveThresholds: { ...base, batteryMin },
-          }),
-        ],
-      });
-      await flush(page);
-      expect(pageText(page.element).includes('Die Batterie ist fast leer.')).toBe(hinted);
-    },
-  );
+    ['has a battery_low item', [notice('battery_low', 'dev-1', 25)], true],
+    ['has none', [], false],
+    ['has an item of another device', [notice('battery_low', 'dev-2', 5)], false],
+  ])('hints at a low battery only when the device %s', async (_name, attention, hinted) => {
+    const page = await open({
+      devices: [device('dev-1', 'Garten', { state: { soil_moisture: 30, battery: 25 } })],
+      attention,
+    });
+    await flush(page);
+    expect(pageText(page.element).includes('Die Batterie ist fast leer.')).toBe(hinted);
+  });
 
   it('says so when the device does not exist, without a message or a reload of the access', async () => {
     const page = await open({ id: 'gone' });

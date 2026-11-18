@@ -10,6 +10,7 @@ import {
   UiRoomCard,
 } from '@smart/ui';
 import { injectDeviceList } from './device-list';
+import { injectDeviceNotices, noticesOf } from './device-notices';
 import { podOf } from './device-pod';
 import { provideDevicesTexts } from './devices-texts';
 
@@ -77,9 +78,12 @@ import { provideDevicesTexts } from './devices-texts';
 })
 export class DevicesBlock {
   protected readonly devices = injectDeviceList();
+  private readonly notices = injectDeviceNotices();
   private readonly locale = inject(UiFormatContext).locale;
 
   protected readonly pods = computed(() =>
-    this.devices.items().map((device) => podOf(device, this.locale())),
+    this.devices
+      .items()
+      .map((device) => podOf(device, this.locale(), noticesOf(this.notices(), device.id))),
   );
 }

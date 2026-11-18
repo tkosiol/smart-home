@@ -1,5 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import type {
+  AttentionItem,
+  AttentionList,
   Device,
   DeviceCreate,
   DeviceHistory,
@@ -16,6 +18,12 @@ export class DevicesApi {
 
   private path(householdId: string, rest: string): string {
     return `${API_BASE}/households/${householdId}${rest}`;
+  }
+
+  /** The household's attention items; the device chips follow them. */
+  async attention(householdId: string): Promise<AttentionItem[]> {
+    const answer = await this.api.get<AttentionList>(this.path(householdId, '/attention'));
+    return answer.items;
   }
 
   unassignedHardware(householdId: string): Promise<Hardware[]> {

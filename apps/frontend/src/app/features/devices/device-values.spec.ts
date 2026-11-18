@@ -1,5 +1,5 @@
 import type { Capability, Device } from '@smart/contracts';
-import { batteryPercent, formatReading, isReading, readingsOf } from './device-values';
+import { formatReading, isReading, readingsOf } from './device-values';
 
 const NBSP = String.fromCharCode(0xa0);
 const capability = (overrides: Partial<Capability> & { key: string }): Capability => ({
@@ -81,12 +81,5 @@ describe('readings', () => {
     expect(all.filter(isReading).map((c) => c.key)).toEqual(['soil_moisture']);
     const device = { capabilities: all } as Device;
     expect(readingsOf(device).map((c) => c.key)).toEqual(['soil_moisture']);
-  });
-
-  it('reads the battery percentage from the state', () => {
-    const device = (state: Record<string, unknown>) => ({ state }) as Device;
-    expect(batteryPercent(device({ battery: 15 }))).toBe(15);
-    expect(batteryPercent(device({ battery: 'low' }))).toBeUndefined();
-    expect(batteryPercent(device({}))).toBeUndefined();
   });
 });
