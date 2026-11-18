@@ -168,6 +168,38 @@ export const Nebenwerte: StoryObj<UiDevicePod> = {
   },
 };
 
+/** Grid widths from a 320 px phone to a wide column of the two-column device page; 352 px gives
+ * the narrowest cells (three of 112 px). */
+const SIDE_WIDTHS = [288, 320, 328, 352, 358, 400, 440, 480, 520, 560, 600, 640];
+const longSideValues = `
+  <ui-grid min="xs" gap="sm">
+    <ui-device-pod fill kind="climate" icon="thermostat" value="-10,5" unit="°C" label="Temperatur" />
+    <ui-device-pod fill kind="climate" icon="water_drop" value="100" unit="%" label="Luftfeuchte" />
+    <ui-device-pod fill kind="climate" icon="battery_alert" value="100" unit="%" label="Batterie" />
+    <ui-device-pod fill kind="climate" icon="sensors" value="255" label="Signalqualität" />
+  </ui-grid>`;
+
+/** Issue #122: however narrow the grid makes a pod, its value and unit are shown in full. */
+export const NebenwerteBreiten: StoryObj<UiDevicePod> = {
+  render: () => ({
+    template: SIDE_WIDTHS.map(
+      (width) => `<div style="width: ${width}px; margin-block-end: 8px">${longSideValues}</div>`,
+    ).join(''),
+  }),
+  play: async ({ canvasElement }) => {
+    // Measured in the app's font: the fallback that shows while it loads is wider.
+    await document.fonts.ready;
+    const values = canvasElement.querySelectorAll<HTMLElement>('ui-device-pod .value');
+    await expect(values).toHaveLength(SIDE_WIDTHS.length * 4);
+    for (const value of values) {
+      await expect(value.scrollWidth).toBeLessThanOrEqual(value.clientWidth);
+      const pod = value.closest('.pod')!.getBoundingClientRect();
+      const line = value.parentElement!.getBoundingClientRect();
+      await expect(line.right).toBeLessThanOrEqual(pod.right);
+    }
+  },
+};
+
 export const Kombinationen: StoryObj<UiDevicePod> = {
   decorators: [moduleMetadata({ imports: [ThemeMatrixStoryComponent, UiMatrixCell] })],
   render: () => ({
