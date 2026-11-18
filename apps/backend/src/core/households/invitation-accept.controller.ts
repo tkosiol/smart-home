@@ -12,6 +12,7 @@ import {
   CurrentUser,
   MeService,
   SessionService,
+  readSessionToken,
   setSessionCookie,
   type AuthenticatedUser,
   type Clock,
@@ -65,6 +66,8 @@ export class InvitationAcceptController {
       'invitation',
       request.get('user-agent') ?? '',
     );
+    const old = readSessionToken(request);
+    if (old !== undefined) await this.sessions.revokeByToken(old);
     setSessionCookie(response, session.token, session.expiresAt, this.clock());
     return this.meService.forUser(user);
   }

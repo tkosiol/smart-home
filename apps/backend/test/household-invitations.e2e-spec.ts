@@ -628,6 +628,19 @@ describe('household invitations', () => {
       expect(meSchema.parse(next.body).email).toBe(email);
     });
 
+    it('replaces the session this browser still carried', async () => {
+      const { id, users } = await household('owner');
+      const [owner] = users as [TestUser];
+      const created = await invite(id, owner);
+
+      const response = await acceptNew(tokenOf(created)).set('Cookie', owner.cookie).expect(200);
+      const fresh = (response.headers['set-cookie'] as unknown as string[])
+        .find((line) => line.startsWith(`${SESSION_COOKIE}=`))
+        ?.split(';')[0];
+      await call('get', ME, { cookie: owner.cookie }).expect(401);
+      await call('get', ME, { cookie: fresh }).expect(200);
+    });
+
     it('uses the invitation up: a second acceptance answers 404 invitation.invalid', async () => {
       const { id, users } = await household('owner');
       const [owner] = users as [TestUser];

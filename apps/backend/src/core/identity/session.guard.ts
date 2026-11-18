@@ -10,7 +10,7 @@ import type { Response } from 'express';
 import { ApiError, IS_PUBLIC_KEY } from '../../platform/http/index.js';
 import type { AuthenticatedRequest } from './authenticated-user.js';
 import { CLOCK, type Clock } from './clock.js';
-import { SESSION_COOKIE, setSessionCookie } from './session.cookie.js';
+import { clearSessionCookie, readSessionToken, setSessionCookie } from './session.cookie.js';
 import { SessionService } from './session.service.js';
 
 /** Global guard: every route needs a valid session unless it is marked `@Public()`. */
@@ -31,11 +31,12 @@ export class SessionGuard implements CanActivate {
 
     const http = context.switchToHttp();
     const request = http.getRequest<AuthenticatedRequest>();
-    const token: unknown = (request.cookies as Record<string, unknown> | undefined)?.[
-      SESSION_COOKIE
-    ];
-    const session = typeof token === 'string' ? await this.sessions.validate(token) : null;
-    if (typeof token !== 'string' || !session) {
+    const token = readSessionToken(request);
+    if (token === undefined) throw new ApiError(HttpStatus.UNAUTHORIZED, 'auth.required');
+    const session = await this.sessions.validate(token);
+    if (!session) {
+      // The cookie no longer belongs to a usable session; drop it instead of resending it forever.
+      clearSessionCookie(http.getResponse<Response>());
       throw new ApiError(HttpStatus.UNAUTHORIZED, 'auth.required');
     }
 

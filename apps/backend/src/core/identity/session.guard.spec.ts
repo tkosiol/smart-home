@@ -1,7 +1,7 @@
 import { type ExecutionContext, HttpStatus } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { ApiError, Public } from '../../platform/http/index.js';
-import { SESSION_COOKIE } from './session.cookie.js';
+import { SESSION_COOKIE, SESSION_COOKIE_OPTIONS } from './session.cookie.js';
 import { SessionGuard } from './session.guard.js';
 import type { SessionService } from './session.service.js';
 
@@ -21,16 +21,17 @@ function setup(validate: SessionService['validate'] = () => Promise.resolve(null
   const cookies: Record<string, string> = {};
   const request: Record<string, unknown> = { cookies };
   const setCookie = vi.fn();
+  const clearCookie = vi.fn();
   const context = (handler: () => void): ExecutionContext =>
     ({
       getHandler: () => handler,
       getClass: () => OpenController,
       switchToHttp: () => ({
         getRequest: () => request,
-        getResponse: () => ({ cookie: setCookie }),
+        getResponse: () => ({ cookie: setCookie, clearCookie }),
       }),
     }) as unknown as ExecutionContext;
-  return { guard, cookies, request, setCookie, context };
+  return { guard, cookies, request, setCookie, clearCookie, context };
 }
 
 async function expectRequired(promise: Promise<unknown>): Promise<void> {
@@ -62,10 +63,17 @@ describe('SessionGuard', () => {
     await expectRequired(guard.canActivate(context(controller.closed)));
   });
 
-  it('rejects an unknown token with 401 auth.required', async () => {
-    const { guard, cookies, context } = setup();
+  it('rejects an unknown token with 401 auth.required and clears the stale cookie', async () => {
+    const { guard, cookies, clearCookie, context } = setup();
     cookies[SESSION_COOKIE] = 'unknown';
     await expectRequired(guard.canActivate(context(controller.closed)));
+    expect(clearCookie).toHaveBeenCalledWith(SESSION_COOKIE, SESSION_COOKIE_OPTIONS);
+  });
+
+  it('does not touch cookies when the request carried none', async () => {
+    const { guard, clearCookie, context } = setup();
+    await expectRequired(guard.canActivate(context(controller.closed)));
+    expect(clearCookie).not.toHaveBeenCalled();
   });
 
   it('attaches the user and leaves the cookie alone when not refreshed', async () => {

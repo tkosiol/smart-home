@@ -62,7 +62,7 @@ export class SessionService {
     const expiresAt = new Date(
       Math.min(now.getTime() + SESSION_IDLE_MS, session.absoluteExpiresAt.getTime()),
     );
-    await this.sessions.touch(session.id, now, expiresAt);
+    if (!(await this.sessions.touch(session.id, now, expiresAt))) return null;
     return { ...base, refreshed: true, expiresAt };
   }
 
@@ -76,6 +76,12 @@ export class SessionService {
 
   async revoke(sessionId: string): Promise<void> {
     await this.sessions.revoke(sessionId, this.clock());
+  }
+
+  /** Ends the session that belongs to a raw cookie token, if there is one; unknown tokens are ignored. */
+  async revokeByToken(token: string): Promise<void> {
+    const session = await this.sessions.findByTokenHash(sha256(token));
+    if (session) await this.sessions.revoke(session.id, this.clock());
   }
 
   /** Ends every open session of the user that was created with `authMethod`. */

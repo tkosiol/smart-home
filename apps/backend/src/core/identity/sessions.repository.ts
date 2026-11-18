@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, gt, isNull } from 'drizzle-orm';
 import { DATABASE, type DatabaseConnection } from '../../platform/database/index.js';
 import { sessions, type AuthMethod, type Session } from './identity.schema.js';
 
@@ -43,11 +43,24 @@ export class SessionsRepository {
     return row;
   }
 
-  async touch(id: string, lastSeenAt: Date, expiresAt: Date): Promise<void> {
-    await this.connection.db
+  /**
+   * Extends the session only while it is still open at `lastSeenAt`; returns false when no row
+   * qualified (revoked or expired in the meantime), so a revoked session is never extended.
+   */
+  async touch(id: string, lastSeenAt: Date, expiresAt: Date): Promise<boolean> {
+    const rows = await this.connection.db
       .update(sessions)
       .set({ lastSeenAt, expiresAt })
-      .where(and(eq(sessions.id, id), isNull(sessions.revokedAt)));
+      .where(
+        and(
+          eq(sessions.id, id),
+          isNull(sessions.revokedAt),
+          gt(sessions.expiresAt, lastSeenAt),
+          gt(sessions.absoluteExpiresAt, lastSeenAt),
+        ),
+      )
+      .returning({ id: sessions.id });
+    return rows.length > 0;
   }
 
   async revoke(id: string, at: Date): Promise<void> {

@@ -14,7 +14,7 @@ import {
 } from './login-nonce.cookie.js';
 import { MeService } from './me.service.js';
 import { newToken } from './secrets.js';
-import { clearSessionCookie, setSessionCookie } from './session.cookie.js';
+import { clearSessionCookie, readSessionToken, setSessionCookie } from './session.cookie.js';
 import { SessionService } from './session.service.js';
 
 const nonceOf = (request: Request): string | undefined =>
@@ -61,8 +61,15 @@ export class AuthController {
       request.get('user-agent') ?? '',
     );
     clearLoginNonceCookie(response);
+    await this.replaceOldSession(request);
     setSessionCookie(response, token, expiresAt, this.clock());
     return this.meService.forUser(user);
+  }
+
+  /** A new sign-in replaces whatever session this browser still carried, whoever it belonged to. */
+  private async replaceOldSession(request: Request): Promise<void> {
+    const old = readSessionToken(request);
+    if (old !== undefined) await this.sessions.revokeByToken(old);
   }
 
   @Post('logout')
