@@ -10,6 +10,7 @@ export function backendBoundaries() {
         { type: 'be-platform', pattern: 'apps/backend/src/platform/*', capture: ['name'] },
         { type: 'be-core', pattern: 'apps/backend/src/core/*', capture: ['name'] },
         { type: 'be-module', pattern: 'apps/backend/src/modules/*', capture: ['name'] },
+        { type: 'be-adapter', pattern: 'apps/backend/src/adapters/*', capture: ['name'] },
         { type: 'be-app', pattern: 'apps/backend/src' },
       ],
     },
@@ -23,7 +24,7 @@ export function backendBoundaries() {
               disallow: {
                 to: {
                   element: {
-                    type: ['be-platform', 'be-core', 'be-module'],
+                    type: ['be-platform', 'be-core', 'be-module', 'be-adapter'],
                     fileInternalPath: '!index.ts',
                   },
                 },
@@ -32,8 +33,8 @@ export function backendBoundaries() {
             },
             {
               from: { element: { type: 'be-platform' } },
-              disallow: { to: { element: { type: ['be-core', 'be-module'] } } },
-              message: 'platform/* must not depend on core/* or modules/*',
+              disallow: { to: { element: { type: ['be-core', 'be-module', 'be-adapter'] } } },
+              message: 'platform/* must not depend on core/*, modules/* or adapters/*',
             },
             {
               from: { element: { type: 'be-core' } },
@@ -41,9 +42,29 @@ export function backendBoundaries() {
               message: 'core/* must not depend on feature modules',
             },
             {
+              from: { element: { type: 'be-core' } },
+              disallow: { to: { element: { type: 'be-adapter' } } },
+              message: 'core/* must not depend on gateway adapters',
+            },
+            {
               from: { element: { type: 'be-module' } },
               disallow: { to: { element: { type: 'be-module' } } },
               message: 'Feature modules must not depend on each other; use core domain events',
+            },
+            {
+              from: { element: { type: 'be-module' } },
+              disallow: { to: { element: { type: 'be-adapter' } } },
+              message: 'Feature modules must not depend on gateway adapters',
+            },
+            {
+              from: { element: { type: 'be-adapter' } },
+              disallow: { to: { element: { type: 'be-adapter' } } },
+              message: 'Gateway adapters must not depend on each other',
+            },
+            {
+              from: { element: { type: 'be-adapter' } },
+              disallow: { to: { element: { type: 'be-module' } } },
+              message: 'Gateway adapters must not depend on feature modules',
             },
           ],
         },
