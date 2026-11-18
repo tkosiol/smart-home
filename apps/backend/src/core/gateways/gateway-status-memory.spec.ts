@@ -17,6 +17,24 @@ describe('StatusMemory', () => {
     });
   });
 
+  it('remembers the kind of gateway a service status came from', () => {
+    const memory = new StatusMemory(10);
+    memory.record('gw-00000001', 'service', 'online', at(1), 'z2m');
+    expect(memory.recall('gw-00000001')).toEqual({
+      service: 'online',
+      serviceKind: 'z2m',
+      at: at(1),
+    });
+  });
+
+  it('counts the same status of another kind as a change', () => {
+    const memory = new StatusMemory(10);
+    memory.record('gw-00000001', 'service', 'online', at(1), 'z2m');
+    expect(memory.record('gw-00000001', 'service', 'online', at(2), 'z2m')).toBe(false);
+    expect(memory.record('gw-00000001', 'service', 'online', at(3), 'xx' as 'z2m')).toBe(true);
+    expect(memory.recall('gw-00000001')?.serviceKind).toBe('xx');
+  });
+
   it('reports whether the status changed', () => {
     const memory = new StatusMemory(10);
     expect(memory.record('gw-00000001', 'bridge', 'online', at(1))).toBe(true);

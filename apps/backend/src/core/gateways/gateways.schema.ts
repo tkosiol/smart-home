@@ -19,10 +19,10 @@ export const gateways = pgTable(
       .references(() => households.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
     kind: text('kind', { enum: GATEWAY_KINDS }).notNull().default('z2m'),
-    /** Ingest and commands read the topic prefix from here (`gw/<id>/z2m`). */
+    /** Ingest and commands read the topic prefix from here (`gw/<id>/<kind>`). */
     topicPrefix: text('topic_prefix').notNull(),
     bridgeStatus: text('bridge_status', { enum: GATEWAY_STATUSES }).notNull().default('unknown'),
-    /** The gateway's software behind the broker connection (Zigbee2MQTT, later others). */
+    /** The gateway's software behind the broker connection (what the adapter of its kind talks to). */
     serviceStatus: text('service_status', { enum: GATEWAY_STATUSES }).notNull().default('unknown'),
     statusChangedAt: timestamptz('status_changed_at'),
     lastMessageAt: timestamptz('last_message_at'),

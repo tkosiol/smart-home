@@ -1,6 +1,6 @@
 import type { Availability, Capability, GatewayKind, GatewayStatus } from '@smart/contracts';
 
-/** One gateway kind, e.g. Zigbee2MQTT. Stateless: everything it needs comes in the arguments. */
+/** One gateway kind, e.g. one vendor's gateway software. Stateless: everything it needs comes in the arguments. */
 export interface GatewayAdapter {
   readonly kind: GatewayKind;
 
@@ -36,7 +36,7 @@ export type AdapterEvent =
   | { type: 'hardware.joined'; externalId: string; address: string | null; name: string }
   | { type: 'hardware.setup'; externalId: string; setupState: SetupState }
   | { type: 'hardware.left'; externalId: string }
-  /** The adapter's address changed (Z2M rename); `name` is the new name in the foreign system. */
+  /** The adapter's address changed (a rename); `name` is the new name in the foreign system. */
   | { type: 'hardware.readdressed'; from: string; to: string; name: string }
   | { type: 'hardware.availability'; ref: HardwareRef; availability: Availability }
   /** A report of the hardware's state; `native` is decoded by `decodeReport` once the hardware is known. */

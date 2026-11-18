@@ -5,6 +5,7 @@ import type { Gateway, GatewayKind, GatewayRegister } from '@smart/contracts';
 import { ENV, type Env } from '../../platform/config/index.js';
 import { describeError } from '../../platform/errors/index.js';
 import { ApiError } from '../../platform/http/index.js';
+import { AdapterRegistry } from '../adapters/index.js';
 import { CLOCK, type Clock } from '../identity/index.js';
 import { readGatewayCertificate } from './gateway-certificate.js';
 import {
@@ -50,6 +51,7 @@ export class GatewaysService {
     @Inject(CLOCK) private readonly clock: Clock,
     @Inject(GATEWAY_STATUS_MEMORY) private readonly memory: GatewayStatusMemory,
     private readonly events: GatewayEvents,
+    private readonly adapters: AdapterRegistry,
   ) {}
 
   async list(householdId: string): Promise<Gateway[]> {
@@ -86,16 +88,22 @@ export class GatewaysService {
 
   /** Registers the gateway whose public certificate was pasted; the CA decides whether it counts. */
   async register(householdId: string, input: GatewayRegister): Promise<Gateway> {
+    const kind = input.kind ?? 'z2m';
+    // No adapter, nobody could follow the gateway: refused before anything is stored.
+    if (this.adapters.get(kind) === undefined) {
+      throw new ApiError(HttpStatus.BAD_REQUEST, 'validation.failed');
+    }
     const ca = await this.loadCa();
     const now = this.clock();
     const certificate = readGatewayCertificate(input.certificate, ca, now);
-    const recalled = this.memory.recall(certificate.id);
+    const recalled = this.recallFor(certificate.id, kind);
     const heard = recalled?.bridge !== undefined || recalled?.service !== undefined;
     const inserted = await this.gateways.insert({
       id: certificate.id,
       householdId,
       name: input.name,
-      topicPrefix: `gw/${certificate.id}/z2m`,
+      kind,
+      topicPrefix: `gw/${certificate.id}/${kind}`,
       certFingerprint: certificate.fingerprint,
       certExpiresAt: certificate.expiresAt,
       createdAt: now,
@@ -115,6 +123,16 @@ export class GatewaysService {
     return this.toGateway(row, await this.crlNextUpdate(), now);
   }
 
+  /** What the memory holds for the ID; a service status heard from another kind of gateway says nothing about this one. */
+  private recallFor(id: string, kind: GatewayKind): RecalledStatus | undefined {
+    const recalled = this.memory.recall(id);
+    if (recalled?.service === undefined || recalled.serviceKind === kind) return recalled;
+    return {
+      ...(recalled.bridge && { bridge: recalled.bridge }),
+      ...(recalled.at && { at: recalled.at }),
+    };
+  }
+
   /**
    * A status that arrived between the recall and the insert was not applied by the consumer (the
    * gateway did not exist yet): apply what the memory holds now when it differs from the insert.
@@ -124,12 +142,12 @@ export class GatewaysService {
     recalled: RecalledStatus | undefined,
     now: Date,
   ): Promise<GatewayRow> {
-    const latest = this.memory.recall(row.id);
+    const latest = this.recallFor(row.id, row.kind);
     let result = row;
     for (const kind of ['bridge', 'service'] as const) {
       const status = latest?.[kind];
       if (status === undefined || status === (recalled?.[kind] ?? 'unknown')) continue;
-      await this.gateways.applyStatus(row.id, kind, status, now);
+      await this.gateways.applyStatus(row.id, kind, status, now, row.kind);
       result = {
         ...result,
         ...(kind === 'bridge' ? { bridgeStatus: status } : { serviceStatus: status }),

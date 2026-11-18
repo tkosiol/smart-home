@@ -197,6 +197,30 @@ describe('gateways', () => {
       expect(row).toEqual({ household_id: householdId, cert_fingerprint: x509.fingerprint256 });
     });
 
+    it('registers an explicit kind like the default and refuses an unknown one', async () => {
+      const explicit = ca.issue();
+      const response = await request(app.getHttpServer())
+        .post(`${HOUSEHOLDS}/${householdId}/gateways`)
+        .set('Cookie', admin.cookie)
+        .set('Origin', origin)
+        .send({ name: 'Pi', kind: 'z2m', certificate: explicit.certificate })
+        .expect(201);
+      expect(gatewaySchema.parse(response.body)).toMatchObject({
+        kind: 'z2m',
+        topicPrefix: `gw/${explicit.id}/z2m`,
+      });
+      const unknown = ca.issue();
+      const refused = await request(app.getHttpServer())
+        .post(`${HOUSEHOLDS}/${householdId}/gateways`)
+        .set('Cookie', admin.cookie)
+        .set('Origin', origin)
+        .send({ name: 'Pi', kind: 'xx', certificate: unknown.certificate })
+        .expect(400);
+      expect(refused.body).toMatchObject({ code: 'validation.failed' });
+      const [row] = await connection.sql`select id from gateways where id = ${unknown.id}`;
+      expect(row).toBeUndefined();
+    });
+
     it('accepts CRLF line breaks and blank lines around the block', async () => {
       const issued = ca.issue();
       const pasted = `\n\n${issued.certificate.trim().replaceAll('\n', '\r\n')}\r\n\r\n`;
@@ -207,7 +231,9 @@ describe('gateways', () => {
       const issued = ca.issue();
       const at = new Date('2026-10-14T08:00:00Z');
       recall.mockImplementation((id) =>
-        id === issued.id ? { bridge: 'online', service: 'offline', at } : undefined,
+        id === issued.id
+          ? { bridge: 'online', service: 'offline', serviceKind: 'z2m', at }
+          : undefined,
       );
       const response = await register(admin, householdId, issued.certificate).expect(201);
       expect(gatewaySchema.parse(response.body)).toMatchObject({

@@ -808,6 +808,20 @@ describe('GatewayIngest', () => {
       expect(touch).toHaveBeenCalledTimes(1);
     });
 
+    it('still records the sign of life when an earlier event of the message fails', async () => {
+      await list(GW, [hardwareOf('A1')]);
+      touch.mockClear();
+      handle.mockRejectedValueOnce(new Error('payload-value'));
+      await report(GW, 'a1', { soil_moisture: 1 });
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(touch).toHaveBeenCalledTimes(1);
+      // A retained message is never a sign of life, failing or not.
+      now = new Date(T0.getTime() + 120_000);
+      handle.mockRejectedValueOnce(new Error('payload-value'));
+      await report(GW, 'a1', { soil_moisture: 1 }, true);
+      expect(touch).toHaveBeenCalledTimes(1);
+    });
+
     it('goes on when the sign of life cannot be stored', async () => {
       await list(GW, [hardwareOf('A1')]);
       touch.mockRejectedValueOnce(new Error('payload-value'));

@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { GatewayStatus } from '@smart/contracts';
+import type { GatewayKind, GatewayStatus } from '@smart/contracts';
 import { and, asc, eq, isNull, ne, sql } from 'drizzle-orm';
 import { DATABASE, type DatabaseConnection } from '../../platform/database/index.js';
 import type { GatewayStatusKind } from './gateway-status-memory.js';
@@ -57,16 +57,23 @@ export class GatewaysRepository {
 
   /**
    * Stores a reported status of a gateway that is registered and not revoked. `status_changed_at`
-   * moves only when the status differs; `ignored` means there is no such gateway to write to.
+   * moves only when the status differs; `ignored` means there is no such gateway to write to
+   * (for a service status: none of the given kind).
    */
   async applyStatus(
     id: string,
     kind: GatewayStatusKind,
     status: GatewayStatus,
     now: Date,
+    serviceKind?: GatewayKind,
   ): Promise<StatusOutcome> {
     const column = kind === 'bridge' ? gateways.bridgeStatus : gateways.serviceStatus;
-    const active = and(eq(gateways.id, id), isNull(gateways.revokedAt));
+    // A service status counts only for a gateway of the kind whose topic carried it.
+    const active = and(
+      eq(gateways.id, id),
+      isNull(gateways.revokedAt),
+      ...(kind === 'service' && serviceKind !== undefined ? [eq(gateways.kind, serviceKind)] : []),
+    );
     const changed = await this.connection.db
       .update(gateways)
       .set({

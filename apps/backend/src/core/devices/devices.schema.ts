@@ -31,11 +31,11 @@ export const hardware = pgTable(
     gatewayId: text('gateway_id')
       .notNull()
       .references(() => gateways.id, { onDelete: 'cascade' }),
-    /** The gateway's stable ID of the hardware (Zigbee2MQTT: the IEEE address). */
+    /** The gateway's stable ID of the hardware (a hardware address that does not change). */
     externalId: text('external_id').notNull(),
     /** The hardware's name in the foreign system; suggested as the device name when it is added. */
     name: text('name').notNull(),
-    /** How the adapter addresses the hardware in its topics (Zigbee2MQTT: the device name); may change. */
+    /** How the adapter addresses the hardware in its topics (e.g. a name the user can change); may change. */
     address: text('address'),
     vendor: text('vendor').notNull().default(''),
     model: text('model').notNull().default(''),

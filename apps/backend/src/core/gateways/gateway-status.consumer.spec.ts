@@ -1,12 +1,11 @@
 import { Logger } from '@nestjs/common';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MqttConnection, MqttMessageHandler, Unsubscribe } from '../../platform/mqtt/index.js';
+import { AdapterRegistry, type GatewayAdapter } from '../adapters/index.js';
 import {
   GATEWAY_STATUS_CHANGED,
-  GATEWAY_TOUCHED,
   GatewayEvents,
   type GatewayStatusChanged,
-  type GatewayTouched,
 } from './gateway-events.js';
 import { StatusMemory } from './gateway-status-memory.js';
 import { GatewayStatusConsumer } from './gateway-status.consumer.js';
@@ -15,6 +14,23 @@ import type { GatewaysRepository } from './gateways.repository.js';
 const T0 = new Date('2026-10-14T12:00:00Z');
 const ID = 'gw-a1b2c3d4';
 const OTHER = 'gw-e5f6a7b8';
+
+/** Reads `online`/`offline` or `{"state":"…"}` like the real adapter does, and nothing else. */
+function readState(payload: Buffer): 'online' | 'offline' | undefined {
+  if (payload.length > 1024) return undefined;
+  const text = payload.toString('utf8').trim();
+  if (text === 'online' || text === 'offline') return text;
+  if (!text.startsWith('{')) return undefined;
+  try {
+    const state = (JSON.parse(text) as { state?: unknown }).state;
+    return state === 'online' || state === 'offline' ? state : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+const adapterOf = (kind: string, serviceStatusTopic: string): GatewayAdapter =>
+  ({ kind, serviceStatusTopic, parseServiceStatus: readState }) as unknown as GatewayAdapter;
 
 type Outcome = 'changed' | 'unchanged' | 'ignored';
 
@@ -54,7 +70,6 @@ describe('GatewayStatusConsumer', () => {
   let events: GatewayEvents;
   let consumer: GatewayStatusConsumer;
   let applyStatus: ReturnType<typeof vi.fn<GatewaysRepository['applyStatus']>>;
-  let touch: ReturnType<typeof vi.fn<GatewaysRepository['touch']>>;
   const changes: GatewayStatusChanged[] = [];
   const log = vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
   const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
@@ -71,11 +86,11 @@ describe('GatewayStatusConsumer', () => {
     applyStatus = vi.fn<GatewaysRepository['applyStatus']>(() =>
       Promise.resolve('changed' as Outcome),
     );
-    touch = vi.fn<GatewaysRepository['touch']>(() => Promise.resolve(true));
     consumer = new GatewayStatusConsumer(
-      { applyStatus, touch } as unknown as GatewaysRepository,
+      { applyStatus } as unknown as GatewaysRepository,
       memory,
       events,
+      new AdapterRegistry([adapterOf('z2m', 'bridge/state'), adapterOf('xx', 'status')]),
       mqtt as unknown as MqttConnection,
       () => now,
     );
@@ -87,10 +102,10 @@ describe('GatewayStatusConsumer', () => {
     warn.mockClear();
   });
 
-  it('subscribes to the status topics and the whole z2m subtree and unsubscribes on shutdown', () => {
+  it('subscribes to the connection topic and the status topic of each adapter, not a whole subtree, and unsubscribes on shutdown', () => {
     expect(mqtt.handlers.map(({ filter }) => filter).sort()).toEqual([
       'gw/+/bridge/connection',
-      'gw/+/z2m/#',
+      'gw/+/xx/status',
       'gw/+/z2m/bridge/state',
     ]);
     consumer.onModuleDestroy();
@@ -137,7 +152,7 @@ describe('GatewayStatusConsumer', () => {
     ])('reads %j as %s', async (payload, status) => {
       mqtt.publish(`gw/${ID}/z2m/bridge/state`, payload, true);
       await settle();
-      expect(applyStatus).toHaveBeenCalledWith(ID, 'service', status, T0);
+      expect(applyStatus).toHaveBeenCalledWith(ID, 'service', status, T0, 'z2m');
     });
 
     it.each([
@@ -158,15 +173,42 @@ describe('GatewayStatusConsumer', () => {
     });
   });
 
+  describe('the status of another adapter', () => {
+    it('is read with the parser of that adapter and applied for its kind', async () => {
+      mqtt.publish(`gw/${ID}/xx/status`, '{"state":"offline"}', true);
+      await settle();
+      expect(applyStatus).toHaveBeenCalledWith(ID, 'service', 'offline', T0, 'xx');
+      expect(memory.recall(ID)).toEqual({
+        service: 'offline',
+        serviceKind: 'xx',
+        at: T0,
+      });
+    });
+
+    it('is ignored, and logged once, for a gateway of another kind', async () => {
+      // The repository only applies it where `kind` matches; here the gateway is a z2m one.
+      applyStatus.mockResolvedValue('ignored');
+      mqtt.publish(`gw/${ID}/xx/status`, 'online');
+      mqtt.publish(`gw/${ID}/xx/status`, 'offline');
+      await settle();
+      expect(changes).toEqual([]);
+      expect([...log.mock.calls, ...warn.mock.calls]).toHaveLength(1);
+    });
+
+    it('does not take the z2m topic of a gateway for the other adapter', async () => {
+      mqtt.publish(`gw/${ID}/xx/bridge/state`, 'online');
+      await settle();
+      expect(applyStatus).not.toHaveBeenCalled();
+    });
+  });
+
   it('discards messages whose topic carries an invalid gateway ID', async () => {
     for (const bad of ['GW-A1B2C3D4', 'gw-a1b2c3d', 'gw-a1b2c3d45', 'x', '..', 'gw-a1b2c3d4%00']) {
       mqtt.publish(`gw/${bad}/bridge/connection`, '1');
       mqtt.publish(`gw/${bad}/z2m/bridge/state`, 'online');
-      mqtt.publish(`gw/${bad}/z2m/bridge/devices`, '[]');
     }
     await settle();
     expect(applyStatus).not.toHaveBeenCalled();
-    expect(touch).not.toHaveBeenCalled();
     expect(logged()).toBe('');
   });
 
@@ -190,6 +232,7 @@ describe('GatewayStatusConsumer', () => {
       expect(memory.recall(ID)).toEqual({
         bridge: 'online',
         service: 'online',
+        serviceKind: 'z2m',
         at: new Date(T0.getTime() + 5000),
       });
       expect(changes).toEqual([]);
@@ -202,90 +245,11 @@ describe('GatewayStatusConsumer', () => {
     });
   });
 
-  describe('last_message_at', () => {
-    it('is written at most once a minute per gateway, with the clock time', async () => {
-      mqtt.publish(`gw/${ID}/z2m/living_room_lamp`, '{"state":"ON"}');
-      now = new Date(T0.getTime() + 30_000);
-      mqtt.publish(`gw/${ID}/z2m/living_room_lamp`, '{"state":"OFF"}');
-      mqtt.publish(`gw/${OTHER}/z2m/living_room_lamp/availability`, 'online');
-      now = new Date(T0.getTime() + 60_000);
-      mqtt.publish(`gw/${ID}/z2m/living_room_lamp`, '{"state":"ON"}');
-      await settle();
-      expect(touch.mock.calls).toEqual([
-        [ID, T0],
-        [OTHER, new Date(T0.getTime() + 30_000)],
-        [ID, new Date(T0.getTime() + 60_000)],
-      ]);
-    });
-
-    it('announces gateway.touched only after a successful write', async () => {
-      const touched: GatewayTouched[] = [];
-      events.on(GATEWAY_TOUCHED, (event: GatewayTouched) => touched.push(event));
-      mqtt.publish(`gw/${ID}/z2m/lamp`, '{}');
-      await settle();
-      expect(touched).toEqual([{ gatewayId: ID }]);
-      touch.mockResolvedValue(false);
-      mqtt.publish(`gw/${OTHER}/z2m/lamp`, '{}');
-      await settle();
-      expect(touched).toHaveLength(1);
-    });
-
-    it('is not written for retained messages, which are no sign of life', async () => {
-      mqtt.publish(`gw/${ID}/z2m/bridge/state`, 'online', true);
-      mqtt.publish(`gw/${ID}/z2m/lamp`, '{}', true);
-      await settle();
-      expect(touch).not.toHaveBeenCalled();
-    });
-
-    it('counts a device message and its availability', async () => {
-      mqtt.publish(`gw/${ID}/z2m/Pflanze 1`, '{"soil_moisture":30}');
-      await settle();
-      expect(touch).toHaveBeenCalledWith(ID, T0);
-      touch.mockClear();
-      now = new Date(T0.getTime() + 61_000);
-      mqtt.publish(`gw/${ID}/z2m/Pflanze 1/availability`, 'online');
-      await settle();
-      expect(touch).toHaveBeenCalledWith(ID, now);
-    });
-
-    it.each([
-      'Lampe/set',
-      'Lampe/set/brightness',
-      'Lampe/get',
-      'bridge/request/permit_join',
-      'bridge/request/device/rename',
-      'bridge/devices',
-      'bridge/event',
-      'bridge/info',
-      'bridge/logging',
-      'bridge/state',
-    ])('is not written for %s: no sign that Zigbee2MQTT is working', async (rest) => {
-      mqtt.publish(`gw/${ID}/z2m/${rest}`, '{}');
-      await settle();
-      expect(touch).not.toHaveBeenCalled();
-    });
-
-    it('still takes the status from a live bridge/state message', async () => {
-      mqtt.publish(`gw/${ID}/z2m/bridge/state`, 'online');
-      await settle();
-      expect(applyStatus).toHaveBeenCalledWith(ID, 'service', 'online', T0);
-      expect(touch).not.toHaveBeenCalled();
-    });
-
-    it('is not written for the bridge connection topic outside of z2m', async () => {
-      mqtt.publish(`gw/${ID}/bridge/connection`, '1');
-      await settle();
-      expect(touch).not.toHaveBeenCalled();
-    });
-  });
-
   describe('unknown and revoked gateways', () => {
     it('are logged at most once an hour per ID, without payload', async () => {
       applyStatus.mockResolvedValue('ignored');
-      touch.mockResolvedValue(false);
       const secret = 'payload-secret-7731';
       mqtt.publish(`gw/${ID}/bridge/connection`, '1');
-      mqtt.publish(`gw/${ID}/z2m/lamp`, `{"token":"${secret}"}`);
       mqtt.publish(`gw/${ID}/z2m/bridge/state`, `online`);
       mqtt.publish(`gw/${OTHER}/bridge/connection`, '1');
       await settle();
@@ -305,13 +269,11 @@ describe('GatewayStatusConsumer', () => {
     it('never stop the consumer and never log the reason or the payload', async () => {
       const secret = 'payload-secret-9902';
       applyStatus.mockRejectedValueOnce(new Error(`params: ${secret}`));
-      touch.mockRejectedValueOnce(new Error(`params: ${secret}`));
       mqtt.publish(`gw/${ID}/bridge/connection`, '1');
-      mqtt.publish(`gw/${ID}/z2m/lamp`, secret);
       await settle();
       mqtt.publish(`gw/${OTHER}/bridge/connection`, '1');
       await settle();
-      expect(applyStatus).toHaveBeenLastCalledWith(OTHER, 'bridge', 'online', T0);
+      expect(applyStatus).toHaveBeenLastCalledWith(OTHER, 'bridge', 'online', T0, undefined);
       expect(logged()).not.toContain(secret);
       expect(warn).toHaveBeenCalled();
     });

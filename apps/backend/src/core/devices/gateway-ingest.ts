@@ -277,11 +277,20 @@ export class GatewayIngest implements OnModuleInit, OnModuleDestroy {
   ): Promise<void> {
     // The gateway may have been revoked while the message waited.
     if (!this.subscriptions.has(gatewayId)) return;
+    let failure: { error: unknown } | undefined;
     for (const event of adapter.translate({ gatewayId, topic, payload })) {
       // … or while an event before was applied.
-      if (!this.subscriptions.has(gatewayId)) return;
-      await this.apply(gatewayId, adapter, event, retained);
+      if (!this.subscriptions.has(gatewayId)) break;
+      // After a failure only the sign of life goes on: it says the gateway spoke, whatever the
+      // message held, while the other events may depend on what failed.
+      if (failure !== undefined && event.type !== 'activity') continue;
+      try {
+        await this.apply(gatewayId, adapter, event, retained);
+      } catch (error) {
+        failure ??= { error };
+      }
     }
+    if (failure !== undefined) throw failure.error;
   }
 
   private async apply(

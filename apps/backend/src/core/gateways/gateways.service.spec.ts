@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Logger } from '@nestjs/common';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import type { ApiError } from '../../platform/http/index.js';
 import type { Env } from '../../platform/config/index.js';
 import { createTestCa } from '../../../test/helpers/test-pki.js';
 import {
@@ -11,6 +12,7 @@ import {
   GATEWAY_TOUCHED,
   GatewayEvents,
 } from './gateway-events.js';
+import { AdapterRegistry, type GatewayAdapter } from '../adapters/index.js';
 import { noStatusMemory, type RecalledStatus } from './gateway-status-memory.js';
 import type { GatewaysRepository } from './gateways.repository.js';
 import type { GatewayRow, NewGatewayRow } from './gateways.schema.js';
@@ -19,6 +21,8 @@ import { GatewaysService } from './gateways.service.js';
 // The throwaway PKI issues certificates around the real clock (valid from one day ago), so this
 // clock must follow the real one: a fixed date makes registration fail once a day has passed.
 const NOW = new Date();
+const fakeAdapter = (kind: string): GatewayAdapter => ({ kind }) as unknown as GatewayAdapter;
+const registry = new AdapterRegistry([fakeAdapter('z2m')]);
 const row = (overrides: Partial<GatewayRow> = {}): GatewayRow => ({
   id: 'gw-a1b2c3d4',
   householdId: 'household',
@@ -47,6 +51,7 @@ describe('GatewaysService', () => {
       () => now,
       noStatusMemory,
       new GatewayEvents(),
+      registry,
     );
 
   beforeAll(() => {
@@ -104,6 +109,7 @@ describe('GatewaysService', () => {
         () => now,
         noStatusMemory,
         new GatewayEvents(),
+        registry,
       );
 
     it('returns the gateway with its household, a revoked one too', async () => {
@@ -133,7 +139,7 @@ describe('GatewaysService', () => {
           calls += 1;
           return calls === 1
             ? { bridge: 'online', at: NOW }
-            : { bridge: 'online', service: 'online', at: NOW };
+            : { bridge: 'online', service: 'online', serviceKind: 'z2m', at: NOW };
         });
         const applyStatus = vi.fn(() => Promise.resolve('changed' as const));
         const insert = vi.fn((values: NewGatewayRow) =>
@@ -145,12 +151,13 @@ describe('GatewaysService', () => {
           () => NOW,
           { recall },
           new GatewayEvents(),
+          registry,
         );
         const gateway = await subject.register('household', {
           name: 'Pi',
           certificate: issued.certificate,
         });
-        expect(applyStatus.mock.calls).toEqual([[issued.id, 'service', 'online', NOW]]);
+        expect(applyStatus.mock.calls).toEqual([[issued.id, 'service', 'online', NOW, 'z2m']]);
         expect(gateway.bridgeStatus).toBe('online');
         expect(gateway.serviceStatus).toBe('online');
         expect(gateway.statusChangedAt).toBe(NOW.toISOString());
@@ -174,6 +181,7 @@ describe('GatewaysService', () => {
           () => NOW,
           { recall: () => ({ bridge: 'offline', at: NOW }) },
           new GatewayEvents(),
+          registry,
         );
         await subject.register('household', { name: 'Pi', certificate: issued.certificate });
         expect(applyStatus).not.toHaveBeenCalled();
@@ -182,6 +190,78 @@ describe('GatewaysService', () => {
       }
     });
   });
+  describe('the kind', () => {
+    const registering = async (
+      kind: 'z2m' | undefined,
+      options: { adapters?: GatewayAdapter[]; recalled?: RecalledStatus } = {},
+    ) => {
+      const ca = createTestCa();
+      try {
+        const insert = vi.fn((values: NewGatewayRow) =>
+          Promise.resolve({ ...row(), ...values, revokedAt: null } as GatewayRow),
+        );
+        const subject = new GatewaysService(
+          { insert, applyStatus: vi.fn() } as unknown as GatewaysRepository,
+          { GATEWAY_CA_FILE: ca.file } as Env,
+          () => NOW,
+          { recall: () => options.recalled },
+          new GatewayEvents(),
+          new AdapterRegistry(options.adapters ?? [fakeAdapter('z2m')]),
+        );
+        const issued = ca.issue();
+        const result = await subject
+          .register('household', {
+            name: 'Pi',
+            ...(kind && { kind }),
+            certificate: issued.certificate,
+          })
+          .then((gateway) => ({ gateway, error: undefined }))
+          .catch((error: unknown) => ({ gateway: undefined, error }));
+        return { id: issued.id, insert, ...result };
+      } finally {
+        ca.dispose();
+      }
+    };
+
+    it.each([undefined, 'z2m' as const])(
+      'registers kind %s as z2m under gw/<id>/z2m',
+      async (kind) => {
+        const { id, insert } = await registering(kind);
+        expect(insert).toHaveBeenCalledWith(
+          expect.objectContaining({ kind: 'z2m', topicPrefix: `gw/${id}/z2m` }),
+        );
+      },
+    );
+
+    it('refuses a kind that has no adapter with validation.failed and stores nothing', async () => {
+      const { insert, error } = await registering('z2m', { adapters: [] });
+      expect(error).toMatchObject({ code: 'validation.failed' });
+      expect((error as ApiError).getStatus()).toBe(400);
+      expect(insert).not.toHaveBeenCalled();
+    });
+
+    it('does not take over a service status heard from another kind of gateway', async () => {
+      const { insert } = await registering('z2m', {
+        recalled: {
+          bridge: 'online',
+          service: 'online',
+          serviceKind: 'xx' as 'z2m',
+          at: NOW,
+        },
+      });
+      const values = insert.mock.calls[0]?.[0];
+      expect(values).toMatchObject({ bridgeStatus: 'online' });
+      expect(values).not.toHaveProperty('serviceStatus');
+    });
+
+    it('takes over a service status heard under the same kind', async () => {
+      const { insert } = await registering('z2m', {
+        recalled: { service: 'online', serviceKind: 'z2m', at: NOW },
+      });
+      expect(insert.mock.calls[0]?.[0]).toMatchObject({ serviceStatus: 'online' });
+    });
+  });
+
   describe('lifecycle events', () => {
     it('lists the active gateways with their kind and topic prefix', async () => {
       const events = new GatewayEvents();
@@ -194,6 +274,7 @@ describe('GatewaysService', () => {
         () => NOW,
         noStatusMemory,
         events,
+        registry,
       );
       expect(await subject.listActive()).toEqual([
         {
@@ -223,6 +304,7 @@ describe('GatewaysService', () => {
         () => NOW,
         noStatusMemory,
         events,
+        registry,
       );
       expect(await subject.touch('gw-a1b2c3d4', NOW)).toBe(true);
       expect(await subject.touch('gw-gone0000', NOW)).toBe(false);
@@ -249,6 +331,7 @@ describe('GatewaysService', () => {
           () => NOW,
           noStatusMemory,
           events,
+          registry,
         );
         await subject.register('household', { name: 'Pi', certificate: issued.certificate });
         expect(seen).toEqual([
@@ -271,6 +354,7 @@ describe('GatewaysService', () => {
           () => NOW,
           noStatusMemory,
           events,
+          registry,
         );
         await expect(
           subject.register('household', { name: 'Pi', certificate: ca.issue().certificate }),
@@ -294,6 +378,7 @@ describe('GatewaysService', () => {
         () => NOW,
         noStatusMemory,
         events,
+        registry,
       );
       await expect(subject.revoke('household', 'gw-zzzzzzzz')).rejects.toThrow();
       expect(seen).toEqual([]);
