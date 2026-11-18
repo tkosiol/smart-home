@@ -278,12 +278,13 @@ export class AttentionService implements OnModuleInit, OnModuleDestroy {
 
   /**
    * After a start the items are gone, but the readings are stored. For each soil and battery
-   * condition that holds without an item from before (first computation after a start, a device
-   * seen for the first time) the readings tell whether a run beyond the threshold is still open,
-   * and when it began: the first reading below the threshold after the last one at or above
-   * threshold plus margin. That covers a reading inside the margin, where only the history knows
-   * that the item is still open. Without such a run, or when the lookup fails (logged), there is
-   * no hint and the rules decide from the current reading alone.
+   * condition beyond its threshold without an item from before (first computation after a start,
+   * a device seen for the first time) the readings tell when the run began: the first reading
+   * below the threshold after the last one at or above threshold plus margin. A reading inside the
+   * margin is looked up only in the first computation of a household after a start, where only the
+   * history knows that the item is still open; later, a raised threshold must not revive an old
+   * run. Without such a run, or when the lookup fails (logged), there is no hint and the rules
+   * decide from the current reading alone.
    */
   private async sinceHints(householdId: string, snapshot: Snapshot): Promise<Map<string, Date>> {
     const state = this.households.get(householdId);
