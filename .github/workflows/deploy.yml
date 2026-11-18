@@ -63,6 +63,9 @@ jobs:
           labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
           cache-from: type=gha,scope=${{ matrix.image }}
           cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+          # The final stage runs `apk upgrade`: from the cache it would keep the packages of its
+          # first build, so every build takes the Alpine fixes released since.
+          no-cache-filters: runtime
       - name: Scan
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
