@@ -129,6 +129,10 @@ describe('evaluate', () => {
       expect(item?.value).toBeUndefined();
     });
 
+    it('takes only true as a set dry flag, not a word for it', () => {
+      expect(run({ devices: [withState({ dry: 'ON' })] })).toEqual([]);
+    });
+
     it('is off for a kind without a lower threshold', () => {
       const other = device({ kind: 'climate', state: { soil_moisture: 1 } });
       expect(run({ devices: [other] })).toEqual([]);

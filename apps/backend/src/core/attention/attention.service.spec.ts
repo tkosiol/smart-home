@@ -91,7 +91,7 @@ describe('AttentionService', () => {
     warn.mockImplementation(() => undefined);
     list.mockImplementation(() => Promise.resolve(gateways));
     listActive.mockResolvedValue([
-      { id: GATEWAY, householdId: HOUSEHOLD, topicPrefix: `gw/${GATEWAY}/z2m` },
+      { id: GATEWAY, householdId: HOUSEHOLD, kind: 'z2m', topicPrefix: `gw/${GATEWAY}/z2m` },
     ]);
     listDevices.mockImplementation(() => Promise.resolve(devices));
     get.mockImplementation((_household, id) => Promise.resolve(devices.find((d) => d.id === id)));
@@ -563,7 +563,7 @@ describe('AttentionService', () => {
     // Asked for again, it is computed on demand.
     gateways = [gateway()];
     listActive.mockResolvedValue([
-      { id: GATEWAY, householdId: HOUSEHOLD, topicPrefix: `gw/${GATEWAY}/z2m` },
+      { id: GATEWAY, householdId: HOUSEHOLD, kind: 'z2m', topicPrefix: `gw/${GATEWAY}/z2m` },
     ]);
     await service.ensureComputed(HOUSEHOLD);
     expect(list).toHaveBeenCalledTimes(1);

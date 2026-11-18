@@ -35,7 +35,7 @@ export const hardware = pgTable(
     externalId: text('external_id').notNull(),
     /** The hardware's name in the foreign system; suggested as the device name when it is added. */
     name: text('name').notNull(),
-    /** How the adapter addresses the hardware in its topics (Zigbee2MQTT: friendly_name); may change. */
+    /** How the adapter addresses the hardware in its topics (Zigbee2MQTT: the device name); may change. */
     address: text('address'),
     vendor: text('vendor').notNull().default(''),
     model: text('model').notNull().default(''),
@@ -48,7 +48,7 @@ export const hardware = pgTable(
     lastState: jsonb('last_state').$type<Record<string, unknown>>().notNull().default({}),
     firstSeenAt: timestamptz('first_seen_at').notNull(),
     lastSeenAt: timestamptz('last_seen_at'),
-    /** Set when the bridge stops listing the hardware; cleared when it returns. */
+    /** Set when the gateway stops listing the hardware; cleared when it returns. */
     removedAt: timestamptz('removed_at'),
   },
   (table) => [
@@ -59,14 +59,14 @@ export const hardware = pgTable(
   ],
 );
 
-/** What a piece of hardware reports or accepts; replaced whenever the bridge lists it again. */
+/** What a piece of hardware reports or accepts; replaced whenever its gateway lists it again. */
 export const capabilities = pgTable(
   'capabilities',
   {
     hardwareId: uuid('hardware_id')
       .notNull()
       .references(() => hardware.id, { onDelete: 'cascade' }),
-    /** The property name in the hardware's messages, e.g. `soil_moisture`. */
+    /** A key of the capability vocabulary or one the adapter passes through, e.g. `soil_moisture`. */
     key: text('key').notNull(),
     kind: text('kind', { enum: CAPABILITY_KINDS }).notNull(),
     unit: text('unit'),

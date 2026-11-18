@@ -110,9 +110,9 @@ export function compareItems(a: AttentionItem, b: AttentionItem): number {
 const finite = (value: unknown): number | undefined =>
   typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 
-const isTrue = (value: unknown): boolean => value === true || value === 'ON';
+const isTrue = (value: unknown): boolean => value === true;
 
-/** Zigbee2MQTT reports `contact: false` while the contact is open. */
+/** `contact` is `true` while closed (the vocabulary), so `false` means open. */
 const isOpen = (state: Readonly<Record<string, unknown>>): boolean => state['contact'] === false;
 
 const minutesBetween = (from: Date, to: Date): number =>

@@ -5,11 +5,10 @@ import { TelemetryModule } from '../telemetry/index.js';
 import { DeviceHistoryService } from './device-history.service.js';
 import { DeviceEvents } from './device-events.js';
 import { DevicesController } from './devices.controller.js';
-import { DeviceIngestConsumer } from './device-ingest.consumer.js';
-import { DEVICE_MESSAGE_HANDLER } from './device-message-handler.js';
-import { DeviceMessageProcessor } from './device-message.handler.js';
+import { DeviceReportProcessor } from './device-report.processor.js';
 import { DevicesRepository } from './devices.repository.js';
 import { DevicesService } from './devices.service.js';
+import { GatewayIngest } from './gateway-ingest.js';
 import { HardwareRepository } from './hardware.repository.js';
 
 @Module({
@@ -21,8 +20,8 @@ import { HardwareRepository } from './hardware.repository.js';
     DevicesRepository,
     DevicesService,
     DeviceHistoryService,
-    { provide: DEVICE_MESSAGE_HANDLER, useClass: DeviceMessageProcessor },
-    DeviceIngestConsumer,
+    DeviceReportProcessor,
+    GatewayIngest,
   ],
   exports: [HardwareRepository, DevicesRepository, DeviceEvents],
 })

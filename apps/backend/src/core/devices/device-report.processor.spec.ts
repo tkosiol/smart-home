@@ -1,6 +1,7 @@
 import { Logger } from '@nestjs/common';
 import type { Capability } from '@smart/contracts';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { StoredCapability } from '../adapters/index.js';
 import type { MeasurementWriter } from '../telemetry/index.js';
 import {
   DEVICE_CHANGED,
@@ -8,7 +9,7 @@ import {
   DeviceEvents,
   HARDWARE_CHANGED,
 } from './device-events.js';
-import { DeviceMessageProcessor } from './device-message.handler.js';
+import { DeviceReportProcessor } from './device-report.processor.js';
 import type { DevicesRepository } from './devices.repository.js';
 import type { HardwareRepository } from './hardware.repository.js';
 
@@ -17,9 +18,13 @@ const HARDWARE = '0b6f3a8e-1c47-4d2a-8c11-5f0a9b7d3e21';
 const DEVICE = '7d2c9e10-4b5a-4f3e-9a8d-1e6b0c2f4a55';
 const HOUSEHOLD = '3c1d5f77-0a2b-4e8c-b6d9-2f4a8e0c1b33';
 const NOW = new Date('2026-10-14T12:00:00.000Z');
-const SEEN = '2026-10-14T11:59:00.000Z';
+const SEEN = new Date('2026-10-14T11:59:00.000Z');
 
-const capability = (key: string, kind: Capability['kind'], rest: Partial<Capability> = {}) => ({
+const capability = (
+  key: string,
+  kind: Capability['kind'],
+  rest: Partial<Capability> = {},
+): StoredCapability => ({
   key,
   kind,
   unit: null,
@@ -30,9 +35,10 @@ const capability = (key: string, kind: Capability['kind'], rest: Partial<Capabil
   readable: true,
   writable: false,
   isSetting: false,
+  native: {},
   ...rest,
 });
-const CAPABILITIES: Capability[] = [
+const CAPABILITIES: StoredCapability[] = [
   capability('soil_moisture', 'numeric', { unit: '%' }),
   capability('battery', 'numeric'),
   capability('occupancy', 'binary'),
@@ -44,21 +50,33 @@ const CAPABILITIES: Capability[] = [
   capability('trigger', 'numeric', { readable: false, writable: true }),
 ];
 
-describe('DeviceMessageProcessor', () => {
+describe('DeviceReportProcessor', () => {
   const capabilitiesOf = vi.fn<HardwareRepository['capabilitiesOf']>();
   const recordHardware = vi.fn<HardwareRepository['recordState']>();
   const activeBinding = vi.fn<DevicesRepository['activeBindingForHardware']>();
   const recordDevice = vi.fn<DevicesRepository['recordState']>();
   const add = vi.fn<MeasurementWriter['add']>();
   const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
-  let processor: DeviceMessageProcessor;
+  let processor: DeviceReportProcessor;
   let events: DeviceEvents;
   let changed: unknown[];
   let deviceChanged: unknown[];
   let hardwareChanged: unknown[];
 
-  const handle = (payload: Record<string, unknown>, retained = false, receivedAt = NOW) =>
-    processor.handle(GW, HARDWARE, payload, receivedAt, retained);
+  const handle = (
+    values: Record<string, unknown>,
+    measuredAt?: Date,
+    retained = false,
+    receivedAt = NOW,
+  ) =>
+    processor.handle({
+      gatewayId: GW,
+      hardwareId: HARDWARE,
+      values,
+      measuredAt,
+      receivedAt,
+      retained,
+    });
   const stored = (): Record<string, unknown> | undefined => recordHardware.mock.calls[0]?.[1];
 
   beforeEach(() => {
@@ -84,7 +102,7 @@ describe('DeviceMessageProcessor', () => {
     events.on(DEVICE_STATE_CHANGED, (event) => changed.push(event));
     events.on(DEVICE_CHANGED, (event) => deviceChanged.push(event));
     events.on(HARDWARE_CHANGED, (event) => hardwareChanged.push(event));
-    processor = new DeviceMessageProcessor(
+    processor = new DeviceReportProcessor(
       { capabilitiesOf, recordState: recordHardware } as unknown as HardwareRepository,
       {
         activeBindingForHardware: activeBinding,
@@ -97,9 +115,9 @@ describe('DeviceMessageProcessor', () => {
 
   it('without a device only keeps the hardware last state', async () => {
     activeBinding.mockResolvedValue(undefined);
-    await handle({ soil_moisture: 31, last_seen: SEEN });
+    await handle({ soil_moisture: 31 }, SEEN);
 
-    expect(recordHardware).toHaveBeenCalledWith(HARDWARE, { soil_moisture: 31 }, new Date(SEEN), {
+    expect(recordHardware).toHaveBeenCalledWith(HARDWARE, { soil_moisture: 31 }, SEEN, {
       strictlyNewer: false,
     });
     expect(recordDevice).not.toHaveBeenCalled();
@@ -134,30 +152,30 @@ describe('DeviceMessageProcessor', () => {
   });
 
   it('with a device updates its state and stores readings at the measurement time', async () => {
-    await handle({ soil_moisture: 31.5, occupancy: true, mode: 'eco', last_seen: SEEN });
+    await handle({ soil_moisture: 31.5, occupancy: true, mode: 'eco' }, SEEN);
 
     expect(recordDevice).toHaveBeenCalledWith(
       DEVICE,
       { soil_moisture: 31.5, occupancy: true, mode: 'eco' },
-      new Date(SEEN),
+      SEEN,
     );
     expect(add).toHaveBeenCalledTimes(1);
     expect(add.mock.calls[0]?.[0]).toEqual([
       {
-        time: new Date(SEEN),
+        time: SEEN,
         deviceId: DEVICE,
         capability: 'soil_moisture',
         valueNum: 31.5,
         flags: [],
       },
-      { time: new Date(SEEN), deviceId: DEVICE, capability: 'occupancy', valueNum: 1, flags: [] },
-      { time: new Date(SEEN), deviceId: DEVICE, capability: 'mode', valueText: 'eco', flags: [] },
+      { time: SEEN, deviceId: DEVICE, capability: 'occupancy', valueNum: 1, flags: [] },
+      { time: SEEN, deviceId: DEVICE, capability: 'mode', valueText: 'eco', flags: [] },
     ]);
   });
 
-  it('stores binary readings as 0 and 1 and accepts the ON/OFF of switches and lights', async () => {
-    await handle({ occupancy: false, state: 'ON', last_seen: SEEN });
-    await handle({ state: 'OFF', last_seen: SEEN });
+  it('stores binary readings as 0 and 1', async () => {
+    await handle({ occupancy: false, state: true }, SEEN);
+    await handle({ state: false }, SEEN);
 
     const rows = add.mock.calls.flatMap(([batch]) => batch);
     expect(rows.map((row) => [row.capability, row.valueNum])).toEqual([
@@ -167,8 +185,15 @@ describe('DeviceMessageProcessor', () => {
     ]);
   });
 
+  it('takes only true and false for a binary capability: an ON is dropped and counted', async () => {
+    await handle({ state: 'ON', occupancy: 'OFF', soil_moisture: 30 }, SEEN);
+
+    expect(stored()).toEqual({ soil_moisture: 30 });
+    expect(processor.discardedFields).toBe(2);
+  });
+
   it('flags a reading whose time was replaced by the receive time', async () => {
-    await handle({ soil_moisture: 20, last_seen: '1970-01-01T00:00:00Z' });
+    await handle({ soil_moisture: 20 }, new Date('1970-01-01T00:00:00Z'));
     await handle({ soil_moisture: 21 });
 
     expect(add.mock.calls.map(([batch]) => batch[0])).toEqual([
@@ -179,19 +204,21 @@ describe('DeviceMessageProcessor', () => {
   });
 
   it('drops invalid fields, keeps the rest and counts them without logging values', async () => {
-    await handle({
-      soil_moisture: '31',
-      battery: Number.POSITIVE_INFINITY,
-      occupancy: 1,
-      mode: 'turbo-secret',
-      label: 'x\u0000y',
-      color: 'red',
-      unknown_key: 5,
-      calibration_extra: 1,
-      trigger: 1,
-      last_seen: SEEN,
-    });
-    await handle({ soil_moisture: 12, battery: null, last_seen: SEEN });
+    await handle(
+      {
+        soil_moisture: '31',
+        battery: Number.POSITIVE_INFINITY,
+        occupancy: 1,
+        mode: 'turbo-secret',
+        label: 'x\u0000y',
+        color: 'red',
+        unknown_key: 5,
+        calibration_extra: 1,
+        trigger: 1,
+      },
+      SEEN,
+    );
+    await handle({ soil_moisture: 12, battery: null }, SEEN);
 
     expect(stored()).toEqual({});
     expect(recordHardware.mock.calls[1]?.[1]).toEqual({ soil_moisture: 12 });
@@ -213,13 +240,15 @@ describe('DeviceMessageProcessor', () => {
   });
 
   it('drops a composite with a NUL character anywhere in it, and only that field', async () => {
-    await handle({
-      soil_moisture: 30,
-      color: { x: 0.3, nested: [{ name: 'a\u0000b' }] },
-      last_seen: SEEN,
-    });
-    await handle({ soil_moisture: 31, color: { ['k\u0000']: 1 }, last_seen: SEEN });
-    await handle({ soil_moisture: 32, color: { x: 0.3, y: 0.4 }, last_seen: SEEN });
+    await handle(
+      {
+        soil_moisture: 30,
+        color: { x: 0.3, nested: [{ name: 'a\u0000b' }] },
+      },
+      SEEN,
+    );
+    await handle({ soil_moisture: 31, color: { ['k\u0000']: 1 } }, SEEN);
+    await handle({ soil_moisture: 32, color: { x: 0.3, y: 0.4 } }, SEEN);
 
     expect(recordDevice.mock.calls.map((call) => call[1])).toEqual([
       { soil_moisture: 30 },
@@ -229,29 +258,44 @@ describe('DeviceMessageProcessor', () => {
     expect(processor.discardedFields).toBe(2);
   });
 
+  it('uses the capabilities the caller loaded already instead of loading them again', async () => {
+    await processor.handle({
+      gatewayId: GW,
+      hardwareId: HARDWARE,
+      values: { battery: 80, soil_moisture: 30 },
+      measuredAt: SEEN,
+      receivedAt: NOW,
+      retained: false,
+      capabilities: [capability('battery', 'numeric')],
+    });
+
+    expect(capabilitiesOf).not.toHaveBeenCalled();
+    expect(stored()).toEqual({ battery: 80 });
+  });
+
   describe('a retained message', () => {
-    it('is not a reading seen now: without its own plausible last_seen it changes nothing', async () => {
-      await handle({ soil_moisture: 30 }, true);
-      await handle({ soil_moisture: 30, last_seen: '2026-10-01T00:00:00Z' }, true);
+    it('is not a reading seen now: without its own plausible time it changes nothing', async () => {
+      await handle({ soil_moisture: 30 }, undefined, true);
+      await handle({ soil_moisture: 30 }, new Date('2026-10-01T00:00:00Z'), true);
 
       expect(recordHardware).not.toHaveBeenCalled();
       expect(recordDevice).not.toHaveBeenCalled();
       expect(add).not.toHaveBeenCalled();
     });
 
-    it('with a last_seen newer than the stored one is processed like a fresh message', async () => {
-      await handle({ soil_moisture: 30, last_seen: SEEN }, true);
+    it('with a time newer than the stored one is processed like a fresh message', async () => {
+      await handle({ soil_moisture: 30 }, SEEN, true);
 
-      expect(recordHardware).toHaveBeenCalledWith(HARDWARE, { soil_moisture: 30 }, new Date(SEEN), {
+      expect(recordHardware).toHaveBeenCalledWith(HARDWARE, { soil_moisture: 30 }, SEEN, {
         strictlyNewer: true,
       });
       expect(recordDevice).toHaveBeenCalledTimes(1);
       expect(add).toHaveBeenCalledTimes(1);
     });
 
-    it('with a last_seen that is not newer than the stored one is dropped entirely', async () => {
+    it('with a time that is not newer than the stored one is dropped entirely', async () => {
       recordHardware.mockResolvedValue(false);
-      await handle({ soil_moisture: 30, last_seen: SEEN }, true);
+      await handle({ soil_moisture: 30 }, SEEN, true);
 
       expect(recordDevice).not.toHaveBeenCalled();
       expect(add).not.toHaveBeenCalled();

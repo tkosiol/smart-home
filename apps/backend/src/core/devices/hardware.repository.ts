@@ -16,7 +16,7 @@ import {
 } from 'drizzle-orm';
 import type { PgColumn } from 'drizzle-orm/pg-core';
 import { DATABASE, type DatabaseConnection } from '../../platform/database/index.js';
-import type { SetupState } from '../adapters/index.js';
+import type { ReportedHardware, SetupState, StoredCapability } from '../adapters/index.js';
 import { gateways } from '../gateways/index.js';
 import {
   capabilities,
@@ -27,21 +27,6 @@ import {
   type CapabilityRow,
   type HardwareRow,
 } from './devices.schema.js';
-
-/** One device of Zigbee2MQTT's `bridge/devices`, reduced to what is stored. */
-export interface Z2mDevice {
-  externalId: string;
-  address: string | null;
-  name: string;
-  vendor: string;
-  model: string;
-  description: string | null;
-  /** The whole Z2M definition including `exposes`, kept as reported. */
-  native: Record<string, unknown>;
-  setupState: SetupState;
-  /** What the definition's `exposes` amount to. */
-  capabilities: readonly Capability[];
-}
 
 export interface HardwareWithCapabilities extends HardwareRow {
   capabilities: Capability[];
@@ -60,6 +45,12 @@ export const toCapability = (row: CapabilityRow): Capability => ({
   isSetting: row.isSetting,
 });
 
+/** A capability with what only the gateway's adapter reads; never handed to clients. */
+const toStoredCapability = (row: CapabilityRow): StoredCapability => ({
+  ...toCapability(row),
+  native: row.native,
+});
+
 /** The new value of a column in `insert … on conflict do update`. */
 const excluded = (column: PgColumn) => sql.raw(`excluded."${column.name}"`);
 
@@ -68,16 +59,17 @@ export class HardwareRepository {
   constructor(@Inject(DATABASE) private readonly connection: DatabaseConnection) {}
 
   /**
-   * Makes the gateway's hardware match what the bridge lists: new hardware is added, known
-   * hardware (by external ID) gets its name, address, model and capabilities updated and is revived if it
-   * was removed, hardware that is no longer listed is marked removed. Hardware stays stored so
-   * that devices keep their history. `ids` are the hardware that was added, updated or removed.
+   * Makes the gateway's hardware match the full list its adapter reported: new hardware is added,
+   * known hardware (by external ID) gets its name, address, model, native details and capabilities
+   * updated and is revived if it was removed, hardware that is no longer listed is marked removed.
+   * Hardware stays stored so that devices keep their history. `ids` are the hardware that was
+   * added, updated or removed.
    */
-  async upsertFromBridge(
+  async replaceListed(
     gatewayId: string,
-    devices: readonly Z2mDevice[],
+    devices: readonly ReportedHardware[],
     now: Date,
-  ): Promise<{ upserted: number; removed: number; ids: string[] }> {
+  ): Promise<{ ids: string[] }> {
     // One row per external ID (the last entry wins): an upsert cannot touch a row twice.
     const listed = [...new Map(devices.map((device) => [device.externalId, device])).values()];
     return this.connection.db.transaction(async (tx) => {
@@ -121,7 +113,7 @@ export class HardwareRepository {
             rows.map((row) => row.id),
           ),
         );
-        // One statement for the whole bridge: a gateway has tens of devices, not thousands.
+        // One statement for the whole list: a gateway has tens of devices, not thousands.
         const capabilityRows = listed.flatMap((device) =>
           device.capabilities.map((capability) => ({
             hardwareId: idOf.get(device.externalId) ?? '',
@@ -135,6 +127,7 @@ export class HardwareRepository {
             readable: capability.readable,
             writable: capability.writable,
             isSetting: capability.isSetting,
+            native: capability.native,
           })),
         );
         if (capabilityRows.length > 0) {
@@ -159,7 +152,7 @@ export class HardwareRepository {
         )
         .returning({ id: hardware.id });
       ids.push(...gone.map((row) => row.id));
-      return { upserted: listed.length, removed: gone.length, ids };
+      return { ids };
     });
   }
 
@@ -329,14 +322,29 @@ export class HardwareRepository {
     return updated.length > 0;
   }
 
-  /** What the hardware reports and accepts. */
-  async capabilitiesOf(hardwareId: string): Promise<Capability[]> {
+  /** What the hardware reports and accepts, with what its adapter stored for reading it. */
+  async capabilitiesOf(hardwareId: string): Promise<StoredCapability[]> {
     const rows = await this.connection.db
       .select()
       .from(capabilities)
       .where(eq(capabilities.hardwareId, hardwareId))
       .orderBy(asc(capabilities.key));
-    return rows.map(toCapability);
+    return rows.map(toStoredCapability);
+  }
+
+  /** The ID of the gateway's hardware with that external ID; not removed ones. */
+  async findByExternalId(gatewayId: string, externalId: string): Promise<string | undefined> {
+    const [row] = await this.connection.db
+      .select({ id: hardware.id })
+      .from(hardware)
+      .where(
+        and(
+          eq(hardware.gatewayId, gatewayId),
+          eq(hardware.externalId, externalId),
+          isNull(hardware.removedAt),
+        ),
+      );
+    return row?.id;
   }
 
   /** The gateway's hardware at that address (unique among what it lists); not removed ones. */
@@ -358,8 +366,8 @@ export class HardwareRepository {
   }
 
   /**
-   * Hardware of the household's gateways that is listed by its bridge and not part of a device
-   * yet; hardware of revoked gateways is left out. By name.
+   * Hardware that the household's gateways still list and that is not part of a device yet;
+   * hardware of revoked gateways is left out. By name.
    */
   async listUnassigned(householdId: string): Promise<HardwareWithCapabilities[]> {
     const rows = await this.connection.db

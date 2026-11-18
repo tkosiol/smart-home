@@ -1,7 +1,7 @@
 import { X509Certificate } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
-import type { Gateway, GatewayRegister } from '@smart/contracts';
+import type { Gateway, GatewayKind, GatewayRegister } from '@smart/contracts';
 import { ENV, type Env } from '../../platform/config/index.js';
 import { describeError } from '../../platform/errors/index.js';
 import { ApiError } from '../../platform/http/index.js';
@@ -10,9 +10,11 @@ import { readGatewayCertificate } from './gateway-certificate.js';
 import {
   GATEWAY_REGISTERED,
   GATEWAY_REVOKED,
+  GATEWAY_TOUCHED,
   GatewayEvents,
   type GatewayRegistered,
   type GatewayRevoked,
+  type GatewayTouched,
 } from './gateway-events.js';
 import {
   GATEWAY_STATUS_MEMORY,
@@ -28,6 +30,7 @@ const HOUR_MS = 3_600_000;
 export interface ActiveGateway {
   id: string;
   householdId: string;
+  kind: GatewayKind;
   topicPrefix: string;
 }
 
@@ -103,7 +106,11 @@ export class GatewaysService {
     // The same message whether the ID is taken in this or another household.
     if (!inserted) throw new ApiError(HttpStatus.CONFLICT, 'gateway.exists');
     const row = await this.applyLateStatus(inserted, recalled, now);
-    const registered: GatewayRegistered = { gatewayId: row.id, topicPrefix: row.topicPrefix };
+    const registered: GatewayRegistered = {
+      gatewayId: row.id,
+      kind: row.kind,
+      topicPrefix: row.topicPrefix,
+    };
     this.events.emit(GATEWAY_REGISTERED, registered);
     return this.toGateway(row, await this.crlNextUpdate(), now);
   }
@@ -145,8 +152,20 @@ export class GatewaysService {
     return rows.map((row) => ({
       id: row.id,
       householdId: row.householdId,
+      kind: row.kind,
       topicPrefix: row.topicPrefix,
     }));
+  }
+
+  /**
+   * Records that the gateway showed a sign of life and announces it; `false` (and no announcement)
+   * if it is not registered or was revoked. The caller keeps it to about once a minute.
+   */
+  async touch(gatewayId: string, now: Date): Promise<boolean> {
+    if (!(await this.gateways.touch(gatewayId, now))) return false;
+    const event: GatewayTouched = { gatewayId };
+    this.events.emit(GATEWAY_TOUCHED, event);
+    return true;
   }
 
   private toGateway(row: GatewayRow, crlNextUpdate: Date | undefined, now: Date): Gateway {

@@ -23,7 +23,7 @@ export interface GatewayAdapter {
 
 export interface AdapterMessage {
   gatewayId: string;
-  topic: string; // below the prefix, e.g. `Monstera` or `bridge/devices`
+  topic: string; // below the prefix, e.g. a device's address or the topic of the hardware list
   payload: Buffer;
 }
 

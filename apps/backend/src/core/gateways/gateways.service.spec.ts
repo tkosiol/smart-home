@@ -5,7 +5,12 @@ import { Logger } from '@nestjs/common';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { Env } from '../../platform/config/index.js';
 import { createTestCa } from '../../../test/helpers/test-pki.js';
-import { GATEWAY_REGISTERED, GATEWAY_REVOKED, GatewayEvents } from './gateway-events.js';
+import {
+  GATEWAY_REGISTERED,
+  GATEWAY_REVOKED,
+  GATEWAY_TOUCHED,
+  GatewayEvents,
+} from './gateway-events.js';
 import { noStatusMemory, type RecalledStatus } from './gateway-status-memory.js';
 import type { GatewaysRepository } from './gateways.repository.js';
 import type { GatewayRow, NewGatewayRow } from './gateways.schema.js';
@@ -178,7 +183,7 @@ describe('GatewaysService', () => {
     });
   });
   describe('lifecycle events', () => {
-    it('lists the active gateways with their topic prefix', async () => {
+    it('lists the active gateways with their kind and topic prefix', async () => {
       const events = new GatewayEvents();
       const subject = new GatewaysService(
         {
@@ -191,9 +196,41 @@ describe('GatewaysService', () => {
         events,
       );
       expect(await subject.listActive()).toEqual([
-        { id: 'gw-a1b2c3d4', householdId: 'household', topicPrefix: 'gw/gw-a1b2c3d4/z2m' },
-        { id: 'gw-bbbbbbbb', householdId: 'household', topicPrefix: 'gw/gw-bbbbbbbb/z2m' },
+        {
+          id: 'gw-a1b2c3d4',
+          householdId: 'household',
+          kind: 'z2m',
+          topicPrefix: 'gw/gw-a1b2c3d4/z2m',
+        },
+        {
+          id: 'gw-bbbbbbbb',
+          householdId: 'household',
+          kind: 'z2m',
+          topicPrefix: 'gw/gw-bbbbbbbb/z2m',
+        },
       ]);
+    });
+
+    it('records a sign of life and announces it only when the gateway is registered', async () => {
+      const events = new GatewayEvents();
+      const seen: unknown[] = [];
+      events.on(GATEWAY_TOUCHED, (event) => seen.push(event));
+      const touch = vi.fn<GatewaysRepository['touch']>().mockResolvedValueOnce(true);
+      touch.mockResolvedValueOnce(false);
+      const subject = new GatewaysService(
+        { touch } as unknown as GatewaysRepository,
+        {} as Env,
+        () => NOW,
+        noStatusMemory,
+        events,
+      );
+      expect(await subject.touch('gw-a1b2c3d4', NOW)).toBe(true);
+      expect(await subject.touch('gw-gone0000', NOW)).toBe(false);
+      expect(touch.mock.calls).toEqual([
+        ['gw-a1b2c3d4', NOW],
+        ['gw-gone0000', NOW],
+      ]);
+      expect(seen).toEqual([{ gatewayId: 'gw-a1b2c3d4' }]);
     });
 
     it('announces a registered gateway after storing it', async () => {
@@ -214,7 +251,9 @@ describe('GatewaysService', () => {
           events,
         );
         await subject.register('household', { name: 'Pi', certificate: issued.certificate });
-        expect(seen).toEqual([{ gatewayId: issued.id, topicPrefix: `gw/${issued.id}/z2m` }]);
+        expect(seen).toEqual([
+          { gatewayId: issued.id, kind: 'z2m', topicPrefix: `gw/${issued.id}/z2m` },
+        ]);
       } finally {
         ca.dispose();
       }

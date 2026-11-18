@@ -11,18 +11,14 @@ import {
   type DeviceStateChanged,
   type HardwareChanged,
 } from './device-events.js';
-import type { DeviceMessageHandler } from './device-message-handler.js';
 import { DevicesRepository } from './devices.repository.js';
 import { HardwareRepository } from './hardware.repository.js';
-import { measurementTime } from './measurement-time.js';
+import { plausibleTime } from './plausible-time.js';
 
 const HOUR_MS = 3_600_000;
 const MEMORY_LIMIT = 1000;
 const MAX_TEXT_LENGTH = 1000;
 const MAX_COMPOSITE_LENGTH = 2000;
-/** What Zigbee2MQTT calls the on and off of switches and lights. */
-const ON = 'ON';
-const OFF = 'OFF';
 
 /** Postgres cannot store a NUL character in text or jsonb (as a value or as a key). */
 const hasNul = (text: string): boolean => text.includes('\u0000');
@@ -48,7 +44,7 @@ function isValid(capability: Capability, value: unknown): boolean {
     case 'numeric':
       return typeof value === 'number' && Number.isFinite(value);
     case 'binary':
-      return typeof value === 'boolean' || value === ON || value === OFF;
+      return typeof value === 'boolean';
     case 'enum':
       return typeof value === 'string' && (capability.enumValues ?? []).includes(value);
     case 'text':
@@ -69,7 +65,7 @@ function readingOf(
     case 'numeric':
       return { valueNum: value as number };
     case 'binary':
-      return { valueNum: value === true || value === ON ? 1 : 0 };
+      return { valueNum: value === true ? 1 : 0 };
     case 'enum':
       return { valueText: value as string };
     // Text and composite values are only ever kept in the state.
@@ -79,16 +75,31 @@ function readingOf(
   }
 }
 
+/** A report of a piece of hardware, decoded by its gateway's adapter. */
+export interface DeviceReport {
+  gatewayId: string;
+  hardwareId: string;
+  /** Canonical keys and values; checked here against the hardware's capabilities. */
+  values: Record<string, unknown>;
+  /** When the hardware says it measured, if it does. */
+  measuredAt: Date | undefined;
+  receivedAt: Date;
+  /** The MQTT retain flag: a replay the broker sent on subscribing, not a fresh report. */
+  retained: boolean;
+  /** The hardware's capabilities when the caller loaded them already; loaded here otherwise. */
+  capabilities?: readonly Capability[];
+}
+
 /**
- * Turns the messages of hardware into state and readings: checks each field against what the
+ * Turns the reports of hardware into state and readings: checks each value against what the
  * hardware's capabilities allow (and drops the rest), keeps the hardware's last state, and for
  * hardware that sits in a device also the device's state and its readings. Readings take the time
  * the hardware reports (when plausible); state only moves forward in that time, so a late
  * delivery never overwrites a newer state. Values are never logged.
  */
 @Injectable()
-export class DeviceMessageProcessor implements DeviceMessageHandler {
-  private readonly logger = new Logger(DeviceMessageProcessor.name);
+export class DeviceReportProcessor {
+  private readonly logger = new Logger(DeviceReportProcessor.name);
   private readonly notices = new Throttle(HOUR_MS, MEMORY_LIMIT);
 
   /** Fields thrown away since start because their value does not fit the capability. */
@@ -101,20 +112,15 @@ export class DeviceMessageProcessor implements DeviceMessageHandler {
     private readonly events: DeviceEvents,
   ) {}
 
-  async handle(
-    gatewayId: string,
-    hardwareId: string,
-    payload: Record<string, unknown>,
-    receivedAt: Date,
-    retained: boolean,
-  ): Promise<void> {
-    const { time, replaced } = measurementTime(payload['last_seen'], receivedAt);
+  async handle(report: DeviceReport): Promise<void> {
+    const { gatewayId, hardwareId, values, receivedAt, retained } = report;
+    const { time, replaced } = plausibleTime(report.measuredAt, receivedAt);
     // A retained copy is what the broker replays on subscribing, not something heard now: it only
     // counts with a time of its own (checked against what is stored below).
     if (retained && replaced) return;
 
-    const capabilities = await this.hardware.capabilitiesOf(hardwareId);
-    const { state, rejected } = this.validate(payload, capabilities);
+    const capabilities = report.capabilities ?? (await this.hardware.capabilitiesOf(hardwareId));
+    const { state, rejected } = this.validate(values, capabilities);
     if (rejected > 0) this.noteRejected(gatewayId, rejected, receivedAt);
 
     const recorded = await this.hardware.recordState(hardwareId, state, time, {
@@ -155,19 +161,18 @@ export class DeviceMessageProcessor implements DeviceMessageHandler {
   }
 
   /**
-   * The fields of the message that are published properties of the hardware with a fitting value;
-   * `rejected` counts the ones whose value does not fit. Other keys (`last_seen`, `update`, …) are
-   * no capabilities and are left out without being counted.
+   * The values that are readable capabilities of the hardware and fit them; `rejected` counts the
+   * ones whose value does not fit. Keys that are no capability are left out without being counted.
    */
   private validate(
-    payload: Record<string, unknown>,
+    values: Record<string, unknown>,
     capabilities: readonly Capability[],
   ): { state: Record<string, unknown>; rejected: number } {
     const state: Record<string, unknown> = {};
     let rejected = 0;
     for (const capability of capabilities) {
-      if (!capability.readable || !Object.hasOwn(payload, capability.key)) continue;
-      const value = payload[capability.key];
+      if (!capability.readable || !Object.hasOwn(values, capability.key)) continue;
+      const value = values[capability.key];
       if (isValid(capability, value)) state[capability.key] = value;
       else rejected += 1;
     }
@@ -178,7 +183,7 @@ export class DeviceMessageProcessor implements DeviceMessageHandler {
     this.discardedFields += count;
     if (this.notices.allow(gatewayId, now)) {
       this.logger.warn(
-        `Dropped ${count} field(s) whose value does not fit the capability from messages of ${gatewayId}`,
+        `Dropped ${count} field(s) whose value does not fit the capability from reports of ${gatewayId}`,
       );
     }
   }

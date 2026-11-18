@@ -23,12 +23,18 @@ import {
 } from './gateway-status-memory.js';
 import { GatewaysRepository } from './gateways.repository.js';
 import { Throttle } from './throttle.js';
-import { isDeviceTraffic } from './z2m-topics.js';
 
 const MINUTE_MS = 60_000;
 const HOUR_MS = 3_600_000;
 /** `gw/<id>/z2m/` precedes what Zigbee2MQTT publishes. */
 const Z2M_LEVELS = 3;
+/** Commands to a device (`<name>/set`, `<name>/get/<attribute>`) are no sign of the gateway. */
+const COMMAND_TOPIC = /\/(?:set|get)(?:\/[^/]+)?$/;
+
+/** A message or availability of a device: no sign of Zigbee2MQTT working if it is anything else. */
+const isDeviceTraffic = (rest: string): boolean =>
+  !rest.startsWith('bridge/') && !COMMAND_TOPIC.test(rest);
+
 /** A status payload is a few bytes; anything bigger is not one. */
 const MAX_STATE_BYTES = 1024;
 
