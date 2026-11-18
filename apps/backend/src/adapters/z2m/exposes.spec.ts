@@ -209,6 +209,27 @@ describe('capabilitiesFromExposes', () => {
     ]);
   });
 
+  it('narrows the range of a colour temperature only within the vocabulary', () => {
+    const [colorTemp] = capabilitiesFromExposes([
+      {
+        type: 'light',
+        features: [
+          { type: 'numeric', property: 'color_temp', access: 7, value_min: 50, value_max: 2000 },
+        ],
+      },
+    ]);
+    expect(colorTemp).toMatchObject({ key: 'color_temp', min: 1000, max: 10000 });
+    const [tooCold] = capabilitiesFromExposes([
+      {
+        type: 'light',
+        features: [
+          { type: 'numeric', property: 'color_temp', access: 7, value_min: 20, value_max: 50 },
+        ],
+      },
+    ]);
+    expect(tooCold).toMatchObject({ min: 10000, max: 10000 });
+  });
+
   it('keeps a lock state apart from a light', () => {
     const [lock] = capabilitiesFromExposes([
       {

@@ -17,6 +17,8 @@ export function decodeZ2mReport(
   if (!isObject(native)) return { values: {}, measuredAt: undefined };
   const values: Record<string, unknown> = {};
   for (const capability of capabilities) {
+    // Stored rows come from the database: a broken one is skipped, not a reason to throw.
+    if (!isObject(capability.native)) continue;
     const property = capability.native.property;
     if (typeof property !== 'string' || !Object.hasOwn(native, property)) continue;
     const value = decodeValue(capability, native[property]);
@@ -41,6 +43,8 @@ function decodeValue(capability: StoredCapability, raw: unknown): unknown {
 }
 
 function decodeBinary(native: Record<string, unknown>, raw: unknown): unknown {
+  // A boolean already means on/off: Z2M's contact preset says value_on=false, yet true = closed.
+  if (typeof raw === 'boolean') return raw;
   // Rows stored before the adapter kept the values have neither: Z2M's default then.
   const stored = Object.hasOwn(native, 'valueOn') || Object.hasOwn(native, 'valueOff');
   const on = stored ? native.valueOn : 'ON';

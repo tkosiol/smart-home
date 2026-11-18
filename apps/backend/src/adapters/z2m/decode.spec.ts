@@ -33,12 +33,13 @@ describe('decodeZ2mReport', () => {
     expect(decodeZ2mReport({ state: 'LOCK' }, lock).values).toEqual({ state_z2m: true });
   });
 
-  it('reads stored values before taking a boolean as it is', () => {
+  it('takes a boolean as it is, whatever the stored values say', () => {
+    // Z2M's contact preset says value_on=false, but both Z2M and the vocabulary mean true = closed.
     const contact = [
       cap('contact', 'binary', { property: 'contact', valueOn: false, valueOff: true }),
     ];
-    expect(decodeZ2mReport({ contact: false }, contact).values).toEqual({ contact: true });
-    expect(decodeZ2mReport({ contact: true }, contact).values).toEqual({ contact: false });
+    expect(decodeZ2mReport({ contact: false }, contact).values).toEqual({ contact: false });
+    expect(decodeZ2mReport({ contact: true }, contact).values).toEqual({ contact: true });
   });
 
   it('falls back to ON/OFF for rows stored before the native values', () => {
@@ -85,6 +86,22 @@ describe('decodeZ2mReport', () => {
   it('skips capabilities without a stored property and fields that are only inherited', () => {
     const caps = [cap('battery', 'numeric', {}), cap('toString', 'text', { property: 'toString' })];
     expect(decodeZ2mReport({ battery: 80 }, caps).values).toEqual({});
+  });
+
+  it('skips capabilities whose stored native fields are unusable, without throwing', () => {
+    const broken = [
+      { ...cap('battery', 'numeric', {}), native: undefined },
+      { ...cap('humidity', 'numeric', {}), native: null },
+      { ...cap('temperature', 'numeric', {}), native: 'temperature' },
+      cap('linkquality', 'numeric', { property: 42 }),
+      cap('soil_moisture', 'numeric', { property: 'soil_moisture' }),
+    ] as unknown as StoredCapability[];
+    expect(
+      decodeZ2mReport(
+        { battery: 80, humidity: 50, temperature: 20, linkquality: 9, 42: 1, soil_moisture: 30 },
+        broken,
+      ).values,
+    ).toEqual({ soil_moisture: 30 });
   });
 
   it('reads last_seen only with a zone', () => {

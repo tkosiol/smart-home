@@ -24,6 +24,13 @@ describe('Z2mAdapter', () => {
     expect(adapter.classify('Monstera')).toEqual({ maxBytes: 64 * 1024 });
   });
 
+  it('drops topics without a device name', () => {
+    expect(adapter.classify('')).toBeUndefined();
+    expect(adapter.classify('/availability')).toBeUndefined();
+    expect(adapter.translate(msg('', { battery: 80 }))).toEqual([]);
+    expect(adapter.translate(msg('/availability', 'online'))).toEqual([]);
+  });
+
   it('hands the bridge topics to their translation', () => {
     expect(adapter.translate(msg('bridge/devices', []))).toEqual([
       { type: 'hardware.listed', hardware: [] },

@@ -48,8 +48,13 @@ export class Z2mAdapter implements GatewayAdapter {
     if (topic === 'bridge/devices') return { maxBytes: MAX_DEVICES_BYTES };
     if (topic === 'bridge/event') return { maxBytes: MAX_MESSAGE_BYTES };
     if (isBridgeTopic(topic) || isCommandTopic(topic)) return undefined;
-    if (topic.endsWith(AVAILABILITY_SUFFIX)) return { maxBytes: MAX_AVAILABILITY_BYTES };
-    return { maxBytes: MAX_MESSAGE_BYTES };
+    // A device without a name is none: the core could not address it.
+    if (topic.endsWith(AVAILABILITY_SUFFIX)) {
+      return topic.length > AVAILABILITY_SUFFIX.length
+        ? { maxBytes: MAX_AVAILABILITY_BYTES }
+        : undefined;
+    }
+    return topic === '' ? undefined : { maxBytes: MAX_MESSAGE_BYTES };
   }
 
   translate({ topic, payload }: AdapterMessage): AdapterEvent[] {

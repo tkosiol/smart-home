@@ -25,11 +25,6 @@ export interface Expose {
   features?: Expose[] | undefined;
 }
 
-/**
- * Reads exposes leniently: a field of the wrong type counts as absent, so that one odd entry does
- * not cost the device its other capabilities. Only an entry that is no object (or has no `type`)
- * is rejected.
- */
 /** A feature that is malformed drops itself, not the features next to it. */
 const keepWellFormed = (list: unknown[] | undefined): Expose[] | undefined =>
   list?.flatMap((entry) => {
@@ -37,6 +32,11 @@ const keepWellFormed = (list: unknown[] | undefined): Expose[] | undefined =>
     return parsed.success ? [parsed.data] : [];
   });
 
+/**
+ * Reads exposes leniently: a field of the wrong type counts as absent, so that one odd entry does
+ * not cost the device its other capabilities. Only an entry that is no object (or has no `type`)
+ * is rejected.
+ */
 const exposeSchema: z.ZodType<Expose> = z.lazy(() =>
   z.looseObject({
     type: z.string(),
@@ -126,9 +126,12 @@ function canonicalCapability(e: Expose, key: CanonicalKey): ReportedCapability {
   let { min, max } = entry;
   if (key === 'color_temp') {
     // Z2M speaks mired, the vocabulary Kelvin: the warmest end (most mired) is the lowest Kelvin.
+    // An adapter may only narrow the vocabulary's range, never widen it.
     const { value_min: lowMired = 0, value_max: highMired = 0 } = e;
-    min = highMired > 0 ? Math.round(MIRED_PER_KELVIN / highMired) : entry.min;
-    max = lowMired > 0 ? Math.round(MIRED_PER_KELVIN / lowMired) : entry.max;
+    const inRange = (kelvin: number) =>
+      Math.min(entry.max ?? Infinity, Math.max(entry.min ?? -Infinity, Math.round(kelvin)));
+    min = highMired > 0 ? inRange(MIRED_PER_KELVIN / highMired) : entry.min;
+    max = lowMired > 0 ? inRange(MIRED_PER_KELVIN / lowMired) : entry.max;
   }
   return {
     key,
