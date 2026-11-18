@@ -1,12 +1,19 @@
 import { effectiveThresholds } from '@smart/contracts';
 import { heroOf, sidePodsOf } from './device-hero';
+import { NO_NOTICES, UNKNOWN_NOTICES, type DeviceNotices } from './device-notices';
 import { capability, device, dry } from './devices-testing';
+
+const notices = (overrides: Partial<DeviceNotices>): DeviceNotices => ({
+  ...NO_NOTICES,
+  ...overrides,
+});
 
 describe('heroOf', () => {
   it('takes the main value, its name and the status of the device', () => {
     const hero = heroOf(
       device('d', 'Ficus', { state: { soil_moisture: 12.34, battery: 90 } }),
       'de',
+      notices({ dry: true }),
     );
     expect(hero).toMatchObject({
       kind: 'soil',
@@ -38,19 +45,33 @@ describe('heroOf', () => {
     expect(heroOf(base, 'de').meter?.band).toEqual({ from: 25, to: 100, tone: 'ok' });
   });
 
-  it('says dry, wet or ok by the limits', () => {
-    const at = (moisture: number) =>
+  it('says dry, wet or ok as the attention items of the device do, not by the limits', () => {
+    const at = (moisture: number, flags: Partial<DeviceNotices>) =>
       heroOf(
         {
           ...device('d', 'x', { state: { soil_moisture: moisture } }),
           effectiveThresholds: { ...effectiveThresholds('soil', {}), soilMoistureMax: 70 },
         },
         'de',
-      ).meter?.textKey;
-    expect(at(10)).toBe('app.devices.hero.meter.dry');
-    expect(at(25)).toBe('app.devices.hero.meter.ok');
-    expect(at(70)).toBe('app.devices.hero.meter.ok');
-    expect(at(71)).toBe('app.devices.hero.meter.wet');
+        notices(flags),
+      );
+    expect(at(10, { dry: true }).meter?.textKey).toBe('app.devices.hero.meter.dry');
+    expect(at(71, { wet: true }).meter?.textKey).toBe('app.devices.hero.meter.wet');
+    expect(at(40, {}).meter?.textKey).toBe('app.devices.hero.meter.ok');
+    // Hysteresis: 26 % with a minimum of 25 % is dry while the item is open ...
+    const held = at(26, { dry: true });
+    expect(held.meter?.textKey).toBe('app.devices.hero.meter.dry');
+    expect(held.chip).toEqual({ key: 'app.devices.pod.dry', tone: 'dry' });
+    // ... and 24 % without an item is not.
+    const quiet = at(24, {});
+    expect(quiet.meter?.textKey).toBe('app.devices.hero.meter.ok');
+    expect(quiet.chip).toEqual({ key: 'app.devices.pod.ok', tone: 'ok' });
+  });
+
+  it('claims nothing while the server has not told yet: no chip, only the value', () => {
+    const hero = heroOf(device('d', 'x', { state: { soil_moisture: 40 } }), 'de', UNKNOWN_NOTICES);
+    expect(hero.chip).toBeNull();
+    expect(hero.meter?.textKey).toBe('app.devices.hero.meter.plain');
   });
 
   it('has no band when no limit is set', () => {
@@ -107,18 +128,15 @@ describe('sidePodsOf', () => {
     });
   });
 
-  it('warns with the battery icon only below the effective minimum', () => {
-    const battery = (level: number, batteryMin: number) =>
+  it('warns with the battery icon only while the device has a battery_low item', () => {
+    const battery = (low: boolean) =>
       sidePodsOf(
-        device('d', 'x', {
-          state: { soil_moisture: 60, temperature: 20, battery: level },
-          effectiveThresholds: { ...effectiveThresholds('soil', {}), batteryMin },
-        }),
+        device('d', 'x', { state: { soil_moisture: 60, temperature: 20, battery: 14 } }),
         'de',
+        notices({ batteryLow: low }),
       ).find((pod) => pod.key === 'battery')?.icon;
-    expect(battery(90, 15)).toBe('battery_full');
-    expect(battery(14, 15)).toBe('battery_alert');
-    expect(battery(14, 10)).toBe('battery_full');
+    expect(battery(false)).toBe('battery_full');
+    expect(battery(true)).toBe('battery_alert');
   });
 
   it('shows at most three, takes the next readings for other devices and skips settings', () => {

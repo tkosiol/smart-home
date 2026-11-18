@@ -17,9 +17,11 @@ import {
   devicesServer,
   hardware,
   linkquality,
+  notice,
   type DevicesServer,
 } from './devices-testing';
 import { devicesRoutes } from './devices.routes';
+import type { Responder } from '../../testing/household-page-testing';
 
 const home = householdOf('Home', { role: 'owner' });
 const member = householdOf('Member', { role: 'member' });
@@ -27,16 +29,22 @@ const NOW = Date.parse('2026-10-14T12:00:00Z');
 const routes = [{ path: 'geraete', loadChildren: () => devicesRoutes }];
 
 interface Options extends Partial<DevicesServer> {
+  wrap?: (respond: Responder) => Responder;
   household?: typeof home;
   language?: Language;
 }
 
-function open({ household = home, language = 'de', ...initial }: Options = {}) {
+function open({
+  household = home,
+  language = 'de',
+  wrap = (respond) => respond,
+  ...initial
+}: Options = {}) {
   TestBed.overrideProvider(UiClock, { useValue: { now: signal(NOW) } });
   const { state, respond } = devicesServer(household.id, initial);
   const me: Me = meWith([household], household.id);
-  return openHouseholdPage(routes, '/geraete', { language, me, respond }).then((page) =>
-    Object.assign(page, { server: state }),
+  return openHouseholdPage(routes, '/geraete', { language, me, respond: wrap(respond) }).then(
+    (page) => Object.assign(page, { server: state }),
   );
 }
 
@@ -103,32 +111,59 @@ describe('devices page', () => {
       expect(podText(page, 'Basilikum')).not.toContain('Offline');
     });
 
-    it('marks a low battery below 20 percent, not at 20', async () => {
+    it('marks a low battery only for a device with a battery_low item', async () => {
       const low = device('dev-4', 'Schwach', { state: { soil_moisture: 30, battery: 15 } });
-      const edge = device('dev-5', 'Grenze', { state: { soil_moisture: 30, battery: 20 } });
-      const page = await open({ devices: [low, edge] });
+      const fine = device('dev-5', 'Gut', { state: { soil_moisture: 30, battery: 15 } });
+      const attention = [notice('battery_low', 'dev-4')];
+      const page = await open({ devices: [low, fine], attention });
       await flush(page);
       expect(podText(page, 'Schwach')).toContain('Batterie');
-      expect(podText(page, 'Grenze')).not.toContain('Batterie');
+      expect(podText(page, 'Gut')).not.toContain('Batterie');
     });
 
-    it('warns by the own battery threshold of the device, not a fixed 20 percent', async () => {
-      const own = (batteryMin: number) => ({
-        ...device('x', 'x').effectiveThresholds,
-        batteryMin,
+    it('shows no OK chip until the attention list is there, then the chip', async () => {
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => (release = resolve));
+      const page = await open({
+        devices: [device('dev-4', 'Feucht', { state: { soil_moisture: 26 } })],
+        attention: [notice('soil_dry', 'dev-4', 26)],
+        wrap: (respond) => async (call) => {
+          const answer = respond(call);
+          if (call.method === 'GET' && call.path.endsWith('/attention')) await gate;
+          return answer;
+        },
       });
-      const lenient = device('dev-7', 'Gelassen', {
-        state: { soil_moisture: 30, battery: 15 },
-        effectiveThresholds: own(10),
-      });
-      const strict = device('dev-8', 'Streng', {
-        state: { soil_moisture: 30, battery: 25 },
-        effectiveThresholds: own(30),
-      });
-      const page = await open({ devices: [lenient, strict] });
       await flush(page);
-      expect(podText(page, 'Gelassen')).not.toContain('Batterie');
-      expect(podText(page, 'Streng')).toContain('Batterie');
+      expect(podText(page, 'Feucht')).toContain('26');
+      expect(podText(page, 'Feucht')).not.toContain('OK');
+      expect(podText(page, 'Feucht')).not.toContain('trocken');
+      release();
+      await flush(page);
+      expect(podText(page, 'Feucht')).toContain('trocken');
+    });
+
+    it('stays without a chip when the attention list fails, and fills in on attention.changed', async () => {
+      const page = await open({
+        devices: [device('dev-4', 'Feucht', { state: { soil_moisture: 26 } })],
+        fail: (call) =>
+          call.path.endsWith('/attention') ? new Response(null, { status: 500 }) : undefined,
+      });
+      await flush(page);
+      expect(podText(page, 'Feucht')).not.toContain('OK');
+      page.live.emit('attention.changed', { items: [] });
+      await flush(page);
+      expect(podText(page, 'Feucht')).toContain('OK');
+    });
+
+    it('says dry for 26 % with an open soil_dry item, and not for 24 % without one', async () => {
+      const held = device('dev-4', 'Gehalten', { state: { soil_moisture: 26 } });
+      const below = device('dev-5', 'Darunter', { state: { soil_moisture: 24 } });
+      const attention = [notice('soil_dry', 'dev-4', 26)];
+      const page = await open({ devices: [held, below], attention });
+      await flush(page);
+      expect(podText(page, 'Gehalten')).toContain('trocken');
+      expect(podText(page, 'Darunter')).not.toContain('trocken');
+      expect(podText(page, 'Darunter')).toContain('OK');
     });
 
     it('shows the main value of a device with unknown keys', async () => {
@@ -226,6 +261,31 @@ describe('devices page', () => {
       await flush(page);
       expect(podText(page, 'Minze')).toBeTruthy();
       expect(requests(page, 'GET', '/devices')).toHaveLength(1);
+    });
+
+    it('updates the chip when attention.changed arrives, without a reload', async () => {
+      const damp = device('dev-4', 'Feucht', { state: { soil_moisture: 26 } });
+      const page = await open({ devices: [damp] });
+      await flush(page);
+      expect(podText(page, 'Feucht')).not.toContain('trocken');
+      page.live.emit('attention.changed', { items: [notice('soil_dry', 'dev-4', 26)] });
+      await flush(page);
+      expect(podText(page, 'Feucht')).toContain('trocken');
+      page.live.emit('attention.changed', { items: [] });
+      await flush(page);
+      expect(podText(page, 'Feucht')).not.toContain('trocken');
+      expect(requests(page, 'GET', '/attention')).toHaveLength(1);
+    });
+
+    it('loads the attention items again after a reconnect', async () => {
+      const damp = device('dev-4', 'Feucht', { state: { soil_moisture: 26 } });
+      const page = await open({ devices: [damp] });
+      await flush(page);
+      page.server.attention = [notice('soil_dry', 'dev-4', 26)];
+      page.live.resync();
+      await flush(page);
+      expect(requests(page, 'GET', '/attention')).toHaveLength(2);
+      expect(podText(page, 'Feucht')).toContain('trocken');
     });
 
     it('loads the devices and the new hardware again after a reconnect', async () => {
