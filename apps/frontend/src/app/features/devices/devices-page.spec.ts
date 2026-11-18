@@ -21,6 +21,7 @@ import {
   type DevicesServer,
 } from './devices-testing';
 import { devicesRoutes } from './devices.routes';
+import type { Responder } from '../../testing/household-page-testing';
 
 const home = householdOf('Home', { role: 'owner' });
 const member = householdOf('Member', { role: 'member' });
@@ -28,16 +29,22 @@ const NOW = Date.parse('2026-10-14T12:00:00Z');
 const routes = [{ path: 'geraete', loadChildren: () => devicesRoutes }];
 
 interface Options extends Partial<DevicesServer> {
+  wrap?: (respond: Responder) => Responder;
   household?: typeof home;
   language?: Language;
 }
 
-function open({ household = home, language = 'de', ...initial }: Options = {}) {
+function open({
+  household = home,
+  language = 'de',
+  wrap = (respond) => respond,
+  ...initial
+}: Options = {}) {
   TestBed.overrideProvider(UiClock, { useValue: { now: signal(NOW) } });
   const { state, respond } = devicesServer(household.id, initial);
   const me: Me = meWith([household], household.id);
-  return openHouseholdPage(routes, '/geraete', { language, me, respond }).then((page) =>
-    Object.assign(page, { server: state }),
+  return openHouseholdPage(routes, '/geraete', { language, me, respond: wrap(respond) }).then(
+    (page) => Object.assign(page, { server: state }),
   );
 }
 
@@ -112,6 +119,40 @@ describe('devices page', () => {
       await flush(page);
       expect(podText(page, 'Schwach')).toContain('Batterie');
       expect(podText(page, 'Gut')).not.toContain('Batterie');
+    });
+
+    it('shows no OK chip until the attention list is there, then the chip', async () => {
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => (release = resolve));
+      const page = await open({
+        devices: [device('dev-4', 'Feucht', { state: { soil_moisture: 26 } })],
+        attention: [notice('soil_dry', 'dev-4', 26)],
+        wrap: (respond) => async (call) => {
+          const answer = respond(call);
+          if (call.method === 'GET' && call.path.endsWith('/attention')) await gate;
+          return answer;
+        },
+      });
+      await flush(page);
+      expect(podText(page, 'Feucht')).toContain('26');
+      expect(podText(page, 'Feucht')).not.toContain('OK');
+      expect(podText(page, 'Feucht')).not.toContain('trocken');
+      release();
+      await flush(page);
+      expect(podText(page, 'Feucht')).toContain('trocken');
+    });
+
+    it('stays without a chip when the attention list fails, and fills in on attention.changed', async () => {
+      const page = await open({
+        devices: [device('dev-4', 'Feucht', { state: { soil_moisture: 26 } })],
+        fail: (call) =>
+          call.path.endsWith('/attention') ? new Response(null, { status: 500 }) : undefined,
+      });
+      await flush(page);
+      expect(podText(page, 'Feucht')).not.toContain('OK');
+      page.live.emit('attention.changed', { items: [] });
+      await flush(page);
+      expect(podText(page, 'Feucht')).toContain('OK');
     });
 
     it('says dry for 26 % with an open soil_dry item, and not for 24 % without one', async () => {

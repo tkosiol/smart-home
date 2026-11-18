@@ -51,6 +51,8 @@ const SIDE_KEYS = ['temperature', 'humidity'] as const;
  */
 export function chipOf(device: Device, notices: DeviceNotices): PodChip | null {
   if (device.availability === 'offline') return { key: WORDS.offline, tone: 'error' };
+  // Without the server's list nothing is known: no "OK" that may be false reassurance.
+  if (!notices.known) return null;
   if (notices.dry) return { key: WORDS.dry, tone: 'dry' };
   if (notices.wet) return { key: WORDS.wet, tone: 'wet' };
   if (notices.batteryLow) return { key: WORDS.lowBattery, tone: 'warning' };

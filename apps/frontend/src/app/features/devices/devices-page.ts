@@ -12,7 +12,7 @@ import {
 } from '@smart/ui';
 import { HouseholdContext } from '../../core/household';
 import { injectDeviceList } from './device-list';
-import { NO_NOTICES, injectDeviceNotices } from './device-notices';
+import { injectDeviceNotices, noticesOf } from './device-notices';
 import { podOf } from './device-pod';
 import { NewHardware } from './new-hardware';
 
@@ -77,7 +77,7 @@ export class DevicesPage {
   protected readonly pods = computed(() =>
     this.devices
       .items()
-      .map((device) => podOf(device, this.locale(), this.notices().get(device.id) ?? NO_NOTICES)),
+      .map((device) => podOf(device, this.locale(), noticesOf(this.notices(), device.id))),
   );
   protected readonly isOwner = computed(() => {
     const role = this.household.current()?.role;

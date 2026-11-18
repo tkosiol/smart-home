@@ -18,18 +18,36 @@ import { DevicesApi } from './devices.api';
  * when soil is dry or wet and a battery is low; the pod chip, the hero and the banner only follow.
  */
 export interface DeviceNotices {
+  /** False until the server's list has been loaded: then nothing can be said, not even "OK". */
+  readonly known: boolean;
   readonly dry: boolean;
   readonly wet: boolean;
   readonly batteryLow: boolean;
 }
 
-export const NO_NOTICES: DeviceNotices = { dry: false, wet: false, batteryLow: false };
+/** The list is loaded and the device has no item. */
+export const NO_NOTICES: DeviceNotices = {
+  known: true,
+  dry: false,
+  wet: false,
+  batteryLow: false,
+};
 
-/** The notices per device id; a device without any is absent. */
-export type NoticesByDevice = ReadonlyMap<string, DeviceNotices>;
+/** The list is not loaded (yet, or its first load failed). */
+export const UNKNOWN_NOTICES: DeviceNotices = { ...NO_NOTICES, known: false };
+
+/** The notices per device id (a device without any is absent); null while the list is not loaded. */
+export type NoticesByDevice = ReadonlyMap<string, DeviceNotices> | null;
+
+/** The notices of one device: unknown while the list is not loaded. */
+export function noticesOf(all: NoticesByDevice, deviceId: string): DeviceNotices {
+  return all === null ? UNKNOWN_NOTICES : (all.get(deviceId) ?? NO_NOTICES);
+}
 
 /** Groups the attention items by device; only the kinds that show on a device count. */
-export function noticesByDevice(items: readonly AttentionItem[]): NoticesByDevice {
+export function noticesByDevice(
+  items: readonly AttentionItem[],
+): ReadonlyMap<string, DeviceNotices> {
   const result = new Map<string, DeviceNotices>();
   for (const item of items) {
     if (item.deviceId === undefined) continue;
@@ -55,13 +73,14 @@ export function injectDeviceNotices(): Signal<NoticesByDevice> {
   const currentId = computed(() => household.current()?.id);
   const refresh = new RefreshGuard();
   const quiet = refresh.quietNetworkFailure(handleError);
-  const items = signal<readonly AttentionItem[]>([]);
+  // Null until the first answer for the household: a failed load stays null, never "nothing".
+  const items = signal<readonly AttentionItem[] | null>(null);
   let requests = 0;
   inject(DestroyRef).onDestroy(() => requests++);
 
   async function load(householdId: string | undefined, keep = false): Promise<void> {
     const request = ++requests;
-    if (!keep) items.set([]);
+    if (!keep) items.set(null);
     if (!householdId) return;
     try {
       const answer = await api.attention(householdId);
@@ -83,5 +102,8 @@ export function injectDeviceNotices(): Signal<NoticesByDevice> {
     },
     resync: () => void refresh.run(() => load(currentId(), true)),
   });
-  return computed(() => noticesByDevice(items()));
+  return computed(() => {
+    const loaded = items();
+    return loaded === null ? null : noticesByDevice(loaded);
+  });
 }

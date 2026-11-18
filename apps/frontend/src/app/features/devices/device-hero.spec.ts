@@ -1,6 +1,6 @@
 import { effectiveThresholds } from '@smart/contracts';
 import { heroOf, sidePodsOf } from './device-hero';
-import { NO_NOTICES, type DeviceNotices } from './device-notices';
+import { NO_NOTICES, UNKNOWN_NOTICES, type DeviceNotices } from './device-notices';
 import { capability, device, dry } from './devices-testing';
 
 const notices = (overrides: Partial<DeviceNotices>): DeviceNotices => ({
@@ -66,6 +66,12 @@ describe('heroOf', () => {
     const quiet = at(24, {});
     expect(quiet.meter?.textKey).toBe('app.devices.hero.meter.ok');
     expect(quiet.chip).toEqual({ key: 'app.devices.pod.ok', tone: 'ok' });
+  });
+
+  it('claims nothing while the server has not told yet: no chip, only the value', () => {
+    const hero = heroOf(device('d', 'x', { state: { soil_moisture: 40 } }), 'de', UNKNOWN_NOTICES);
+    expect(hero.chip).toBeNull();
+    expect(hero.meter?.textKey).toBe('app.devices.hero.meter.plain');
   });
 
   it('has no band when no limit is set', () => {

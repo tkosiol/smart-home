@@ -61,7 +61,14 @@ function meterOf(device: Device, locale: string, notices: DeviceNotices): MeterV
   }
   const from = min ?? 0;
   const to = max ?? 100;
-  const textKey = notices.dry ? METER_KEYS.dry : notices.wet ? METER_KEYS.wet : METER_KEYS.ok;
+  // Whether it is dry or wet is the server's to say: while that is unknown, only the value.
+  const textKey = !notices.known
+    ? METER_KEYS.plain
+    : notices.dry
+      ? METER_KEYS.dry
+      : notices.wet
+        ? METER_KEYS.wet
+        : METER_KEYS.ok;
   return {
     value: moisture,
     band: { from, to, tone: 'ok' },

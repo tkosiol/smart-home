@@ -10,7 +10,7 @@ import {
   UiRoomCard,
 } from '@smart/ui';
 import { injectDeviceList } from './device-list';
-import { NO_NOTICES, injectDeviceNotices } from './device-notices';
+import { injectDeviceNotices, noticesOf } from './device-notices';
 import { podOf } from './device-pod';
 import { provideDevicesTexts } from './devices-texts';
 
@@ -84,6 +84,6 @@ export class DevicesBlock {
   protected readonly pods = computed(() =>
     this.devices
       .items()
-      .map((device) => podOf(device, this.locale(), this.notices().get(device.id) ?? NO_NOTICES)),
+      .map((device) => podOf(device, this.locale(), noticesOf(this.notices(), device.id))),
   );
 }

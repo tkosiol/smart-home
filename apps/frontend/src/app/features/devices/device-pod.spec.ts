@@ -8,7 +8,7 @@ import {
   temperature,
   battery,
 } from './devices-testing';
-import { NO_NOTICES, type DeviceNotices } from './device-notices';
+import { NO_NOTICES, UNKNOWN_NOTICES, type DeviceNotices } from './device-notices';
 import { podOf } from './device-pod';
 
 const NBSP = String.fromCharCode(0xa0);
@@ -84,6 +84,13 @@ describe('podOf', () => {
     // 24 % is below the minimum, but the server has opened no item (yet).
     const below = pod('d1', 'A', { state: { soil_moisture: 24 }, effectiveThresholds: withMin });
     expect(below.chip?.key).toBe('app.devices.pod.ok');
+  });
+
+  it('says nothing, not even OK, while the server has not told yet', () => {
+    expect(pod('d1', 'A', {}, UNKNOWN_NOTICES).chip).toBeNull();
+    // Offline needs no list.
+    const offline = pod('d1', 'A', { availability: 'offline' }, UNKNOWN_NOTICES);
+    expect(offline.chip?.key).toBe('app.devices.pod.offline');
   });
 
   it('shows a dry item before a battery one', () => {

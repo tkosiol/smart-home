@@ -35,7 +35,7 @@ import { HouseholdContext, injectHouseholdErrorHandler } from '../../core/househ
 import { injectLive } from '../../core/live';
 import { RefreshGuard, isNetworkFailure } from '../../core/refresh';
 import { heroOf, kindKey, sidePodsOf } from './device-hero';
-import { NO_NOTICES, injectDeviceNotices } from './device-notices';
+import { injectDeviceNotices, noticesOf } from './device-notices';
 import { capabilityLabelKey } from './device-values';
 import { DevicesApi } from './devices.api';
 import { HistoryCard } from './history-card';
@@ -214,7 +214,7 @@ export class DevicePage {
   private readonly locale = inject(UiFormatContext).locale;
   private readonly allNotices = injectDeviceNotices();
   /** What the server's attention items say about this device. */
-  private readonly notices = computed(() => this.allNotices().get(this.deviceId) ?? NO_NOTICES);
+  private readonly notices = computed(() => noticesOf(this.allNotices(), this.deviceId));
   protected readonly kind = computed(() => {
     const device = this.device();
     return device ? kindKey(device.kind) : null;
