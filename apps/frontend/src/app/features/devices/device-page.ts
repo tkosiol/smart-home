@@ -35,7 +35,8 @@ import { HouseholdContext, injectHouseholdErrorHandler } from '../../core/househ
 import { injectLive } from '../../core/live';
 import { RefreshGuard, isNetworkFailure } from '../../core/refresh';
 import { heroOf, kindKey, sidePodsOf } from './device-hero';
-import { capabilityLabelKey, isBatteryLow } from './device-values';
+import { NO_NOTICES, injectDeviceNotices } from './device-notices';
+import { capabilityLabelKey } from './device-values';
 import { DevicesApi } from './devices.api';
 import { HistoryCard } from './history-card';
 import { historyCapabilities } from './history-model';
@@ -211,6 +212,9 @@ export class DevicePage {
   /** The server does not know this device in this household. */
   protected readonly notFound = signal(false);
   private readonly locale = inject(UiFormatContext).locale;
+  private readonly allNotices = injectDeviceNotices();
+  /** What the server's attention items say about this device. */
+  private readonly notices = computed(() => this.allNotices().get(this.deviceId) ?? NO_NOTICES);
   protected readonly kind = computed(() => {
     const device = this.device();
     return device ? kindKey(device.kind) : null;
@@ -218,7 +222,7 @@ export class DevicePage {
   /** The main value; none for a device that has not reported a reading and has no readings. */
   protected readonly hero = computed(() => {
     const device = this.device();
-    const hero = device ? heroOf(device, this.locale()) : null;
+    const hero = device ? heroOf(device, this.locale(), this.notices()) : null;
     return hero?.capabilityKey === undefined ? null : hero;
   });
   /** The name of the main value; null for a capability the app has no name for (shown as its key). */
@@ -228,12 +232,11 @@ export class DevicePage {
   });
   protected readonly sidePods = computed(() => {
     const device = this.device();
-    return device ? sidePodsOf(device, this.locale()) : [];
+    return device ? sidePodsOf(device, this.locale(), this.notices()) : [];
   });
-  protected readonly lowBattery = computed(() => {
-    const device = this.device();
-    return device !== null && isBatteryLow(device);
-  });
+  protected readonly lowBattery = computed(
+    () => this.device() !== null && this.notices().batteryLow,
+  );
   protected readonly hasHistory = computed(() => {
     const device = this.device();
     return device !== null && historyCapabilities(device).length > 0;

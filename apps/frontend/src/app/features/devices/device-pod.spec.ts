@@ -1,3 +1,4 @@
+import type { Device } from '@smart/contracts';
 import {
   capability,
   device,
@@ -7,10 +8,16 @@ import {
   temperature,
   battery,
 } from './devices-testing';
+import { NO_NOTICES, type DeviceNotices } from './device-notices';
 import { podOf } from './device-pod';
 
 const NBSP = String.fromCharCode(0xa0);
-const pod = (...args: Parameters<typeof device>) => podOf(device(...args), 'de');
+const pod = (id: string, name: string, overrides: Partial<Device> = {}, flags = NO_NOTICES) =>
+  podOf(device(id, name, overrides), 'de', flags);
+const notices = (overrides: Partial<DeviceNotices>): DeviceNotices => ({
+  ...NO_NOTICES,
+  ...overrides,
+});
 
 describe('podOf', () => {
   it('shows the soil moisture as the value with the temperature beside the name', () => {
@@ -48,85 +55,60 @@ describe('podOf', () => {
     expect(off.valueKey).toBe('app.devices.pod.off');
   });
 
-  it('marks soil below the effective minimum as dry and above the maximum as wet', () => {
-    const thresholds = { soilMoistureMin: 25, soilMoistureMax: 80 };
-    const base = device('d1', 'A').effectiveThresholds;
-    const effective = { ...base, ...thresholds };
-    expect(
-      pod('d1', 'A', { state: { soil_moisture: 18 }, effectiveThresholds: effective }).chip,
-    ).toEqual({
+  it('follows the notices of the device: dry, wet, low battery, else OK', () => {
+    expect(pod('d1', 'A', {}, notices({ dry: true })).chip).toEqual({
       key: 'app.devices.pod.dry',
       tone: 'dry',
     });
-    expect(
-      pod('d1', 'A', { state: { soil_moisture: 91 }, effectiveThresholds: effective }).chip,
-    ).toEqual({
+    expect(pod('d1', 'A', {}, notices({ wet: true })).chip).toEqual({
       key: 'app.devices.pod.wet',
       tone: 'wet',
     });
-    expect(
-      pod('d1', 'A', { state: { soil_moisture: 25 }, effectiveThresholds: effective }).chip,
-    ).toEqual({
-      key: 'app.devices.pod.ok',
-      tone: 'ok',
+    expect(pod('d1', 'A', {}, notices({ batteryLow: true })).chip).toEqual({
+      key: 'app.devices.pod.lowBattery',
+      tone: 'warning',
     });
+    expect(pod('d1', 'A').chip).toEqual({ key: 'app.devices.pod.ok', tone: 'ok' });
   });
 
-  describe('the dry flag of the sensor', () => {
-    const withMin = (soilMoistureMin: number) => ({
-      ...device('d1', 'A').effectiveThresholds,
-      soilMoistureMin,
-    });
-
-    it('does not override the threshold while the device reports a moisture', () => {
-      for (const soil_moisture of [29, 31]) {
-        const chip = pod('d1', 'A', {
-          state: { soil_moisture, dry: true },
-          effectiveThresholds: withMin(25),
-        }).chip;
-        expect(chip?.key).toBe('app.devices.pod.ok');
-      }
-    });
-
-    it('counts when there is no moisture to read', () => {
-      expect(pod('d1', 'A', { state: { dry: true } }).chip?.key).toBe('app.devices.pod.dry');
-    });
-
-    it('follows a lowered minimum', () => {
-      const chip = pod('d1', 'A', {
-        state: { soil_moisture: 28, dry: true },
-        effectiveThresholds: withMin(15),
-      }).chip;
-      expect(chip?.key).toBe('app.devices.pod.ok');
-    });
+  it('does not decide dry itself: the item rules, with its hysteresis', () => {
+    const withMin = { ...device('d1', 'A').effectiveThresholds, soilMoistureMin: 25 };
+    // 26 % is above the minimum of 25 %, but the dry item is still open.
+    const held = pod(
+      'd1',
+      'A',
+      { state: { soil_moisture: 26 }, effectiveThresholds: withMin },
+      notices({ dry: true }),
+    );
+    expect(held.chip?.key).toBe('app.devices.pod.dry');
+    // 24 % is below the minimum, but the server has opened no item (yet).
+    const below = pod('d1', 'A', { state: { soil_moisture: 24 }, effectiveThresholds: withMin });
+    expect(below.chip?.key).toBe('app.devices.pod.ok');
   });
 
-  it('shows a low battery by the effective threshold of the device', () => {
-    const base = device('d1', 'A').effectiveThresholds;
-    const low = pod('d1', 'A', {
-      state: { soil_moisture: 60, battery: 14 },
-      effectiveThresholds: { ...base, batteryMin: 15 },
-    });
-    expect(low.chip).toEqual({ key: 'app.devices.pod.lowBattery', tone: 'warning' });
-    const fine = pod('d1', 'A', {
-      state: { soil_moisture: 60, battery: 14 },
-      effectiveThresholds: { ...base, batteryMin: 10 },
-    });
-    expect(fine.chip?.key).toBe('app.devices.pod.ok');
+  it('shows a dry item before a battery one', () => {
+    expect(pod('d1', 'A', {}, notices({ dry: true, batteryLow: true })).chip?.key).toBe(
+      'app.devices.pod.dry',
+    );
   });
 
   it('shows no chip while the device has not reported a reading yet', () => {
     expect(pod('d1', 'A', { state: {}, lastSeenAt: null }).chip).toBeNull();
     // Only a battery level says nothing about the soil: still no "OK".
     expect(pod('d1', 'A', { state: { battery: 90 } }).chip).toBeNull();
-    // But it can still say the battery is low.
-    expect(pod('d1', 'A', { state: { battery: 5 } }).chip?.key).toBe('app.devices.pod.lowBattery');
+    // But the server can still say the battery is low.
+    const low = pod('d1', 'A', { state: { battery: 5 } }, notices({ batteryLow: true }));
+    expect(low.chip?.key).toBe('app.devices.pod.lowBattery');
   });
 
   it('says offline before anything else', () => {
-    expect(
-      pod('d1', 'A', { availability: 'offline', state: { soil_moisture: 10, battery: 3 } }).chip,
-    ).toEqual({ key: 'app.devices.pod.offline', tone: 'error' });
+    const offline = pod(
+      'd1',
+      'A',
+      { availability: 'offline', state: { soil_moisture: 10, battery: 3 } },
+      notices({ dry: true, batteryLow: true }),
+    );
+    expect(offline.chip).toEqual({ key: 'app.devices.pod.offline', tone: 'error' });
   });
 
   it('shows a dash for a value that is not there yet, and no unit', () => {

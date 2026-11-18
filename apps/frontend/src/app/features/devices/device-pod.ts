@@ -2,7 +2,8 @@ import { marker } from '@jsverse/transloco-keys-manager/marker';
 import { primaryCapability, type Capability, type Device, type DeviceKind } from '@smart/contracts';
 import type { UiToneName } from '@smart/ui';
 import type { IconName } from '@smart/ui/shell';
-import { binaryOf, formatNumber, formatReading, isBatteryLow } from './device-values';
+import { NO_NOTICES, type DeviceNotices } from './device-notices';
+import { binaryOf, formatNumber, formatReading } from './device-values';
 
 // Root keys (marked, so the key check finds them): the words are translated where the pod is shown.
 const WORDS = {
@@ -43,30 +44,20 @@ export const ICONS: Record<DeviceKind, IconName> = {
 /** The reading that goes next to the name, when it is not the value itself. */
 const SIDE_KEYS = ['temperature', 'humidity'] as const;
 
-/** The word in the corner of a device's pod and of its hero: what is wrong, or "OK". */
-export function chipOf(device: Device): PodChip | null {
+/**
+ * The word in the corner of a device's pod and of its hero: what is wrong, or "OK". Dry, wet and
+ * low battery come from the server's attention items (`notices`, with hysteresis), not from a
+ * comparison here, so every place of the app agrees.
+ */
+export function chipOf(device: Device, notices: DeviceNotices): PodChip | null {
   if (device.availability === 'offline') return { key: WORDS.offline, tone: 'error' };
-  const { state, effectiveThresholds: limits } = device;
-  const moisture = typeof state['soil_moisture'] === 'number' ? state['soil_moisture'] : undefined;
-  // The sensor's own "dry" flag fires at its level, not the user's: it only counts while the
-  // device reports no moisture number (the same rule as the backend's attention items).
-  const dry =
-    moisture === undefined
-      ? binaryOf(state['dry']) === true
-      : limits.soilMoistureMin !== null && moisture < limits.soilMoistureMin;
-  if (dry) {
-    return { key: WORDS.dry, tone: 'dry' };
-  }
-  if (
-    moisture !== undefined &&
-    limits.soilMoistureMax !== null &&
-    moisture > limits.soilMoistureMax
-  ) {
-    return { key: WORDS.wet, tone: 'wet' };
-  }
-  if (isBatteryLow(device)) return { key: WORDS.lowBattery, tone: 'warning' };
+  if (notices.dry) return { key: WORDS.dry, tone: 'dry' };
+  if (notices.wet) return { key: WORDS.wet, tone: 'wet' };
+  if (notices.batteryLow) return { key: WORDS.lowBattery, tone: 'warning' };
+  const { state } = device;
   // "OK" needs a reading of the soil; while there is none, there is nothing to say yet.
-  const reported = moisture !== undefined || binaryOf(state['dry']) !== undefined;
+  const reported =
+    typeof state['soil_moisture'] === 'number' || binaryOf(state['dry']) !== undefined;
   return device.kind === 'soil' && reported ? { key: WORDS.ok, tone: 'ok' } : null;
 }
 
@@ -112,7 +103,11 @@ export function readingValue(
  * The pod of one device: the server's kind picks colour and icon, the first reading (soil
  * moisture, temperature, ...) is the value, and the chip says in words what is wrong, or "OK".
  */
-export function podOf(device: Device, locale: string): PodModel {
+export function podOf(
+  device: Device,
+  locale: string,
+  notices: DeviceNotices = NO_NOTICES,
+): PodModel {
   const main = primaryCapability(device.capabilities);
   const reading = readingValue(main, main ? device.state[main.key] : undefined, locale);
   const side = SIDE_KEYS.filter((key) => key !== main?.key)
@@ -124,7 +119,7 @@ export function podOf(device: Device, locale: string): PodModel {
     icon: ICONS[device.kind],
     ...reading,
     label: sideReading?.kind === 'text' ? `${device.name} · ${sideReading.text}` : device.name,
-    chip: chipOf(device),
+    chip: chipOf(device, notices),
     route: `/geraete/${device.id}`,
   };
 }
