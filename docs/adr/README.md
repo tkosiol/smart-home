@@ -24,3 +24,4 @@ Neue Entscheidung: `0000-template.md` kopieren, nächste Nummer vergeben, hier e
 | [0018](0018-self-hosting-guardrails.md)         | Self-Hosting-Leitplanken                               |
 | [0019](0019-license-agpl.md)                    | Lizenz AGPL-3.0-only                                   |
 | [0020](0020-bridge-buffer-and-topics.md)        | Bridge-Puffer und Topic-Konfiguration (Spike 2b)       |
+| [0021](0021-gateway-adapters-in-backend.md)     | Gateway-Adapter im Backend, eigenes Vokabular          |
