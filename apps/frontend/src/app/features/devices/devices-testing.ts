@@ -1,6 +1,9 @@
 import {
   RESOLUTION_MINUTES,
+  SEVERITY_OF,
   effectiveThresholds,
+  type AttentionItem,
+  type AttentionKind,
   type Capability,
   type Device,
   type DeviceHistory,
@@ -53,6 +56,18 @@ export const device = (id: string, name: string, overrides: Partial<Device> = {}
     silentMinutes: 120,
   },
   ...overrides,
+});
+
+/** A soil_dry, soil_wet or battery_low item of a device, as the server would list it. */
+export const notice = (kind: AttentionKind, deviceId: string, value?: number): AttentionItem => ({
+  id: `${kind}:${deviceId}`,
+  kind,
+  severity: SEVERITY_OF[kind],
+  since: '2026-10-14T11:00:00.000Z',
+  deviceId,
+  name: deviceId,
+  ...(value !== undefined && { value, unit: '%' }),
+  params: {},
 });
 
 export const hardware = (id: string, friendlyName: string, overrides: Partial<Hardware> = {}) =>
@@ -150,6 +165,8 @@ export function historyOf(
 export interface DevicesServer {
   devices: Device[];
   hardware: Hardware[];
+  /** The attention items of the household (what the chips follow). */
+  attention?: AttentionItem[];
   /** The answer to a history request; defaults to {@link historyOf} with a gentle wave. */
   history?: (capability: string, range: HistoryRange) => DeviceHistory | Response;
   fail?: (call: RecordedCall) => Response | undefined;
@@ -164,6 +181,8 @@ export function devicesServer(householdId: string, initial: Partial<DevicesServe
     if (failed) return failed;
     const path = call.path.replace(base, '');
     if (call.method === 'GET' && path === '/devices') return json(state.devices);
+    if (call.method === 'GET' && path === '/attention')
+      return json({ items: state.attention ?? [] });
     if (call.method === 'GET' && path === '/hardware?state=unassigned') {
       return json(state.hardware);
     }

@@ -3,7 +3,8 @@ import { primaryCapability, type Device, type DeviceKind } from '@smart/contract
 import type { UiProgressBandRange } from '@smart/ui';
 import type { IconName } from '@smart/ui/shell';
 import { NO_VALUE, chipOf, readingValue, type PodChip, type ReadingValue } from './device-pod';
-import { capabilityLabelKey, formatNumber, isBatteryLow, isReading } from './device-values';
+import { NO_NOTICES, type DeviceNotices } from './device-notices';
+import { capabilityLabelKey, formatNumber, isReading } from './device-values';
 
 // Root keys (marked, so the key check finds them): the words are translated where they are shown.
 const KIND_KEYS: Record<DeviceKind, string> = {
@@ -49,7 +50,7 @@ export interface DeviceHero extends ReadingValue {
 /** Keeps the unit on the line of its number. */
 const NBSP = String.fromCharCode(0xa0);
 
-function meterOf(device: Device, locale: string): MeterView | null {
+function meterOf(device: Device, locale: string, notices: DeviceNotices): MeterView | null {
   const moisture = device.state['soil_moisture'];
   if (typeof moisture !== 'number' || !Number.isFinite(moisture)) return null;
   const { soilMoistureMin: min, soilMoistureMax: max } = device.effectiveThresholds;
@@ -60,10 +61,12 @@ function meterOf(device: Device, locale: string): MeterView | null {
   }
   const from = min ?? 0;
   const to = max ?? 100;
-  const textKey =
-    min !== null && moisture < min
+  // Whether it is dry or wet is the server's to say: while that is unknown, only the value.
+  const textKey = !notices.known
+    ? METER_KEYS.plain
+    : notices.dry
       ? METER_KEYS.dry
-      : max !== null && moisture > max
+      : notices.wet
         ? METER_KEYS.wet
         : METER_KEYS.ok;
   return {
@@ -74,7 +77,11 @@ function meterOf(device: Device, locale: string): MeterView | null {
   };
 }
 
-export function heroOf(device: Device, locale: string): DeviceHero {
+export function heroOf(
+  device: Device,
+  locale: string,
+  notices: DeviceNotices = NO_NOTICES,
+): DeviceHero {
   const main = primaryCapability(device.capabilities);
   const reading = readingValue(main, main ? device.state[main.key] : undefined, locale);
   return {
@@ -82,8 +89,8 @@ export function heroOf(device: Device, locale: string): DeviceHero {
     missing: reading.value === NO_VALUE,
     kind: device.kind,
     capabilityKey: main?.key,
-    chip: chipOf(device),
-    meter: device.kind === 'soil' ? meterOf(device, locale) : null,
+    chip: chipOf(device, notices),
+    meter: device.kind === 'soil' ? meterOf(device, locale, notices) : null,
   };
 }
 
@@ -105,7 +112,11 @@ const SIDE_ICONS: Readonly<Record<string, IconName>> = {
 const SIDE_COUNT = 3;
 
 /** The next readings after the main one: three pods, temperature, battery and signal first. */
-export function sidePodsOf(device: Device, locale: string): SidePod[] {
+export function sidePodsOf(
+  device: Device,
+  locale: string,
+  notices: DeviceNotices = NO_NOTICES,
+): SidePod[] {
   const main = primaryCapability(device.capabilities);
   const rank = (key: string) => {
     const index = SIDE_ORDER.indexOf(key);
@@ -121,7 +132,7 @@ export function sidePodsOf(device: Device, locale: string): SidePod[] {
       key: capability.key,
       labelKey: capabilityLabelKey(capability.key),
       icon:
-        capability.key === 'battery' && isBatteryLow(device)
+        capability.key === 'battery' && notices.batteryLow
           ? 'battery_alert'
           : (SIDE_ICONS[capability.key] ?? 'sensors'),
     }));
