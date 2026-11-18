@@ -8,7 +8,7 @@ RUN pnpm install --frozen-lockfile --ignore-scripts --filter "@smart/backend..."
  && pnpm --filter @smart/backend build \
  && pnpm --filter @smart/backend deploy --prod /out
 
-FROM node:24.21.0-alpine3.24
+FROM node:24.21.0-alpine3.24 AS runtime
 # npm, npx and corepack are not needed at runtime; removing them drops their bundled dependencies (CVE surface).
 RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
       /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \

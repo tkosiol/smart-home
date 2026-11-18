@@ -1,5 +1,7 @@
-FROM alpine:3.24.2
-RUN apk add --no-cache restic postgresql17-client supercronic curl tzdata \
+FROM alpine:3.24.2 AS runtime
+# Pull in security fixes of Alpine packages released after the base image was built.
+RUN apk upgrade --no-cache \
+ && apk add --no-cache restic postgresql17-client supercronic curl tzdata \
  && adduser -D -u 10001 backup \
  # Mount point for file-based repositories (local and stack tests); production uses B2.
  && install -d -o backup -g backup /restic-repo
