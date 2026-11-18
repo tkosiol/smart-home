@@ -25,6 +25,8 @@ export interface GatewaySnapshot {
   z2mStatus: GatewayStatus;
   statusChangedAt: Date | null;
   lastMessageAt: Date | null;
+  /** When the gateway was registered: where the wait for one never heard from starts. */
+  registeredAt: Date;
   certExpiresAt: Date;
   warnings: readonly GatewayWarning[];
 }
@@ -62,8 +64,21 @@ export interface Snapshot {
 /** What the household had before: the items (for `since` and hysteresis) and when doors opened. */
 export interface Previous {
   items: readonly AttentionItem[];
+  /**
+   * Soil and battery items of devices whose values are not shown at the moment (silent, or behind
+   * an offline gateway). They are not items; they keep the hysteresis state and the `since` until
+   * the device reports again.
+   */
+  held?: readonly AttentionItem[];
   /** Per device the time its contact was first seen open, while it stays open. */
   contactOpenSince?: ReadonlyMap<string, Date>;
+  /**
+   * Per item ID the start of a still open run of readings beyond the threshold, from the stored
+   * readings. Stands in for the previous state after a restart: the item starts at that time and
+   * its hysteresis applies (also to a reading inside the margin, and for a silent device). An item
+   * that existed before keeps its own `since`.
+   */
+  sinceHints?: ReadonlyMap<string, Date>;
 }
 
 export const NOTHING_BEFORE: Previous = { items: [] };
@@ -77,6 +92,9 @@ type Add = (
     params?: Record<string, unknown>;
   },
 ) => void;
+
+/** The items with a hysteresis that a silent phase must not reset. */
+const HELD_KINDS = ['soil_dry', 'soil_wet', 'battery_low'] as const;
 
 const SEVERITY_RANK = { critical: 0, warning: 1, info: 2 } as const;
 
@@ -103,11 +121,15 @@ const minutesBetween = (from: Date, to: Date): number =>
 const earlier = (date: Date | null, now: Date): Date =>
   date !== null && date.getTime() < now.getTime() ? date : now;
 
+/** When the gateway stopped being online: its last status change, else when it was registered. */
+const offlineSince = (gateway: GatewaySnapshot): Date =>
+  gateway.statusChangedAt ?? gateway.lastMessageAt ?? gateway.registeredAt;
+
 function gatewayIsOffline(gateway: GatewaySnapshot, now: Date): boolean {
   if (gateway.bridgeStatus === 'online' && gateway.z2mStatus === 'online') return false;
-  // Nothing was ever heard from it: there is no time to count the minutes from.
-  const since = gateway.statusChangedAt ?? gateway.lastMessageAt;
-  return since !== null && minutesBetween(since, now) >= GATEWAY_OFFLINE_MINUTES;
+  // A gateway nothing was ever heard from counts from its registration, so that it is
+  // a problem of its own and does not leave its devices without any visible item.
+  return minutesBetween(offlineSince(gateway), now) >= GATEWAY_OFFLINE_MINUTES;
 }
 
 /**
@@ -130,17 +152,55 @@ export function openContacts(snapshot: Snapshot, previous: Previous, now: Date):
  * The household's attention items for the state it is in at `now` (spec 4.1 to 4.4).
  *
  * - A gateway that is not online for 5 minutes yields one critical item; its devices yield none.
+ *   One nothing was ever heard from counts those minutes from its registration.
  * - A device is silent only while its gateway is online, and then yields nothing else.
  * - An item keeps the `since` of the same item in `previous` while its condition holds, and the
- *   soil and battery items end only beyond the hysteresis margin.
+ *   soil and battery items end only beyond the hysteresis margin, also over a silent phase
+ *   of the device or an offline gateway (`held`).
+ * - After a restart an open run in `previous.sinceHints` (from stored readings) counts as the item
+ *   from before.
  * - Otherwise `since` is when the condition's cause began: the gateway's last status change, the
  *   device's last report, when the contact was first seen open, when the hardware was discovered.
  *
  * Pure: no clock, no I/O. Sorted by urgency, then newest first; role filtering is the service's job.
  */
 export function evaluate(snapshot: Snapshot, previous: Previous, now: Date): AttentionItem[] {
-  const before = new Map(previous.items.map((item) => [item.id, item]));
+  return evaluateWithHeld(snapshot, previous, now).items;
+}
+
+/** `evaluate`, plus the items to hold for the next evaluation (see `Previous.held`). */
+export function evaluateWithHeld(
+  snapshot: Snapshot,
+  previous: Previous,
+  now: Date,
+): { items: AttentionItem[]; held: AttentionItem[] } {
+  const before = new Map([...(previous.held ?? []), ...previous.items].map((i) => [i.id, i]));
+  // An open run found in the stored readings is the state from before for an item without one.
+  for (const device of snapshot.devices) {
+    for (const kind of ['soil_dry', 'battery_low'] as const) {
+      const id = `${kind}:${device.id}`;
+      const start = previous.sinceHints?.get(id);
+      if (before.has(id) || start === undefined || start.getTime() > now.getTime()) continue;
+      before.set(id, {
+        id,
+        kind,
+        severity: SEVERITY_OF[kind],
+        since: start.toISOString(),
+        deviceId: device.id,
+        gatewayId: device.gatewayId,
+        name: device.name,
+        params: {},
+      });
+    }
+  }
   const items: AttentionItem[] = [];
+  const held: AttentionItem[] = [];
+  const hold = (deviceId: string, kinds: readonly AttentionKind[]): void => {
+    for (const kind of kinds) {
+      const item = before.get(`${kind}:${deviceId}`);
+      if (item) held.push(item);
+    }
+  };
   const add: Add = (kind, subject, since, item) => {
     const id = `${kind}:${subject}`;
     items.push({
@@ -157,7 +217,7 @@ export function evaluate(snapshot: Snapshot, previous: Previous, now: Date): Att
   for (const gateway of snapshot.gateways) {
     if (!gatewayIsOffline(gateway, now)) continue;
     offline.add(gateway.id);
-    const since = gateway.statusChangedAt ?? gateway.lastMessageAt ?? now;
+    const since = offlineSince(gateway);
     const affected = snapshot.devices.filter((device) => device.gatewayId === gateway.id);
     add('gateway_offline', gateway.id, since, {
       gatewayId: gateway.id,
@@ -179,8 +239,19 @@ export function evaluate(snapshot: Snapshot, previous: Previous, now: Date): Att
   );
   const open = openContacts(snapshot, previous, now);
   for (const device of snapshot.devices) {
-    if (offline.has(device.gatewayId)) continue;
-    evaluateDevice(device, now, before, open.get(device.id), online.has(device.gatewayId), add);
+    if (offline.has(device.gatewayId)) {
+      hold(device.id, HELD_KINDS);
+      continue;
+    }
+    evaluateDevice(
+      device,
+      now,
+      before,
+      open.get(device.id),
+      online.has(device.gatewayId),
+      add,
+      hold,
+    );
   }
 
   for (const hardware of snapshot.hardware) {
@@ -191,7 +262,7 @@ export function evaluate(snapshot: Snapshot, previous: Previous, now: Date): Att
   }
 
   evaluateCertificates(snapshot, now, add);
-  return items.sort(compareItems);
+  return { items: items.sort(compareItems), held };
 }
 
 function evaluateDevice(
@@ -201,6 +272,7 @@ function evaluateDevice(
   openSince: Date | undefined,
   gatewayOnline: boolean,
   add: Add,
+  hold: (deviceId: string, kinds: readonly AttentionKind[]) => void,
 ): void {
   const { thresholds, state } = device;
   const base = { deviceId: device.id, gatewayId: device.gatewayId, name: device.name };
@@ -220,7 +292,10 @@ function evaluateDevice(
       },
     });
     // Its values are stale: the silence is the cause, like an offline gateway (spec 4.1, rule 3).
-    // Only a low battery stays, because an empty battery is the likely reason (Till, #36).
+    // Only a low battery stays, because an empty battery is the likely reason (Till, #36). The soil
+    // items are not shown, but held, so that the first report after the silence still meets the
+    // hysteresis of the state before it.
+    hold(device.id, ['soil_dry', 'soil_wet']);
     evaluateBattery(device, before, reported, base, add);
     return;
   }

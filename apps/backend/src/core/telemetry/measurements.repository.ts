@@ -25,4 +25,33 @@ export class MeasurementsRepository {
     }
     return inserted;
   }
+
+  /**
+   * Start of the uninterrupted run of readings below `below` that ends with the latest reading:
+   * the first such reading after the latest reading at or above `clearAt` (for a value with a
+   * hysteresis, `clearAt` is the threshold plus the margin, so readings in between do not end the
+   * run). Looks back to `from` only, so that it stays within a few chunks; a run that reaches
+   * `from` starts at its first reading there. `null` when no reading below `below` is stored.
+   */
+  async runStart(
+    deviceId: string,
+    capability: string,
+    below: number,
+    clearAt: number,
+    from: Date,
+  ): Promise<Date | null> {
+    const fromIso = from.toISOString();
+    const [row] = await this.connection.sql<{ start: Date | string | null }[]>`
+      select min(time) as start
+      from measurements
+      where device_id = ${deviceId} and capability = ${capability}
+        and value_num < ${below} and time >= ${fromIso}::timestamptz
+        and time > coalesce((
+          select max(time) from measurements
+          where device_id = ${deviceId} and capability = ${capability}
+            and value_num >= ${clearAt} and time >= ${fromIso}::timestamptz
+        ), '-infinity'::timestamptz)`;
+    // The driver is configured to return timestamps as strings.
+    return row?.start == null ? null : new Date(row.start);
+  }
 }
