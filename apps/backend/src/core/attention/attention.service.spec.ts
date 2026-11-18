@@ -30,7 +30,7 @@ const gateway = (overrides: Partial<RegisteredGateway> = {}): RegisteredGateway 
   kind: 'z2m',
   topicPrefix: `gw/${GATEWAY}/z2m`,
   bridgeStatus: 'online',
-  z2mStatus: 'online',
+  serviceStatus: 'online',
   statusChangedAt: new Date(START.getTime() - 60 * MINUTE).toISOString(),
   lastMessageAt: START.toISOString(),
   certExpiresAt: '2027-10-15T12:00:00.000Z',
@@ -271,7 +271,7 @@ describe('AttentionService', () => {
     const unheard = (registeredMinutesAgo: number) =>
       gateway({
         bridgeStatus: 'unknown',
-        z2mStatus: 'unknown',
+        serviceStatus: 'unknown',
         statusChangedAt: null,
         lastMessageAt: null,
         registeredAt: new Date(START.getTime() - registeredMinutesAgo * MINUTE),

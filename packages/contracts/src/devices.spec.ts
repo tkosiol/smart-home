@@ -87,8 +87,8 @@ describe('hardwareSchema', () => {
   const hardware = {
     id: '7d6e8f0a-1b2c-4d3e-8f4a-5b6c7d8e9f01',
     gatewayId: 'gw-sim00001',
-    ieeeAddress: '0x00000000000000a1',
-    friendlyName: 'Pflanze 1',
+    externalId: '0x00000000000000a1',
+    name: 'Pflanze 1',
     vendor: 'AOYAN',
     model: 'AY-303Z',
     description: 'Soil moisture sensor',

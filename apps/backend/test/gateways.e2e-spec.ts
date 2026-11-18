@@ -185,7 +185,7 @@ describe('gateways', () => {
         kind: 'z2m',
         topicPrefix: `gw/${issued.id}/z2m`,
         bridgeStatus: 'unknown',
-        z2mStatus: 'unknown',
+        serviceStatus: 'unknown',
         statusChangedAt: null,
         lastMessageAt: null,
         certExpiresAt: new Date(x509.validTo).toISOString(),
@@ -212,7 +212,7 @@ describe('gateways', () => {
       const response = await register(admin, householdId, issued.certificate).expect(201);
       expect(gatewaySchema.parse(response.body)).toMatchObject({
         bridgeStatus: 'online',
-        z2mStatus: 'offline',
+        serviceStatus: 'offline',
         statusChangedAt: at.toISOString(),
       });
       const listed = await list(admin, householdId).expect(200);
@@ -227,7 +227,7 @@ describe('gateways', () => {
       const response = await register(admin, householdId, issued.certificate).expect(201);
       expect(gatewaySchema.parse(response.body)).toMatchObject({
         bridgeStatus: 'offline',
-        z2mStatus: 'unknown',
+        serviceStatus: 'unknown',
       });
       expect(gatewaySchema.parse(response.body).statusChangedAt).not.toBeNull();
     });

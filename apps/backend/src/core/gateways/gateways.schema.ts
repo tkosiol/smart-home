@@ -1,4 +1,4 @@
-import { GATEWAY_ID_PATTERN, GATEWAY_STATUSES } from '@smart/contracts';
+import { GATEWAY_ID_PATTERN, GATEWAY_KINDS, GATEWAY_STATUSES } from '@smart/contracts';
 import { sql } from 'drizzle-orm';
 import { check, index, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { households } from '../households/index.js';
@@ -8,8 +8,6 @@ const timestamptz = (name: string) => timestamp(name, { withTimezone: true, mode
 /** The values of a constant list as an SQL list; they come from the contracts, never from users. */
 const inList = (values: readonly string[]) =>
   sql.raw(values.map((value) => `'${value}'`).join(', '));
-
-export const GATEWAY_KINDS = ['z2m'] as const;
 
 export const gateways = pgTable(
   'gateways',

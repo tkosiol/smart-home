@@ -147,7 +147,7 @@ describe('GatewaysService', () => {
         });
         expect(applyStatus.mock.calls).toEqual([[issued.id, 'z2m', 'online', NOW]]);
         expect(gateway.bridgeStatus).toBe('online');
-        expect(gateway.z2mStatus).toBe('online');
+        expect(gateway.serviceStatus).toBe('online');
         expect(gateway.statusChangedAt).toBe(NOW.toISOString());
       } finally {
         ca.dispose();

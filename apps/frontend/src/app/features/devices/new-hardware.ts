@@ -83,7 +83,7 @@ interface Found {
                       : entry.reading.value
                   "
                   [unit]="entry.reading.unit"
-                  [label]="item.friendlyName"
+                  [label]="item.name"
                 />
                 <p>{{ item.vendor }} {{ item.model }}</p>
                 <p>
@@ -175,7 +175,7 @@ export class NewHardware {
   }
 
   protected nameOf(item: Hardware): string {
-    return this.names()[item.id] ?? item.friendlyName;
+    return this.names()[item.id] ?? item.name;
   }
 
   protected rename(id: string, name: string): void {

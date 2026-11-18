@@ -101,7 +101,7 @@ const DAY_MS = 86_400_000;
                           | transloco
                             : {
                                 bridge: (statusKey(gateway.bridgeStatus) | transloco),
-                                z2m: (statusKey(gateway.z2mStatus) | transloco),
+                                service: (statusKey(gateway.serviceStatus) | transloco),
                               }
                       "
                     />

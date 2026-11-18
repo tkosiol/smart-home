@@ -25,7 +25,7 @@ const gateway = (id: string, name: string, overrides: Partial<Gateway> = {}): Ga
   kind: 'z2m',
   topicPrefix: `smart/gateways/${id}/z2m`,
   bridgeStatus: 'online',
-  z2mStatus: 'online',
+  serviceStatus: 'online',
   statusChangedAt: '2026-10-14T08:00:00Z',
   lastMessageAt: '2026-10-14T11:57:00Z',
   certExpiresAt: '2027-04-01T10:00:00Z',
@@ -89,7 +89,7 @@ describe('gateway overview block', () => {
     const page = await open([
       gateway('gw-aaaaaaaa', 'Flur'),
       gateway('gw-bbbbbbbb', 'Keller', { bridgeStatus: 'offline', lastMessageAt: null }),
-      gateway('gw-dddddddd', 'Dach', { z2mStatus: 'unknown' }),
+      gateway('gw-dddddddd', 'Dach', { serviceStatus: 'unknown' }),
       gateway('gw-cccccccc', 'Alt', { revokedAt: '2026-10-01T00:00:00Z' }),
     ]);
     // The texts of the scope arrive after the names: wait for a translated one.

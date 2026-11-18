@@ -174,7 +174,7 @@ describe('gateway status from the broker', () => {
       .get(GatewaysService)
       .register(householdId, { name: 'Late Pi', certificate: issued.certificate });
     expect(gateway.bridgeStatus).toBe('online');
-    expect(gateway.z2mStatus).toBe('online');
+    expect(gateway.serviceStatus).toBe('online');
     expect(gateway.statusChangedAt).not.toBeNull();
   });
 

@@ -158,7 +158,7 @@ describe('hardware and devices of a household', () => {
       expect(list[0]).toMatchObject({
         id: hardwareId,
         gatewayId: h.gatewayId,
-        friendlyName: 'bed-1',
+        name: 'bed-1',
         vendor: 'Acme',
         availability: 'online',
         lastSeenAt: '2026-10-14T11:00:00.000Z',

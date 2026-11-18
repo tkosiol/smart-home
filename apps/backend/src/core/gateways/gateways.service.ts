@@ -156,7 +156,7 @@ export class GatewaysService {
       kind: row.kind,
       topicPrefix: row.topicPrefix,
       bridgeStatus: row.bridgeStatus,
-      z2mStatus: row.z2mStatus,
+      serviceStatus: row.z2mStatus,
       statusChangedAt: iso(row.statusChangedAt),
       lastMessageAt: iso(row.lastMessageAt),
       certExpiresAt: row.certExpiresAt.toISOString(),

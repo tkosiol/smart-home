@@ -6,7 +6,7 @@ import type { UiStatusEntryTone } from '@smart/ui';
  * the gateway as offline otherwise); unknown when nothing says offline but one of them is unknown.
  */
 export function gatewayState(gateway: Gateway): GatewayStatus {
-  const statuses = [gateway.bridgeStatus, gateway.z2mStatus];
+  const statuses = [gateway.bridgeStatus, gateway.serviceStatus];
   if (statuses.every((status) => status === 'online')) return 'online';
   return statuses.includes('offline') ? 'offline' : 'unknown';
 }
