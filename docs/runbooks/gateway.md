@@ -405,7 +405,7 @@ Einmalig, wenn der Pi vom alten Stack auf `gateway/` wechselt. Erst nach Tills F
 
 0. **Vorher:** Produktion hat die Broker-Zertifikate und `MQTT_TLS=on` (Abschnitt 4), Port 8883 ist offen und Fail2ban eingerichtet (Abschnitt 5), `~/.smart-pki` ist gesichert (Abschnitt 3). Auf dem Pi: passwortloses `sudo` (Abschnitt 11, Voraussetzungen). Für das Pi-Backup existieren der B2-Schlüssel und der Check in healthchecks.io, das restic-Passwort liegt im Passwortmanager.
 1. **Zertifikat ausstellen:** `infra/pki/pki.sh issue-gateway`, die ID `gw-…` notieren, danach `~/.smart-pki` erneut sichern (Abschnitt 3).
-2. **In der Produktion registrieren:** „Mehr → Gateways“, Name und Zertifikat einfügen (Abschnitt 6). Status „Unbekannt“ ist hier richtig.
+2. **In der Produktion registrieren:** „Mehr → Gateways“, Name und Zertifikat einfügen (Abschnitt 6). Status „Unbekannt“ ist hier richtig. Etwa 5 Minuten nach der Registrierung erscheint der Hinweis „Gateway offline“, bis sich der Pi zum ersten Mal verbindet; das ist während der Inbetriebnahme erwartet und verschwindet mit der ersten Meldung.
 3. **Geheimnisse auf den Pi:** `SMART_PI=<benutzer>@<PI_HOST> infra/deploy/provision-gateway.sh <gateway-id>` (fragt Serial-Pfad, B2-Werte und das restic-Passwort; `gateway/README.md`).
 4. **Umzug:** `SMART_PI=<benutzer>@<PI_HOST> SMART_PI_OLD_STACK=<alter-stack-ordner> pnpm gateway:deploy --migrate` (Abschnitt 11). Erwartet: Zustand `done`, Z2M `online`, Bridge `1`.
 5. **App:** Das Gateway zeigt „Bridge: Online“ und „Zigbee2MQTT: Online“.

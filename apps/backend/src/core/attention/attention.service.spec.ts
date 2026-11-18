@@ -1,5 +1,4 @@
 import { Logger } from '@nestjs/common';
-import type { Gateway } from '@smart/contracts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   DEVICE_STATE_CHANGED,
@@ -10,16 +9,22 @@ import {
   type HardwareRepository,
   type HardwareWithCapabilities,
 } from '../devices/index.js';
-import { GATEWAY_STATUS_CHANGED, GatewayEvents, type GatewaysService } from '../gateways/index.js';
+import {
+  GATEWAY_STATUS_CHANGED,
+  GatewayEvents,
+  type GatewaysService,
+  type RegisteredGateway,
+} from '../gateways/index.js';
+import type { MeasurementsRepository } from '../telemetry/index.js';
 import { ATTENTION_CHANGED, AttentionEvents, type AttentionChanged } from './attention-events.js';
-import { AttentionService, TICK_MS } from './attention.service.js';
+import { AttentionService, SINCE_LOOKBACK_MS, TICK_MS } from './attention.service.js';
 
 const HOUSEHOLD = 'household-1';
 const GATEWAY = 'gw-aaaaaaaa';
 const MINUTE = 60_000;
 const START = new Date('2026-10-15T12:00:00.000Z');
 
-const gateway = (overrides: Partial<Gateway> = {}): Gateway => ({
+const gateway = (overrides: Partial<RegisteredGateway> = {}): RegisteredGateway => ({
   id: GATEWAY,
   name: 'Pi',
   kind: 'z2m',
@@ -31,6 +36,7 @@ const gateway = (overrides: Partial<Gateway> = {}): Gateway => ({
   certExpiresAt: '2027-10-15T12:00:00.000Z',
   revokedAt: null,
   warnings: [],
+  registeredAt: new Date(START.getTime() - 24 * 60 * MINUTE),
   ...overrides,
 });
 
@@ -53,14 +59,15 @@ const view = (id: string, state: Record<string, unknown>, rest: Partial<DeviceVi
 
 describe('AttentionService', () => {
   let now: Date;
-  let gateways: Gateway[];
+  let gateways: RegisteredGateway[];
   let devices: DeviceView[];
   let unassigned: HardwareWithCapabilities[];
-  const list = vi.fn<GatewaysService['list']>();
+  const list = vi.fn<GatewaysService['listRegistered']>();
   const listActive = vi.fn<GatewaysService['listActive']>();
   const get = vi.fn<DevicesRepository['get']>();
   const listDevices = vi.fn<DevicesRepository['list']>();
   const listUnassigned = vi.fn<HardwareRepository['listUnassigned']>();
+  const runStart = vi.fn<MeasurementsRepository['runStart']>();
   const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
   let gatewayEvents: GatewayEvents;
   let deviceEvents: DeviceEvents;
@@ -79,7 +86,8 @@ describe('AttentionService', () => {
     gateways = [gateway()];
     devices = [view('d1', { soil_moisture: 60 })];
     unassigned = [];
-    for (const mock of [list, listActive, get, listDevices, listUnassigned, warn]) mock.mockReset();
+    for (const mock of [list, listActive, get, listDevices, listUnassigned, runStart, warn])
+      mock.mockReset();
     warn.mockImplementation(() => undefined);
     list.mockImplementation(() => Promise.resolve(gateways));
     listActive.mockResolvedValue([
@@ -88,6 +96,7 @@ describe('AttentionService', () => {
     listDevices.mockImplementation(() => Promise.resolve(devices));
     get.mockImplementation((_household, id) => Promise.resolve(devices.find((d) => d.id === id)));
     listUnassigned.mockImplementation(() => Promise.resolve(unassigned));
+    runStart.mockResolvedValue(null);
     gatewayEvents = new GatewayEvents();
     deviceEvents = new DeviceEvents();
     attentionEvents = new AttentionEvents();
@@ -95,12 +104,13 @@ describe('AttentionService', () => {
     attentionEvents.on(ATTENTION_CHANGED, (event: AttentionChanged) => changed.push(event));
     service = new AttentionService(
       {
-        list,
+        listRegistered: list,
         listActive,
         crlNextUpdate: () => Promise.resolve(undefined),
       } as unknown as GatewaysService,
       { list: listDevices, get } as unknown as DevicesRepository,
       { listUnassigned } as unknown as HardwareRepository,
+      { runStart } as unknown as MeasurementsRepository,
       gatewayEvents,
       deviceEvents,
       attentionEvents,
@@ -218,6 +228,245 @@ describe('AttentionService', () => {
     expect(items()[0]?.value).toBe(12);
   });
 
+  describe('what a silent phase does not reset (#39)', () => {
+    it('keeps a dry plant dry over a silent phase and a report inside the margin', async () => {
+      devices = [view('d1', { soil_moisture: 10 })];
+      await service.recomputeHousehold(HOUSEHOLD);
+      const since = items()[0]?.since;
+
+      now = new Date(START.getTime() + 3 * 60 * MINUTE);
+      devices = [view('d1', { soil_moisture: 10 }, { availability: 'offline' })];
+      await service.recomputeDevice(HOUSEHOLD, 'd1');
+      expect(ids()).toEqual(['device_silent:d1']);
+
+      devices = [view('d1', { soil_moisture: 26 }, { lastSeenAt: now })];
+      await service.recomputeDevice(HOUSEHOLD, 'd1');
+      expect(ids()).toEqual(['soil_dry:d1']);
+      expect(items()[0]?.since).toBe(since);
+
+      devices = [view('d1', { soil_moisture: 29 }, { lastSeenAt: now })];
+      await service.recomputeDevice(HOUSEHOLD, 'd1');
+      expect(ids()).toEqual([]);
+    });
+
+    it('keeps it over an outage of the gateway, too', async () => {
+      devices = [view('d1', { soil_moisture: 10 })];
+      await service.recomputeHousehold(HOUSEHOLD);
+      gateways = [
+        gateway({
+          bridgeStatus: 'offline',
+          statusChangedAt: new Date(START.getTime() - 9 * MINUTE).toISOString(),
+        }),
+      ];
+      await service.recomputeHousehold(HOUSEHOLD);
+      expect(ids()).toEqual([`gateway_offline:${GATEWAY}`]);
+      gateways = [gateway()];
+      devices = [view('d1', { soil_moisture: 26 })];
+      await service.recomputeHousehold(HOUSEHOLD);
+      expect(ids()).toEqual(['soil_dry:d1']);
+    });
+  });
+
+  describe('a gateway nothing was ever heard from', () => {
+    const unheard = (registeredMinutesAgo: number) =>
+      gateway({
+        bridgeStatus: 'unknown',
+        z2mStatus: 'unknown',
+        statusChangedAt: null,
+        lastMessageAt: null,
+        registeredAt: new Date(START.getTime() - registeredMinutesAgo * MINUTE),
+      });
+
+    it('is reported 5 minutes after its registration, with since at the registration', async () => {
+      gateways = [unheard(0)];
+      devices = [view('d1', { soil_moisture: 60 }, { availability: 'offline' })];
+      await service.recomputeHousehold(HOUSEHOLD);
+      expect(ids()).toEqual([]);
+
+      now = new Date(START.getTime() + 5 * MINUTE);
+      await vi.advanceTimersByTimeAsync(TICK_MS);
+      await service.idle();
+      expect(ids()).toEqual([`gateway_offline:${GATEWAY}`]);
+      expect(items()[0]?.since).toBe(START.toISOString());
+    });
+
+    it('is reported at once after a restart, from the stored registration time', async () => {
+      gateways = [unheard(10)];
+      const restarted = new AttentionService(
+        { listRegistered: list, listActive } as unknown as GatewaysService,
+        { list: listDevices, get } as unknown as DevicesRepository,
+        { listUnassigned } as unknown as HardwareRepository,
+        { runStart } as unknown as MeasurementsRepository,
+        new GatewayEvents(),
+        new DeviceEvents(),
+        new AttentionEvents(),
+        () => now,
+      );
+      await restarted.recomputeHousehold(HOUSEHOLD);
+      const [item] = restarted.list(HOUSEHOLD, 'owner', false);
+      expect(item).toMatchObject({ id: `gateway_offline:${GATEWAY}` });
+      expect(item?.since).toBe(new Date(START.getTime() - 10 * MINUTE).toISOString());
+    });
+  });
+
+  describe('since from the stored readings (#99)', () => {
+    const tenMinutesAgo = new Date(START.getTime() - 10 * MINUTE).toISOString();
+    /** A service that has not computed anything yet: the first computation after a start. */
+    const restarted = (): AttentionService =>
+      new AttentionService(
+        { listRegistered: list, listActive } as unknown as GatewaysService,
+        { list: listDevices, get } as unknown as DevicesRepository,
+        { listUnassigned } as unknown as HardwareRepository,
+        { runStart } as unknown as MeasurementsRepository,
+        new GatewayEvents(),
+        new DeviceEvents(),
+        new AttentionEvents(),
+        () => now,
+      );
+    const DAYS_AGO = new Date(START.getTime() - 4 * 24 * 60 * MINUTE);
+
+    it('starts a dry plant at the first reading of its run, not at the last report', async () => {
+      runStart.mockImplementation((_device, capability) =>
+        Promise.resolve(capability === 'soil_moisture' ? DAYS_AGO : null),
+      );
+      devices = [view('d1', { soil_moisture: 10 })];
+      await service.recomputeHousehold(HOUSEHOLD);
+      expect(items()[0]).toMatchObject({ id: 'soil_dry:d1', since: DAYS_AGO.toISOString() });
+      expect(runStart).toHaveBeenCalledWith(
+        'd1',
+        'soil_moisture',
+        25,
+        28,
+        new Date(START.getTime() - SINCE_LOOKBACK_MS),
+      );
+    });
+
+    it('does the same for a low battery, with its own margin', async () => {
+      runStart.mockImplementation((_device, capability) =>
+        Promise.resolve(capability === 'battery' ? DAYS_AGO : null),
+      );
+      devices = [view('d1', { battery: 4 })];
+      await service.recomputeHousehold(HOUSEHOLD);
+      expect(items()[0]).toMatchObject({ id: 'battery_low:d1', since: DAYS_AGO.toISOString() });
+      expect(runStart).toHaveBeenCalledWith('d1', 'battery', 20, 25, expect.any(Date));
+    });
+
+    it('asks once for an item that stays, and not at all for one that exists already', async () => {
+      runStart.mockResolvedValue(DAYS_AGO);
+      devices = [view('d1', { soil_moisture: 10 })];
+      await service.recomputeHousehold(HOUSEHOLD);
+      await service.recomputeHousehold(HOUSEHOLD);
+      await service.recomputeDevice(HOUSEHOLD, 'd1');
+      expect(runStart).toHaveBeenCalledTimes(1);
+      expect(items()[0]?.since).toBe(DAYS_AGO.toISOString());
+    });
+
+    it('does not ask for a healthy device', async () => {
+      devices = [view('d1', { soil_moisture: 60, battery: 90 })];
+      await service.recomputeHousehold(HOUSEHOLD);
+      expect(runStart).not.toHaveBeenCalled();
+    });
+
+    it('falls back to the last report when there is no reading', async () => {
+      devices = [view('d1', { soil_moisture: 10 })];
+      await service.recomputeHousehold(HOUSEHOLD);
+      expect(items()[0]?.since).toBe(START.toISOString());
+    });
+
+    it('logs a failing lookup and still computes the items', async () => {
+      runStart.mockRejectedValueOnce(new Error('database down'));
+      devices = [view('d1', { soil_moisture: 10 })];
+      await service.recomputeHousehold(HOUSEHOLD);
+      expect(ids()).toEqual(['soil_dry:d1']);
+      expect(items()[0]?.since).toBe(START.toISOString());
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('Cannot read the start'));
+    });
+
+    it('keeps a plant dry whose stored run is still open although it reads inside the margin', async () => {
+      runStart.mockResolvedValue(DAYS_AGO);
+      devices = [view('d1', { soil_moisture: 26 })];
+      const after = restarted();
+      await after.recomputeHousehold(HOUSEHOLD);
+      expect(after.list(HOUSEHOLD, 'owner', false)[0]).toMatchObject({
+        id: 'soil_dry:d1',
+        since: DAYS_AGO.toISOString(),
+      });
+      expect(runStart).toHaveBeenCalledWith('d1', 'soil_moisture', 25, 28, expect.any(Date));
+    });
+
+    it('shows nothing for a reading inside the margin without an open run', async () => {
+      devices = [view('d1', { soil_moisture: 26, battery: 22 })];
+      const after = restarted();
+      await after.recomputeHousehold(HOUSEHOLD);
+      expect(after.list(HOUSEHOLD, 'owner', false)).toEqual([]);
+    });
+
+    it('does not ask for a reading beyond the margin', async () => {
+      devices = [view('d1', { soil_moisture: 28, battery: 25 })];
+      await service.recomputeHousehold(HOUSEHOLD);
+      expect(runStart).not.toHaveBeenCalled();
+    });
+
+    it('asks once for a condition that holds without a visible item, over many ticks', async () => {
+      gateways = [gateway({ bridgeStatus: 'offline', statusChangedAt: tenMinutesAgo })];
+      devices = [view('d1', { soil_moisture: 10 })];
+      await service.recomputeHousehold(HOUSEHOLD);
+      for (let tick = 0; tick < 3; tick += 1) {
+        await vi.advanceTimersByTimeAsync(TICK_MS);
+        await service.idle();
+      }
+      expect(runStart).toHaveBeenCalledTimes(1);
+    });
+
+    it('asks again when the threshold changes, or when the reading crosses it', async () => {
+      gateways = [gateway({ bridgeStatus: 'offline', statusChangedAt: tenMinutesAgo })];
+      devices = [view('d1', { soil_moisture: 26 })];
+      const after = restarted();
+      await after.recomputeHousehold(HOUSEHOLD);
+      devices = [view('d1', { soil_moisture: 10 })];
+      await after.recomputeHousehold(HOUSEHOLD);
+      devices = [view('d1', { soil_moisture: 10 }, { thresholds: { soilMoistureMin: 40 } })];
+      await after.recomputeHousehold(HOUSEHOLD);
+      expect(runStart).toHaveBeenCalledTimes(3);
+    });
+
+    it('does not revive a run when the threshold is raised over a reading inside the new margin', async () => {
+      // Readings below 25 exist (22 %), but the plant was no problem under its minimum of 20.
+      runStart.mockResolvedValue(DAYS_AGO);
+      devices = [view('d1', { soil_moisture: 22 }, { thresholds: { soilMoistureMin: 20 } })];
+      await service.recomputeHousehold(HOUSEHOLD);
+      expect(ids()).toEqual([]);
+
+      devices = [view('d1', { soil_moisture: 26 }, { thresholds: { soilMoistureMin: 25 } })];
+      deviceEvents.emit(DEVICE_THRESHOLDS_CHANGED, { householdId: HOUSEHOLD, deviceId: 'd1' });
+      await service.idle();
+      expect(ids()).toEqual([]);
+      devices = [view('d1', { soil_moisture: 26 }, { thresholds: { soilMoistureMin: 25 } })];
+      await service.recomputeHousehold(HOUSEHOLD);
+      expect(ids()).toEqual([]);
+    });
+
+    it('does the same for the battery', async () => {
+      runStart.mockResolvedValue(DAYS_AGO);
+      devices = [view('d1', { battery: 18 }, { thresholds: { batteryMin: 15 } })];
+      await service.recomputeHousehold(HOUSEHOLD);
+      devices = [view('d1', { battery: 22 }, { thresholds: { batteryMin: 20 } })];
+      await service.recomputeDevice(HOUSEHOLD, 'd1');
+      expect(ids()).toEqual([]);
+    });
+
+    it('forgets what it asked when the device is healthy again', async () => {
+      gateways = [gateway({ bridgeStatus: 'offline', statusChangedAt: tenMinutesAgo })];
+      devices = [view('d1', { soil_moisture: 10 })];
+      await service.recomputeHousehold(HOUSEHOLD);
+      devices = [view('d1', { soil_moisture: 60 })];
+      await service.recomputeHousehold(HOUSEHOLD);
+      devices = [view('d1', { soil_moisture: 10 })];
+      await service.recomputeHousehold(HOUSEHOLD);
+      expect(runStart).toHaveBeenCalledTimes(2);
+    });
+  });
+
   it('filters by role: hardware for owners, certificates for owners and platform admins', async () => {
     unassigned = [
       {
@@ -255,18 +504,19 @@ describe('AttentionService', () => {
   it('does not let the start-up read overwrite a newer recomputation', async () => {
     const first = new AttentionService(
       {
-        list,
+        listRegistered: list,
         listActive,
         crlNextUpdate: () => Promise.resolve(undefined),
       } as unknown as GatewaysService,
       { list: listDevices, get } as unknown as DevicesRepository,
       { listUnassigned } as unknown as HardwareRepository,
+      { runStart } as unknown as MeasurementsRepository,
       new GatewayEvents(),
       new DeviceEvents(),
       new AttentionEvents(),
       () => now,
     );
-    let release: (gateways: Gateway[]) => void = () => undefined;
+    let release: (gateways: RegisteredGateway[]) => void = () => undefined;
     list.mockReset();
     list.mockImplementationOnce(() => new Promise((resolve) => (release = resolve)));
     list.mockImplementation(() => Promise.resolve(gateways));
@@ -401,6 +651,7 @@ describe('AttentionService', () => {
         { list, listActive } as unknown as GatewaysService,
         { list: listDevices, get } as unknown as DevicesRepository,
         { listUnassigned } as unknown as HardwareRepository,
+        { runStart } as unknown as MeasurementsRepository,
         new GatewayEvents(),
         new DeviceEvents(),
         new AttentionEvents(),

@@ -8,6 +8,7 @@ import {
 import { describe, expect, it } from 'vitest';
 import {
   evaluate,
+  evaluateWithHeld,
   NOTHING_BEFORE,
   openContacts,
   type DeviceSnapshot,
@@ -28,6 +29,7 @@ const gateway = (overrides: Partial<GatewaySnapshot> = {}): GatewaySnapshot => (
   z2mStatus: 'online',
   statusChangedAt: ago(HOUR),
   lastMessageAt: ago(MINUTE),
+  registeredAt: ago(24 * HOUR),
   certExpiresAt: new Date('2027-10-15T12:00:00.000Z'),
   warnings: [],
   ...overrides,
@@ -338,6 +340,158 @@ describe('evaluate', () => {
     });
   });
 
+  describe('hysteresis over a silent phase (#39)', () => {
+    const dry = { soil_moisture: 10, battery: 90 };
+    const silentFor = { availability: 'offline' as const, lastSeenAt: ago(5 * HOUR) };
+    const started = ago(2 * 24 * HOUR);
+    /** The state after the device was dry since `started` and then went silent. */
+    const afterSilence = (parts: Partial<Snapshot>) => {
+      const before = evaluateWithHeld(
+        snapshot({ devices: [withState(dry)] }),
+        NOTHING_BEFORE,
+        started,
+      );
+      return evaluateWithHeld(snapshot(parts), before, NOW);
+    };
+    const reportsAgain = (moisture: number, silent: Previous) =>
+      evaluateWithHeld(
+        snapshot({ devices: [withState({ soil_moisture: moisture, battery: 90 })] }),
+        silent,
+        NOW,
+      );
+
+    it('does not show the stale dry item while the device is silent', () => {
+      const silent = afterSilence({ devices: [withState(dry, silentFor)] });
+      expect(silent.items.map((item) => item.id)).toEqual(['device_silent:dev-1']);
+    });
+
+    it('keeps the device dry when it reports a value inside the margin after a silence', () => {
+      const silent = afterSilence({ devices: [withState(dry, silentFor)] });
+      const [item] = reportsAgain(26, silent).items;
+      expect(item).toMatchObject({ id: 'soil_dry:dev-1', value: 26 });
+      expect(item?.since).toBe(started.toISOString());
+    });
+
+    it('ends the dry state when the first report after the silence is beyond the margin', () => {
+      const silent = afterSilence({ devices: [withState(dry, silentFor)] });
+      const back = reportsAgain(28, silent);
+      expect(back.items).toEqual([]);
+      expect(back.held).toEqual([]);
+    });
+
+    it('also keeps it over an offline gateway', () => {
+      const offline = gateway({ bridgeStatus: 'offline', statusChangedAt: ago(30 * MINUTE) });
+      const silent = afterSilence({ gateways: [offline], devices: [withState(dry)] });
+      expect(silent.items.map((item) => item.id)).toEqual(['gateway_offline:gw-aaaaaaaa']);
+      expect(reportsAgain(26, silent).items.map((item) => item.id)).toEqual(['soil_dry:dev-1']);
+    });
+
+    it('keeps the wet state and the low battery the same way', () => {
+      const own = { soilMoistureMax: 80 };
+      const wet = withState({ soil_moisture: 90, battery: 3 }, { own });
+      const first = evaluateWithHeld(snapshot({ devices: [wet] }), NOTHING_BEFORE, started);
+      expect(first.items.map((item) => item.id).sort()).toEqual([
+        'battery_low:dev-1',
+        'soil_wet:dev-1',
+      ]);
+      const offline = gateway({ bridgeStatus: 'offline', statusChangedAt: ago(30 * MINUTE) });
+      const silent = evaluateWithHeld(
+        snapshot({ gateways: [offline], devices: [wet] }),
+        first,
+        NOW,
+      );
+      const back = evaluateWithHeld(
+        snapshot({ devices: [withState({ soil_moisture: 78, battery: 7 }, { own })] }),
+        silent,
+        NOW,
+      );
+      expect(back.items.map((item) => item.id).sort()).toEqual([
+        'battery_low:dev-1',
+        'soil_wet:dev-1',
+      ]);
+      expect(back.items.every((item) => item.since === started.toISOString())).toBe(true);
+    });
+
+    it('forgets what it held for a device that is gone', () => {
+      const silent = afterSilence({ devices: [withState(dry, silentFor)] });
+      expect(silent.held).toHaveLength(1);
+      expect(evaluateWithHeld(snapshot(), silent, NOW).held).toEqual([]);
+    });
+  });
+
+  describe('since hints (#99)', () => {
+    const hint = ago(3 * 24 * HOUR);
+    const hints = (...ids: string[]): Previous => ({
+      items: [],
+      sinceHints: new Map(ids.map((id) => [id, hint])),
+    });
+
+    it('starts a new soil and battery item at the hint instead of the last report', () => {
+      const items = run(
+        { devices: [withState({ soil_moisture: 10, battery: 3 })] },
+        hints('soil_dry:dev-1', 'battery_low:dev-1'),
+      );
+      expect(items.map((item) => [item.id, item.since])).toEqual(
+        expect.arrayContaining([
+          ['soil_dry:dev-1', hint.toISOString()],
+          ['battery_low:dev-1', hint.toISOString()],
+        ]),
+      );
+    });
+
+    it('prefers the item that exists already over a hint', () => {
+      const [first] = run({ devices: [withState({ soil_moisture: 10 })] });
+      const [again] = run(
+        { devices: [withState({ soil_moisture: 10 })] },
+        { items: first ? [first] : [], sinceHints: new Map([['soil_dry:dev-1', hint]]) },
+      );
+      expect(again?.since).toBe(first?.since);
+    });
+
+    it('keeps an open run alive for a reading inside the margin (after a restart)', () => {
+      const items = run(
+        { devices: [withState({ soil_moisture: 26, battery: 22 })] },
+        hints('soil_dry:dev-1', 'battery_low:dev-1'),
+      );
+      expect(items.map((item) => [item.id, item.since])).toEqual(
+        expect.arrayContaining([
+          ['soil_dry:dev-1', hint.toISOString()],
+          ['battery_low:dev-1', hint.toISOString()],
+        ]),
+      );
+    });
+
+    it('ends nothing without a hint: a reading inside the margin alone is not dry', () => {
+      expect(run({ devices: [withState({ soil_moisture: 26, battery: 22 })] })).toEqual([]);
+    });
+
+    it('holds an open run of a silent device for its first report (after a restart)', () => {
+      const silent = withState(
+        { soil_moisture: 10 },
+        { availability: 'offline', lastSeenAt: ago(5 * HOUR) },
+      );
+      const first = evaluateWithHeld(snapshot({ devices: [silent] }), hints('soil_dry:dev-1'), NOW);
+      expect(first.items.map((item) => item.id)).toEqual(['device_silent:dev-1']);
+      const back = evaluateWithHeld(
+        snapshot({ devices: [withState({ soil_moisture: 26 })] }),
+        first,
+        NOW,
+      );
+      expect(back.items.map((item) => [item.id, item.since])).toEqual([
+        ['soil_dry:dev-1', hint.toISOString()],
+      ]);
+    });
+
+    it('never puts a hint in the future', () => {
+      const future = new Map([['soil_dry:dev-1', new Date(NOW.getTime() + HOUR)]]);
+      const [item] = run(
+        { devices: [withState({ soil_moisture: 10 })] },
+        { items: [], sinceHints: future },
+      );
+      expect(item?.since).toBe(ago(MINUTE).toISOString());
+    });
+  });
+
   describe('gateway_offline', () => {
     const offlineSince = (minutes: number, rest: Partial<GatewaySnapshot> = {}) =>
       gateway({ bridgeStatus: 'offline', statusChangedAt: ago(minutes * MINUTE), ...rest });
@@ -365,14 +519,37 @@ describe('evaluate', () => {
       expect(kinds(run({ gateways: [unknown] }))).toEqual(['gateway_offline']);
     });
 
-    it('stays quiet for a gateway nothing was ever heard from', () => {
-      const silent = gateway({
-        bridgeStatus: 'unknown',
-        z2mStatus: 'unknown',
-        statusChangedAt: null,
-        lastMessageAt: null,
+    describe('a gateway nothing was ever heard from', () => {
+      const unheard = (registeredMinutes: number) =>
+        gateway({
+          bridgeStatus: 'unknown',
+          z2mStatus: 'unknown',
+          statusChangedAt: null,
+          lastMessageAt: null,
+          registeredAt: ago(registeredMinutes * MINUTE),
+        });
+
+      it('gets the grace period of a gateway that is not online yet, from its registration', () => {
+        expect(run({ gateways: [unheard(4.9)] })).toEqual([]);
+        const [item] = run({ gateways: [unheard(5)] });
+        expect(item).toMatchObject({
+          id: 'gateway_offline:gw-aaaaaaaa',
+          kind: 'gateway_offline',
+          severity: 'critical',
+          params: { bridgeStatus: 'unknown', z2mStatus: 'unknown' },
+        });
+        expect(item?.since).toBe(ago(5 * MINUTE).toISOString());
       });
-      expect(run({ gateways: [silent] })).toEqual([]);
+
+      it('explains its devices instead of muting them without any visible item', () => {
+        const devices = [
+          device({ id: 'a', availability: 'offline' }),
+          device({ id: 'b', state: { soil_moisture: 5 } }),
+        ];
+        const items = run({ gateways: [unheard(60)], devices });
+        expect(items.map((item) => item.id)).toEqual(['gateway_offline:gw-aaaaaaaa']);
+        expect(items[0]?.params).toMatchObject({ affectedDevices: 2 });
+      });
     });
 
     it('is the only item for an offline gateway with 12 devices', () => {

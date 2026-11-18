@@ -31,6 +31,9 @@ export interface ActiveGateway {
   topicPrefix: string;
 }
 
+/** A gateway with the time it was registered (internal: not part of the public contract). */
+export type RegisteredGateway = Gateway & { registeredAt: Date };
+
 const iso = (date: Date | null): string | null => (date ? date.toISOString() : null);
 
 @Injectable()
@@ -47,10 +50,24 @@ export class GatewaysService {
   ) {}
 
   async list(householdId: string): Promise<Gateway[]> {
+    return (await this.householdGateways(householdId)).map(({ gateway }) => gateway);
+  }
+
+  /** `list`, each with the time it was registered (for callers inside the backend). */
+  async listRegistered(householdId: string): Promise<RegisteredGateway[]> {
+    return (await this.householdGateways(householdId)).map(({ row, gateway }) => ({
+      ...gateway,
+      registeredAt: row.createdAt,
+    }));
+  }
+
+  private async householdGateways(
+    householdId: string,
+  ): Promise<{ row: GatewayRow; gateway: Gateway }[]> {
     const rows = await this.gateways.listByHousehold(householdId);
     const now = this.clock();
     const crlNextUpdate = rows.length > 0 ? await this.crlNextUpdate() : undefined;
-    return rows.map((row) => this.toGateway(row, crlNextUpdate, now));
+    return rows.map((row) => ({ row, gateway: this.toGateway(row, crlNextUpdate, now) }));
   }
 
   /** The gateway with the household it belongs to, revoked or not; `undefined` if unknown. */
