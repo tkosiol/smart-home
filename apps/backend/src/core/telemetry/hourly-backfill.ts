@@ -18,7 +18,10 @@ const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout
  *   `timescaledb_information.continuous_aggregates`. Once the oldest raw hour is materialized,
  *   the next call finds nothing to do. The range backfilled is returned, `null` if none was.
  * - Hours whose readings a data migration changed: TimescaleDB logs them as invalidated, and a
- *   refresh over all closed hours computes just those again (cheap when there are none).
+ *   refresh over all closed hours that still have raw readings computes just those again (cheap
+ *   when there are none). It must not start earlier: the retention policy's drop_chunks logs the
+ *   dropped range as invalidated too, and refreshing that range from no raw data would delete
+ *   the hourly history, which is kept for good.
  *
  * `CALL refresh_continuous_aggregate` cannot run inside a transaction, so this uses its own
  * connection and is not part of the (transactional) drizzle migrations.
@@ -32,25 +35,32 @@ export async function backfillHourly(url: string): Promise<{ from: Date; to: Dat
   try {
     // Same boundary as the policy's end_offset: the most recent hour is served in real time.
     const to = new Date(Math.floor((Date.now() - HOUR_MS) / HOUR_MS) * HOUR_MS);
-    const backfilled = await backfillHistory(sql, to);
-    await refresh(sql, null, to);
+    const from = await oldestRawHour(sql);
+    if (from === null || from >= to) {
+      console.log('hourly aggregate: nothing to backfill');
+      return null;
+    }
+    const backfilled = await backfillHistory(sql, from, to);
+    await refresh(sql, from, to);
     return backfilled;
   } finally {
     await sql.end();
   }
 }
 
-async function backfillHistory(
-  sql: postgres.Sql,
-  to: Date,
-): Promise<{ from: Date; to: Date } | null> {
+/** The hour of the oldest raw numeric reading (the aggregate ignores value_num IS NULL rows). */
+async function oldestRawHour(sql: postgres.Sql): Promise<Date | null> {
   const [raw] = await sql<
     { first: Date | null }[]
   >`select min(time) as first from measurements where value_num is not null`;
-  if (!raw?.first) {
-    console.log('hourly aggregate: nothing to backfill');
-    return null;
-  }
+  return raw?.first ? new Date(Math.floor(raw.first.getTime() / HOUR_MS) * HOUR_MS) : null;
+}
+
+async function backfillHistory(
+  sql: postgres.Sql,
+  from: Date,
+  to: Date,
+): Promise<{ from: Date; to: Date } | null> {
   const [view] = await sql<{ schema: string; name: string }[]>`
     select materialization_hypertable_schema as schema, materialization_hypertable_name as name
     from timescaledb_information.continuous_aggregates
@@ -59,8 +69,7 @@ async function backfillHistory(
   const [mat] = await sql<{ first: Date | null }[]>`
     select min(bucket) as first from ${sql(view.schema)}.${sql(view.name)}`;
 
-  const from = new Date(Math.floor(raw.first.getTime() / HOUR_MS) * HOUR_MS);
-  if ((mat?.first && mat.first <= from) || from >= to) {
+  if (mat?.first && mat.first <= from) {
     console.log('hourly aggregate: nothing to backfill');
     return null;
   }
@@ -69,13 +78,12 @@ async function backfillHistory(
   return { from, to };
 }
 
-/** Refreshes the window (`null`: from the start), waiting for a refresh that runs already. */
-async function refresh(sql: postgres.Sql, from: Date | null, to: Date): Promise<void> {
-  const start = from === null ? 'NULL' : `'${from.toISOString()}'`;
+/** Refreshes the window, waiting for a refresh that runs already. */
+async function refresh(sql: postgres.Sql, from: Date, to: Date): Promise<void> {
   for (let attempt = 1; ; attempt += 1) {
     try {
       await sql.unsafe(
-        `call refresh_continuous_aggregate('measurements_hourly', ${start}, '${to.toISOString()}')`,
+        `call refresh_continuous_aggregate('measurements_hourly', '${from.toISOString()}', '${to.toISOString()}')`,
       );
       return;
     } catch (error) {

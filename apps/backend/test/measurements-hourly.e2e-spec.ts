@@ -110,6 +110,23 @@ describe('measurements_hourly', () => {
     expect((await hourly('brightness'))[0]).toMatchObject({ max: 100 });
   });
 
+  it('keeps hours whose raw readings the retention policy dropped', async () => {
+    const now = startOfHour(Date.now());
+    const old = now - 30 * 24 * HOUR;
+    await insert(old + 60_000, 11);
+    await insert(now - 24 * HOUR + 60_000, 22);
+    await backfillHourly(url);
+    expect((await hourly()).map((r) => r.avg)).toEqual([11, 22]);
+
+    // What the 1-year retention policy does; the chunk interval is 7 days.
+    await sql`select drop_chunks('measurements', older_than => ${new Date(now - 15 * 24 * HOUR)}::timestamptz)`;
+    expect(await backfillHourly(url)).toBeNull();
+
+    const rows = await hourly();
+    expect(rows.map((r) => r.bucket.getTime())).toEqual([old, now - 24 * HOUR]);
+    expect(rows[0]).toMatchObject({ avg: 11, count: '1' });
+  });
+
   it('returns null on an empty database', async () => {
     expect(await backfillHourly(url)).toBeNull();
   });
