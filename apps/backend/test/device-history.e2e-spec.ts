@@ -35,6 +35,24 @@ const DAY = 24 * HOUR;
 /** The clock of the app under test: fixed so that dates in the tests stay inside the ranges. */
 const NOW = Date.parse('2026-10-27T12:00:00Z');
 
+/**
+ * Runs a refresh of the hourly aggregate again while TimescaleDB refuses it because its own
+ * policy job refreshes at that moment: the job is due right after the migrations and the
+ * scheduler starts it whenever it gets to it, which under load meets the refreshes here.
+ */
+async function refreshing(run: () => Promise<unknown>): Promise<void> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await run();
+      return;
+    } catch (error) {
+      const concurrent = error instanceof Error && error.message.includes('concurrent refresh');
+      if (!concurrent || attempt >= 50) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+  }
+}
+
 interface Person {
   id: string;
   cookie: string;
@@ -117,7 +135,9 @@ describe('device history API', () => {
   ): Promise<DeviceHistory> => {
     // What the refresh policy does within 30 minutes in operation: readings older than its
     // watermark only reach the hourly aggregate through a refresh.
-    await connection.sql`call refresh_continuous_aggregate('measurements_hourly', null, null)`;
+    await refreshing(
+      () => connection.sql`call refresh_continuous_aggregate('measurements_hourly', null, null)`,
+    );
     const response = await get(
       `${HOUSEHOLDS}/${f.householdId}/devices/${f.deviceId}/history?${query}`,
       who,
@@ -140,7 +160,7 @@ describe('device history API', () => {
       await admin`select alter_job(${job.id}, scheduled => false)`;
       await admin`insert into measurements (time, device_id, capability, value_num)
         values (now() - interval '2 hours', ${UNKNOWN_ID}, 'soil_moisture', 1)`;
-      await admin`call run_job(${job.id})`;
+      await refreshing(() => admin`call run_job(${job.id})`);
     } finally {
       await admin.end();
     }
@@ -157,7 +177,8 @@ describe('device history API', () => {
   });
 
   afterAll(async () => {
-    await app.close();
+    // Undefined when beforeAll failed: its error is the one to see.
+    await app?.close();
     process.env.DATABASE_URL = originalUrl;
   });
 
