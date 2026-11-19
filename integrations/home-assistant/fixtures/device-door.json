@@ -1,0 +1,21 @@
+{
+  "v": 1,
+  "entities": {
+    "binary_sensor.flur_tuer": {
+      "state": "on",
+      "attributes": {
+        "device_class": "door",
+        "friendly_name": "Flurtür"
+      },
+      "last_updated": "2026-11-19T12:00:00.000000+00:00"
+    },
+    "switch.flur_steckdose": {
+      "state": "off",
+      "attributes": {
+        "device_class": "outlet",
+        "friendly_name": "Flur Steckdose"
+      },
+      "last_updated": "2026-11-19T11:00:00.000000+00:00"
+    }
+  }
+}
