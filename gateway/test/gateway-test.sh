@@ -202,6 +202,9 @@ for f in ca.crt gateway.crt gateway.key; do echo "invented $f" > "$GW/secrets/ha
 ha_service() { compose --profile ha config homeassistant 2> /dev/null; }
 check "homeassistant: pinned image, host network, memory limit, restart policy, log rotation" \
   'c=$(ha_service) && echo "$c" | grep -q "image: $HA_IMAGE" && echo "$c" | grep -q "network_mode: host" && echo "$c" | grep -q "mem_limit: \"536870912\"" && echo "$c" | grep -q "restart: unless-stopped" && echo "$c" | grep -q "max-size: 10m"'
+# Docker's 10 s default would kill Home Assistant on every deploy and reboot before the recorder, the registries and
+# smart_bridge's offline status are written (compose normalises 120s to 2m0s).
+check "homeassistant: stop grace period of 120 s" 'ha_service | grep -q "stop_grace_period: 2m0s"'
 check "homeassistant: gateway ID from secrets/ha/ha.env, broker from gateway.env, no published port" \
   'c=$(ha_service) && echo "$c" | grep -q "SMART_HA_GATEWAY_ID: gw-testha01" && echo "$c" | grep -q "BROKER_HOST: broker" && echo "$c" | grep -q "BROKER_PORT: \"8883\"" && ! echo "$c" | grep -q "published"'
 check "homeassistant: configuration, integration and secrets are mounted read-only, the data folder writable" \

@@ -93,6 +93,10 @@ services:
     network_mode: host
     # Only effective with the memory cgroup enabled (docs/runbooks/gateway.md); measured ~300 MB on a Pi 3B+.
     mem_limit: 512m
+    # On stop Home Assistant commits the recorder, writes the delayed saves of its registries (.storage) and
+    # smart_bridge publishes ha/status offline (waits up to 5 s for the broker): on a Pi that takes longer than
+    # Docker's 10 s default, which would kill it in the middle (every deploy recreates it, every reboot stops it).
+    stop_grace_period: 120s
     env_file:
       - ./secrets/ha/ha.env
     environment:
