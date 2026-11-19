@@ -1,4 +1,5 @@
-# The gateway stack for a Raspberry Pi: Mosquitto (bridged to the platform broker, ADR-0020) and Zigbee2MQTT.
+# The gateway stack for a Raspberry Pi: Mosquitto (bridged to the platform broker, ADR-0020) and Zigbee2MQTT, and
+# optionally Home Assistant (profile ha, see the service below).
 # Lives in /srv/smart-gateway on the Pi and is started with the secrets as the project environment:
 #   docker compose --env-file secrets/gateway.env up -d
 # secrets/gateway.env: GATEWAY_ID, BROKER_HOST, BROKER_PORT, Z2M_SERIAL_DEVICE (host path of the adapter).
@@ -6,6 +7,7 @@
 # ZIGBEE2MQTT_CONFIG_FRONTEND_AUTH_TOKEN. Also needed in secrets/: passwd, ca.crt, gateway.crt, gateway.key.
 # Run render.sh first: it writes run/mosquitto.conf. render.sh replaces the file (new inode) and the single-file bind
 # mount keeps the old one: recreate Mosquitto after every render (docker compose up -d --force-recreate mosquitto).
+# deploy.sh and start.sh add --profile ha to every compose call exactly when secrets/ha/ha.env exists.
 name: smart-gateway
 
 x-logging: &logging
@@ -76,6 +78,34 @@ services:
     logging: *logging
     networks: [gateway]
 
+  # Home Assistant with the integration smart_bridge (integrations/home-assistant, copied by deploy.sh to
+  # homeassistant/custom_components/smart_bridge). Only in the profile ha: a Pi without secrets/ha/ha.env (written by
+  # infra/deploy/provision-ha.sh) runs as before; compose does not read the env file of a service outside the active
+  # profiles (measured with Compose 2.17 to 2.34). The bridge connects to the platform broker itself (mTLS with the
+  # certificate in secrets/ha), not through the local Mosquitto. homeassistant-data/ (users, set-up integrations) is
+  # never touched by the deploy and goes into the nightly backup.
+  homeassistant:
+    image: ghcr.io/home-assistant/home-assistant:2026.11.0
+    profiles: [ha]
+    restart: unless-stopped
+    # Host network: Yeelight and other discovery need multicast. The UI (8123) is reachable in the home network,
+    # protected by HA's own login. Never forward it to the internet.
+    network_mode: host
+    # Only effective with the memory cgroup enabled (docs/runbooks/gateway.md); measured ~300 MB on a Pi 3B+.
+    mem_limit: 512m
+    env_file:
+      - ./secrets/ha/ha.env
+    environment:
+      BROKER_HOST: ${BROKER_HOST:?set BROKER_HOST in secrets/gateway.env}
+      BROKER_PORT: ${BROKER_PORT:?set BROKER_PORT in secrets/gateway.env}
+      TZ: ${TZ:-Europe/Berlin}
+    volumes:
+      - ./homeassistant-data:/config
+      - ./homeassistant/configuration.yaml:/config/configuration.yaml:ro
+      - ./homeassistant/custom_components/smart_bridge:/config/custom_components/smart_bridge:ro
+      - ./secrets/ha:/smart/secrets:ro
+    logging: *logging
+
   # Nightly backup to B2 (restic). Only in the profile "backup": a plain "up" never starts it; the systemd service runs
   #   docker compose --env-file secrets/gateway.env --profile backup run --rm -T backup backup | restore-test
   # (backup/backup.sh and backup/restore-test.sh, installed by deploy.sh). The B2 key, the restic password and the
@@ -96,6 +126,8 @@ services:
       - ./backup:/smart/backup:ro
       - ./zigbee2mqtt-data:/data/zigbee2mqtt-data:ro
       - ./secrets:/data/secrets:ro
+      # Home Assistant (profile ha); restic-job.sh leaves the folder out while it is empty (no HA on this Pi).
+      - ./homeassistant-data:/data/homeassistant-data:ro
       - backup-cache:/cache
     logging: *logging
     networks: [gateway]

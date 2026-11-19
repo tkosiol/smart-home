@@ -14,9 +14,18 @@
 # Every stage checks first and stops cleanly. Plain deploy:
 #   preflight (ssh reachable within 10 s, sudo, secrets present, no unfinished zigbee2mqtt-data.partial, no second
 #   Zigbee2MQTT, Z2M data present; a clock that is not synchronized only warns) -> rsync gateway/ to
-#   /srv/smart-gateway (without secrets/, zigbee2mqtt-data/, run/, migration/) -> render.sh -> pull -> data folder
-#   700/600 -> start.sh on the Pi (Mosquitto is recreated: the rendered file and the entry point are single-file bind
-#   mounts; waits until Zigbee2MQTT is online, stable and Mosquitto healthy) -> backup timers -> status.
+#   /srv/smart-gateway (without secrets/, zigbee2mqtt-data/, run/, migration/, homeassistant-data/) -> rsync the
+#   Home Assistant integration (integrations/home-assistant/custom_components/smart_bridge, with --delete) to
+#   homeassistant/custom_components/smart_bridge -> render.sh -> pull -> data folder 700/600 -> start.sh on the Pi
+#   (Mosquitto is recreated: the rendered file and the entry point are single-file bind mounts; waits until
+#   Zigbee2MQTT is online, stable and Mosquitto healthy) -> backup timers -> (Home Assistant) -> status.
+# Home Assistant (compose profile ha) is on exactly when secrets/ha/ha.env exists on the Pi (written by
+#   infra/deploy/provision-ha.sh; only its existence is checked, as root, never its content): then the preflight also
+#   wants secrets/ha/{ca.crt,gateway.crt,gateway.key} and curl, every compose call carries --profile ha (the pull
+#   COMPOSE_PROFILES=backup,ha), and after the start the Mac waits up to SMART_DEPLOY_HA_WAIT_SECONDS (600) for an
+#   answer on port 8123 of the Pi. A Home Assistant that does not answer is a warning (exit 0): Zigbee2MQTT runs, and
+#   nothing is rolled back. Without ha.env everything runs as before. homeassistant-data/ (root, 700) is created when
+#   missing and never copied over.
 # With --migrate (the old stack must run), after the pull, the destructive part runs ON THE PI as gateway/migrate.sh,
 #   detached (systemd-run, else setsid/nohup) so it survives this ssh session and this terminal: backup tarball
 #   migration/<UTC time>.tar.gz (verified) -> stop the old stack -> save the restart policy of its containers to
@@ -32,7 +41,7 @@
 # SMART_DEPLOY_PULL_TIMEOUT (900), SMART_DEPLOY_COMPOSE_TIMEOUT (300), SMART_DEPLOY_MIGRATE_TIMEOUT (1800: how
 # long the Mac polls), SMART_DEPLOY_START_GRACE (90: how long the status of the started run may be missing),
 # SMART_DEPLOY_DETACH (auto|nohup: nohup skips systemd-run), SMART_DEPLOY_STAMP,
-# SMART_SYSTEMD_DIR (default /etc/systemd/system).
+# SMART_SYSTEMD_DIR (default /etc/systemd/system), SMART_DEPLOY_HA_WAIT_SECONDS (600), SMART_DEPLOY_HA_POLL_SECONDS (10).
 # At the end (Z2M online) it installs and enables the backup timers (gateway/systemd, nightly backup and weekly
 # restore test, see gateway/backup); the pull includes the restic image of the compose profile backup.
 # Every remote command is bounded: ssh connects within 10 s and notices a dead connection, compose, tar, cp, chown
@@ -84,6 +93,8 @@ pull_timeout="${SMART_DEPLOY_PULL_TIMEOUT:-900}"
 compose_timeout="${SMART_DEPLOY_COMPOSE_TIMEOUT:-300}"
 migrate_limit="${SMART_DEPLOY_MIGRATE_TIMEOUT:-1800}"
 start_grace="${SMART_DEPLOY_START_GRACE:-90}"
+ha_wait="${SMART_DEPLOY_HA_WAIT_SECONDS:-600}"
+ha_poll="${SMART_DEPLOY_HA_POLL_SECONDS:-10}"
 detach="${SMART_DEPLOY_DETACH:-auto}"
 [[ "$detach" =~ ^(auto|nohup)$ ]] || { echo "SMART_DEPLOY_DETACH must be auto or nohup" >&2; exit 2; }
 stamp="${SMART_DEPLOY_STAMP:-$(date -u +%Y%m%dT%H%M%SZ)}"
@@ -91,11 +102,14 @@ stamp="${SMART_DEPLOY_STAMP:-$(date -u +%Y%m%dT%H%M%SZ)}"
 systemd_dir="${SMART_SYSTEMD_DIR:-/etc/systemd/system}"
 systemd_dir="${systemd_dir%/}"
 plain_path "$systemd_dir" || { echo "SMART_SYSTEMD_DIR is not a plain absolute path" >&2; exit 2; }
-for number in "$wait_seconds" "$poll_seconds" "$pull_timeout" "$compose_timeout" "$migrate_limit" "$start_grace"; do
+for number in "$wait_seconds" "$poll_seconds" "$pull_timeout" "$compose_timeout" "$migrate_limit" "$start_grace" "$ha_wait" "$ha_poll"; do
   [[ "$number" =~ ^[0-9]{1,5}$ ]] || { echo "the SMART_DEPLOY_* time limits must be whole seconds" >&2; exit 2; }
 done
 
 source_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# The Home Assistant integration of the repository; it goes to the Pi with every deploy (part of the package).
+integration_dir="$(cd "$source_dir/../integrations/home-assistant/custom_components/smart_bridge" 2> /dev/null && pwd)" || integration_dir=""
+[ -f "$integration_dir/manifest.json" ] || { echo "deploy.sh: integrations/home-assistant/custom_components/smart_bridge is missing next to gateway/ - nothing was contacted" >&2; exit 1; }
 ssh_opts=(-o ConnectTimeout=10 -o BatchMode=yes -o ServerAliveInterval=10 -o ServerAliveCountMax=3)
 # The local copy of the bridge notification (1 = connected, 0 = not): with notification_topic set, Mosquitto
 # publishes it on the local broker too and not under $SYS. The health user may read it.
@@ -112,6 +126,16 @@ sudo -n test -d "$1" || { echo nodir; exit 0; }
 for f in gateway.env z2m.env backup.env passwd ca.crt gateway.crt gateway.key; do
   sudo -n test -s "$1/secrets/$f" || { echo "nosecret:$f"; exit 0; }
 done
+# Home Assistant (profile ha) only when secrets/ha/ha.env exists: then its certificate must be there, and curl for the
+# wait on port 8123.
+ha=noha
+if sudo -n test -e "$1/secrets/ha/ha.env"; then
+  ha=ha
+  for f in ca.crt gateway.crt gateway.key; do
+    sudo -n test -s "$1/secrets/ha/$f" || { echo "nohasecret:$f"; exit 0; }
+  done
+  command -v curl > /dev/null 2>&1 || { echo "missing:curl"; exit 0; }
+fi
 mst=""
 malive=""
 if sudo -n test -s "$1/migration/status"; then
@@ -151,7 +175,7 @@ if command -v timedatectl > /dev/null 2>&1; then
   ntp=$(timeout -k 2 10 timedatectl show -p NTPSynchronized --value 2> /dev/null) || ntp=""
   if [ "$ntp" = yes ]; then clock=synced; elif [ "$ntp" = no ]; then clock=notsynced; fi
 fi
-echo "ok:$cg:$clock"
+echo "ok:$cg:$clock:$ha"
 EOF
 )
 S_OLD_CHECK=$(cat << 'EOF'
@@ -185,9 +209,20 @@ chmod 700 "$d"
 if [ -f "$d/configuration.yaml" ]; then chmod 600 "$d/configuration.yaml"; fi
 EOF
 )
+# The pull takes the profiles from COMPOSE_PROFILES (a --profile option would replace that list, not add to it).
 S_PULL=$(cat << 'EOF'
 cd "$1" || exit 1
-COMPOSE_PROFILES=backup timeout -k 10 "$2" docker compose --env-file secrets/gateway.env pull
+profiles=backup
+if [ -e secrets/ha/ha.env ]; then profiles=backup,ha; fi
+COMPOSE_PROFILES=$profiles timeout -k 10 "$2" docker compose --env-file secrets/gateway.env pull
+EOF
+)
+# The Home Assistant folders: the parent of the integration (rsync creates only the last folder) and the data folder
+# (users, set-up integrations; root only, never copied over by the deploy).
+S_HA_DIRS=$(cat << 'EOF'
+set -e
+mkdir -p "$1/homeassistant/custom_components" "$1/homeassistant-data"
+chmod 700 "$1/homeassistant-data"
 EOF
 )
 # start.sh (gateway folder on the Pi): up, then wait until Z2M is online and stable and Mosquitto healthy.
@@ -253,14 +288,24 @@ S_MIG_LOG=$(cat << 'EOF'
 tail -n 40 "$1/migration/migrate-$2.log" 2> /dev/null
 EOF
 )
+# $ha stays unquoted on purpose: empty without Home Assistant, two words with it.
 S_STATUS=$(cat << 'EOF'
 cd "$1" || exit 1
-timeout -k 5 30 docker compose --env-file secrets/gateway.env ps
+ha=""
+if [ -e secrets/ha/ha.env ]; then ha="--profile ha"; fi
+timeout -k 5 30 docker compose --env-file secrets/gateway.env $ha ps
 EOF
 )
 S_BRIDGE=$(cat << 'EOF'
 cd "$1" || exit 1
-timeout -k 5 20 docker compose --env-file secrets/gateway.env exec -T mosquitto mosquitto_sub -h 127.0.0.1 -u health -P health -t "$2" -C 1 -W 5
+ha=""
+if [ -e secrets/ha/ha.env ]; then ha="--profile ha"; fi
+timeout -k 5 20 docker compose --env-file secrets/gateway.env $ha exec -T mosquitto mosquitto_sub -h 127.0.0.1 -u health -P health -t "$2" -C 1 -W 5
+EOF
+)
+# Home Assistant answers on its port (host network) once it has started.
+S_HA_PROBE=$(cat << 'EOF'
+curl -fsS -m 10 -o /dev/null http://127.0.0.1:8123/manifest.json
 EOF
 )
 
@@ -348,6 +393,7 @@ case "$state" in
   ok:unknown:*) echo "note: could not tell whether the Pi kernel has a memory cgroup (mem_limit needs it)." ;;
   nosudo) die "sudo on the Pi asks for a password or is not allowed for this user - there is no terminal for a prompt. Allow passwordless sudo for the operator user (docs/runbooks/gateway.md). Nothing was changed" ;;
   missing:*) die "${state#missing:} is not installed on the Pi - nothing was changed" ;;
+  nohasecret:*) die "$dir/secrets/ha/${state#nohasecret:} is missing or empty on the Pi, but secrets/ha/ha.env exists (Home Assistant is switched on) - run infra/deploy/provision-ha.sh first. Nothing was changed" ;;
   nodir) die "$dir does not exist on the Pi - run infra/deploy/provision-gateway.sh first. Nothing was changed" ;;
   nosecret:*) die "$dir/secrets/${state#nosecret:} is missing or empty on the Pi - run infra/deploy/provision-gateway.sh first. Nothing was changed" ;;
   migrating) die "a migration is running on the Pi already - do not deploy now. Status: sudo cat $dir/migration/status, log: sudo tail -n 40 $dir/migration/migrate-*.log (docs/runbooks/gateway.md, section 11). Nothing was changed" ;;
@@ -359,7 +405,8 @@ case "$state" in
   nodata) die "$dir/zigbee2mqtt-data is missing or empty on the Pi. On an existing Pi the first run must be --migrate (it takes over the Zigbee network of the old setup; a plain deploy would start Zigbee2MQTT with an empty network and the paired devices would be lost). Only a NEW Pi with a fresh adapter uses --fresh. Nothing was changed" ;;
   *) die "unexpected answer from the Pi - nothing was changed" ;;
 esac
-case "${state##*:}" in
+IFS=: read -r _ _ clock ha_state <<< "$state"
+case "$clock" in
   synced) ;;
   notsynced)
     echo "warning: the clock of the Pi is not synchronized (timedatectl: NTPSynchronized=no). The TLS bridge to the platform broker needs a correct clock (the Pi has no real-time clock), so the bridge may stay down until it is; the backups wait for it too."
@@ -384,12 +431,19 @@ if [ "$migrate" = 1 ]; then
   esac
 fi
 
-# --- 2. copy the package: never the secrets, the Z2M data, the rendered file or the backups ---
-step "copying gateway/ to $dir"
+# --- 2. copy the package: never the secrets, the Z2M or HA data, the rendered file or the backups ---
+step "copying gateway/ and integrations/home-assistant/custom_components/smart_bridge to $dir"
 rsync -rlt --no-owner --no-group --chmod=go-w,go+rX --timeout=60 \
   --exclude=/secrets/ --exclude=/zigbee2mqtt-data/ --exclude=/run/ --exclude=/migration/ --exclude=/test/ \
+  --exclude=/homeassistant-data/ \
   --rsh="ssh ${ssh_opts[*]}" --rsync-path="sudo -n rsync" \
   "$source_dir/" "$host:$dir/" || die "rsync to the Pi failed - the running stack was not touched"
+remote root "$S_HA_DIRS" "$dir" || die "could not create the folders homeassistant/custom_components and homeassistant-data on the Pi - the running stack was not touched"
+# --delete: no module of an older version of the integration stays behind.
+rsync -rlt --no-owner --no-group --chmod=go-w,go+rX --timeout=60 --delete --exclude=__pycache__/ \
+  --rsh="ssh ${ssh_opts[*]}" --rsync-path="sudo -n rsync" \
+  "$integration_dir/" "$host:$dir/homeassistant/custom_components/smart_bridge/" \
+  || die "rsync of the Home Assistant integration to the Pi failed - the running stack was not touched"
 
 # --- 3. render, pull ---
 step "rendering the Mosquitto configuration"
@@ -445,7 +499,28 @@ fi
 step "installing the backup timers (nightly backup 03:30, weekly restore test)"
 remote root "$S_TIMERS" "$dir" "$systemd_dir" || die "could not install the backup timers (the stack is running; check $dir/systemd and $systemd_dir on the Pi)"
 
-# --- 6. status ---
+# --- 6. Home Assistant (profile ha): wait for its answer; a failure is only a warning (Spec 7: nothing rolls back) ---
+# Bounded: every probe is one ssh call (10 s to connect) with curl limited to 10 s.
+ha_answers() {
+  local deadline=$((SECONDS + ha_wait))
+  while :; do
+    if remote user "$S_HA_PROBE" > /dev/null 2>&1; then return 0; fi
+    [ "$SECONDS" -lt "$deadline" ] || return 1
+    sleep "$ha_poll" &
+    wait $! || true
+  done
+}
+if [ "$ha_state" = ha ]; then
+  step "waiting for Home Assistant on port 8123 (up to ${ha_wait} s; the first start on a Pi takes long)"
+  if ha_answers; then
+    echo "Home Assistant is up"
+  else
+    echo "warning: Home Assistant did not answer in ${ha_wait} s – Zigbee2MQTT is running; check docker compose logs homeassistant"
+    echo "warning: on the Pi, in $dir: sudo docker compose --env-file secrets/gateway.env --profile ha logs homeassistant"
+  fi
+fi
+
+# --- 7. status ---
 step "status"
 remote root "$S_STATUS" "$dir" || echo "warning: could not read the container status" >&2
 bridge=$(remote root "$S_BRIDGE" "$dir" "$bridge_topic" 2> /dev/null) || bridge=""

@@ -73,9 +73,11 @@ setup() {
       echo "      - ./repo:/repo"
       echo "      - $PROJECT-z2m:/data/zigbee2mqtt-data:ro"
       echo "      - $PROJECT-secrets:/data/secrets:ro"
+      echo "      - $PROJECT-ha:/data/homeassistant-data:ro"
       echo "volumes:"
       echo "  $PROJECT-z2m: {external: true}"
       echo "  $PROJECT-secrets: {external: true}"
+      echo "  $PROJECT-ha: {external: true}"
     else
       echo "    volumes:"
       echo "      - ./repo:/repo"
@@ -107,14 +109,15 @@ write_backup_env() {
 teardown() {
   if [ -n "${SHOW:-}" ] && [ -s "$OUT" ]; then echo "--- output:"; cat "$OUT"; fi
   # The container wrote the repository and the restored files as root.
-  docker run --rm --entrypoint rm -v "$WORK:/work" "$RESTIC_IMAGE" -rf /work/gw/repo /work/restore > /dev/null 2>&1
+  docker run --rm --entrypoint rm -v "$WORK:/work" "$RESTIC_IMAGE" -rf /work/gw/repo /work/restore /work/gw/homeassistant-data > /dev/null 2>&1
   rm -rf "$WORK"
-  docker volume rm "$PROJECT-z2m" "$PROJECT-secrets" "${PROJECT}_backup-cache" > /dev/null 2>&1
+  docker volume rm "$PROJECT-z2m" "$PROJECT-secrets" "$PROJECT-ha" "${PROJECT}_backup-cache" > /dev/null 2>&1
 }
-# Copies the sandbox data into the named volumes (Mac only), as often as the test changed them.
+# Copies the sandbox data into the named volumes (Mac only), as often as the test changed them. Without a
+# homeassistant-data folder in the sandbox the HA volume stays empty, like the folder Docker creates for the bind mount.
 sync_volumes() {
-  docker run --rm --entrypoint sh -v "$PROJECT-z2m:/z2m" -v "$PROJECT-secrets:/secrets" -v "$GW:/gw:ro" "$RESTIC_IMAGE" -c \
-    'rm -rf /z2m/* /z2m/.[!.]* /secrets/* /secrets/.[!.]* 2> /dev/null; cp -a /gw/zigbee2mqtt-data/. /z2m/ && cp -a /gw/secrets/. /secrets/' > /dev/null
+  docker run --rm --entrypoint sh -v "$PROJECT-z2m:/z2m" -v "$PROJECT-secrets:/secrets" -v "$PROJECT-ha:/ha" -v "$GW:/gw:ro" "$RESTIC_IMAGE" -c \
+    'rm -rf /z2m/* /z2m/.[!.]* /secrets/* /secrets/.[!.]* /ha/* /ha/.[!.]* 2> /dev/null; cp -a /gw/zigbee2mqtt-data/. /z2m/ && cp -a /gw/secrets/. /secrets/ && { [ ! -d /gw/homeassistant-data ] || cp -a /gw/homeassistant-data/. /ha/; }' > /dev/null
 }
 run() { [ -z "$USE_VOLUMES" ] || sync_volumes; (bash "$GW/backup/$1" > "$OUT" 2>&1 < /dev/null); echo $?; }
 # The pings that went out, as the path suffix after the marker ("" = success), one per line, markers named.
@@ -141,6 +144,7 @@ svc() { docker compose -f "$GW/compose.yaml" --project-directory "$GW" --env-fil
 check "the backup service reads secrets/backup.env as env file (no secret in argv or in the file)" 'grep -A2 "env_file:" "$GATEWAY_DIR/compose.yaml" | grep -q "./secrets/backup.env"'
 check "the backup service mounts the Z2M data and the secrets read-only and takes the gateway ID as host" \
   'c=$(svc) && echo "$c" | grep -A3 "target: /data/zigbee2mqtt-data" | grep -q "read_only: true" && echo "$c" | grep -A3 "target: /data/secrets" | grep -q "read_only: true" && echo "$c" | grep -q "BACKUP_HOST_TAG: gw-testpi01"'
+check "the backup service mounts the Home Assistant data read-only" 'c=$(svc) && echo "$c" | grep -B2 -A3 "target: /data/homeassistant-data" | grep -q "read_only: true" && echo "$c" | grep -B3 "target: /data/homeassistant-data" | grep -q "source: .*/homeassistant-data$"'
 unit() { cat "$GATEWAY_DIR/systemd/$1"; }
 check "the backup timer fires every night at 03:30 and catches up after a missed run" 'unit smart-gateway-backup.timer | grep -q "^OnCalendar=\*-\*-\* 03:30:00$" && unit smart-gateway-backup.timer | grep -q "^Persistent=true$" && unit smart-gateway-backup.timer | grep -q "^WantedBy=timers.target$"'
 check "the backup service is a oneshot that runs backup.sh after the network and Docker are up" 'unit smart-gateway-backup.service | grep -q "^Type=oneshot$" && unit smart-gateway-backup.service | grep -q "^ExecStart=.*/srv/smart-gateway/backup/backup.sh$" && unit smart-gateway-backup.service | grep -q "^After=.*network-online.target.*docker.service"'
@@ -276,6 +280,48 @@ teardown
 
 setup
 check "restore-test.sh fails when the repository has no snapshot" '[ "$(run restore-test.sh)" = 1 ] && grep -qi "snapshot\|repository" "$OUT" && no_secret_in_logs'
+teardown
+
+# --- Home Assistant data (gateways with the profile ha) ---
+HA_MARKER=ha-config-entries-marker
+# homeassistant-data as Home Assistant leaves it: settings in .storage, the recorder database (with its WAL) and logs.
+setup_ha() {
+  mkdir -p "$GW/homeassistant-data/.storage"
+  printf '{\n  "version": 1,\n  "data": {"entries": [{"domain": "yeelight", "title": "%s"}]}\n}\n' "$HA_MARKER" > "$GW/homeassistant-data/.storage/core.config_entries"
+  echo '{"data":{"users":[]}}' > "$GW/homeassistant-data/.storage/auth"
+  : > "$GW/homeassistant-data/configuration.yaml"
+  echo "recorder history" > "$GW/homeassistant-data/home-assistant_v2.db"
+  echo "recorder wal" > "$GW/homeassistant-data/home-assistant_v2.db-wal"
+  echo "log line" > "$GW/homeassistant-data/home-assistant.log"
+  echo "older log line" > "$GW/homeassistant-data/home-assistant.log.1"
+}
+setup; setup_ha
+check "backup.sh backs up the Home Assistant data as well" '[ "$(run backup.sh)" = 0 ] && grep -q "backup completed" "$OUT"'
+check "the snapshot holds .storage of Home Assistant, but not its recorder database and logs" \
+  'l=$(restic ls latest 2>&1) && echo "$l" | grep -qx "/data/homeassistant-data/.storage/core.config_entries" && echo "$l" | grep -qx "/data/homeassistant-data/.storage/auth" && ! echo "$l" | grep -q "home-assistant_v2.db" && ! echo "$l" | grep -q "home-assistant.log" && echo "$l" | grep -q "/data/zigbee2mqtt-data/database.db"'
+: > "$PINGS"
+check "restore-test.sh passes with Home Assistant set up and says it checked core.config_entries" \
+  '[ "$(run restore-test.sh)" = 0 ] && grep -q "restore test passed" "$OUT" && grep -q "core.config_entries" "$OUT" && no_secret_in_logs'
+: > "$GW/homeassistant-data/.storage/core.config_entries"
+run backup.sh > /dev/null
+: > "$PINGS"
+check "restore-test.sh fails when core.config_entries is empty in the latest snapshot, and pings fail" \
+  '[ "$(run restore-test.sh)" = 1 ] && grep -q "core.config_entries" "$OUT" && pings_are "backup/fail" && ! grep -q "restore test passed" "$OUT"'
+echo "not json" > "$GW/homeassistant-data/.storage/core.config_entries"
+run backup.sh > /dev/null
+check "restore-test.sh fails when core.config_entries is not a JSON object" \
+  '[ "$(run restore-test.sh)" = 1 ] && grep -q "core.config_entries" "$OUT" && grep -qi "JSON" "$OUT" && ! grep -q "restore test passed" "$OUT"'
+teardown
+
+setup
+check "without homeassistant-data the backup runs as before and the snapshot has no Home Assistant path" \
+  '[ "$(run backup.sh)" = 0 ] && grep -q "backup completed" "$OUT" && ! restic ls latest 2>&1 | grep -q "/data/homeassistant-data"'
+check "without Home Assistant the restore test passes with the message as before" \
+  '[ "$(run restore-test.sh)" = 0 ] && grep -qx "restore test passed (configuration.yaml and database.db restored, not empty, database.db is JSON lines, no secrets)" "$OUT"'
+teardown
+setup; mkdir -p "$GW/homeassistant-data"
+check "an empty homeassistant-data folder (Docker creates it for the bind mount) is left out of the snapshot" \
+  '[ "$(run backup.sh)" = 0 ] && ! restic ls latest 2>&1 | grep -q "/data/homeassistant-data"'
 teardown
 
 echo "backup tests: $passed passed, $failures failed"
