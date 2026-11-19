@@ -146,6 +146,41 @@ def test_connect_fail_warns_once_until_connected(conn, client_class, caplog):
     assert len([r for r in caplog.records if r.levelno == logging.WARNING]) == 1
 
 
+def fail_with(client, error: OSError) -> None:
+    """Call on_connect_fail the way paho does: inside `except OSError` around reconnect()."""
+    try:
+        raise error
+    except OSError:
+        client.on_connect_fail(client, None)
+
+
+def test_connect_fail_warns_with_reason(conn, client_class, caplog):
+    conn.start()
+    client = client_of(client_class)
+
+    with caplog.at_level(logging.WARNING):
+        fail_with(client, ssl.SSLCertVerificationError("certificate verify failed"))
+
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(warnings) == 1
+    assert "certificate verify failed" in warnings[0].getMessage()
+
+
+def test_connect_fail_warns_again_when_reason_changes(conn, client_class, caplog):
+    conn.start()
+    client = client_of(client_class)
+
+    with caplog.at_level(logging.WARNING):
+        fail_with(client, ConnectionRefusedError(111, "Connection refused"))
+        fail_with(client, ConnectionRefusedError(111, "Connection refused"))
+        fail_with(client, OSError(-2, "Name or service not known"))
+
+    messages = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(messages) == 2
+    assert "Connection refused" in messages[0]
+    assert "Name or service not known" in messages[1]
+
+
 def test_publish_dropped_while_disconnected(conn, client_class):
     conn.publish("gw/x/ha/devices", b"{}")  # before start: no client, dropped
 
@@ -305,6 +340,7 @@ def test_real_client_without_broker_starts_and_stops(tmp_path, on_connected, cap
         conn.stop([("gw/x/ha/status", b"offline")])
 
     assert "Cannot reach" in caplog.text
+    assert "Connection refused" in caplog.text  # paho's reason, not just "cannot reach"
     assert time.monotonic() - started < 5
     assert not conn.connected
     on_connected.assert_not_called()

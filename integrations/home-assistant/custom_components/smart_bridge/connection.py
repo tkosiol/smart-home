@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import ssl
+import sys
 import threading
 import time
 from collections.abc import Callable, Sequence
@@ -74,7 +75,7 @@ class PahoConnection:
         self._connection_topic = connection_topic(gateway_id)
         self._client: mqtt.Client | None = None
         self._connected = threading.Event()
-        self._failure_reported = False
+        self._failure_reported: str | None = None  # last connect error warned about
         # start() and stop() run in executor threads and may overlap when HA stops early.
         self._lifecycle = threading.Lock()
         # Orders a late CONNACK against stop(): "1" is either queued before "offline"/"0" or not
@@ -155,7 +156,7 @@ class PahoConnection:
                 return
             self._connected.set()
             client.publish(self._connection_topic, b"1", qos=QOS, retain=True)
-        self._failure_reported = False
+        self._failure_reported = None
         _LOGGER.info("Connected to the platform broker")
         try:
             self._on_connected()
@@ -163,11 +164,15 @@ class PahoConnection:
             _LOGGER.exception("Handling the new connection failed")
 
     def _handle_connect_fail(self, _client: mqtt.Client, _userdata: Any) -> None:
-        if not self._failure_reported:
-            self._failure_reported = True
-            _LOGGER.warning("Cannot reach the platform broker; retrying with backoff")
+        # paho calls this inside `except OSError` around reconnect(), so the error (TLS
+        # verification, refused, DNS, timeout) is the exception being handled.
+        err = sys.exception()
+        reason = str(err) if err is not None else "unknown error"
+        if reason != self._failure_reported:
+            self._failure_reported = reason
+            _LOGGER.warning("Cannot reach the platform broker (retrying with backoff): %s", reason)
         else:
-            _LOGGER.debug("Still cannot reach the platform broker")
+            _LOGGER.debug("Still cannot reach the platform broker: %s", reason)
 
     def _handle_disconnect(
         self, _client: mqtt.Client, _userdata: Any, _flags: Any, reason_code: Any, _props: Any
