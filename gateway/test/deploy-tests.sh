@@ -62,7 +62,7 @@ setup() {
     STUB_PS_FAIL STUB_OLD_PS_FAIL STUB_CUT_FINISH STUB_SSH_BREAK_START STUB_SSH_BREAK_AFTER_START \
     STUB_OLD_PSA_FAIL STUB_INSPECT_FAIL STUB_INSPECT_EMPTY STUB_FAIL_UPDATE_NAME STUB_FAIL_RESTORE STUB_OLD_POLICY \
     STUB_FOREIGN_WHEN_OLD_STOPPED STUB_LIST_FAIL STUB_CP_KILL STUB_TIMEOUT_START STUB_SSH_BREAK_PLAIN_START STUB_TIMEDATECTL \
-    STUB_HA_DOWN SMART_DEPLOY_HA_WAIT_SECONDS SMART_DEPLOY_HA_POLL_SECONDS STUB_FAIL_HA_UP STUB_FAIL_HA_PULL STUB_FAIL_HA_RM
+    STUB_HA_DOWN SMART_DEPLOY_HA_WAIT_SECONDS SMART_DEPLOY_HA_POLL_SECONDS STUB_FAIL_HA_UP STUB_FAIL_HA_PULL STUB_FAIL_HA_RM STUB_FAIL_HA_STOP
   export PATH="$WORK/bin:$PATH"
   export STUB_CALLS="$CALLS" STUB_STATE="$WORK/state" STUB_SSH_EXEC=1 STUB_REMOTE_HOME="$HOME_DIR"
   export STUB_REAL_SSH="$GATEWAY_DIR/../infra/deploy/test/stubs/ssh"
@@ -626,6 +626,15 @@ setup; : > "$WORK/state/ha_running"
 check "without ha.env deploy removes a leftover homeassistant container of the project and says so" \
   '[ "$(deploy --fresh)" = 0 ] && grep -q "^docker ps -aq --filter label=com.docker.compose.project=smart-gateway --filter label=com.docker.compose.service=homeassistant$" "$CALLS" && ha_removed && [ ! -e "$WORK/state/ha_running" ] && grep -q "removed the Home Assistant container" "$OUT" && ! grep -q "^docker .*profile ha" "$CALLS" && new_running'
 check "the removal is bounded by timeouts and comes after the start of the stack" 'bounded "ps -aq --filter label=com.docker.compose.project=smart-gateway" && bounded "rm -f smart-gateway-homeassistant-1" && in_order "bash ./start.sh" "^docker rm -f smart-gateway-homeassistant-1"'
+# A graceful stop first (SIGTERM, 120 s like stop_grace_period in compose.yaml): Home Assistant saves its registries
+# and smart_bridge publishes ha/status offline; rm -f alone would kill it and leave the retained online behind.
+ha_stop_timeout_covers_grace() { sed -n "$(($(line_of "^docker stop -t 120 smart-gateway-homeassistant-1$") - 1))p" "$CALLS" | awk '$1 == "timeout" && $2 == "-k" && $4 > 120 { ok = 1 } END { exit !ok }'; }
+check "the removal first stops the container gracefully (docker stop -t 120, bounded by a longer timeout), then removes it" \
+  'in_order "bash ./start.sh" "^docker stop -t 120 smart-gateway-homeassistant-1$" "^docker rm -f smart-gateway-homeassistant-1$" && bounded "stop -t 120 smart-gateway-homeassistant-1" && ha_stop_timeout_covers_grace'
+teardown
+setup; : > "$WORK/state/ha_running"; export STUB_FAIL_HA_STOP=1
+check "a graceful stop that fails still removes the container (rm -f), without a warning" \
+  '[ "$(deploy --fresh)" = 0 ] && ha_removed && [ ! -e "$WORK/state/ha_running" ] && grep -q "removed the Home Assistant container" "$OUT" && ! grep -qi "warning.*Home Assistant container" "$OUT" && new_running'
 teardown
 setup; : > "$WORK/state/ha_running"; export STUB_FAIL_HA_RM=1
 check "a leftover container that cannot be removed is a warning, not a failure" '[ "$(deploy --fresh)" = 0 ] && grep -qi "warning.*Home Assistant container" "$OUT" && new_running'
@@ -642,6 +651,10 @@ for failure in STUB_FAIL_HA_UP STUB_FAIL_HA_PULL; do
     '[ "$(deploy --fresh)" = 0 ] && grep -qi "warning: Home Assistant could not be" "$OUT" && grep -q "Zigbee2MQTT is running" "$OUT" && new_running && grep -q "bridge/state" "$CALLS" && [ -s "$WORK/systemd/smart-gateway-backup.timer" ] && [ "$(ha_probes)" = 0 ] && ! grep -Eq "^docker .*(stop|down)" "$CALLS"'
   teardown
 done
+setup; setup_ha; export STUB_FAIL_HA_PULL=1
+check "a failed pull of Home Assistant names SMART_DEPLOY_PULL_TIMEOUT (the first pull on a Pi can take longer than 900 s)" \
+  '[ "$(deploy --fresh)" = 0 ] && grep -q "could not be pulled" "$OUT" && grep -q "SMART_DEPLOY_PULL_TIMEOUT" "$OUT"'
+teardown
 setup; setup_ha; export SMART_PI_OLD_STACK="$OLD" STUB_FAIL_HA_UP=1
 check "inside --migrate a Home Assistant that cannot start rolls nothing back: done, new stack running, old stopped" \
   '[ "$(deploy --migrate)" = 0 ] && [ "$(cut -d" " -f1 "$PI_DIR/migration/status")" = done ] && new_running && ! old_running && grep -qi "warning: Home Assistant could not be" "$OUT"'

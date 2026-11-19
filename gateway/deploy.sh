@@ -313,9 +313,13 @@ EOF
 )
 # Without secrets/ha/ha.env: removes a homeassistant container of the project (by its labels; compose with the
 # profile would need the env file) and prints what it removed. Exit 3 the listing failed, 4 a removal failed.
+# First a graceful stop (120 s, the stop_grace_period of compose.yaml): Home Assistant saves its registries and
+# smart_bridge publishes ha/status offline; rm -f alone would kill it and leave the retained online behind. A failed
+# stop does not matter, rm -f follows anyway.
 S_HA_REMOVE=$(cat << 'EOF'
 ids=$(timeout -k 5 30 docker ps -aq --filter label=com.docker.compose.project=smart-gateway --filter label=com.docker.compose.service=homeassistant) || exit 3
 for c in $ids; do
+  timeout -k 10 150 docker stop -t 120 "$c" > /dev/null 2>&1 || true
   timeout -k 10 120 docker rm -f "$c" > /dev/null || exit 4
   echo "$c"
 done
@@ -544,7 +548,7 @@ if [ "$ha_state" = ha ]; then
       fi ;;
     3)
       echo "warning: Home Assistant could not be pulled (docker compose pull homeassistant failed or took more than ${pull_timeout} s) – Zigbee2MQTT is running; the old Home Assistant container, if any, was not touched"
-      echo "warning: run the deploy again later, or on the Pi, in $dir: sudo docker compose --env-file secrets/gateway.env --profile ha pull homeassistant" ;;
+      echo "warning: run the deploy again later (the first pull of Home Assistant on a Pi can take longer: raise SMART_DEPLOY_PULL_TIMEOUT, e.g. SMART_DEPLOY_PULL_TIMEOUT=1800), or on the Pi, in $dir: sudo docker compose --env-file secrets/gateway.env --profile ha pull homeassistant" ;;
     4)
       echo "warning: Home Assistant could not be started (docker compose up homeassistant failed) – Zigbee2MQTT is running; check docker compose logs homeassistant"
       ha_logs_hint ;;
