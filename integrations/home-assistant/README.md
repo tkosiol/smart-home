@@ -22,4 +22,7 @@ Das Protokoll (v1: Topics, Nutzlasten, Auswahl der Entitäten, Größengrenzen) 
 bash integrations/home-assistant/test/run-tests.sh
 ```
 
-Der Lauf braucht nur Docker (Image `python:3.14.10-slim-trixie`) und führt `ruff format --check`, `ruff check` und `pytest` aus. Ein pip-Cache liegt im Docker-Volume `smart-ha-integration-pip-cache`.
+Der Lauf hat zwei Phasen.
+
+1. Phase 1 braucht nur Docker (Image `python:3.14.10-slim-trixie`) und führt `ruff format --check`, `ruff check` und `pytest` aus. Ein pip-Cache liegt im Docker-Volume `smart-ha-integration-pip-cache`.
+2. Phase 2 startet die Integration im gepinnten Home-Assistant-Image (`ghcr.io/home-assistant/home-assistant:2026.11.0`, einmaliges Laden, groß) gegen das echte Broker-Image aus `infra/broker` (mTLS, echte ACL, Wegwerf-PKI aus `infra/pki/pki.sh`). Sie braucht zusätzlich OpenSSL ≥ 3 (Homebrew-Pfade werden gefunden, sonst `SMART_OPENSSL`) und `python3` auf dem Host. Die Testkonfiguration `test/ha-config/configuration.yaml` lädt `demo:` für Demo-Lampen mit Gerät (das Laden per YAML funktioniert in 2026.11.0). Geprüft werden innerhalb von 180 s: `bridge/connection` = `1`, `ha/status` = `online`, `ha/devices` (`v` = 1, ein Gerät mit `light`-Entität) und `ha/device/<id>`; nach `docker stop` `offline` und `0`; im HA-Log keine `ERROR`-Zeile von `smart_bridge` und keine Nutzlast. Bei einem Fehler zeigt der Test die letzten Log-Zeilen von Home Assistant, nie Nutzlasten.

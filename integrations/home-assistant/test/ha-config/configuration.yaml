@@ -1,0 +1,15 @@
+# Test configuration for the Docker test (test/run-tests.sh, phase 2). The broker host and the certificate paths
+# match the throwaway setup of that script; nothing here is a real value.
+http:
+  server_port: 8123
+
+# Demo entities with devices (lights among them), so there is something to publish.
+demo:
+
+smart_bridge:
+  gateway_id: gw-hatest01
+  broker_host: broker
+  broker_port: 8883
+  ca_file: /smart-secrets/ca.crt
+  cert_file: /smart-secrets/gateway.crt
+  key_file: /smart-secrets/gateway.key
