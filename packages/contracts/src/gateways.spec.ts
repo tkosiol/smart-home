@@ -43,7 +43,7 @@ describe('gatewaySchema', () => {
     kind: 'z2m' as const,
     topicPrefix: 'zigbee2mqtt',
     bridgeStatus: 'online' as const,
-    z2mStatus: 'unknown' as const,
+    serviceStatus: 'unknown' as const,
     statusChangedAt: '2026-10-14T08:00:00.000Z',
     lastMessageAt: null,
     certExpiresAt: '2027-10-14T08:00:00.000Z',
@@ -73,6 +73,10 @@ describe('gatewaySchema', () => {
     expect(gatewaySchema.safeParse({ ...gateway, id: 'api' }).success).toBe(false);
   });
 
+  it('rejects a kind of gateway that has no adapter', () => {
+    expect(gatewaySchema.safeParse({ ...gateway, kind: 'ha' }).success).toBe(false);
+  });
+
   it('requires the certificate expiry', () => {
     expect(gatewaySchema.safeParse({ ...gateway, certExpiresAt: undefined }).success).toBe(false);
   });
@@ -85,6 +89,13 @@ describe('gatewayRegisterSchema', () => {
       certificate: 'not-a-real-certificate',
     });
     expect(parsed.success && parsed.data.name).toBe('Keller');
+  });
+
+  it('accepts the kind but does not require it', () => {
+    const base = { name: 'Keller', certificate: 'abc' };
+    expect(gatewayRegisterSchema.safeParse(base).success).toBe(true);
+    expect(gatewayRegisterSchema.safeParse({ ...base, kind: 'z2m' }).success).toBe(true);
+    expect(gatewayRegisterSchema.safeParse({ ...base, kind: 'ha' }).success).toBe(false);
   });
 
   it('rejects an empty certificate and one above 20 000 characters', () => {

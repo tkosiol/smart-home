@@ -17,5 +17,4 @@ export {
 export { GatewaysModule } from './gateways.module.js';
 export { GatewaysService, type ActiveGateway, type RegisteredGateway } from './gateways.service.js';
 export { Throttle } from './throttle.js';
-export { isBridgeTopic, isCommandTopic, isDeviceTraffic } from './z2m-topics.js';
 export { gateways, type GatewayRow } from './gateways.schema.js';

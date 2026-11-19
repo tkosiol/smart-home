@@ -7,6 +7,7 @@ export * from './api-error.js';
 export * from './auth.js';
 export * from './households.js';
 export * from './gateways.js';
+export * from './vocabulary.js';
 export * from './devices.js';
 export * from './thresholds.js';
 export * from './attention.js';

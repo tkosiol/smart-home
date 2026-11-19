@@ -27,7 +27,7 @@ const gateway = (id: string, name: string, overrides: Partial<Gateway> = {}): Ga
   kind: 'z2m',
   topicPrefix: `smart/gateways/${id}/z2m`,
   bridgeStatus: 'online',
-  z2mStatus: 'online',
+  serviceStatus: 'online',
   statusChangedAt: '2026-10-14T08:00:00Z',
   lastMessageAt: '2026-10-14T11:55:00Z',
   certExpiresAt: '2027-04-01T10:00:00Z',
@@ -36,7 +36,10 @@ const gateway = (id: string, name: string, overrides: Partial<Gateway> = {}): Ga
   ...overrides,
 });
 const flur = gateway('gw-aaaaaaaa', 'Flur');
-const keller = gateway('gw-bbbbbbbb', 'Keller', { bridgeStatus: 'offline', z2mStatus: 'unknown' });
+const keller = gateway('gw-bbbbbbbb', 'Keller', {
+  bridgeStatus: 'offline',
+  serviceStatus: 'unknown',
+});
 const PEM = '-----BEGIN CERTIFICATE-----\nMIIB\nabc=\n-----END CERTIFICATE-----\n';
 
 /** Assembled from parts: a complete block in the source would trip the secret scanners. */
@@ -65,7 +68,7 @@ function server(overrides: Partial<Server> = {}) {
     if (call.method === 'POST' && path === '/gateways') {
       const created = gateway('gw-dddddddd', (call.body as { name: string }).name, {
         bridgeStatus: 'unknown',
-        z2mStatus: 'unknown',
+        serviceStatus: 'unknown',
         lastMessageAt: null,
       });
       state.gateways = [...state.gateways, created];

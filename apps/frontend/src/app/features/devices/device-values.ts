@@ -33,8 +33,6 @@ export function formatNumber(value: number, locale: string): string {
 
 export function binaryOf(value: unknown): boolean | undefined {
   if (typeof value === 'boolean') return value;
-  if (value === 'ON') return true;
-  if (value === 'OFF') return false;
   return undefined;
 }
 

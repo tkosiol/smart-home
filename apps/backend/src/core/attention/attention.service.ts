@@ -206,7 +206,7 @@ export class AttentionService implements OnModuleInit, OnModuleDestroy {
         id: gateway.id,
         name: gateway.name,
         bridgeStatus: gateway.bridgeStatus,
-        z2mStatus: gateway.z2mStatus,
+        serviceStatus: gateway.serviceStatus,
         statusChangedAt:
           gateway.statusChangedAt === null ? null : new Date(gateway.statusChangedAt),
         lastMessageAt: gateway.lastMessageAt === null ? null : new Date(gateway.lastMessageAt),
@@ -219,7 +219,7 @@ export class AttentionService implements OnModuleInit, OnModuleDestroy {
       hardware: hardware.map((row) => ({
         id: row.id,
         gatewayId: row.gatewayId,
-        name: row.friendlyName,
+        name: row.name,
         firstSeenAt: row.firstSeenAt,
       })),
       crlNextUpdate,

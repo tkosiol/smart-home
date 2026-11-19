@@ -185,7 +185,7 @@ describe('gateways', () => {
         kind: 'z2m',
         topicPrefix: `gw/${issued.id}/z2m`,
         bridgeStatus: 'unknown',
-        z2mStatus: 'unknown',
+        serviceStatus: 'unknown',
         statusChangedAt: null,
         lastMessageAt: null,
         certExpiresAt: new Date(x509.validTo).toISOString(),
@@ -195,6 +195,30 @@ describe('gateways', () => {
       const [row] = await connection.sql<{ household_id: string; cert_fingerprint: string }[]>`
         select household_id, cert_fingerprint from gateways where id = ${issued.id}`;
       expect(row).toEqual({ household_id: householdId, cert_fingerprint: x509.fingerprint256 });
+    });
+
+    it('registers an explicit kind like the default and refuses an unknown one', async () => {
+      const explicit = ca.issue();
+      const response = await request(app.getHttpServer())
+        .post(`${HOUSEHOLDS}/${householdId}/gateways`)
+        .set('Cookie', admin.cookie)
+        .set('Origin', origin)
+        .send({ name: 'Pi', kind: 'z2m', certificate: explicit.certificate })
+        .expect(201);
+      expect(gatewaySchema.parse(response.body)).toMatchObject({
+        kind: 'z2m',
+        topicPrefix: `gw/${explicit.id}/z2m`,
+      });
+      const unknown = ca.issue();
+      const refused = await request(app.getHttpServer())
+        .post(`${HOUSEHOLDS}/${householdId}/gateways`)
+        .set('Cookie', admin.cookie)
+        .set('Origin', origin)
+        .send({ name: 'Pi', kind: 'xx', certificate: unknown.certificate })
+        .expect(400);
+      expect(refused.body).toMatchObject({ code: 'validation.failed' });
+      const [row] = await connection.sql`select id from gateways where id = ${unknown.id}`;
+      expect(row).toBeUndefined();
     });
 
     it('accepts CRLF line breaks and blank lines around the block', async () => {
@@ -207,12 +231,14 @@ describe('gateways', () => {
       const issued = ca.issue();
       const at = new Date('2026-10-14T08:00:00Z');
       recall.mockImplementation((id) =>
-        id === issued.id ? { bridge: 'online', z2m: 'offline', at } : undefined,
+        id === issued.id
+          ? { bridge: 'online', service: 'offline', serviceKind: 'z2m', at }
+          : undefined,
       );
       const response = await register(admin, householdId, issued.certificate).expect(201);
       expect(gatewaySchema.parse(response.body)).toMatchObject({
         bridgeStatus: 'online',
-        z2mStatus: 'offline',
+        serviceStatus: 'offline',
         statusChangedAt: at.toISOString(),
       });
       const listed = await list(admin, householdId).expect(200);
@@ -227,7 +253,7 @@ describe('gateways', () => {
       const response = await register(admin, householdId, issued.certificate).expect(201);
       expect(gatewaySchema.parse(response.body)).toMatchObject({
         bridgeStatus: 'offline',
-        z2mStatus: 'unknown',
+        serviceStatus: 'unknown',
       });
       expect(gatewaySchema.parse(response.body).statusChangedAt).not.toBeNull();
     });

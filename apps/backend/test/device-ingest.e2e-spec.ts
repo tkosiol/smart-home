@@ -8,7 +8,7 @@ import type { StartedTestContainer } from 'testcontainers';
 import { inject, vi } from 'vitest';
 import { AppModule } from '../src/app.module.js';
 import { configureApp } from '../src/app.setup.js';
-import { DeviceIngestConsumer } from '../src/core/devices/device-ingest.consumer.js';
+import { GatewayIngest } from '../src/core/devices/index.js';
 import { GatewaysService } from '../src/core/gateways/gateways.service.js';
 import { CLOCK } from '../src/core/identity/index.js';
 import { runMigrations } from '../src/platform/database/index.js';
@@ -18,7 +18,8 @@ import { createTestCa, randomGatewayId, type TestCa } from './helpers/test-pki.j
 
 interface HardwareRecord {
   id: string;
-  friendly_name: string;
+  name: string;
+  address: string | null;
   vendor: string;
   model: string;
   availability: string;
@@ -29,6 +30,9 @@ interface HardwareRecord {
 interface CapabilityRecord {
   key: string;
   kind: string;
+  unit: string | null;
+  min: number | null;
+  max: number | null;
   readable: boolean;
   writable: boolean;
   is_setting: boolean;
@@ -65,7 +69,7 @@ describe('device ingest from the broker', () => {
   let publisher: MqttClient;
   let sql: postgres.Sql;
   let app: INestApplication;
-  let consumer: DeviceIngestConsumer;
+  let consumer: GatewayIngest;
   let householdId: string;
   let now = new Date();
   const log = vi.spyOn(Logger.prototype, 'log');
@@ -84,16 +88,16 @@ describe('device ingest from the broker', () => {
   };
   const hardwareOf = (gatewayId: string): Promise<HardwareRecord[]> =>
     sql<HardwareRecord[]>`
-      select id, friendly_name, vendor, model, availability, last_state, last_seen_at, removed_at
-      from hardware where gateway_id = ${gatewayId} order by friendly_name`;
+      select id, name, address, vendor, model, availability, last_state, last_seen_at, removed_at
+      from hardware where gateway_id = ${gatewayId} order by name`;
   const named = async (gatewayId: string, name: string): Promise<HardwareRecord> => {
-    const row = (await hardwareOf(gatewayId)).find((entry) => entry.friendly_name === name);
+    const row = (await hardwareOf(gatewayId)).find((entry) => entry.name === name);
     if (!row) throw new Error(`no hardware ${name} of ${gatewayId}`);
     return row;
   };
   const capabilitiesOf = (hardwareId: string): Promise<CapabilityRecord[]> =>
     sql<CapabilityRecord[]>`
-      select key, kind, readable, writable, is_setting from capabilities
+      select key, kind, unit, min, max, readable, writable, is_setting from capabilities
       where hardware_id = ${hardwareId}`;
   /** A message after the ones under test: once it arrives, everything before it was handled. */
   const sentinel = async (gatewayId: string, name: string): Promise<void> => {
@@ -138,7 +142,7 @@ describe('device ingest from the broker', () => {
     app = moduleRef.createNestApplication();
     configureApp(app);
     await app.init();
-    consumer = app.get(DeviceIngestConsumer);
+    consumer = app.get(GatewayIngest);
   });
 
   afterAll(async () => {
@@ -157,7 +161,7 @@ describe('device ingest from the broker', () => {
   it('discovers the simulator fixture from a retained bridge/devices', async () => {
     await eventually(async () => expect(await hardwareOf(retainedGateway)).toHaveLength(7));
     const plants = (await hardwareOf(retainedGateway)).filter((row) =>
-      row.friendly_name.startsWith('Pflanze'),
+      row.name.startsWith('Pflanze'),
     );
     expect(plants).toHaveLength(6);
     expect(plants[0]).toMatchObject({ vendor: 'AOYAN', model: 'AY-303Z', removed_at: null });
@@ -174,7 +178,14 @@ describe('device ingest from the broker', () => {
     const lamp = await capabilitiesOf((await named(retainedGateway, 'Lampe')).id);
     const lampFlag = (key: string) => lamp.find((capability) => capability.key === key);
     expect(lampFlag('state')).toMatchObject({ kind: 'binary', is_setting: false });
-    expect(lampFlag('brightness')).toMatchObject({ is_setting: false });
+    // In the platform's own units: percent and kelvin (153–500 mired).
+    expect(lampFlag('brightness')).toMatchObject({
+      unit: '%',
+      min: 0,
+      max: 100,
+      is_setting: false,
+    });
+    expect(lampFlag('color_temp')).toMatchObject({ unit: 'K', min: 2000, max: 6536 });
     expect(lampFlag('power_on_behavior')).toMatchObject({ is_setting: true });
     expect(lampFlag('effect')).toMatchObject({ readable: false, writable: true });
   });
@@ -201,7 +212,11 @@ describe('device ingest from the broker', () => {
     await eventually(async () => {
       expect((await named(retainedGateway, 'Stehlampe')).vendor).toBe('IKEA');
     });
-    await publish(`${prefixOf(retainedGateway)}/Stehlampe`, { state: 'ON' });
+    await publish(`${prefixOf(retainedGateway)}/Stehlampe`, {
+      state: 'ON',
+      brightness: 127,
+      color_temp: 370,
+    });
     await publish(`${prefixOf(retainedGateway)}/Lampe`, {
       state: 'OFF',
       secret: 'old-name-payload',
@@ -211,7 +226,11 @@ describe('device ingest from the broker', () => {
       secret: 'old-name-payload',
     });
     await sentinel(retainedGateway, 'Pflanze 2');
-    expect((await named(retainedGateway, 'Stehlampe')).last_state).toEqual({ state: 'ON' });
+    expect((await named(retainedGateway, 'Stehlampe')).last_state).toEqual({
+      state: true,
+      brightness: 50,
+      color_temp: 2703,
+    });
     expect(consumer.discarded.unknownName).toBe(before + 2);
     const mentions = log.mock.calls.filter((call) => String(call[0]).includes('"Lampe"'));
     expect(mentions).toHaveLength(1);
@@ -223,7 +242,7 @@ describe('device ingest from the broker', () => {
     await publish(`${prefixOf(retainedGateway)}/Stehlampe/set`, { state: 'OFF' });
     await publish(`${prefixOf(retainedGateway)}/Stehlampe/get`, { state: '' });
     await sentinel(retainedGateway, 'Pflanze 3');
-    expect((await named(retainedGateway, 'Stehlampe')).last_state).toEqual({ state: 'ON' });
+    expect((await named(retainedGateway, 'Stehlampe')).last_state).toMatchObject({ state: true });
     expect(consumer.discarded.unknownName).toBe(before);
   });
 

@@ -7,12 +7,11 @@ import { inject, vi } from 'vitest';
 import { AppModule } from '../src/app.module.js';
 import { configureApp } from '../src/app.setup.js';
 import {
-  DEVICE_MESSAGE_HANDLER,
+  DeviceReportProcessor,
   DevicesRepository,
+  GatewayIngest,
   HardwareRepository,
-  type DeviceMessageHandler,
 } from '../src/core/devices/index.js';
-import { DeviceIngestConsumer } from '../src/core/devices/device-ingest.consumer.js';
 import { runMigrations } from '../src/platform/database/index.js';
 import { createFreshDatabase } from './helpers/fresh-database.js';
 import { createTestCa, randomGatewayId, type TestCa } from './helpers/test-pki.js';
@@ -72,7 +71,7 @@ describe('device ingest under load', () => {
     let hardwareId = '';
     await vi.waitFor(
       async () => {
-        const found = await hardware.findByName(gatewayId, 'Pflanze 1');
+        const found = await hardware.findByAddress(gatewayId, 'Pflanze 1');
         expect(found).toBeDefined();
         hardwareId = found?.id ?? '';
       },
@@ -123,13 +122,13 @@ describe('device ingest under load', () => {
     const { gatewayId, prefix } = await prepare();
     const app = await startApp();
     try {
-      const handler = app.get<DeviceMessageHandler>(DEVICE_MESSAGE_HANDLER);
+      const handler = app.get(DeviceReportProcessor);
       const original = handler.handle.bind(handler);
       let handled = 0;
       // A database that is slower than the broker: 1 ms more per message.
-      vi.spyOn(handler, 'handle').mockImplementation(async (...args) => {
+      vi.spyOn(handler, 'handle').mockImplementation(async (report) => {
         await sleep(1);
-        await original(...args);
+        await original(report);
         handled += 1;
       });
       const deviceId = await addDevice(app, gatewayId);
@@ -148,7 +147,7 @@ describe('device ingest under load', () => {
       }
 
       await vi.waitFor(() => expect(handled).toBe(total), { timeout: 100_000, interval: 200 });
-      const consumer = app.get(DeviceIngestConsumer);
+      const consumer = app.get(GatewayIngest);
       expect(consumer.discarded).toEqual({ unknownName: 0, invalid: 0, overflow: 0 });
       await vi.waitFor(async () => expect(await countReadings(deviceId)).toBe(total), {
         timeout: 15_000,
@@ -162,14 +161,14 @@ describe('device ingest under load', () => {
   it('handles the messages it has taken before the app shuts down', async () => {
     const { gatewayId, prefix } = await prepare();
     const app = await startApp();
-    const handler = app.get<DeviceMessageHandler>(DEVICE_MESSAGE_HANDLER);
+    const handler = app.get(DeviceReportProcessor);
     const original = handler.handle.bind(handler);
     let started = 0;
     let finished = 0;
-    vi.spyOn(handler, 'handle').mockImplementation(async (...args) => {
+    vi.spyOn(handler, 'handle').mockImplementation(async (report) => {
       started += 1;
       await sleep(100);
-      await original(...args);
+      await original(report);
       finished += 1;
     });
     const deviceId = await addDevice(app, gatewayId);

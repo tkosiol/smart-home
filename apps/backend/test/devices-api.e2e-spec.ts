@@ -104,9 +104,10 @@ describe('hardware and devices of a household', () => {
     lastState: object = { soil_moisture: 41, battery: 88 },
   ): Promise<string> => {
     const [row] = await connection.sql<{ id: string }[]>`
-      insert into hardware (gateway_id, ieee_address, friendly_name, vendor, model, availability,
+      insert into hardware (gateway_id, external_id, name, address, vendor, model, availability,
         last_state, first_seen_at, last_seen_at)
-      values (${gatewayId}, ${`0x${randomBytes(8).toString('hex')}`}, ${name}, 'Acme', 'AY-303Z',
+      values (${gatewayId}, ${`0x${randomBytes(8).toString('hex')}`}, ${name}, ${name}, 'Acme',
+        'AY-303Z',
         'online', ${JSON.stringify(lastState)}::jsonb, now(), '2026-10-14T11:00:00Z')
       returning id`;
     if (!row) throw new Error('no hardware');
@@ -158,7 +159,7 @@ describe('hardware and devices of a household', () => {
       expect(list[0]).toMatchObject({
         id: hardwareId,
         gatewayId: h.gatewayId,
-        friendlyName: 'bed-1',
+        name: 'bed-1',
         vendor: 'Acme',
         availability: 'online',
         lastSeenAt: '2026-10-14T11:00:00.000Z',
@@ -489,8 +490,8 @@ describe('hardware and devices of a household', () => {
     it('shows the default of a climate device without a soil minimum', async () => {
       const h = await household();
       const [row] = await connection.sql<{ id: string }[]>`
-        insert into hardware (gateway_id, ieee_address, friendly_name, first_seen_at)
-        values (${h.gatewayId}, '0xclimate', 'room', now()) returning id`;
+        insert into hardware (gateway_id, external_id, name, address, first_seen_at)
+        values (${h.gatewayId}, '0xclimate', 'room', 'room', now()) returning id`;
       await connection.sql`
         insert into capabilities (hardware_id, key, kind, readable, writable, is_setting)
         values (${row?.id}, 'temperature', 'numeric', true, false, false)`;

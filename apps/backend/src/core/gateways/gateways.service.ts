@@ -1,18 +1,21 @@
 import { X509Certificate } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
-import type { Gateway, GatewayRegister } from '@smart/contracts';
+import type { Gateway, GatewayKind, GatewayRegister } from '@smart/contracts';
 import { ENV, type Env } from '../../platform/config/index.js';
 import { describeError } from '../../platform/errors/index.js';
 import { ApiError } from '../../platform/http/index.js';
+import { AdapterRegistry } from '../adapters/index.js';
 import { CLOCK, type Clock } from '../identity/index.js';
 import { readGatewayCertificate } from './gateway-certificate.js';
 import {
   GATEWAY_REGISTERED,
   GATEWAY_REVOKED,
+  GATEWAY_TOUCHED,
   GatewayEvents,
   type GatewayRegistered,
   type GatewayRevoked,
+  type GatewayTouched,
 } from './gateway-events.js';
 import {
   GATEWAY_STATUS_MEMORY,
@@ -28,6 +31,7 @@ const HOUR_MS = 3_600_000;
 export interface ActiveGateway {
   id: string;
   householdId: string;
+  kind: GatewayKind;
   topicPrefix: string;
 }
 
@@ -47,6 +51,7 @@ export class GatewaysService {
     @Inject(CLOCK) private readonly clock: Clock,
     @Inject(GATEWAY_STATUS_MEMORY) private readonly memory: GatewayStatusMemory,
     private readonly events: GatewayEvents,
+    private readonly adapters: AdapterRegistry,
   ) {}
 
   async list(householdId: string): Promise<Gateway[]> {
@@ -83,29 +88,49 @@ export class GatewaysService {
 
   /** Registers the gateway whose public certificate was pasted; the CA decides whether it counts. */
   async register(householdId: string, input: GatewayRegister): Promise<Gateway> {
+    const kind = input.kind ?? 'z2m';
+    // No adapter, nobody could follow the gateway: refused before anything is stored.
+    if (this.adapters.get(kind) === undefined) {
+      throw new ApiError(HttpStatus.BAD_REQUEST, 'validation.failed');
+    }
     const ca = await this.loadCa();
     const now = this.clock();
     const certificate = readGatewayCertificate(input.certificate, ca, now);
-    const recalled = this.memory.recall(certificate.id);
-    const heard = recalled?.bridge !== undefined || recalled?.z2m !== undefined;
+    const recalled = this.recallFor(certificate.id, kind);
+    const heard = recalled?.bridge !== undefined || recalled?.service !== undefined;
     const inserted = await this.gateways.insert({
       id: certificate.id,
       householdId,
       name: input.name,
-      topicPrefix: `gw/${certificate.id}/z2m`,
+      kind,
+      topicPrefix: `gw/${certificate.id}/${kind}`,
       certFingerprint: certificate.fingerprint,
       certExpiresAt: certificate.expiresAt,
       createdAt: now,
       ...(recalled?.bridge && { bridgeStatus: recalled.bridge }),
-      ...(recalled?.z2m && { z2mStatus: recalled.z2m }),
+      ...(recalled?.service && { serviceStatus: recalled.service }),
       ...(heard && { statusChangedAt: recalled.at ?? now }),
     });
     // The same message whether the ID is taken in this or another household.
     if (!inserted) throw new ApiError(HttpStatus.CONFLICT, 'gateway.exists');
     const row = await this.applyLateStatus(inserted, recalled, now);
-    const registered: GatewayRegistered = { gatewayId: row.id, topicPrefix: row.topicPrefix };
+    const registered: GatewayRegistered = {
+      gatewayId: row.id,
+      kind: row.kind,
+      topicPrefix: row.topicPrefix,
+    };
     this.events.emit(GATEWAY_REGISTERED, registered);
     return this.toGateway(row, await this.crlNextUpdate(), now);
+  }
+
+  /** What the memory holds for the ID; a service status heard from another kind of gateway says nothing about this one. */
+  private recallFor(id: string, kind: GatewayKind): RecalledStatus | undefined {
+    const recalled = this.memory.recall(id);
+    if (recalled?.service === undefined || recalled.serviceKind === kind) return recalled;
+    return {
+      ...(recalled.bridge && { bridge: recalled.bridge }),
+      ...(recalled.at && { at: recalled.at }),
+    };
   }
 
   /**
@@ -117,15 +142,15 @@ export class GatewaysService {
     recalled: RecalledStatus | undefined,
     now: Date,
   ): Promise<GatewayRow> {
-    const latest = this.memory.recall(row.id);
+    const latest = this.recallFor(row.id, row.kind);
     let result = row;
-    for (const kind of ['bridge', 'z2m'] as const) {
+    for (const kind of ['bridge', 'service'] as const) {
       const status = latest?.[kind];
       if (status === undefined || status === (recalled?.[kind] ?? 'unknown')) continue;
-      await this.gateways.applyStatus(row.id, kind, status, now);
+      await this.gateways.applyStatus(row.id, kind, status, now, row.kind);
       result = {
         ...result,
-        ...(kind === 'bridge' ? { bridgeStatus: status } : { z2mStatus: status }),
+        ...(kind === 'bridge' ? { bridgeStatus: status } : { serviceStatus: status }),
         statusChangedAt: now,
       };
     }
@@ -145,8 +170,20 @@ export class GatewaysService {
     return rows.map((row) => ({
       id: row.id,
       householdId: row.householdId,
+      kind: row.kind,
       topicPrefix: row.topicPrefix,
     }));
+  }
+
+  /**
+   * Records that the gateway showed a sign of life and announces it; `false` (and no announcement)
+   * if it is not registered or was revoked. The caller keeps it to about once a minute.
+   */
+  async touch(gatewayId: string, now: Date): Promise<boolean> {
+    if (!(await this.gateways.touch(gatewayId, now))) return false;
+    const event: GatewayTouched = { gatewayId };
+    this.events.emit(GATEWAY_TOUCHED, event);
+    return true;
   }
 
   private toGateway(row: GatewayRow, crlNextUpdate: Date | undefined, now: Date): Gateway {
@@ -156,7 +193,7 @@ export class GatewaysService {
       kind: row.kind,
       topicPrefix: row.topicPrefix,
       bridgeStatus: row.bridgeStatus,
-      z2mStatus: row.z2mStatus,
+      serviceStatus: row.serviceStatus,
       statusChangedAt: iso(row.statusChangedAt),
       lastMessageAt: iso(row.lastMessageAt),
       certExpiresAt: row.certExpiresAt.toISOString(),

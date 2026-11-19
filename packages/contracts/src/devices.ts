@@ -2,6 +2,7 @@ import * as z from 'zod/mini';
 import { gatewayIdSchema } from './gateways.js';
 import { displayNameSchema } from './households.js';
 import { effectiveThresholdsSchema, LOW_BATTERY_PERCENT, thresholdsSchema } from './thresholds.js';
+import type { CanonicalKey } from './vocabulary.js';
 
 export { LOW_BATTERY_PERCENT };
 
@@ -33,8 +34,10 @@ export const availabilitySchema = z.enum(AVAILABILITIES);
 export const hardwareSchema = z.object({
   id: z.string(),
   gatewayId: gatewayIdSchema,
-  ieeeAddress: z.string(),
-  friendlyName: z.string(),
+  /** Stable ID of the hardware in the gateway's own system (Zigbee: the IEEE address). */
+  externalId: z.string(),
+  /** The name the gateway's own system gives it; suggested when it becomes a device. */
+  name: z.string(),
   vendor: z.string(),
   model: z.string(),
   description: z.nullable(z.string()),
@@ -105,7 +108,12 @@ export const deviceUpdateSchema = z
 export type DeviceUpdate = z.infer<typeof deviceUpdateSchema>;
 
 /** Keys shown first, in this order. */
-const PRIMARY_KEYS = ['soil_moisture', 'temperature', 'humidity', 'state'] as const;
+const PRIMARY_KEYS = [
+  'soil_moisture',
+  'temperature',
+  'humidity',
+  'state',
+] as const satisfies readonly CanonicalKey[];
 
 /**
  * The value shown first: soil_moisture, temperature, humidity, state, else the first numeric one.
@@ -132,7 +140,8 @@ export function isLowBattery(percent: unknown): boolean {
  * without `soil_moisture`; contact: `contact`; else other.
  */
 export function deviceKind(capabilities: readonly Capability[]): DeviceKind {
-  const has = (key: string): boolean => capabilities.some((capability) => capability.key === key);
+  const has = (key: CanonicalKey): boolean =>
+    capabilities.some((capability) => capability.key === key);
   if (
     capabilities.some(
       (capability) =>

@@ -30,7 +30,7 @@ import { AuthService } from '../../core/auth';
 import { HouseholdContext, injectHouseholdErrorHandler, LoadedList } from '../../core/household';
 import { injectLive } from '../../core/live';
 import { RefreshGuard } from '../../core/refresh';
-import { GATEWAY_TONE, gatewayState, statusKey } from './gateway-status';
+import { GATEWAY_TONE, gatewayState, kindKey, statusKey } from './gateway-status';
 import { GatewaysApi } from './gateways.api';
 import { GatewayRegisterForm } from './register-form';
 
@@ -101,7 +101,8 @@ const DAY_MS = 86_400_000;
                           | transloco
                             : {
                                 bridge: (statusKey(gateway.bridgeStatus) | transloco),
-                                z2m: (statusKey(gateway.z2mStatus) | transloco),
+                                kind: (kindKey(gateway.kind) | transloco),
+                                service: (statusKey(gateway.serviceStatus) | transloco),
                               }
                       "
                     />
@@ -198,6 +199,7 @@ export class GatewaysPage {
   protected readonly isPlatformAdmin = computed(() => this.auth.me()?.isPlatformAdmin === true);
 
   protected readonly statusKey = statusKey;
+  protected readonly kindKey = kindKey;
   private readonly refresh = new RefreshGuard();
   protected readonly gateways = new LoadedList<Gateway>(
     (id) => this.api.list(id),

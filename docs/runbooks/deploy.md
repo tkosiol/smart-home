@@ -26,6 +26,8 @@ GitHub → Actions → Deploy → „Run workflow“: `environment` wählen, `sh
 
 Voraussetzung: Migrationen sind rückwärtskompatibel (erst Neues hinzufügen, Altes erst in einem späteren Release entfernen).
 
+Ausnahme: Ein Release, dessen Migrationen Spalten umbenennen, lässt sich nicht auf ein früheres Image zurückrollen – zuerst die Adapter-Schicht (Migrationen 0010/0011, 2026-11-18). Ein früheres Image liefe auf dem neuen Schema nicht; Fehler daher mit einem neuen Release beheben (fix forward). Das gilt auch für den automatischen Rollback von `deploy.sh`: Scheitert ein solches Release nach den Migrationen, startet er die alte `api` auf dem neuen Schema. Damit die Migrationen nicht nachträglich scheitern, warnt das Nachrechnen des Stundenaggregats nach den Migrationen bei einem Fehler nur (Protokoll von `migrate.js`); den Rest holt die Refresh-Policy oder der nächste Deploy nach.
+
 ## Neues GHCR-Paket: Simulator
 
 Der erste Deploy-Lauf auf `main`, der das Image `smart-home-simulator` baut, legt das GHCR-Paket neu an, und neue Pakete sind **privat**. Staging lädt es erst, wenn dessen `.env` das Profil `simulator` enthält (Schritt 3); bis dahin schadet das private Paket nicht. Einmalig, in dieser Reihenfolge (Till):

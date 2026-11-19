@@ -8,7 +8,7 @@ import type { App } from 'supertest/types.js';
 import { inject } from 'vitest';
 import { AppModule } from '../src/app.module.js';
 import { configureApp } from '../src/app.setup.js';
-import { DEVICE_MESSAGE_HANDLER, type DeviceMessageHandler } from '../src/core/devices/index.js';
+import { DeviceReportProcessor } from '../src/core/devices/index.js';
 import { GATEWAY_STATUS_CHANGED, GatewayEvents } from '../src/core/gateways/index.js';
 import { LIVE_OPTIONS, LiveHub } from '../src/core/live/index.js';
 import { SESSION_COOKIE, SessionService, UsersRepository } from '../src/core/identity/index.js';
@@ -138,7 +138,7 @@ describe('live event stream of a household', () => {
     const gatewayId = `gw-${randomBytes(4).toString('hex')}`;
     await connection.sql`
       insert into gateways (id, household_id, name, topic_prefix, cert_fingerprint, cert_expires_at,
-        bridge_status, z2m_status, status_changed_at, last_message_at)
+        bridge_status, service_status, status_changed_at, last_message_at)
       values (${gatewayId}, ${id}, 'Pi', ${`gw/${gatewayId}/z2m`}, 'fingerprint',
         now() + interval '1 year', 'online', 'online', now() - interval '1 hour', now())`;
     return { id, owner, viewer, gatewayId };
@@ -147,9 +147,9 @@ describe('live event stream of a household', () => {
   /** A plant sensor assigned to a device; returns the device and its hardware. */
   const addPlant = async (home: Household): Promise<{ deviceId: string; hardwareId: string }> => {
     const [row] = await connection.sql<{ id: string }[]>`
-      insert into hardware (gateway_id, ieee_address, friendly_name, vendor, model, availability,
+      insert into hardware (gateway_id, external_id, name, address, vendor, model, availability,
         last_state, first_seen_at, last_seen_at)
-      values (${home.gatewayId}, ${`0x${randomBytes(8).toString('hex')}`}, 'Ficus', 'AOYAN',
+      values (${home.gatewayId}, ${`0x${randomBytes(8).toString('hex')}`}, 'Ficus', 'Ficus', 'AOYAN',
         'AY-303Z', 'online', '{}'::jsonb, now(), now())
       returning id`;
     if (!row) throw new Error('no hardware');
@@ -214,8 +214,15 @@ describe('live event stream of a household', () => {
     const { deviceId, hardwareId } = await addPlant(home);
     const stream = await open(`/api/v1/households/${home.id}/events`, home.viewer.cookie);
     await stream.waitFor(': connected');
-    const handler = app.get<DeviceMessageHandler>(DEVICE_MESSAGE_HANDLER, { strict: false });
-    await handler.handle(home.gatewayId, hardwareId, { soil_moisture: 42 }, new Date(), false);
+    const processor = app.get(DeviceReportProcessor, { strict: false });
+    await processor.handle({
+      gatewayId: home.gatewayId,
+      hardwareId,
+      values: { soil_moisture: 42 },
+      measuredAt: undefined,
+      receivedAt: new Date(),
+      retained: false,
+    });
     await stream.waitFor('event: device.state');
     const text = stream.text();
     expect(text).toContain(`"id":"${deviceId}"`);

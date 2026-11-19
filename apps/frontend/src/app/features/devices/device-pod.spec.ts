@@ -36,7 +36,7 @@ describe('podOf', () => {
     const lamp = pod('d2', 'Lampe', {
       kind: 'light',
       capabilities: [capability('state', { kind: 'binary', writable: true })],
-      state: { state: 'ON' },
+      state: { state: true },
     });
     expect(lamp).toMatchObject({
       kind: 'light',
@@ -50,7 +50,7 @@ describe('podOf', () => {
     const off = pod('d2', 'Lampe', {
       kind: 'light',
       capabilities: [capability('state', { kind: 'binary', writable: true })],
-      state: { state: 'OFF' },
+      state: { state: false },
     });
     expect(off.valueKey).toBe('app.devices.pod.off');
   });

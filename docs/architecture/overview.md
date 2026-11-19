@@ -13,7 +13,7 @@ HEIMNETZ                                      VPS
 ```
 
 - **Gateway** (Pi): Zigbee2MQTT + Mosquitto, Bridge per mTLS zum VPS, puffert Messwerte bei Ausfall.
-- **api** (NestJS): `platform/` (Technik), `core/` (gerätetyp-unabhängiger Kern), `modules/` (Features).
+- **api** (NestJS): `platform/` (Technik), `core/` (gerätetyp-unabhängiger Kern), `adapters/` (je Gateway-Art ein Übersetzer, heute Zigbee2MQTT; ADR-0021), `modules/` (Features).
 - **web** (Angular-PWA): `core/`, `shell/`, `features/`, Design-System `@smart/ui`.
 - **db**: TimescaleDB; Messwerte hängen am logischen Gerät, nicht an der Hardware.
 

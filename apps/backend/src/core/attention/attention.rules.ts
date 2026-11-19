@@ -22,7 +22,7 @@ export interface GatewaySnapshot {
   id: string;
   name: string;
   bridgeStatus: GatewayStatus;
-  z2mStatus: GatewayStatus;
+  serviceStatus: GatewayStatus;
   statusChangedAt: Date | null;
   lastMessageAt: Date | null;
   /** When the gateway was registered: where the wait for one never heard from starts. */
@@ -110,9 +110,9 @@ export function compareItems(a: AttentionItem, b: AttentionItem): number {
 const finite = (value: unknown): number | undefined =>
   typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 
-const isTrue = (value: unknown): boolean => value === true || value === 'ON';
+const isTrue = (value: unknown): boolean => value === true;
 
-/** Zigbee2MQTT reports `contact: false` while the contact is open. */
+/** `contact` is `true` while closed (the vocabulary), so `false` means open. */
 const isOpen = (state: Readonly<Record<string, unknown>>): boolean => state['contact'] === false;
 
 const minutesBetween = (from: Date, to: Date): number =>
@@ -126,7 +126,7 @@ const offlineSince = (gateway: GatewaySnapshot): Date =>
   gateway.statusChangedAt ?? gateway.lastMessageAt ?? gateway.registeredAt;
 
 function gatewayIsOffline(gateway: GatewaySnapshot, now: Date): boolean {
-  if (gateway.bridgeStatus === 'online' && gateway.z2mStatus === 'online') return false;
+  if (gateway.bridgeStatus === 'online' && gateway.serviceStatus === 'online') return false;
   // A gateway nothing was ever heard from counts from its registration, so that it is
   // a problem of its own and does not leave its devices without any visible item.
   return minutesBetween(offlineSince(gateway), now) >= GATEWAY_OFFLINE_MINUTES;
@@ -225,7 +225,7 @@ export function evaluateWithHeld(
       params: {
         affectedDevices: affected.length,
         bridgeStatus: gateway.bridgeStatus,
-        z2mStatus: gateway.z2mStatus,
+        serviceStatus: gateway.serviceStatus,
       },
     });
   }
@@ -234,7 +234,7 @@ export function evaluateWithHeld(
   // gateway that is not online yet (a restart) its devices say nothing.
   const online = new Set(
     snapshot.gateways
-      .filter((gateway) => gateway.bridgeStatus === 'online' && gateway.z2mStatus === 'online')
+      .filter((gateway) => gateway.bridgeStatus === 'online' && gateway.serviceStatus === 'online')
       .map((gateway) => gateway.id),
   );
   const open = openContacts(snapshot, previous, now);

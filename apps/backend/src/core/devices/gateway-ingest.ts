@@ -6,21 +6,27 @@ import {
   type OnModuleInit,
 } from '@nestjs/common';
 import type { Availability } from '@smart/contracts';
-import * as z from 'zod';
 import { describeError } from '../../platform/errors/index.js';
 import { MQTT_CONNECTION, MqttConnection, type Unsubscribe } from '../../platform/mqtt/index.js';
+import {
+  AdapterRegistry,
+  type AdapterEvent,
+  type GatewayAdapter,
+  type HardwareRef,
+  type ReportedHardware,
+  type SetupState,
+} from '../adapters/index.js';
 import {
   GATEWAY_REGISTERED,
   GATEWAY_REVOKED,
   GatewayEvents,
   GatewaysService,
   Throttle,
-  isBridgeTopic,
-  isCommandTopic,
   type GatewayRegistered,
   type GatewayRevoked,
 } from '../gateways/index.js';
 import { CLOCK, type Clock } from '../identity/index.js';
+import { AddressBook } from './address-book.js';
 import {
   DEVICE_CHANGED,
   DeviceEvents,
@@ -28,15 +34,13 @@ import {
   type DeviceChanged,
   type HardwareChanged,
 } from './device-events.js';
-import { DEVICE_MESSAGE_HANDLER, type DeviceMessageHandler } from './device-message-handler.js';
-import { capabilitiesFromExposes, exposesSchema } from './exposes.js';
-import { HardwareRepository, type Z2mDevice } from './hardware.repository.js';
-import { NameMap } from './name-map.js';
+import { DeviceReportProcessor } from './device-report.processor.js';
+import { HardwareRepository } from './hardware.repository.js';
 
 const MINUTE_MS = 60_000;
 const RETRY_MS = 5000;
 const HOUR_MS = 3_600_000;
-/** Bounds for everything kept per name or per message: the oldest entries are forgotten. */
+/** Bounds for everything kept per address, per gateway or per message: the oldest are forgotten. */
 const MEMORY_LIMIT = 1000;
 /**
  * Bytes of the messages waiting to be handled. The acknowledgement of a message is held back until
@@ -44,114 +48,28 @@ const MEMORY_LIMIT = 1000;
  * a few messages; this is only a safety net. Beyond it new messages are dropped.
  */
 const MAX_QUEUED_BYTES = 64 * 1024 * 1024;
-/** A gateway with a hundred devices lists about a megabyte. */
-const MAX_DEVICES_BYTES = 4 * 1024 * 1024;
-const MAX_MESSAGE_BYTES = 64 * 1024;
-const MAX_AVAILABILITY_BYTES = 1024;
-const MAX_NAME_LOG = 80;
+const MAX_ADDRESS_LOG = 80;
 /** Longest wait for the messages already taken when the app shuts down. */
 export const SHUTDOWN_DRAIN_MS = 10_000;
 
-const IEEE_ADDRESS = /^0x[0-9a-f]{16}$/i;
-const AVAILABILITY_SUFFIX = '/availability';
-
-const bridgeDeviceSchema = z.object({
-  ieee_address: z.string().regex(IEEE_ADDRESS),
-  friendly_name: z.string().min(1).max(255),
-  type: z.string().optional().catch(undefined),
-  interview_state: z.string().optional().catch(undefined),
-  manufacturer: z.string().optional().catch(undefined),
-  model_id: z.string().optional().catch(undefined),
-  definition: z.unknown().optional(),
-});
-/** The entries are parsed one by one: a malformed one must not cost the others. */
-const bridgeDevicesSchema = z.array(z.unknown());
-const definitionInfoSchema = z.object({
-  vendor: z.string().optional().catch(undefined),
-  model: z.string().optional().catch(undefined),
-  description: z.string().optional().catch(undefined),
-  exposes: exposesSchema.catch([]),
-});
-
-const ieeeAddress = z.string().regex(IEEE_ADDRESS);
-const friendlyName = z.string().min(1).max(255);
-const bridgeEventSchema = z.object({ type: z.string(), data: z.unknown().optional() });
-const joinedSchema = z.object({ ieee_address: ieeeAddress, friendly_name: friendlyName });
-const interviewSchema = z.object({
-  ieee_address: ieeeAddress,
-  status: z.enum(['started', 'successful', 'failed']),
-});
-const leaveSchema = z.object({ ieee_address: ieeeAddress });
-const renamedSchema = z.object({ from: friendlyName, to: friendlyName });
-const INTERVIEW_STATES = {
-  started: 'IN_PROGRESS',
-  successful: 'SUCCESSFUL',
-  failed: 'FAILED',
-} as const;
-
-const parseJson = (payload: Buffer): unknown => {
-  try {
-    return JSON.parse(payload.toString('utf8'));
-  } catch {
-    return undefined;
-  }
-};
-
-const isObject = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value);
-
-/** Parses Z2M's availability: the text `online`/`offline` or JSON `{"state":"…"}`. */
-function parseAvailability(payload: Buffer): Availability | undefined {
-  const text = payload.toString('utf8').trim();
-  if (text === 'online' || text === 'offline') return text;
-  const json = parseJson(payload);
-  const state = isObject(json) ? json.state : undefined;
-  return state === 'online' || state === 'offline' ? state : undefined;
-}
-
-/** What is stored of one entry of `bridge/devices`. */
-function toZ2mDevice(entry: z.infer<typeof bridgeDeviceSchema>): Z2mDevice {
-  const info = definitionInfoSchema.safeParse(entry.definition);
-  const definition = info.success ? info.data : undefined;
-  return {
-    ieeeAddress: entry.ieee_address,
-    friendlyName: entry.friendly_name,
-    vendor: definition?.vendor ?? entry.manufacturer ?? '',
-    model: definition?.model ?? entry.model_id ?? '',
-    description: definition?.description ?? null,
-    // As reported; a device Z2M does not support has none.
-    definition: isObject(entry.definition) ? entry.definition : {},
-    interviewState: entry.interview_state ?? 'UNKNOWN',
-    capabilities: capabilitiesFromExposes(definition?.exposes ?? []),
-  };
-}
-
-type Route = 'devices' | 'event' | 'message';
-
-/** What a topic below the gateway's prefix is, by its remainder; `undefined` if it is of no use. */
-function routeOf(rest: string): Route | undefined {
-  if (rest === 'bridge/devices') return 'devices';
-  if (rest === 'bridge/event') return 'event';
-  return isBridgeTopic(rest) ? undefined : 'message';
-}
-
 /**
- * Discovers hardware from what the registered gateways publish and hands their messages on. It
- * subscribes to the prefix of every active gateway (also those registered or revoked while it
- * runs), keeps `friendly_name` → hardware per gateway and processes the messages one after the
- * other, so that a message never overtakes the device list or rename it depends on. Payloads are
- * never logged.
+ * Hosts the gateway adapters: subscribes to the prefix of every active gateway (also those
+ * registered or revoked while it runs), lets the gateway's adapter decide what a message is and
+ * applies the neutral events it turns it into, one message after the other, so that a report
+ * never overtakes the list or new address it depends on. Keeps address → hardware per gateway.
+ * Knows nothing of any gateway kind's topics or payloads; payloads are never logged.
  */
 @Injectable()
-export class DeviceIngestConsumer implements OnModuleInit, OnModuleDestroy {
-  private readonly logger = new Logger(DeviceIngestConsumer.name);
-  private readonly names = new NameMap();
+export class GatewayIngest implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(GatewayIngest.name);
+  private readonly addresses = new AddressBook();
   private readonly notices = new Throttle(HOUR_MS, MEMORY_LIMIT);
   private readonly failures = new Throttle(MINUTE_MS, 3);
+  private readonly touches = new Throttle(MINUTE_MS, MEMORY_LIMIT);
   private readonly subscriptions = new Map<string, Unsubscribe>();
   /** A revoked gateway stays revoked; this keeps a `follow` that is still loading from undoing it. */
   private readonly revoked = new Set<string>();
-  /** Availability heard for a name that the device list does not have (yet). */
+  /** Availability heard for an address that the hardware list does not have (yet). */
   private readonly pendingAvailability = new Map<string, Availability>();
   private controlTail: Promise<void> = Promise.resolve();
   private workTail: Promise<void> = Promise.resolve();
@@ -161,7 +79,7 @@ export class DeviceIngestConsumer implements OnModuleInit, OnModuleDestroy {
   private destroying: Promise<void> | undefined;
   private retry: NodeJS.Timeout | undefined;
   private readonly onRegistered = (event: GatewayRegistered): void => {
-    this.controlInBackground(() => this.follow(event.gatewayId, event.topicPrefix));
+    this.controlInBackground(() => this.follow(event.gatewayId, event.kind, event.topicPrefix));
   };
   /** Immediately, not queued: nothing of a revoked gateway may be handled any more. */
   private readonly onRevoked = (event: GatewayRevoked): void => {
@@ -176,7 +94,8 @@ export class DeviceIngestConsumer implements OnModuleInit, OnModuleDestroy {
     private readonly gateways: GatewaysService,
     private readonly events: GatewayEvents,
     private readonly hardware: HardwareRepository,
-    @Inject(DEVICE_MESSAGE_HANDLER) private readonly handler: DeviceMessageHandler,
+    private readonly processor: DeviceReportProcessor,
+    private readonly adapters: AdapterRegistry,
     @Inject(MQTT_CONNECTION) private readonly mqtt: MqttConnection,
     @Inject(CLOCK) private readonly clock: Clock,
     private readonly deviceEvents: DeviceEvents,
@@ -235,7 +154,7 @@ export class DeviceIngestConsumer implements OnModuleInit, OnModuleDestroy {
   private subscribeToActiveGateways(): void {
     this.control(async () => {
       for (const gateway of await this.gateways.listActive()) {
-        await this.follow(gateway.id, gateway.topicPrefix);
+        await this.follow(gateway.id, gateway.kind, gateway.topicPrefix);
       }
     })
       .then(() => {
@@ -267,17 +186,27 @@ export class DeviceIngestConsumer implements OnModuleInit, OnModuleDestroy {
     } while (control !== this.controlTail || work !== this.workTail);
   }
 
-  /** Subscribes to the gateway's prefix, with its names loaded first. */
-  private async follow(gatewayId: string, topicPrefix: string): Promise<void> {
+  /** Subscribes to the gateway's prefix, with its addresses loaded first. */
+  private async follow(gatewayId: string, kind: string, topicPrefix: string): Promise<void> {
     if (this.subscriptions.has(gatewayId) || this.revoked.has(gatewayId) || this.destroyed) return;
-    const names = await this.hardware.listNames(gatewayId);
+    const adapter = this.adapters.get(kind);
+    if (adapter === undefined) {
+      // E.g. a kind of a newer version after a rollback: its messages stay with the broker.
+      this.notice(
+        `kind:${gatewayId}`,
+        `Not following ${gatewayId}: no adapter for its kind ${JSON.stringify(kind)}`,
+      );
+      return;
+    }
+    const addresses = await this.hardware.listAddresses(gatewayId);
     if (this.subscriptions.has(gatewayId) || this.revoked.has(gatewayId) || this.destroyed) return;
-    this.names.replace(gatewayId, names);
+    this.addresses.replace(gatewayId, addresses);
     this.subscriptions.set(
       gatewayId,
       this.mqtt.subscribe(
         `${topicPrefix}/#`,
-        (topic, payload, retained) => this.accept(gatewayId, topicPrefix, topic, payload, retained),
+        (topic, payload, retained) =>
+          this.accept(gatewayId, adapter, topicPrefix, topic, payload, retained),
         // Acknowledged once handled: the broker's delivery follows the pace of the database.
         { qos: 1, ackAfterHandler: true },
       ),
@@ -287,7 +216,7 @@ export class DeviceIngestConsumer implements OnModuleInit, OnModuleDestroy {
   private unfollow(gatewayId: string): void {
     this.subscriptions.get(gatewayId)?.();
     this.subscriptions.delete(gatewayId);
-    this.names.forget(gatewayId);
+    this.addresses.forget(gatewayId);
     const keyPrefix = this.pendingKey(gatewayId, '');
     for (const key of this.pendingAvailability.keys()) {
       if (key.startsWith(keyPrefix)) this.pendingAvailability.delete(key);
@@ -297,6 +226,7 @@ export class DeviceIngestConsumer implements OnModuleInit, OnModuleDestroy {
   /** Settles when the message is handled (at once if it is of no use), to acknowledge it then. */
   private accept(
     gatewayId: string,
+    adapter: GatewayAdapter,
     topicPrefix: string,
     topic: string,
     payload: Buffer,
@@ -304,15 +234,9 @@ export class DeviceIngestConsumer implements OnModuleInit, OnModuleDestroy {
   ): Promise<void> | undefined {
     const rest = topic.slice(topicPrefix.length + 1);
     if (!topic.startsWith(`${topicPrefix}/`) || rest === '') return;
-    const route = routeOf(rest);
+    const route = adapter.classify(rest);
     if (route === undefined) return;
-    const limit =
-      route === 'devices'
-        ? MAX_DEVICES_BYTES
-        : rest.endsWith(AVAILABILITY_SUFFIX)
-          ? MAX_AVAILABILITY_BYTES
-          : MAX_MESSAGE_BYTES;
-    if (payload.length > limit) {
+    if (payload.length > route.maxBytes) {
       this.discard('invalid', gatewayId, 'oversized');
       return;
     }
@@ -322,11 +246,11 @@ export class DeviceIngestConsumer implements OnModuleInit, OnModuleDestroy {
     }
     this.queuedBytes += payload.length;
     this.workTail = this.workTail
-      .then(() => this.process(gatewayId, route, rest, payload, retained))
+      .then(() => this.process(gatewayId, adapter, rest, payload, retained))
       .catch((error: unknown) => {
         // Neither the reason nor the message is logged: both could quote the payload.
         if (this.failures.allow('failure', this.clock())) {
-          this.logger.warn(`Cannot process a device message: ${describeError(error)}`);
+          this.logger.warn(`Cannot process a gateway message: ${describeError(error)}`);
         }
       })
       .finally(() => {
@@ -346,53 +270,65 @@ export class DeviceIngestConsumer implements OnModuleInit, OnModuleDestroy {
 
   private async process(
     gatewayId: string,
-    route: Route,
-    rest: string,
+    adapter: GatewayAdapter,
+    topic: string,
     payload: Buffer,
     retained: boolean,
   ): Promise<void> {
     // The gateway may have been revoked while the message waited.
     if (!this.subscriptions.has(gatewayId)) return;
-    if (route === 'devices') return this.onDevices(gatewayId, payload);
-    if (route === 'event') return this.onEvent(gatewayId, payload);
-    const hardwareId = this.names.lookup(gatewayId, rest);
-    if (hardwareId !== undefined) {
-      return this.onMessage(gatewayId, hardwareId, payload, retained);
+    let failure: { error: unknown } | undefined;
+    for (const event of adapter.translate({ gatewayId, topic, payload })) {
+      // … or while an event before was applied.
+      if (!this.subscriptions.has(gatewayId)) break;
+      // After a failure only the sign of life goes on: it says the gateway spoke, whatever the
+      // message held, while the other events may depend on what failed.
+      if (failure !== undefined && event.type !== 'activity') continue;
+      try {
+        await this.apply(gatewayId, adapter, event, retained);
+      } catch (error) {
+        failure ??= { error };
+      }
     }
-    if (rest.endsWith(AVAILABILITY_SUFFIX)) {
-      return this.onAvailability(gatewayId, rest.slice(0, -AVAILABILITY_SUFFIX.length), payload);
-    }
-    if (isCommandTopic(rest)) return;
-    this.discard(
-      'unknownName',
-      gatewayId,
-      `unknown name ${JSON.stringify(rest.slice(0, MAX_NAME_LOG))}`,
-    );
+    if (failure !== undefined) throw failure.error;
   }
 
-  private async onDevices(gatewayId: string, payload: Buffer): Promise<void> {
-    const parsed = bridgeDevicesSchema.safeParse(parseJson(payload));
-    if (!parsed.success) return this.discard('invalid', gatewayId, 'bridge/devices');
-    const devices: Z2mDevice[] = [];
-    let valid = 0;
-    for (const raw of parsed.data) {
-      const entry = bridgeDeviceSchema.safeParse(raw);
-      if (!entry.success) {
-        this.discard('invalid', gatewayId, 'bridge/devices entry');
-        continue;
-      }
-      valid += 1;
-      if (entry.data.type !== 'Coordinator') devices.push(toZ2mDevice(entry.data));
+  private async apply(
+    gatewayId: string,
+    adapter: GatewayAdapter,
+    event: AdapterEvent,
+    retained: boolean,
+  ): Promise<void> {
+    switch (event.type) {
+      case 'hardware.listed':
+        return this.onListed(gatewayId, event.hardware);
+      case 'hardware.joined':
+        return this.onJoined(gatewayId, event.externalId, event.address, event.name);
+      case 'hardware.setup':
+        return this.onSetup(gatewayId, event.externalId, event.setupState);
+      case 'hardware.left':
+        return this.onLeft(gatewayId, event.externalId);
+      case 'hardware.readdressed':
+        return this.onReaddressed(gatewayId, event.from, event.to, event.name);
+      case 'hardware.availability':
+        return this.onAvailability(gatewayId, event.ref, event.availability);
+      case 'hardware.report':
+        return this.onReport(gatewayId, adapter, event.ref, event.native, retained);
+      case 'activity':
+        // A retained message is a replay on subscribing, not a sign that the gateway is alive.
+        if (!retained) await this.onActivity(gatewayId);
+        return;
     }
-    // A list of nothing but garbage is no list: it must not mark all hardware as removed.
-    if (valid === 0 && parsed.data.length > 0) return;
-    const { ids } = await this.hardware.upsertFromBridge(gatewayId, devices, this.clock());
+  }
+
+  private async onListed(gatewayId: string, listed: ReportedHardware[]): Promise<void> {
+    const { ids } = await this.hardware.replaceListed(gatewayId, listed, this.clock());
     for (const hardwareId of ids) this.announceHardware(hardwareId);
-    const names = await this.hardware.listNames(gatewayId);
+    const addresses = await this.hardware.listAddresses(gatewayId);
     if (!this.subscriptions.has(gatewayId)) return;
-    this.names.replace(gatewayId, names);
-    for (const { id, friendlyName: name } of names) {
-      const key = this.pendingKey(gatewayId, name);
+    this.addresses.replace(gatewayId, addresses);
+    for (const { id, address } of addresses) {
+      const key = this.pendingKey(gatewayId, address);
       const availability = this.pendingAvailability.get(key);
       if (availability === undefined) continue;
       this.pendingAvailability.delete(key);
@@ -400,72 +336,58 @@ export class DeviceIngestConsumer implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private async onEvent(gatewayId: string, payload: Buffer): Promise<void> {
-    const event = bridgeEventSchema.safeParse(parseJson(payload));
-    if (!event.success) return this.discard('invalid', gatewayId, 'bridge/event');
-    const { type, data } = event.data;
-    const now = this.clock();
-    switch (type) {
-      case 'device_joined': {
-        const joined = joinedSchema.safeParse(data);
-        if (!joined.success) return this.discard('invalid', gatewayId, type);
-        const id = await this.hardware.recordJoined(
-          gatewayId,
-          joined.data.ieee_address,
-          joined.data.friendly_name,
-          now,
-        );
-        // The gateway may have been revoked while the row was written.
-        if (this.subscriptions.has(gatewayId)) {
-          this.names.set(gatewayId, joined.data.friendly_name, id);
-        }
-        this.announceHardware(id);
-        return;
-      }
-      case 'device_interview': {
-        const interview = interviewSchema.safeParse(data);
-        if (!interview.success) return this.discard('invalid', gatewayId, type);
-        const id = await this.hardware.setInterviewState(
-          gatewayId,
-          interview.data.ieee_address,
-          INTERVIEW_STATES[interview.data.status],
-        );
-        if (id !== undefined) this.announceHardware(id);
-        return;
-      }
-      case 'device_leave': {
-        const left = leaveSchema.safeParse(data);
-        if (!left.success) return this.discard('invalid', gatewayId, type);
-        const gone = await this.hardware.markLeft(gatewayId, left.data.ieee_address, now);
-        if (gone) {
-          this.names.remove(gatewayId, gone.friendlyName);
-          this.announceHardware(gone.id);
-        }
-        return;
-      }
-      case 'device_renamed': {
-        const renamed = renamedSchema.safeParse(data);
-        if (!renamed.success) return this.discard('invalid', gatewayId, type);
-        const { from, to } = renamed.data;
-        const id = await this.hardware.rename(gatewayId, from, to);
-        if (id !== undefined && this.subscriptions.has(gatewayId)) {
-          this.names.rename(gatewayId, from, to, id);
-        }
-        if (id !== undefined) this.announceHardware(id);
-        return;
-      }
-      default:
-        return;
+  private async onJoined(
+    gatewayId: string,
+    externalId: string,
+    address: string | null,
+    name: string,
+  ): Promise<void> {
+    const id = await this.hardware.recordJoined(gatewayId, externalId, address, name, this.clock());
+    // The gateway may have been revoked while the row was written.
+    if (address !== null && this.subscriptions.has(gatewayId)) {
+      this.addresses.set(gatewayId, address, id);
     }
+    this.announceHardware(id);
   }
 
-  private async onAvailability(gatewayId: string, name: string, payload: Buffer): Promise<void> {
-    const availability = parseAvailability(payload);
-    if (availability === undefined) return this.discard('invalid', gatewayId, 'availability');
-    const hardwareId = this.names.lookup(gatewayId, name);
+  private async onSetup(gatewayId: string, externalId: string, state: SetupState): Promise<void> {
+    const id = await this.hardware.setSetupState(gatewayId, externalId, state);
+    if (id !== undefined) this.announceHardware(id);
+  }
+
+  private async onLeft(gatewayId: string, externalId: string): Promise<void> {
+    const gone = await this.hardware.markLeft(gatewayId, externalId, this.clock());
+    if (!gone) return;
+    if (gone.address !== null) this.addresses.remove(gatewayId, gone.address);
+    this.announceHardware(gone.id);
+  }
+
+  private async onReaddressed(
+    gatewayId: string,
+    from: string,
+    to: string,
+    name: string,
+  ): Promise<void> {
+    const id = await this.hardware.readdress(gatewayId, from, to, name);
+    if (id === undefined) return;
+    if (this.subscriptions.has(gatewayId)) this.addresses.move(gatewayId, from, to, id);
+    this.announceHardware(id);
+  }
+
+  private async onAvailability(
+    gatewayId: string,
+    ref: HardwareRef,
+    availability: Availability,
+  ): Promise<void> {
+    if ('externalId' in ref) {
+      const hardwareId = await this.resolve(gatewayId, ref);
+      if (hardwareId !== undefined) await this.recordAvailability(hardwareId, availability);
+      return;
+    }
+    const hardwareId = this.addresses.lookup(gatewayId, ref.address);
     if (hardwareId !== undefined) return this.recordAvailability(hardwareId, availability);
-    // The retained availability can arrive before the device list: keep it for when that does.
-    const key = this.pendingKey(gatewayId, name);
+    // The retained availability can arrive before the hardware list: keep it for when that does.
+    const key = this.pendingKey(gatewayId, ref.address);
     this.pendingAvailability.delete(key);
     this.pendingAvailability.set(key, availability);
     if (this.pendingAvailability.size > MEMORY_LIMIT) {
@@ -474,15 +396,54 @@ export class DeviceIngestConsumer implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private async onMessage(
+  private async onReport(
     gatewayId: string,
-    hardwareId: string,
-    payload: Buffer,
+    adapter: GatewayAdapter,
+    ref: HardwareRef,
+    native: unknown,
     retained: boolean,
   ): Promise<void> {
-    const message = parseJson(payload);
-    if (!isObject(message)) return this.discard('invalid', gatewayId, 'device message');
-    await this.handler.handle(gatewayId, hardwareId, message, this.clock(), retained);
+    const hardwareId = await this.resolve(gatewayId, ref);
+    if (hardwareId === undefined) return;
+    const receivedAt = this.clock();
+    const capabilities = await this.hardware.capabilitiesOf(hardwareId);
+    const { values, measuredAt } = adapter.decodeReport(native, capabilities);
+    await this.processor.handle({
+      gatewayId,
+      hardwareId,
+      values,
+      measuredAt,
+      receivedAt,
+      retained,
+      capabilities,
+    });
+  }
+
+  /** The hardware a reference stands for; counted and `undefined` if the gateway has none such. */
+  private async resolve(gatewayId: string, ref: HardwareRef): Promise<string | undefined> {
+    const hardwareId =
+      'externalId' in ref
+        ? await this.hardware.findByExternalId(gatewayId, ref.externalId)
+        : this.addresses.lookup(gatewayId, ref.address);
+    if (hardwareId === undefined) {
+      const [label, value] =
+        'externalId' in ref ? ['external ID', ref.externalId] : ['address', ref.address];
+      const shown = JSON.stringify(value.slice(0, MAX_ADDRESS_LOG));
+      this.discard('unknownName', gatewayId, `unknown ${label} ${shown}`);
+    }
+    return hardwareId;
+  }
+
+  /** Notes that the gateway is alive, at most once a minute; a failure costs only the note. */
+  private async onActivity(gatewayId: string): Promise<void> {
+    if (!this.touches.allow(gatewayId, this.clock())) return;
+    try {
+      await this.gateways.touch(gatewayId, this.clock());
+    } catch (error) {
+      if (this.failures.allow('touch', this.clock())) {
+        this.logger.warn(`Cannot note a sign of life of ${gatewayId}: ${describeError(error)}`);
+      }
+    }
   }
 
   /** Stores the availability and announces the hardware and the devices that sit on it. */
@@ -498,8 +459,8 @@ export class DeviceIngestConsumer implements OnModuleInit, OnModuleDestroy {
     this.deviceEvents.emit(HARDWARE_CHANGED, { hardwareId } satisfies HardwareChanged);
   }
 
-  private pendingKey(gatewayId: string, name: string): string {
-    return `${gatewayId}\0${name}`;
+  private pendingKey(gatewayId: string, address: string): string {
+    return `${gatewayId}\0${address}`;
   }
 
   /** Counts a thrown-away message and says so, at most once an hour per reason. */

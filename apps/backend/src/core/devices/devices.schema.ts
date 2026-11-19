@@ -13,6 +13,7 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
+import { SETUP_STATES } from '../adapters/index.js';
 import { gateways } from '../gateways/index.js';
 import { households } from '../households/index.js';
 
@@ -30,37 +31,42 @@ export const hardware = pgTable(
     gatewayId: text('gateway_id')
       .notNull()
       .references(() => gateways.id, { onDelete: 'cascade' }),
-    ieeeAddress: text('ieee_address').notNull(),
-    friendlyName: text('friendly_name').notNull(),
+    /** The gateway's stable ID of the hardware (a hardware address that does not change). */
+    externalId: text('external_id').notNull(),
+    /** The hardware's name in the foreign system; suggested as the device name when it is added. */
+    name: text('name').notNull(),
+    /** How the adapter addresses the hardware in its topics (e.g. a name the user can change); may change. */
+    address: text('address'),
     vendor: text('vendor').notNull().default(''),
     model: text('model').notNull().default(''),
     description: text('description'),
-    /** Zigbee2MQTT's definition including its `exposes`. */
-    definition: jsonb('definition').$type<unknown>().notNull().default({}),
-    interviewState: text('interview_state').notNull().default('UNKNOWN'),
+    /** What the gateway's adapter reported, kept for diagnosis; only the adapter reads it. */
+    native: jsonb('native').$type<Record<string, unknown>>().notNull().default({}),
+    setupState: text('setup_state', { enum: SETUP_STATES }).notNull().default('unknown'),
     availability: text('availability', { enum: AVAILABILITIES }).notNull().default('unknown'),
     /** The latest merged state the hardware reported. */
     lastState: jsonb('last_state').$type<Record<string, unknown>>().notNull().default({}),
     firstSeenAt: timestamptz('first_seen_at').notNull(),
     lastSeenAt: timestamptz('last_seen_at'),
-    /** Set when the bridge stops listing the hardware; cleared when it returns. */
+    /** Set when the gateway stops listing the hardware; cleared when it returns. */
     removedAt: timestamptz('removed_at'),
   },
   (table) => [
-    uniqueIndex('hardware_gateway_id_ieee_address_idx').on(table.gatewayId, table.ieeeAddress),
-    index('hardware_gateway_id_friendly_name_idx').on(table.gatewayId, table.friendlyName),
+    uniqueIndex('hardware_gateway_id_external_id_idx').on(table.gatewayId, table.externalId),
+    index('hardware_gateway_id_address_idx').on(table.gatewayId, table.address),
     check('hardware_availability_check', sql`${table.availability} in (${inList(AVAILABILITIES)})`),
+    check('hardware_setup_state_check', sql`${table.setupState} in (${inList(SETUP_STATES)})`),
   ],
 );
 
-/** What a piece of hardware reports or accepts; replaced whenever the bridge lists it again. */
+/** What a piece of hardware reports or accepts; replaced whenever its gateway lists it again. */
 export const capabilities = pgTable(
   'capabilities',
   {
     hardwareId: uuid('hardware_id')
       .notNull()
       .references(() => hardware.id, { onDelete: 'cascade' }),
-    /** The property name in the hardware's messages, e.g. `soil_moisture`. */
+    /** A key of the capability vocabulary or one the adapter passes through, e.g. `soil_moisture`. */
     key: text('key').notNull(),
     kind: text('kind', { enum: CAPABILITY_KINDS }).notNull(),
     unit: text('unit'),
@@ -71,6 +77,8 @@ export const capabilities = pgTable(
     readable: boolean('readable').notNull(),
     writable: boolean('writable').notNull(),
     isSetting: boolean('is_setting').notNull(),
+    /** What the adapter needs to read the capability from reports, e.g. `{ property }`. */
+    native: jsonb('native').$type<Record<string, unknown>>().notNull().default({}),
   },
   (table) => [
     primaryKey({ columns: [table.hardwareId, table.key] }),

@@ -25,8 +25,8 @@ const iso = (date: Date | null): string | null => (date ? date.toISOString() : n
 export const toHardware = (row: HardwareWithCapabilities): Hardware => ({
   id: row.id,
   gatewayId: row.gatewayId,
-  ieeeAddress: row.ieeeAddress,
-  friendlyName: row.friendlyName,
+  externalId: row.externalId,
+  name: row.name,
   vendor: row.vendor,
   model: row.model,
   description: row.description,

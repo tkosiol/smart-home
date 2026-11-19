@@ -1,3 +1,4 @@
+import { GatewayIngest } from '../src/core/devices/index.js';
 import { createServer } from 'node:net';
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
@@ -23,7 +24,7 @@ import { createTestCa, randomGatewayId, type TestCa } from './helpers/test-pki.j
 
 interface StatusRow {
   bridge_status: string;
-  z2m_status: string;
+  service_status: string;
   status_changed_at: Date | null;
   last_message_at: Date | null;
 }
@@ -73,7 +74,7 @@ describe('gateway status from the broker', () => {
   };
   const rowOf = async (id: string): Promise<StatusRow> => {
     const [row] = await sql<StatusRow[]>`
-      select bridge_status, z2m_status, status_changed_at, last_message_at
+      select bridge_status, service_status, status_changed_at, last_message_at
       from gateways where id = ${id}`;
     if (!row) throw new Error(`no gateway ${id}`);
     return row;
@@ -152,15 +153,26 @@ describe('gateway status from the broker', () => {
     expect((await rowOf(id)).status_changed_at).toEqual(changedAt);
   });
 
-  it('reads the Zigbee2MQTT state as text and as JSON', async () => {
+  it('reads the service state of the adapter as text and as JSON', async () => {
     const id = randomGatewayId();
     await insertGateway(id);
     await publish(`gw/${id}/z2m/bridge/state`, 'online');
-    await eventually(async () => expect((await rowOf(id)).z2m_status).toBe('online'));
+    await eventually(async () => expect((await rowOf(id)).service_status).toBe('online'));
     await publish(`gw/${id}/z2m/bridge/state`, '{"state":"offline"}');
-    await eventually(async () => expect((await rowOf(id)).z2m_status).toBe('offline'));
+    await eventually(async () => expect((await rowOf(id)).service_status).toBe('offline'));
     await publish(`gw/${id}/z2m/bridge/state`, '{"state":"online"}');
-    await eventually(async () => expect((await rowOf(id)).z2m_status).toBe('online'));
+    await eventually(async () => expect((await rowOf(id)).service_status).toBe('online'));
+  });
+
+  it('ignores a status published under another kind than the gateway has', async () => {
+    const id = randomGatewayId();
+    await insertGateway(id);
+    // No adapter listens under `xx`; the z2m topic of the gateway still works.
+    await publish(`gw/${id}/xx/bridge/state`, 'online');
+    await flush();
+    expect((await rowOf(id)).service_status).toBe('unknown');
+    await publish(`gw/${id}/z2m/bridge/state`, 'online');
+    await eventually(async () => expect((await rowOf(id)).service_status).toBe('online'));
   });
 
   it('shows a gateway as online right after registering it when it spoke before', async () => {
@@ -168,13 +180,13 @@ describe('gateway status from the broker', () => {
     await publish(`gw/${issued.id}/bridge/connection`, '1', true);
     await publish(`gw/${issued.id}/z2m/bridge/state`, '{"state":"online"}', true);
     const memory = app.get<GatewayStatusMemory>(GATEWAY_STATUS_MEMORY);
-    await eventually(() => expect(memory.recall(issued.id)?.z2m).toBe('online'));
+    await eventually(() => expect(memory.recall(issued.id)?.service).toBe('online'));
     now = new Date();
     const gateway = await app
       .get(GatewaysService)
       .register(householdId, { name: 'Late Pi', certificate: issued.certificate });
     expect(gateway.bridgeStatus).toBe('online');
-    expect(gateway.z2mStatus).toBe('online');
+    expect(gateway.serviceStatus).toBe('online');
     expect(gateway.statusChangedAt).not.toBeNull();
   });
 
@@ -187,7 +199,7 @@ describe('gateway status from the broker', () => {
     await flush();
     expect(await rowOf(id)).toEqual({
       bridge_status: 'offline',
-      z2m_status: 'unknown',
+      service_status: 'unknown',
       status_changed_at: null,
       last_message_at: null,
     });
@@ -202,27 +214,41 @@ describe('gateway status from the broker', () => {
     expect(memory.recall('gw-short')).toBeUndefined();
   });
 
-  it('writes last_message_at for a message below the z2m prefix, at most once a minute', async () => {
-    const id = randomGatewayId();
-    await insertGateway(id);
+  /** Registered through the service, so that the ingest follows the gateway's prefix. */
+  const registerFollowed = async (): Promise<string> => {
+    const issued = ca.issue();
+    await app
+      .get(GatewaysService)
+      .register(householdId, { name: 'Followed Pi', certificate: issued.certificate });
+    await app.get(GatewayIngest).idle();
+    return issued.id;
+  };
+
+  it('writes last_message_at (by the ingest) for a message below the prefix, at most once a minute', async () => {
+    const id = await registerFollowed();
     now = new Date(Date.now() + 10_000);
     const first = now;
-    await publish(`gw/${id}/z2m/living_room_lamp`, '{"state":"ON"}');
-    await eventually(async () => expect((await rowOf(id)).last_message_at).toEqual(first));
+    // The subscription of a gateway registered just now may not be at the broker yet: repeat the
+    // message (within the minute it does not count again).
+    await eventually(async () => {
+      await publish(`gw/${id}/z2m/living_room_lamp`, '{"state":"ON"}');
+      expect((await rowOf(id)).last_message_at).toEqual(first);
+    });
     now = new Date(first.getTime() + 61_000);
     await publish(`gw/${id}/z2m/living_room_lamp`, '{"state":"OFF"}');
     await eventually(async () => expect((await rowOf(id)).last_message_at).toEqual(now));
   });
 
   it('announces gateway.touched for the write and finds the gateway with its household', async () => {
-    const id = randomGatewayId();
-    await insertGateway(id);
+    const id = await registerFollowed();
     const touched: GatewayTouched[] = [];
     const listener = (event: GatewayTouched): void => void touched.push(event);
     app.get(GatewayEvents).on(GATEWAY_TOUCHED, listener);
     now = new Date(Date.now() + 10_000);
-    await publish(`gw/${id}/z2m/living_room_lamp`, '{"state":"ON"}');
-    await eventually(() => expect(touched).toEqual([{ gatewayId: id }]));
+    await eventually(async () => {
+      await publish(`gw/${id}/z2m/living_room_lamp`, '{"state":"ON"}');
+      expect(touched).toEqual([{ gatewayId: id }]);
+    });
     app.get(GatewayEvents).off(GATEWAY_TOUCHED, listener);
     const found = await app.get(GatewaysService).find(id);
     expect(found?.householdId).toBe(householdId);

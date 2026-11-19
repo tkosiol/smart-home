@@ -5,16 +5,15 @@ import {
   type OnModuleDestroy,
   type OnModuleInit,
 } from '@nestjs/common';
-import { GATEWAY_ID_PATTERN, type GatewayStatus } from '@smart/contracts';
+import { GATEWAY_ID_PATTERN, type GatewayKind, type GatewayStatus } from '@smart/contracts';
 import { describeError } from '../../platform/errors/index.js';
 import { MQTT_CONNECTION, MqttConnection, type Unsubscribe } from '../../platform/mqtt/index.js';
+import { AdapterRegistry } from '../adapters/index.js';
 import { CLOCK, type Clock } from '../identity/index.js';
 import {
   GATEWAY_STATUS_CHANGED,
-  GATEWAY_TOUCHED,
   GatewayEvents,
   type GatewayStatusChanged,
-  type GatewayTouched,
 } from './gateway-events.js';
 import {
   STATUS_MEMORY_LIMIT,
@@ -23,28 +22,11 @@ import {
 } from './gateway-status-memory.js';
 import { GatewaysRepository } from './gateways.repository.js';
 import { Throttle } from './throttle.js';
-import { isDeviceTraffic } from './z2m-topics.js';
 
 const MINUTE_MS = 60_000;
 const HOUR_MS = 3_600_000;
-/** `gw/<id>/z2m/` precedes what Zigbee2MQTT publishes. */
-const Z2M_LEVELS = 3;
 /** A status payload is a few bytes; anything bigger is not one. */
 const MAX_STATE_BYTES = 1024;
-
-/** Parses a bridge status payload: the text `online`/`offline` or JSON `{"state":"…"}`. */
-function parseBridgeState(payload: Buffer): GatewayStatus | undefined {
-  if (payload.length > MAX_STATE_BYTES) return undefined;
-  const text = payload.toString('utf8').trim();
-  if (text === 'online' || text === 'offline') return text;
-  if (!text.startsWith('{')) return undefined;
-  try {
-    const state = (JSON.parse(text) as { state?: unknown }).state;
-    return state === 'online' || state === 'offline' ? state : undefined;
-  } catch {
-    return undefined;
-  }
-}
 
 /** Parses the MQTT last-will topic of the bridge: `1` is online, `0` is offline. */
 function parseConnection(payload: Buffer): GatewayStatus | undefined {
@@ -63,14 +45,13 @@ function gatewayIdOf(topic: string): string | undefined {
 
 /**
  * Keeps the status of the gateways up to date from what they publish: the bridge's connection
- * topic, Zigbee2MQTT's `bridge/state` and the device messages below the gateway's z2m prefix
- * (sign of life; commands and the other topics of the bridge are not). Messages are handled one
- * after the other; a failure never ends the consumer.
+ * topic and, for each adapter, the topic below `gw/<id>/<kind>/` that carries its service's status
+ * (read by the adapter). Signs of life are the ingest's business, not this one's. Messages are
+ * handled one after the other; a failure never ends the consumer.
  */
 @Injectable()
 export class GatewayStatusConsumer implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(GatewayStatusConsumer.name);
-  private readonly touches = new Throttle(MINUTE_MS, STATUS_MEMORY_LIMIT);
   private readonly notices = new Throttle(HOUR_MS, STATUS_MEMORY_LIMIT);
   private readonly failures = new Throttle(MINUTE_MS, 1);
   private readonly unsubscribes: Unsubscribe[] = [];
@@ -80,6 +61,7 @@ export class GatewayStatusConsumer implements OnModuleInit, OnModuleDestroy {
     private readonly gateways: GatewaysRepository,
     private readonly memory: StatusMemory,
     private readonly events: GatewayEvents,
+    private readonly adapters: AdapterRegistry,
     @Inject(MQTT_CONNECTION) private readonly mqtt: MqttConnection,
     @Inject(CLOCK) private readonly clock: Clock,
   ) {}
@@ -89,13 +71,14 @@ export class GatewayStatusConsumer implements OnModuleInit, OnModuleDestroy {
       this.mqtt.subscribe('gw/+/bridge/connection', (topic, payload) => {
         this.onStatus(topic, parseConnection(payload), 'bridge');
       }),
-      this.mqtt.subscribe('gw/+/z2m/bridge/state', (topic, payload) => {
-        this.onStatus(topic, parseBridgeState(payload), 'z2m');
-      }),
-      this.mqtt.subscribe('gw/+/z2m/#', (topic, _payload, retained) => {
-        // A retained message is a replay on subscribing, not a sign that the gateway is alive.
-        if (!retained) this.onActivity(topic);
-      }),
+      ...this.adapters.all().map((adapter) =>
+        this.mqtt.subscribe(
+          `gw/+/${adapter.kind}/${adapter.serviceStatusTopic}`,
+          (topic, payload) => {
+            this.onStatus(topic, adapter.parseServiceStatus(payload), 'service', adapter.kind);
+          },
+        ),
+      ),
     );
   }
 
@@ -110,34 +93,23 @@ export class GatewayStatusConsumer implements OnModuleInit, OnModuleDestroy {
     return this.tail;
   }
 
-  private onStatus(topic: string, status: GatewayStatus | undefined, kind: GatewayStatusKind) {
+  private onStatus(
+    topic: string,
+    status: GatewayStatus | undefined,
+    kind: GatewayStatusKind,
+    serviceKind?: GatewayKind,
+  ) {
     const id = gatewayIdOf(topic);
     if (id === undefined || status === undefined) return;
     const now = this.clock();
     // Remembered also when the gateway is not registered (yet): registering picks it up.
-    this.memory.record(id, kind, status, now);
+    this.memory.record(id, kind, status, now, serviceKind);
     this.enqueue(async () => {
-      const outcome = await this.gateways.applyStatus(id, kind, status, now);
+      const outcome = await this.gateways.applyStatus(id, kind, status, now, serviceKind);
       if (outcome === 'ignored') this.noticeIgnored(id, now);
       if (outcome === 'changed') {
         const event: GatewayStatusChanged = { gatewayId: id, kind, status, at: now };
         this.events.emit(GATEWAY_STATUS_CHANGED, event);
-      }
-    });
-  }
-
-  private onActivity(topic: string): void {
-    const id = gatewayIdOf(topic);
-    // Commands and requests come from the backend or the user, not from the gateway.
-    if (!isDeviceTraffic(topic.split('/').slice(Z2M_LEVELS).join('/'))) return;
-    const now = this.clock();
-    if (id === undefined || !this.touches.allow(id, now)) return;
-    this.enqueue(async () => {
-      if (await this.gateways.touch(id, now)) {
-        const event: GatewayTouched = { gatewayId: id };
-        this.events.emit(GATEWAY_TOUCHED, event);
-      } else {
-        this.noticeIgnored(id, now);
       }
     });
   }

@@ -6,7 +6,7 @@ import type { UiStatusEntryTone } from '@smart/ui';
  * the gateway as offline otherwise); unknown when nothing says offline but one of them is unknown.
  */
 export function gatewayState(gateway: Gateway): GatewayStatus {
-  const statuses = [gateway.bridgeStatus, gateway.z2mStatus];
+  const statuses = [gateway.bridgeStatus, gateway.serviceStatus];
   if (statuses.every((status) => status === 'online')) return 'online';
   return statuses.includes('offline') ? 'offline' : 'unknown';
 }
@@ -25,4 +25,12 @@ export const GATEWAY_TONE: Record<GatewayStatus, UiStatusEntryTone> = {
  */
 export function statusKey(status: GatewayStatus): string {
   return `gateways.status.${status}`;
+}
+
+/**
+ * The translation key of the name of a gateway kind ("Zigbee2MQTT"). Built, so the key extraction
+ * is told about it here: t(gateways.kind.z2m)
+ */
+export function kindKey(kind: Gateway['kind']): string {
+  return `gateways.kind.${kind}`;
 }

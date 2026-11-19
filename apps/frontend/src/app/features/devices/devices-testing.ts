@@ -70,12 +70,12 @@ export const notice = (kind: AttentionKind, deviceId: string, value?: number): A
   params: {},
 });
 
-export const hardware = (id: string, friendlyName: string, overrides: Partial<Hardware> = {}) =>
+export const hardware = (id: string, name: string, overrides: Partial<Hardware> = {}) =>
   ({
     id,
     gatewayId: 'gw-aaaaaaaa',
-    ieeeAddress: `0x${id}`,
-    friendlyName,
+    externalId: `0x${id}`,
+    name,
     vendor: 'Acme',
     model: 'SM-1',
     description: null,

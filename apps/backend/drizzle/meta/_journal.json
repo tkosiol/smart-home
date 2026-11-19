@@ -71,6 +71,20 @@
       "when": 1793063257500,
       "tag": "0009_measurements_hourly",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1795041974327,
+      "tag": "0010_adapter_layer",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1795043360608,
+      "tag": "0011_canonical_values",
+      "breakpoints": true
     }
   ]
 }

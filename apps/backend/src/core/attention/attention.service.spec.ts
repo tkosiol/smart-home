@@ -30,7 +30,7 @@ const gateway = (overrides: Partial<RegisteredGateway> = {}): RegisteredGateway 
   kind: 'z2m',
   topicPrefix: `gw/${GATEWAY}/z2m`,
   bridgeStatus: 'online',
-  z2mStatus: 'online',
+  serviceStatus: 'online',
   statusChangedAt: new Date(START.getTime() - 60 * MINUTE).toISOString(),
   lastMessageAt: START.toISOString(),
   certExpiresAt: '2027-10-15T12:00:00.000Z',
@@ -91,7 +91,7 @@ describe('AttentionService', () => {
     warn.mockImplementation(() => undefined);
     list.mockImplementation(() => Promise.resolve(gateways));
     listActive.mockResolvedValue([
-      { id: GATEWAY, householdId: HOUSEHOLD, topicPrefix: `gw/${GATEWAY}/z2m` },
+      { id: GATEWAY, householdId: HOUSEHOLD, kind: 'z2m', topicPrefix: `gw/${GATEWAY}/z2m` },
     ]);
     listDevices.mockImplementation(() => Promise.resolve(devices));
     get.mockImplementation((_household, id) => Promise.resolve(devices.find((d) => d.id === id)));
@@ -271,7 +271,7 @@ describe('AttentionService', () => {
     const unheard = (registeredMinutesAgo: number) =>
       gateway({
         bridgeStatus: 'unknown',
-        z2mStatus: 'unknown',
+        serviceStatus: 'unknown',
         statusChangedAt: null,
         lastMessageAt: null,
         registeredAt: new Date(START.getTime() - registeredMinutesAgo * MINUTE),
@@ -472,7 +472,7 @@ describe('AttentionService', () => {
       {
         id: 'hw-1',
         gatewayId: GATEWAY,
-        friendlyName: 'New',
+        name: 'New',
         firstSeenAt: START,
       } as HardwareWithCapabilities,
     ];
@@ -563,7 +563,7 @@ describe('AttentionService', () => {
     // Asked for again, it is computed on demand.
     gateways = [gateway()];
     listActive.mockResolvedValue([
-      { id: GATEWAY, householdId: HOUSEHOLD, topicPrefix: `gw/${GATEWAY}/z2m` },
+      { id: GATEWAY, householdId: HOUSEHOLD, kind: 'z2m', topicPrefix: `gw/${GATEWAY}/z2m` },
     ]);
     await service.ensureComputed(HOUSEHOLD);
     expect(list).toHaveBeenCalledTimes(1);

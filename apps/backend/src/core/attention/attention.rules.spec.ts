@@ -26,7 +26,7 @@ const gateway = (overrides: Partial<GatewaySnapshot> = {}): GatewaySnapshot => (
   id: 'gw-aaaaaaaa',
   name: 'Pi',
   bridgeStatus: 'online',
-  z2mStatus: 'online',
+  serviceStatus: 'online',
   statusChangedAt: ago(HOUR),
   lastMessageAt: ago(MINUTE),
   registeredAt: ago(24 * HOUR),
@@ -127,6 +127,10 @@ describe('evaluate', () => {
       const [item] = run({ devices: [withState({ dry: true })] });
       expect(item?.kind).toBe('soil_dry');
       expect(item?.value).toBeUndefined();
+    });
+
+    it('takes only true as a set dry flag, not a word for it', () => {
+      expect(run({ devices: [withState({ dry: 'ON' })] })).toEqual([]);
     });
 
     it('is off for a kind without a lower threshold', () => {
@@ -306,7 +310,7 @@ describe('evaluate', () => {
         }),
       );
       expect(run({ gateways: [restarting], devices })).toEqual([]);
-      const z2mDown = gateway({ z2mStatus: 'unknown', statusChangedAt: ago(3 * MINUTE) });
+      const z2mDown = gateway({ serviceStatus: 'unknown', statusChangedAt: ago(3 * MINUTE) });
       expect(run({ gateways: [z2mDown], devices })).toEqual([]);
     });
 
@@ -510,12 +514,12 @@ describe('evaluate', () => {
     });
 
     it('also fires when only the Zigbee2MQTT side is not online', () => {
-      const z2m = gateway({ z2mStatus: 'offline', statusChangedAt: ago(10 * MINUTE) });
+      const z2m = gateway({ serviceStatus: 'offline', statusChangedAt: ago(10 * MINUTE) });
       expect(kinds(run({ gateways: [z2m] }))).toEqual(['gateway_offline']);
     });
 
     it('treats an unknown status like one that is not online', () => {
-      const unknown = gateway({ z2mStatus: 'unknown', statusChangedAt: ago(10 * MINUTE) });
+      const unknown = gateway({ serviceStatus: 'unknown', statusChangedAt: ago(10 * MINUTE) });
       expect(kinds(run({ gateways: [unknown] }))).toEqual(['gateway_offline']);
     });
 
@@ -523,7 +527,7 @@ describe('evaluate', () => {
       const unheard = (registeredMinutes: number) =>
         gateway({
           bridgeStatus: 'unknown',
-          z2mStatus: 'unknown',
+          serviceStatus: 'unknown',
           statusChangedAt: null,
           lastMessageAt: null,
           registeredAt: ago(registeredMinutes * MINUTE),
@@ -536,7 +540,7 @@ describe('evaluate', () => {
           id: 'gateway_offline:gw-aaaaaaaa',
           kind: 'gateway_offline',
           severity: 'critical',
-          params: { bridgeStatus: 'unknown', z2mStatus: 'unknown' },
+          params: { bridgeStatus: 'unknown', serviceStatus: 'unknown' },
         });
         expect(item?.since).toBe(ago(5 * MINUTE).toISOString());
       });

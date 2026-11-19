@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events';
-import type { GatewayStatus } from '@smart/contracts';
+import type { GatewayKind, GatewayStatus } from '@smart/contracts';
 import type { GatewayStatusKind } from './gateway-status-memory.js';
 
 export const GATEWAY_STATUS_CHANGED = 'gateway.status-changed';
@@ -16,6 +16,8 @@ export interface GatewayStatusChanged {
 
 export interface GatewayRegistered {
   gatewayId: string;
+  /** Which adapter understands what the gateway publishes. */
+  kind: GatewayKind;
   topicPrefix: string;
 }
 
@@ -23,7 +25,7 @@ export interface GatewayRevoked {
   gatewayId: string;
 }
 
-/** The gateway sent a device message and `last_message_at` was written (at most once a minute). */
+/** The gateway showed a sign of life and `last_message_at` was written (at most once a minute). */
 export interface GatewayTouched {
   gatewayId: string;
 }

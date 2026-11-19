@@ -5,6 +5,7 @@ import {
   asc,
   eq,
   inArray,
+  isNotNull,
   isNull,
   lt,
   lte,
@@ -15,6 +16,7 @@ import {
 } from 'drizzle-orm';
 import type { PgColumn } from 'drizzle-orm/pg-core';
 import { DATABASE, type DatabaseConnection } from '../../platform/database/index.js';
+import type { ReportedHardware, SetupState, StoredCapability } from '../adapters/index.js';
 import { gateways } from '../gateways/index.js';
 import {
   capabilities,
@@ -25,20 +27,6 @@ import {
   type CapabilityRow,
   type HardwareRow,
 } from './devices.schema.js';
-
-/** One device of Zigbee2MQTT's `bridge/devices`, reduced to what is stored. */
-export interface Z2mDevice {
-  ieeeAddress: string;
-  friendlyName: string;
-  vendor: string;
-  model: string;
-  description: string | null;
-  /** The whole Z2M definition including `exposes`, kept as reported. */
-  definition: unknown;
-  interviewState: string;
-  /** What the definition's `exposes` amount to. */
-  capabilities: readonly Capability[];
-}
 
 export interface HardwareWithCapabilities extends HardwareRow {
   capabilities: Capability[];
@@ -57,6 +45,12 @@ export const toCapability = (row: CapabilityRow): Capability => ({
   isSetting: row.isSetting,
 });
 
+/** A capability with what only the gateway's adapter reads; never handed to clients. */
+const toStoredCapability = (row: CapabilityRow): StoredCapability => ({
+  ...toCapability(row),
+  native: row.native,
+});
+
 /** The new value of a column in `insert … on conflict do update`. */
 const excluded = (column: PgColumn) => sql.raw(`excluded."${column.name}"`);
 
@@ -65,18 +59,19 @@ export class HardwareRepository {
   constructor(@Inject(DATABASE) private readonly connection: DatabaseConnection) {}
 
   /**
-   * Makes the gateway's hardware match what the bridge lists: new hardware is added, known
-   * hardware (by IEEE address) gets its name, model and capabilities updated and is revived if it
-   * was removed, hardware that is no longer listed is marked removed. Hardware stays stored so
-   * that devices keep their history. `ids` are the hardware that was added, updated or removed.
+   * Makes the gateway's hardware match the full list its adapter reported: new hardware is added,
+   * known hardware (by external ID) gets its name, address, model, native details and capabilities
+   * updated and is revived if it was removed, hardware that is no longer listed is marked removed.
+   * Hardware stays stored so that devices keep their history. `ids` are the hardware that was
+   * added, updated or removed.
    */
-  async upsertFromBridge(
+  async replaceListed(
     gatewayId: string,
-    devices: readonly Z2mDevice[],
+    devices: readonly ReportedHardware[],
     now: Date,
-  ): Promise<{ upserted: number; removed: number; ids: string[] }> {
-    // One row per IEEE address (the last entry wins): an upsert cannot touch a row twice.
-    const listed = [...new Map(devices.map((device) => [device.ieeeAddress, device])).values()];
+  ): Promise<{ ids: string[] }> {
+    // One row per external ID (the last entry wins): an upsert cannot touch a row twice.
+    const listed = [...new Map(devices.map((device) => [device.externalId, device])).values()];
     return this.connection.db.transaction(async (tx) => {
       const ids: string[] = [];
       if (listed.length > 0) {
@@ -85,41 +80,43 @@ export class HardwareRepository {
           .values(
             listed.map((device) => ({
               gatewayId,
-              ieeeAddress: device.ieeeAddress,
-              friendlyName: device.friendlyName,
+              externalId: device.externalId,
+              address: device.address,
+              name: device.name,
               vendor: device.vendor,
               model: device.model,
               description: device.description,
-              definition: device.definition,
-              interviewState: device.interviewState,
+              native: device.native,
+              setupState: device.setupState,
               firstSeenAt: now,
             })),
           )
           .onConflictDoUpdate({
-            target: [hardware.gatewayId, hardware.ieeeAddress],
+            target: [hardware.gatewayId, hardware.externalId],
             set: {
-              friendlyName: excluded(hardware.friendlyName),
+              address: excluded(hardware.address),
+              name: excluded(hardware.name),
               vendor: excluded(hardware.vendor),
               model: excluded(hardware.model),
               description: excluded(hardware.description),
-              definition: excluded(hardware.definition),
-              interviewState: excluded(hardware.interviewState),
+              native: excluded(hardware.native),
+              setupState: excluded(hardware.setupState),
               removedAt: null,
             },
           })
-          .returning({ id: hardware.id, ieeeAddress: hardware.ieeeAddress });
+          .returning({ id: hardware.id, externalId: hardware.externalId });
         ids.push(...rows.map((row) => row.id));
-        const idOf = new Map(rows.map((row) => [row.ieeeAddress, row.id]));
+        const idOf = new Map(rows.map((row) => [row.externalId, row.id]));
         await tx.delete(capabilities).where(
           inArray(
             capabilities.hardwareId,
             rows.map((row) => row.id),
           ),
         );
-        // One statement for the whole bridge: a gateway has tens of devices, not thousands.
+        // One statement for the whole list: a gateway has tens of devices, not thousands.
         const capabilityRows = listed.flatMap((device) =>
           device.capabilities.map((capability) => ({
-            hardwareId: idOf.get(device.ieeeAddress) ?? '',
+            hardwareId: idOf.get(device.externalId) ?? '',
             key: capability.key,
             kind: capability.kind,
             unit: capability.unit,
@@ -130,6 +127,7 @@ export class HardwareRepository {
             readable: capability.readable,
             writable: capability.writable,
             isSetting: capability.isSetting,
+            native: capability.native,
           })),
         );
         if (capabilityRows.length > 0) {
@@ -146,42 +144,53 @@ export class HardwareRepository {
             isNull(hardware.removedAt),
             listed.length > 0
               ? notInArray(
-                  hardware.ieeeAddress,
-                  listed.map((device) => device.ieeeAddress),
+                  hardware.externalId,
+                  listed.map((device) => device.externalId),
                 )
               : undefined,
           ),
         )
         .returning({ id: hardware.id });
       ids.push(...gone.map((row) => row.id));
-      return { upserted: listed.length, removed: gone.length, ids };
+      return { ids };
     });
   }
 
-  /** The names of the gateway's hardware that its bridge still lists, with their hardware IDs. */
-  async listNames(gatewayId: string): Promise<{ id: string; friendlyName: string }[]> {
-    return this.connection.db
-      .select({ id: hardware.id, friendlyName: hardware.friendlyName })
+  /**
+   * The addresses of the gateway's hardware that it still lists, with their hardware IDs; hardware
+   * the adapter does not address by topic has none and is left out.
+   */
+  async listAddresses(gatewayId: string): Promise<{ id: string; address: string }[]> {
+    const rows = await this.connection.db
+      .select({ id: hardware.id, address: hardware.address })
       .from(hardware)
-      .where(and(eq(hardware.gatewayId, gatewayId), isNull(hardware.removedAt)));
+      .where(
+        and(
+          eq(hardware.gatewayId, gatewayId),
+          isNull(hardware.removedAt),
+          isNotNull(hardware.address),
+        ),
+      );
+    return rows.flatMap(({ id, address }) => (address === null ? [] : [{ id, address }]));
   }
 
   /**
-   * Hardware that just joined (`device_joined`): added with a pending interview, or revived and
-   * renamed if it is known. The bridge's next device list fills in model and capabilities.
+   * Hardware that just joined: added while it is still pairing, or revived with its new address and
+   * name if it is known. The gateway's next list fills in model and capabilities.
    */
   async recordJoined(
     gatewayId: string,
-    ieeeAddress: string,
-    friendlyName: string,
+    externalId: string,
+    address: string | null,
+    name: string,
     now: Date,
   ): Promise<string> {
     const [row] = await this.connection.db
       .insert(hardware)
-      .values({ gatewayId, ieeeAddress, friendlyName, interviewState: 'PENDING', firstSeenAt: now })
+      .values({ gatewayId, externalId, address, name, setupState: 'pairing', firstSeenAt: now })
       .onConflictDoUpdate({
-        target: [hardware.gatewayId, hardware.ieeeAddress],
-        set: { friendlyName, removedAt: null },
+        target: [hardware.gatewayId, hardware.externalId],
+        set: { address, name, removedAt: null },
       })
       .returning({ id: hardware.id });
     if (!row) throw new Error('hardware upsert returned no row');
@@ -189,51 +198,59 @@ export class HardwareRepository {
   }
 
   /**
-   * Stores how far the interview of known hardware is (`device_interview`); its ID, `undefined`
-   * if the gateway does not have it.
+   * Stores how far the setup of known hardware is; its ID, `undefined` if the gateway does not have
+   * it.
    */
-  async setInterviewState(
+  async setSetupState(
     gatewayId: string,
-    ieeeAddress: string,
-    interviewState: string,
+    externalId: string,
+    setupState: SetupState,
   ): Promise<string | undefined> {
     const [row] = await this.connection.db
       .update(hardware)
-      .set({ interviewState })
-      .where(and(eq(hardware.gatewayId, gatewayId), eq(hardware.ieeeAddress, ieeeAddress)))
+      .set({ setupState })
+      .where(and(eq(hardware.gatewayId, gatewayId), eq(hardware.externalId, externalId)))
       .returning({ id: hardware.id });
     return row?.id;
   }
 
-  /** Marks hardware as removed (`device_leave`); returns its name, `undefined` if it is unknown. */
+  /** Marks hardware as removed (it left); returns its address, `undefined` if it is unknown. */
   async markLeft(
     gatewayId: string,
-    ieeeAddress: string,
+    externalId: string,
     now: Date,
-  ): Promise<{ id: string; friendlyName: string } | undefined> {
+  ): Promise<{ id: string; address: string | null } | undefined> {
     const [row] = await this.connection.db
       .update(hardware)
       .set({ removedAt: now })
       .where(
         and(
           eq(hardware.gatewayId, gatewayId),
-          eq(hardware.ieeeAddress, ieeeAddress),
+          eq(hardware.externalId, externalId),
           isNull(hardware.removedAt),
         ),
       )
-      .returning({ id: hardware.id, friendlyName: hardware.friendlyName });
+      .returning({ id: hardware.id, address: hardware.address });
     return row;
   }
 
-  /** Renames the gateway's hardware (`device_renamed`); its ID, `undefined` if there is none. */
-  async rename(gatewayId: string, from: string, to: string): Promise<string | undefined> {
+  /**
+   * Moves the gateway's hardware from one address to another and stores its new name in the
+   * foreign system; its ID, `undefined` if there is none at `from`.
+   */
+  async readdress(
+    gatewayId: string,
+    from: string,
+    to: string,
+    name: string,
+  ): Promise<string | undefined> {
     const [row] = await this.connection.db
       .update(hardware)
-      .set({ friendlyName: to })
+      .set({ address: to, name })
       .where(
         and(
           eq(hardware.gatewayId, gatewayId),
-          eq(hardware.friendlyName, from),
+          eq(hardware.address, from),
           isNull(hardware.removedAt),
         ),
       )
@@ -305,20 +322,35 @@ export class HardwareRepository {
     return updated.length > 0;
   }
 
-  /** What the hardware reports and accepts. */
-  async capabilitiesOf(hardwareId: string): Promise<Capability[]> {
+  /** What the hardware reports and accepts, with what its adapter stored for reading it. */
+  async capabilitiesOf(hardwareId: string): Promise<StoredCapability[]> {
     const rows = await this.connection.db
       .select()
       .from(capabilities)
       .where(eq(capabilities.hardwareId, hardwareId))
       .orderBy(asc(capabilities.key));
-    return rows.map(toCapability);
+    return rows.map(toStoredCapability);
   }
 
-  /** The gateway's hardware of that name (Z2M keeps names unique per bridge); not removed ones. */
-  async findByName(
+  /** The ID of the gateway's hardware with that external ID; not removed ones. */
+  async findByExternalId(gatewayId: string, externalId: string): Promise<string | undefined> {
+    const [row] = await this.connection.db
+      .select({ id: hardware.id })
+      .from(hardware)
+      .where(
+        and(
+          eq(hardware.gatewayId, gatewayId),
+          eq(hardware.externalId, externalId),
+          isNull(hardware.removedAt),
+        ),
+      );
+    return row?.id;
+  }
+
+  /** The gateway's hardware at that address (unique among what it lists); not removed ones. */
+  async findByAddress(
     gatewayId: string,
-    friendlyName: string,
+    address: string,
   ): Promise<HardwareWithCapabilities | undefined> {
     const rows = await this.connection.db
       .select()
@@ -326,7 +358,7 @@ export class HardwareRepository {
       .where(
         and(
           eq(hardware.gatewayId, gatewayId),
-          eq(hardware.friendlyName, friendlyName),
+          eq(hardware.address, address),
           isNull(hardware.removedAt),
         ),
       );
@@ -334,8 +366,8 @@ export class HardwareRepository {
   }
 
   /**
-   * Hardware of the household's gateways that is listed by its bridge and not part of a device
-   * yet; hardware of revoked gateways is left out. By name.
+   * Hardware that the household's gateways still list and that is not part of a device yet;
+   * hardware of revoked gateways is left out. By name.
    */
   async listUnassigned(householdId: string): Promise<HardwareWithCapabilities[]> {
     const rows = await this.connection.db
@@ -357,7 +389,7 @@ export class HardwareRepository {
           ),
         ),
       )
-      .orderBy(asc(hardware.friendlyName), asc(hardware.id));
+      .orderBy(asc(hardware.name), asc(hardware.id));
     return this.withCapabilities(rows.map((row) => row.hardware));
   }
 

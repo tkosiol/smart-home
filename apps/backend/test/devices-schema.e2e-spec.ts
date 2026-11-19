@@ -1,11 +1,8 @@
 import type { Capability } from '@smart/contracts';
 import postgres from 'postgres';
 import { inject } from 'vitest';
-import {
-  DevicesRepository,
-  HardwareRepository,
-  type Z2mDevice,
-} from '../src/core/devices/index.js';
+import type { ReportedCapability, ReportedHardware } from '../src/core/adapters/index.js';
+import { DevicesRepository, HardwareRepository } from '../src/core/devices/index.js';
 import { MeasurementsRepository } from '../src/core/telemetry/index.js';
 import {
   createDatabaseConnection,
@@ -15,7 +12,7 @@ import {
 import { createFreshDatabase } from './helpers/fresh-database.js';
 import { randomGatewayId } from './helpers/test-pki.js';
 
-const numeric = (key: string, overrides: Partial<Capability> = {}): Capability => ({
+const numeric = (key: string, overrides: Partial<Capability> = {}): ReportedCapability => ({
   key,
   kind: 'numeric',
   unit: null,
@@ -26,17 +23,23 @@ const numeric = (key: string, overrides: Partial<Capability> = {}): Capability =
   readable: true,
   writable: false,
   isSetting: false,
+  native: { property: key },
   ...overrides,
 });
 
-const sensor = (ieee: string, name: string, extra: Partial<Z2mDevice> = {}): Z2mDevice => ({
-  ieeeAddress: ieee,
-  friendlyName: name,
+const sensor = (
+  ieee: string,
+  name: string,
+  extra: Partial<ReportedHardware> = {},
+): ReportedHardware => ({
+  externalId: ieee,
+  address: name,
+  name,
   vendor: 'Acme',
   model: 'AY-303Z',
   description: 'Soil sensor',
-  definition: { model: 'AY-303Z', exposes: [] },
-  interviewState: 'SUCCESSFUL',
+  native: { model: 'AY-303Z', exposes: [] },
+  setupState: 'ready',
   capabilities: [
     numeric('soil_moisture', { unit: '%', min: 0, max: 100 }),
     numeric('soil_calibration', { readable: true, writable: true, isSetting: true }),
@@ -70,7 +73,7 @@ describe('devices and telemetry data model', () => {
     return id;
   };
   const hardwareId = async (gatewayId: string, name: string): Promise<string> => {
-    const row = await hardware.findByName(gatewayId, name);
+    const row = await hardware.findByAddress(gatewayId, name);
     if (!row) throw new Error(`no hardware ${name}`);
     return row.id;
   };
@@ -126,23 +129,23 @@ describe('devices and telemetry data model', () => {
   });
 
   describe('hardware', () => {
-    it('stores bridge devices with their capabilities and reports what changed', async () => {
+    it('stores listed hardware with its capabilities and reports what changed', async () => {
       const gatewayId = await gateway(await household());
-      const first = await hardware.upsertFromBridge(
+      const first = await hardware.replaceListed(
         gatewayId,
         [sensor('0x01', 'bed-1'), sensor('0x02', 'bed-2')],
         now,
       );
-      expect(first).toEqual({
-        upserted: 2,
-        removed: 0,
-        ids: [expect.any(String), expect.any(String)],
-      });
+      expect(first).toEqual({ ids: [expect.any(String), expect.any(String)] });
 
-      const bed1 = await hardware.findByName(gatewayId, 'bed-1');
+      const bed1 = await hardware.findByAddress(gatewayId, 'bed-1');
       expect(bed1).toMatchObject({
         gatewayId,
-        ieeeAddress: '0x01',
+        externalId: '0x01',
+        name: 'bed-1',
+        address: 'bed-1',
+        native: { model: 'AY-303Z', exposes: [] },
+        setupState: 'ready',
         vendor: 'Acme',
         model: 'AY-303Z',
         availability: 'unknown',
@@ -158,19 +161,19 @@ describe('devices and telemetry data model', () => {
 
     it('updates renamed hardware in place and replaces its capabilities', async () => {
       const gatewayId = await gateway(await household());
-      await hardware.upsertFromBridge(gatewayId, [sensor('0x01', 'bed-1')], now);
+      await hardware.replaceListed(gatewayId, [sensor('0x01', 'bed-1')], now);
       const before = await hardwareId(gatewayId, 'bed-1');
 
       const later = new Date(now.getTime() + 60_000);
-      const result = await hardware.upsertFromBridge(
+      const result = await hardware.replaceListed(
         gatewayId,
         [sensor('0x01', 'tomatoes', { capabilities: [numeric('battery', { unit: '%' })] })],
         later,
       );
 
-      expect(result).toEqual({ upserted: 1, removed: 0, ids: [before] });
-      expect(await hardware.findByName(gatewayId, 'bed-1')).toBeUndefined();
-      const renamed = await hardware.findByName(gatewayId, 'tomatoes');
+      expect(result).toEqual({ ids: [before] });
+      expect(await hardware.findByAddress(gatewayId, 'bed-1')).toBeUndefined();
+      const renamed = await hardware.findByAddress(gatewayId, 'tomatoes');
       expect(renamed?.id).toBe(before);
       expect(renamed?.firstSeenAt).toEqual(now);
       expect(renamed?.capabilities.map((capability) => capability.key)).toEqual(['battery']);
@@ -178,51 +181,43 @@ describe('devices and telemetry data model', () => {
 
     it('marks hardware that is no longer listed as removed and revives it when it returns', async () => {
       const gatewayId = await gateway(await household());
-      await hardware.upsertFromBridge(gatewayId, [sensor('0x01', 'a'), sensor('0x02', 'b')], now);
+      await hardware.replaceListed(gatewayId, [sensor('0x01', 'a'), sensor('0x02', 'b')], now);
 
-      const gone = await hardware.upsertFromBridge(gatewayId, [sensor('0x01', 'a')], now);
-      expect(gone).toEqual({
-        upserted: 1,
-        removed: 1,
-        ids: [expect.any(String), expect.any(String)],
-      });
-      expect(await hardware.findByName(gatewayId, 'b')).toBeUndefined();
+      const gone = await hardware.replaceListed(gatewayId, [sensor('0x01', 'a')], now);
+      expect(gone).toEqual({ ids: [expect.any(String), expect.any(String)] });
+      expect(await hardware.findByAddress(gatewayId, 'b')).toBeUndefined();
       // Listing it again does not count it as removed a second time.
-      expect(await hardware.upsertFromBridge(gatewayId, [sensor('0x01', 'a')], now)).toEqual({
-        upserted: 1,
-        removed: 0,
+      expect(await hardware.replaceListed(gatewayId, [sensor('0x01', 'a')], now)).toEqual({
         ids: [expect.any(String)],
       });
 
-      await hardware.upsertFromBridge(gatewayId, [sensor('0x01', 'a'), sensor('0x02', 'b')], now);
-      expect((await hardware.findByName(gatewayId, 'b'))?.removedAt).toBeNull();
+      await hardware.replaceListed(gatewayId, [sensor('0x01', 'a'), sensor('0x02', 'b')], now);
+      expect((await hardware.findByAddress(gatewayId, 'b'))?.removedAt).toBeNull();
     });
 
-    it('removes everything when the bridge lists nothing and tolerates repeated entries', async () => {
+    it('removes everything when the gateway lists nothing and tolerates repeated entries', async () => {
       const gatewayId = await gateway(await household());
-      await hardware.upsertFromBridge(
+      await hardware.replaceListed(
         gatewayId,
         [sensor('0x01', 'a'), sensor('0x01', 'a-again')],
         now,
       );
-      expect((await hardware.findByName(gatewayId, 'a-again'))?.ieeeAddress).toBe('0x01');
+      expect((await hardware.findByAddress(gatewayId, 'a-again'))?.externalId).toBe('0x01');
 
-      expect(await hardware.upsertFromBridge(gatewayId, [], now)).toEqual({
-        upserted: 0,
-        removed: 1,
+      expect(await hardware.replaceListed(gatewayId, [], now)).toEqual({
         ids: [expect.any(String)],
       });
     });
 
-    it('keeps the same IEEE address on two gateways apart', async () => {
+    it('keeps the same external ID on two gateways apart', async () => {
       const householdId = await household();
       const one = await gateway(householdId);
       const two = await gateway(householdId);
-      await hardware.upsertFromBridge(one, [sensor('0x01', 'same')], now);
-      await hardware.upsertFromBridge(two, [sensor('0x01', 'same')], now);
+      await hardware.replaceListed(one, [sensor('0x01', 'same')], now);
+      await hardware.replaceListed(two, [sensor('0x01', 'same')], now);
 
-      const a = await hardware.findByName(one, 'same');
-      const b = await hardware.findByName(two, 'same');
+      const a = await hardware.findByAddress(one, 'same');
+      const b = await hardware.findByAddress(two, 'same');
       expect(a?.id).toBeDefined();
       expect(a?.id).not.toBe(b?.id);
     });
@@ -233,14 +228,14 @@ describe('devices and telemetry data model', () => {
       const gatewayId = await gateway(mine);
       const revoked = await gateway(mine, true);
       const foreign = await gateway(other);
-      await hardware.upsertFromBridge(
+      await hardware.replaceListed(
         gatewayId,
         [sensor('0x01', 'free'), sensor('0x02', 'taken'), sensor('0x03', 'gone')],
         now,
       );
-      await hardware.upsertFromBridge(revoked, [sensor('0x04', 'revoked-gw')], now);
-      await hardware.upsertFromBridge(foreign, [sensor('0x05', 'foreign')], now);
-      await hardware.upsertFromBridge(
+      await hardware.replaceListed(revoked, [sensor('0x04', 'revoked-gw')], now);
+      await hardware.replaceListed(foreign, [sensor('0x05', 'foreign')], now);
+      await hardware.replaceListed(
         gatewayId,
         [sensor('0x01', 'free'), sensor('0x02', 'taken')],
         now,
@@ -250,7 +245,7 @@ describe('devices and telemetry data model', () => {
 
       const list = await hardware.listUnassigned(mine);
 
-      expect(list.map((row) => row.friendlyName)).toEqual(['free']);
+      expect(list.map((row) => row.name)).toEqual(['free']);
       expect(list[0]?.capabilities.map((capability) => capability.key).sort()).toEqual([
         'soil_calibration',
         'soil_moisture',
@@ -262,7 +257,7 @@ describe('devices and telemetry data model', () => {
     const bound = async () => {
       const householdId = await household();
       const gatewayId = await gateway(householdId);
-      await hardware.upsertFromBridge(gatewayId, [sensor('0x01', 'bed-1')], now);
+      await hardware.replaceListed(gatewayId, [sensor('0x01', 'bed-1')], now);
       const id = await hardwareId(gatewayId, 'bed-1');
       return { householdId, gatewayId, hardwareId: id };
     };
@@ -329,11 +324,7 @@ describe('devices and telemetry data model', () => {
       const { householdId, gatewayId, hardwareId: id } = await bound();
       const created = await devices.createWithBinding(householdId, id, 'Tomatoes');
       if (created.outcome !== 'created') throw new Error('not created');
-      await hardware.upsertFromBridge(
-        gatewayId,
-        [sensor('0x01', 'bed-1'), sensor('0x02', 'b')],
-        now,
-      );
+      await hardware.replaceListed(gatewayId, [sensor('0x01', 'bed-1'), sensor('0x02', 'b')], now);
       const second = await hardwareId(gatewayId, 'b');
 
       await expect(
@@ -356,11 +347,7 @@ describe('devices and telemetry data model', () => {
 
     it('lists the household devices by name and renames them within the household', async () => {
       const { householdId, gatewayId, hardwareId: id } = await bound();
-      await hardware.upsertFromBridge(
-        gatewayId,
-        [sensor('0x01', 'bed-1'), sensor('0x02', 'b')],
-        now,
-      );
+      await hardware.replaceListed(gatewayId, [sensor('0x01', 'bed-1'), sensor('0x02', 'b')], now);
       const second = await hardwareId(gatewayId, 'b');
       const one = await devices.createWithBinding(householdId, id, 'Zucchini');
       const two = await devices.createWithBinding(householdId, second, 'Basil');

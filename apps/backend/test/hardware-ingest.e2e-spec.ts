@@ -1,11 +1,7 @@
-import type { Capability } from '@smart/contracts';
 import postgres from 'postgres';
 import { inject } from 'vitest';
-import {
-  DevicesRepository,
-  HardwareRepository,
-  type Z2mDevice,
-} from '../src/core/devices/index.js';
+import type { ReportedCapability, ReportedHardware } from '../src/core/adapters/index.js';
+import { DevicesRepository, HardwareRepository } from '../src/core/devices/index.js';
 import {
   createDatabaseConnection,
   runMigrations,
@@ -14,7 +10,7 @@ import {
 import { createFreshDatabase } from './helpers/fresh-database.js';
 import { randomGatewayId } from './helpers/test-pki.js';
 
-const moisture: Capability = {
+const moisture: ReportedCapability = {
   key: 'soil_moisture',
   kind: 'numeric',
   unit: '%',
@@ -25,22 +21,25 @@ const moisture: Capability = {
   readable: true,
   writable: false,
   isSetting: false,
+  native: { property: 'soil_moisture' },
 };
 
-const sensor = (ieee: string, name: string): Z2mDevice => ({
-  ieeeAddress: ieee,
-  friendlyName: name,
+const sensor = (ieee: string, name: string): ReportedHardware => ({
+  externalId: ieee,
+  address: name,
+  name,
   vendor: 'Acme',
   model: 'AY-303Z',
   description: null,
-  definition: { model: 'AY-303Z' },
-  interviewState: 'SUCCESSFUL',
+  native: { model: 'AY-303Z' },
+  setupState: 'ready',
   capabilities: [moisture],
 });
 
 interface HardwareRecord {
-  friendly_name: string;
-  interview_state: string;
+  name: string;
+  address: string | null;
+  setup_state: string;
   availability: string;
   last_state: Record<string, unknown>;
   last_seen_at: Date | null;
@@ -68,8 +67,8 @@ describe('hardware writes of the device ingest', () => {
   };
   const rowOf = async (gatewayId: string, ieee: string): Promise<HardwareRecord> => {
     const [row] = await sql<HardwareRecord[]>`
-      select friendly_name, interview_state, availability, last_state, last_seen_at, removed_at
-      from hardware where gateway_id = ${gatewayId} and ieee_address = ${ieee}`;
+      select name, address, setup_state, availability, last_state, last_seen_at, removed_at
+      from hardware where gateway_id = ${gatewayId} and external_id = ${ieee}`;
     if (!row) throw new Error(`no hardware ${ieee}`);
     // Raw queries return timestamps as text.
     return {
@@ -79,7 +78,7 @@ describe('hardware writes of the device ingest', () => {
     };
   };
   const idOf = async (gatewayId: string, name: string): Promise<string> => {
-    const row = await hardware.findByName(gatewayId, name);
+    const row = await hardware.findByAddress(gatewayId, name);
     if (!row) throw new Error(`no hardware ${name}`);
     return row.id;
   };
@@ -118,7 +117,7 @@ describe('hardware writes of the device ingest', () => {
   describe('setAvailability', () => {
     it('stores it on the hardware and on the device that sits on it', async () => {
       const gatewayId = await gateway();
-      await hardware.upsertFromBridge(
+      await hardware.replaceListed(
         gatewayId,
         [sensor('0x00000000000000a1', 'Tomatoes'), sensor('0x00000000000000a2', 'Basil')],
         now,
@@ -141,7 +140,7 @@ describe('hardware writes of the device ingest', () => {
 
     it('leaves the device alone once it no longer sits on the hardware', async () => {
       const gatewayId = await gateway();
-      await hardware.upsertFromBridge(gatewayId, [sensor('0x00000000000000b1', 'Moved')], now);
+      await hardware.replaceListed(gatewayId, [sensor('0x00000000000000b1', 'Moved')], now);
       const deviceId = await bound(gatewayId, 'Moved');
       await sql`update device_bindings set unbound_at = now() where device_id = ${deviceId}`;
 
@@ -153,114 +152,223 @@ describe('hardware writes of the device ingest', () => {
 
     it('works for hardware without a device', async () => {
       const gatewayId = await gateway();
-      await hardware.upsertFromBridge(gatewayId, [sensor('0x00000000000000c1', 'Free')], now);
+      await hardware.replaceListed(gatewayId, [sensor('0x00000000000000c1', 'Free')], now);
       expect(await hardware.setAvailability(await idOf(gatewayId, 'Free'), 'offline')).toEqual([]);
       expect((await rowOf(gatewayId, '0x00000000000000c1')).availability).toBe('offline');
     });
   });
 
-  describe('recordJoined (device_joined)', () => {
-    it('adds hardware with a pending interview', async () => {
+  describe('recordJoined', () => {
+    it('adds hardware that is still pairing', async () => {
       const gatewayId = await gateway();
-      const id = await hardware.recordJoined(gatewayId, '0x00000000000000d1', 'new one', now);
-      expect(await idOf(gatewayId, 'new one')).toBe(id);
+      const id = await hardware.recordJoined(
+        gatewayId,
+        '0x00000000000000d1',
+        'new-one',
+        'New one',
+        now,
+      );
+      expect(await idOf(gatewayId, 'new-one')).toBe(id);
       expect(await rowOf(gatewayId, '0x00000000000000d1')).toMatchObject({
-        interview_state: 'PENDING',
+        name: 'New one',
+        address: 'new-one',
+        setup_state: 'pairing',
         availability: 'unknown',
         removed_at: null,
       });
     });
 
-    it('revives and renames known hardware without losing what the bridge told before', async () => {
+    it('revives and renames known hardware without losing what the gateway told before', async () => {
       const gatewayId = await gateway();
-      await hardware.upsertFromBridge(gatewayId, [sensor('0x00000000000000d2', 'old name')], now);
+      await hardware.replaceListed(gatewayId, [sensor('0x00000000000000d2', 'old name')], now);
       const before = await idOf(gatewayId, 'old name');
       await hardware.markLeft(gatewayId, '0x00000000000000d2', now);
 
-      const id = await hardware.recordJoined(gatewayId, '0x00000000000000d2', 'rejoined', later);
+      const id = await hardware.recordJoined(
+        gatewayId,
+        '0x00000000000000d2',
+        'rejoined',
+        'Rejoined',
+        later,
+      );
 
       expect(id).toBe(before);
       expect(await rowOf(gatewayId, '0x00000000000000d2')).toMatchObject({
-        friendly_name: 'rejoined',
-        interview_state: 'SUCCESSFUL',
+        name: 'Rejoined',
+        address: 'rejoined',
+        setup_state: 'ready',
         removed_at: null,
       });
-      expect((await hardware.findByName(gatewayId, 'rejoined'))?.capabilities).toHaveLength(1);
+      expect((await hardware.findByAddress(gatewayId, 'rejoined'))?.capabilities).toHaveLength(1);
     });
 
-    it('keeps the same address on two gateways apart', async () => {
+    it('keeps the same external ID on two gateways apart', async () => {
       const [a, b] = [await gateway(), await gateway()];
-      const first = await hardware.recordJoined(a, '0x00000000000000d3', 'same', now);
-      const second = await hardware.recordJoined(b, '0x00000000000000d3', 'same', now);
+      const first = await hardware.recordJoined(a, '0x00000000000000d3', 'same', 'same', now);
+      const second = await hardware.recordJoined(b, '0x00000000000000d3', 'same', 'same', now);
       expect(first).not.toBe(second);
+    });
+
+    it('stores hardware without an address, which is not listed by address', async () => {
+      const gatewayId = await gateway();
+      await hardware.recordJoined(gatewayId, '0x00000000000000d4', null, 'Unaddressed', now);
+      expect(await rowOf(gatewayId, '0x00000000000000d4')).toMatchObject({
+        name: 'Unaddressed',
+        address: null,
+      });
+      expect(await hardware.listAddresses(gatewayId)).toEqual([]);
     });
   });
 
-  describe('markLeft (device_leave)', () => {
-    it('marks the hardware as removed and reports its name, once', async () => {
+  describe('markLeft', () => {
+    it('marks the hardware as removed and reports its address, once', async () => {
       const gatewayId = await gateway();
-      await hardware.upsertFromBridge(gatewayId, [sensor('0x00000000000000e1', 'Leaving')], now);
+      await hardware.replaceListed(gatewayId, [sensor('0x00000000000000e1', 'Leaving')], now);
       const id = await idOf(gatewayId, 'Leaving');
 
       expect(await hardware.markLeft(gatewayId, '0x00000000000000e1', later)).toEqual({
         id,
-        friendlyName: 'Leaving',
+        address: 'Leaving',
       });
       expect((await rowOf(gatewayId, '0x00000000000000e1')).removed_at).toEqual(later);
-      expect(await hardware.findByName(gatewayId, 'Leaving')).toBeUndefined();
-      expect(await hardware.listNames(gatewayId)).toEqual([]);
+      expect(await hardware.findByAddress(gatewayId, 'Leaving')).toBeUndefined();
+      expect(await hardware.listAddresses(gatewayId)).toEqual([]);
       // Already removed: nothing more to report, and the first time stays.
       expect(await hardware.markLeft(gatewayId, '0x00000000000000e1', now)).toBeUndefined();
       expect((await rowOf(gatewayId, '0x00000000000000e1')).removed_at).toEqual(later);
     });
 
-    it('knows nothing of an unknown address or of another gateway', async () => {
+    it('knows nothing of an unknown external ID or of another gateway', async () => {
       const [a, b] = [await gateway(), await gateway()];
-      await hardware.upsertFromBridge(a, [sensor('0x00000000000000e2', 'Mine')], now);
+      await hardware.replaceListed(a, [sensor('0x00000000000000e2', 'Mine')], now);
       expect(await hardware.markLeft(a, '0x00000000000000ee', now)).toBeUndefined();
       expect(await hardware.markLeft(b, '0x00000000000000e2', now)).toBeUndefined();
       expect((await rowOf(a, '0x00000000000000e2')).removed_at).toBeNull();
     });
   });
 
-  describe('setInterviewState (device_interview)', () => {
+  describe('setSetupState', () => {
     it('updates the hardware of that gateway only', async () => {
       const [a, b] = [await gateway(), await gateway()];
-      await hardware.recordJoined(a, '0x00000000000000f1', 'joining', now);
-      await hardware.recordJoined(b, '0x00000000000000f1', 'joining', now);
+      await hardware.recordJoined(a, '0x00000000000000f1', 'joining', 'joining', now);
+      await hardware.recordJoined(b, '0x00000000000000f1', 'joining', 'joining', now);
 
-      const id = await hardware.setInterviewState(a, '0x00000000000000f1', 'IN_PROGRESS');
+      const id = await hardware.setSetupState(a, '0x00000000000000f1', 'ready');
 
       expect(id).toBe(await idOf(a, 'joining'));
 
-      expect((await rowOf(a, '0x00000000000000f1')).interview_state).toBe('IN_PROGRESS');
-      expect((await rowOf(b, '0x00000000000000f1')).interview_state).toBe('PENDING');
+      expect((await rowOf(a, '0x00000000000000f1')).setup_state).toBe('ready');
+      expect((await rowOf(b, '0x00000000000000f1')).setup_state).toBe('pairing');
     });
 
-    it('does nothing for an address the gateway does not have', async () => {
+    it('does nothing for an external ID the gateway does not have', async () => {
       const gatewayId = await gateway();
       expect(
-        await hardware.setInterviewState(gatewayId, '0x00000000000000f9', 'FAILED'),
+        await hardware.setSetupState(gatewayId, '0x00000000000000f9', 'failed'),
       ).toBeUndefined();
-      expect(await hardware.listNames(gatewayId)).toEqual([]);
+      expect(await hardware.listAddresses(gatewayId)).toEqual([]);
     });
   });
 
-  describe('rename (device_renamed)', () => {
-    it('renames the hardware and reports its id, only if it is listed', async () => {
+  describe('readdress', () => {
+    it('moves the hardware to its new address and name, only if it is listed', async () => {
       const gatewayId = await gateway();
-      await hardware.upsertFromBridge(gatewayId, [sensor('0x0000000000000a01', 'Before')], now);
+      await hardware.replaceListed(gatewayId, [sensor('0x0000000000000a01', 'Before')], now);
       const id = await idOf(gatewayId, 'Before');
-      expect(await hardware.rename(gatewayId, 'Before', 'After')).toBe(id);
-      expect(await hardware.findByName(gatewayId, 'After')).toMatchObject({ id });
-      expect(await hardware.rename(gatewayId, 'Before', 'Again')).toBeUndefined();
+      expect(await hardware.readdress(gatewayId, 'Before', 'after', 'After')).toBe(id);
+      expect(await hardware.findByAddress(gatewayId, 'after')).toMatchObject({
+        id,
+        address: 'after',
+        name: 'After',
+      });
+      expect(await hardware.listAddresses(gatewayId)).toEqual([{ id, address: 'after' }]);
+      expect(await hardware.readdress(gatewayId, 'Before', 'again', 'Again')).toBeUndefined();
     });
   });
 
-  describe('upsertFromBridge ids', () => {
+  describe('replaceListed', () => {
+    it('stores what the adapter reported, with the native details of the capabilities', async () => {
+      const gatewayId = await gateway();
+      const lamp: ReportedHardware = {
+        externalId: '0x0000000000000e01',
+        address: 'lamp-address',
+        name: 'Lamp',
+        vendor: 'IKEA',
+        model: 'LED1624G9',
+        description: 'Bulb',
+        setupState: 'pairing',
+        native: { model: 'LED1624G9', exposes: [] },
+        capabilities: [
+          {
+            key: 'brightness',
+            kind: 'numeric',
+            unit: '%',
+            min: 0,
+            max: 100,
+            step: null,
+            enumValues: null,
+            readable: true,
+            writable: true,
+            isSetting: false,
+            native: { property: 'brightness', max: 254 },
+          },
+        ],
+      };
+      const { ids } = await hardware.replaceListed(gatewayId, [lamp], now);
+      const [row] = await sql<Record<string, unknown>[]>`
+        select external_id, address, name, vendor, model, description, native, setup_state
+        from hardware where gateway_id = ${gatewayId}`;
+      expect(row).toEqual({
+        external_id: '0x0000000000000e01',
+        address: 'lamp-address',
+        name: 'Lamp',
+        vendor: 'IKEA',
+        model: 'LED1624G9',
+        description: 'Bulb',
+        native: { model: 'LED1624G9', exposes: [] },
+        setup_state: 'pairing',
+      });
+      expect(ids).toHaveLength(1);
+      expect(await hardware.capabilitiesOf(ids[0] ?? '')).toEqual(lamp.capabilities);
+      expect(await hardware.findByExternalId(gatewayId, '0x0000000000000e01')).toBe(ids[0]);
+    });
+
+    it('marks hardware that is no longer listed as removed', async () => {
+      const gatewayId = await gateway();
+      await hardware.replaceListed(
+        gatewayId,
+        [sensor('0x0000000000000e02', 'Stays'), sensor('0x0000000000000e03', 'Goes')],
+        now,
+      );
+      await hardware.replaceListed(gatewayId, [sensor('0x0000000000000e02', 'Stays')], later);
+      expect((await rowOf(gatewayId, '0x0000000000000e02')).removed_at).toBeNull();
+      expect((await rowOf(gatewayId, '0x0000000000000e03')).removed_at).toEqual(later);
+      // Removed hardware is not found by its external ID any more.
+      expect(await hardware.findByExternalId(gatewayId, '0x0000000000000e03')).toBeUndefined();
+    });
+
+    it('keeps the last entry when an external ID is listed twice', async () => {
+      const gatewayId = await gateway();
+      await hardware.replaceListed(
+        gatewayId,
+        [sensor('0x0000000000000e04', 'First'), sensor('0x0000000000000e04', 'Second')],
+        now,
+      );
+      expect((await rowOf(gatewayId, '0x0000000000000e04')).name).toBe('Second');
+    });
+
+    it('finds nothing for an external ID of another gateway', async () => {
+      const gatewayId = await gateway();
+      const other = await gateway();
+      await hardware.replaceListed(gatewayId, [sensor('0x0000000000000e05', 'Mine')], now);
+      expect(await hardware.findByExternalId(other, '0x0000000000000e05')).toBeUndefined();
+    });
+  });
+
+  describe('replaceListed ids', () => {
     it('lists the hardware that was added, updated or removed', async () => {
       const gatewayId = await gateway();
-      const first = await hardware.upsertFromBridge(
+      const first = await hardware.replaceListed(
         gatewayId,
         [sensor('0x0000000000000c01', 'One'), sensor('0x0000000000000c02', 'Two')],
         now,
@@ -269,24 +377,24 @@ describe('hardware writes of the device ingest', () => {
       const two = await idOf(gatewayId, 'Two');
       expect([...first.ids].sort()).toEqual([one, two].sort());
 
-      const second = await hardware.upsertFromBridge(
+      const second = await hardware.replaceListed(
         gatewayId,
         [sensor('0x0000000000000c01', 'One')],
         later,
       );
       expect([...second.ids].sort()).toEqual([one, two].sort());
-      expect((await hardware.upsertFromBridge(gatewayId, [], later)).ids).toEqual([one]);
+      expect((await hardware.replaceListed(gatewayId, [], later)).ids).toEqual([one]);
     });
   });
 
   describe('listingOf', () => {
     it('gives free hardware with its household', async () => {
       const gatewayId = await gateway();
-      await hardware.upsertFromBridge(gatewayId, [sensor('0x0000000000000d01', 'Free one')], now);
+      await hardware.replaceListed(gatewayId, [sensor('0x0000000000000d01', 'Free one')], now);
       const id = await idOf(gatewayId, 'Free one');
       const result = await hardware.listingOf(id);
       expect(result?.householdId).toBe(householdId);
-      expect(result?.listed).toMatchObject({ id, friendlyName: 'Free one' });
+      expect(result?.listed).toMatchObject({ id, name: 'Free one' });
       expect(result?.listed?.capabilities).toHaveLength(1);
       // It is what the household's list of new hardware shows.
       expect((await hardware.listUnassigned(householdId)).map((row) => row.id)).toContain(id);
@@ -294,7 +402,7 @@ describe('hardware writes of the device ingest', () => {
 
     it('is not listed once assigned, removed or when its gateway is revoked', async () => {
       const gatewayId = await gateway();
-      await hardware.upsertFromBridge(
+      await hardware.replaceListed(
         gatewayId,
         [sensor('0x0000000000000d02', 'Assigned'), sensor('0x0000000000000d03', 'Gone')],
         now,
@@ -302,19 +410,17 @@ describe('hardware writes of the device ingest', () => {
       await bound(gatewayId, 'Assigned');
       await hardware.markLeft(gatewayId, '0x0000000000000d03', now);
       const revoked = await gateway();
-      await hardware.upsertFromBridge(revoked, [sensor('0x0000000000000d04', 'Orphan')], now);
+      await hardware.replaceListed(revoked, [sensor('0x0000000000000d04', 'Orphan')], now);
       await sql`update gateways set revoked_at = now() where id = ${revoked}`;
 
       for (const [id, name] of [
         [await idOf(gatewayId, 'Assigned'), 'Assigned'],
         [
-          (await sql<{ id: string }[]>`select id from hardware where friendly_name = 'Gone'`)[0]
-            ?.id ?? '',
+          (await sql<{ id: string }[]>`select id from hardware where name = 'Gone'`)[0]?.id ?? '',
           'Gone',
         ],
         [
-          (await sql<{ id: string }[]>`select id from hardware where friendly_name = 'Orphan'`)[0]
-            ?.id ?? '',
+          (await sql<{ id: string }[]>`select id from hardware where name = 'Orphan'`)[0]?.id ?? '',
           'Orphan',
         ],
       ] as const) {
@@ -330,7 +436,7 @@ describe('hardware writes of the device ingest', () => {
   describe('recordState', () => {
     it('merges what the hardware reports into its last state and notes the time', async () => {
       const gatewayId = await gateway();
-      await hardware.upsertFromBridge(gatewayId, [sensor('0x0000000000000b01', 'Reporter')], now);
+      await hardware.replaceListed(gatewayId, [sensor('0x0000000000000b01', 'Reporter')], now);
       const id = await idOf(gatewayId, 'Reporter');
 
       await hardware.recordState(id, { soil_moisture: 30, battery: 90 }, now);

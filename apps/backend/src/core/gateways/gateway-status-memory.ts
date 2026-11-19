@@ -1,9 +1,11 @@
-import type { GatewayStatus } from '@smart/contracts';
+import type { GatewayKind, GatewayStatus } from '@smart/contracts';
 
 /** What was last heard from a gateway over MQTT, kept for gateways that are not registered yet. */
 export interface RecalledStatus {
   bridge?: GatewayStatus;
-  z2m?: GatewayStatus;
+  service?: GatewayStatus;
+  /** The kind of gateway the service status was heard from (its topic names it). */
+  serviceKind?: GatewayKind;
   /** When the status last changed. */
   at?: Date;
 }
@@ -14,7 +16,8 @@ export interface GatewayStatusMemory {
 
 export const GATEWAY_STATUS_MEMORY = Symbol('GATEWAY_STATUS_MEMORY');
 
-export type GatewayStatusKind = 'bridge' | 'z2m';
+/** `bridge`: the gateway's broker connection; `service`: its software behind it. */
+export type GatewayStatusKind = 'bridge' | 'service';
 
 export const STATUS_MEMORY_LIMIT = 1000;
 
@@ -28,10 +31,22 @@ export class StatusMemory implements GatewayStatusMemory {
   constructor(private readonly limit = STATUS_MEMORY_LIMIT) {}
 
   /** Stores the status; `true` if it differs from the one remembered before. */
-  record(id: string, kind: GatewayStatusKind, status: GatewayStatus, now: Date): boolean {
+  record(
+    id: string,
+    kind: GatewayStatusKind,
+    status: GatewayStatus,
+    now: Date,
+    serviceKind?: GatewayKind,
+  ): boolean {
     const entry = this.entries.get(id) ?? {};
-    const changed = entry[kind] !== status;
+    // A service status of another kind of gateway is a different status, even if the words match.
+    const changed =
+      entry[kind] !== status || (kind === 'service' && entry.serviceKind !== serviceKind);
     entry[kind] = status;
+    if (kind === 'service') {
+      if (serviceKind === undefined) delete entry.serviceKind;
+      else entry.serviceKind = serviceKind;
+    }
     if (changed) entry.at = now;
     this.entries.delete(id);
     this.entries.set(id, entry);

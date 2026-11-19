@@ -86,6 +86,48 @@ describe('backend boundaries', () => {
       "import { d } from './core/devices/index.js';\nexport const x = d;",
       [],
     ],
+    [
+      'core → gateway adapter',
+      'apps/backend/src/core/devices/devices.service.ts',
+      "import { a } from '../../adapters/z2m/index.js';\nexport const x = a;",
+      ['boundaries/dependencies'],
+    ],
+    [
+      'adapter → other adapter',
+      'apps/backend/src/adapters/z2m/a.ts',
+      "import { a } from '../ha/index.js';\nexport const x = a;",
+      ['boundaries/dependencies'],
+    ],
+    [
+      'adapter → feature module',
+      'apps/backend/src/adapters/z2m/a.ts',
+      "import { p } from '../../modules/plants/index.js';\nexport const x = p;",
+      ['boundaries/dependencies'],
+    ],
+    [
+      'feature module → gateway adapter',
+      'apps/backend/src/modules/plants/plants.service.ts',
+      "import { a } from '../../adapters/z2m/index.js';\nexport const x = a;",
+      ['boundaries/dependencies'],
+    ],
+    [
+      'platform → gateway adapter',
+      'apps/backend/src/platform/database/database.service.ts',
+      "import { a } from '../../adapters/z2m/index.js';\nexport const x = a;",
+      ['boundaries/dependencies'],
+    ],
+    [
+      'adapter → core via index',
+      'apps/backend/src/adapters/z2m/a.ts',
+      "import { c } from '../../core/adapters/index.js';\nexport const x = c;",
+      [],
+    ],
+    [
+      'adapter → core internals',
+      'apps/backend/src/adapters/z2m/a.ts',
+      "import { c } from '../../core/adapters/adapter.js';\nexport const x = c;",
+      ['boundaries/dependencies'],
+    ],
   ];
 
   it.each(cases)('%s', async (_name, file, code, expected) => {

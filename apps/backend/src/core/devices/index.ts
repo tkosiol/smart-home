@@ -27,11 +27,7 @@ export {
   type DeviceStateRow,
   type HardwareRow,
 } from './devices.schema.js';
-export {
-  HardwareRepository,
-  type HardwareWithCapabilities,
-  type Z2mDevice,
-} from './hardware.repository.js';
-export { DEVICE_MESSAGE_HANDLER, type DeviceMessageHandler } from './device-message-handler.js';
-export { DeviceMessageProcessor } from './device-message.handler.js';
+export { HardwareRepository, type HardwareWithCapabilities } from './hardware.repository.js';
+export { DeviceReportProcessor, type DeviceReport } from './device-report.processor.js';
+export { GatewayIngest, SHUTDOWN_DRAIN_MS } from './gateway-ingest.js';
 export { DevicesService, toDevice, toHardware } from './devices.service.js';

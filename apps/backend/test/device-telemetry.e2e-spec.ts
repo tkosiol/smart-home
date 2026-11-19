@@ -1,12 +1,12 @@
 import type { Capability } from '@smart/contracts';
 import postgres from 'postgres';
 import { inject } from 'vitest';
+import type { ReportedCapability, ReportedHardware } from '../src/core/adapters/index.js';
 import {
   DeviceEvents,
-  DeviceMessageProcessor,
+  DeviceReportProcessor,
   DevicesRepository,
   HardwareRepository,
-  type Z2mDevice,
 } from '../src/core/devices/index.js';
 import { MeasurementsRepository, MeasurementWriter } from '../src/core/telemetry/index.js';
 import {
@@ -17,7 +17,11 @@ import {
 import { createFreshDatabase } from './helpers/fresh-database.js';
 import { randomGatewayId } from './helpers/test-pki.js';
 
-const capability = (key: string, kind: Capability['kind'], enumValues?: string[]): Capability => ({
+const capability = (
+  key: string,
+  kind: Capability['kind'],
+  enumValues?: string[],
+): ReportedCapability => ({
   key,
   kind,
   unit: null,
@@ -28,16 +32,18 @@ const capability = (key: string, kind: Capability['kind'], enumValues?: string[]
   readable: true,
   writable: false,
   isSetting: false,
+  native: {},
 });
 
-const sensor = (ieee: string, name: string): Z2mDevice => ({
-  ieeeAddress: ieee,
-  friendlyName: name,
+const sensor = (ieee: string, name: string): ReportedHardware => ({
+  externalId: ieee,
+  address: name,
+  name,
   vendor: 'Acme',
   model: 'AY-303Z',
   description: null,
-  definition: { model: 'AY-303Z' },
-  interviewState: 'SUCCESSFUL',
+  native: { model: 'AY-303Z' },
+  setupState: 'ready',
   capabilities: [
     capability('soil_moisture', 'numeric'),
     capability('occupancy', 'binary'),
@@ -72,7 +78,7 @@ describe('readings of the device ingest', () => {
   let hardware: HardwareRepository;
   let devices: DevicesRepository;
   let writer: MeasurementWriter;
-  let processor: DeviceMessageProcessor;
+  let processor: DeviceReportProcessor;
   let householdId: string;
   let gatewayId: string;
   let counter = 0;
@@ -81,24 +87,29 @@ describe('readings of the device ingest', () => {
   const setup = async (withDevice: boolean): Promise<{ hardwareId: string; deviceId?: string }> => {
     counter += 1;
     const name = `Sensor ${counter}`;
-    await hardware.upsertFromBridge(
+    await hardware.replaceListed(
       gatewayId,
       [sensor(`0x${counter.toString(16).padStart(16, '0')}`, name)],
       received,
     );
-    const found = await hardware.findByName(gatewayId, name);
+    const found = await hardware.findByAddress(gatewayId, name);
     if (!found) throw new Error('no hardware');
     if (!withDevice) return { hardwareId: found.id };
     const created = await devices.createWithBinding(householdId, found.id, name);
     if (created.outcome !== 'created') throw new Error('no device');
     return { hardwareId: found.id, deviceId: created.device.id };
   };
+  /** A decoded report: `at` is when the hardware says it measured, the rest are its values. */
   const send = (
     hardwareId: string,
-    payload: Record<string, unknown>,
+    report: Record<string, unknown>,
     retained = false,
     receivedAt = received,
-  ) => processor.handle(gatewayId, hardwareId, payload, receivedAt, retained);
+  ) => {
+    const { at, ...values } = report;
+    const measuredAt = typeof at === 'string' ? new Date(at) : undefined;
+    return processor.handle({ gatewayId, hardwareId, values, measuredAt, receivedAt, retained });
+  };
   const hardwareRow = async (id: string): Promise<HardwareRecord> => {
     const [row] = await sql<HardwareRecord[]>`
       select last_state, last_seen_at from hardware where id = ${id}`;
@@ -127,7 +138,7 @@ describe('readings of the device ingest', () => {
     hardware = new HardwareRepository(connection);
     devices = new DevicesRepository(connection);
     writer = new MeasurementWriter(new MeasurementsRepository(connection));
-    processor = new DeviceMessageProcessor(hardware, devices, writer, new DeviceEvents());
+    processor = new DeviceReportProcessor(hardware, devices, writer, new DeviceEvents());
     const [household] = await sql<{ id: string }[]>`
       insert into households (name, timezone) values ('Home', 'Europe/Berlin') returning id`;
     householdId = household?.id ?? '';
@@ -147,7 +158,7 @@ describe('readings of the device ingest', () => {
     const { hardwareId } = await setup(false);
     const seen = minutesAgo(1);
 
-    await send(hardwareId, { soil_moisture: 30, linkquality: 80, last_seen: seen });
+    await send(hardwareId, { soil_moisture: 30, linkquality: 80, at: seen });
 
     expect(await hardwareRow(hardwareId)).toEqual({
       last_state: { soil_moisture: 30 },
@@ -167,7 +178,7 @@ describe('readings of the device ingest', () => {
       soil_moisture: 41.5,
       occupancy: true,
       mode: 'boost',
-      last_seen: seen,
+      at: seen,
     });
 
     expect(await stateRow(deviceId)).toEqual({
@@ -187,10 +198,10 @@ describe('readings of the device ingest', () => {
     ]);
   });
 
-  it('stores the receive time and a flag when last_seen is not plausible', async () => {
+  it('stores the receive time and a flag when the measuring time is not plausible', async () => {
     const { hardwareId, deviceId = '' } = await setup(true);
 
-    await send(hardwareId, { soil_moisture: 22, last_seen: '1970-01-01T00:00:00Z' });
+    await send(hardwareId, { soil_moisture: 22, at: '1970-01-01T00:00:00Z' });
 
     expect(await readings(deviceId)).toEqual([
       {
@@ -211,7 +222,7 @@ describe('readings of the device ingest', () => {
       soil_moisture: 'wet',
       occupancy: false,
       mode: 'turbo',
-      last_seen: seen,
+      at: seen,
     });
 
     expect((await stateRow(deviceId)).state).toEqual({ occupancy: false });
@@ -222,8 +233,8 @@ describe('readings of the device ingest', () => {
     const { hardwareId, deviceId = '' } = await setup(true);
     const seen = minutesAgo(1);
 
-    await send(hardwareId, { soil_moisture: 10, last_seen: seen });
-    await send(hardwareId, { soil_moisture: 20, mode: 'eco', last_seen: seen });
+    await send(hardwareId, { soil_moisture: 10, at: seen });
+    await send(hardwareId, { soil_moisture: 20, mode: 'eco', at: seen });
 
     expect((await stateRow(deviceId)).state).toEqual({ soil_moisture: 20, mode: 'eco' });
     const stored = await readings(deviceId);
@@ -239,9 +250,9 @@ describe('readings of the device ingest', () => {
       // 299 old messages with rising times, one newer one in between.
       const messages = Array.from({ length: 300 }, (_, index) => ({
         soil_moisture: index,
-        last_seen: minutesAgo(5000 - index),
+        at: minutesAgo(5000 - index),
       }));
-      messages[100] = { soil_moisture: 1000, last_seen: minutesAgo(1) };
+      messages[100] = { soil_moisture: 1000, at: minutesAgo(1) };
 
       for (const message of messages) await send(hardwareId, message);
       for (const message of messages) await send(hardwareId, message);
@@ -264,23 +275,23 @@ describe('readings of the device ingest', () => {
     it('is not a reading seen now: it changes nothing without a newer time of its own', async () => {
       const { hardwareId, deviceId = '' } = await setup(true);
       const seen = minutesAgo(10);
-      await send(hardwareId, { soil_moisture: 30, last_seen: seen });
+      await send(hardwareId, { soil_moisture: 30, at: seen });
 
       await send(hardwareId, { soil_moisture: 99 }, true);
-      await send(hardwareId, { soil_moisture: 98, last_seen: seen }, true);
-      await send(hardwareId, { soil_moisture: 97, last_seen: minutesAgo(20) }, true);
+      await send(hardwareId, { soil_moisture: 98, at: seen }, true);
+      await send(hardwareId, { soil_moisture: 97, at: minutesAgo(20) }, true);
 
       expect((await stateRow(deviceId)).state).toEqual({ soil_moisture: 30 });
       expect((await hardwareRow(hardwareId)).last_seen_at).toEqual(new Date(seen));
       expect((await readings(deviceId)).map((row) => row.value_num)).toEqual([30]);
     });
 
-    it('with a newer last_seen of its own counts as a reading', async () => {
+    it('with a newer time of its own counts as a reading', async () => {
       const { hardwareId, deviceId = '' } = await setup(true);
-      await send(hardwareId, { soil_moisture: 30, last_seen: minutesAgo(10) });
+      await send(hardwareId, { soil_moisture: 30, at: minutesAgo(10) });
       const newer = minutesAgo(2);
 
-      await send(hardwareId, { soil_moisture: 33, last_seen: newer }, true);
+      await send(hardwareId, { soil_moisture: 33, at: newer }, true);
 
       expect((await hardwareRow(hardwareId)).last_seen_at).toEqual(new Date(newer));
       expect((await stateRow(deviceId)).state).toEqual({ soil_moisture: 33 });
@@ -289,13 +300,13 @@ describe('readings of the device ingest', () => {
 
     it('is not mistaken for new data on a reconnect: the replay is ignored', async () => {
       const { hardwareId, deviceId = '' } = await setup(true);
-      const message = { soil_moisture: 30, last_seen: minutesAgo(3) };
+      const message = { soil_moisture: 30, at: minutesAgo(3) };
       await send(hardwareId, message);
 
       await send(hardwareId, message, true, new Date(received.getTime() + 3_600_000));
 
       expect((await readings(deviceId)).map((row) => row.value_num)).toEqual([30]);
-      expect((await hardwareRow(hardwareId)).last_seen_at).toEqual(new Date(message.last_seen));
+      expect((await hardwareRow(hardwareId)).last_seen_at).toEqual(new Date(message.at));
     });
   });
 });

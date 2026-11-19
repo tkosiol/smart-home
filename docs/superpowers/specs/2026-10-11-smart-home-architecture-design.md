@@ -160,6 +160,8 @@ Schleifen zwischen ein- und ausgehenden Topics verhindert `try_private true` an 
 
 > **Self-Hosting-Leitplanke 1 (ADR-0018):** `gw/<gatewayId>/z2m` ist das Präfix des zentralen Betriebs. Ein Gateway wird allgemein als Broker-Verbindung + Topic-Präfix modelliert; Ingest, Befehle und Live-Updates dürfen kein bestimmtes Präfix voraussetzen (z. B. `zigbee2mqtt` beim Broker eines Nutzers).
 
+**Nachtrag Adapter-Schicht (2026-11-18):** Das Präfix lautet allgemein `gw/<gatewayId>/<kind>`; `z2m` ist die erste Gateway-Art. Was unter dem Präfix ankommt, versteht nur der Adapter der Art (`apps/backend/src/adapters/<kind>/`, ADR-0021). Die ACL oben gilt für `z2m`; jede weitere Art bringt ihre Broker-Rechte mit (Spec `2026-11-18-adapter-schicht-design.md`).
+
 ### 4.5 Pi-Konfiguration (Ordner `gateway/`)
 
 - Compose-Datei und Konfigurations-Vorlagen für Mosquitto und Zigbee2MQTT; Image-Versionen gepinnt.
@@ -366,15 +368,15 @@ apps/backend/src/
 
 **Gateways, Hardware und Geräte**
 
-| Tabelle           | Wesentliche Felder                                                                                                                                                                                                                                                                          |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `gateways`        | `id` (= Zertifikats-CN), `household_id`, `name`, `kind` (`z2m`), `topic_prefix` (`gw/<id>/z2m`), `bridge_status`, `z2m_status` (je `online`/`offline`/`unknown`), `status_changed_at`, `last_message_at`, `cert_fingerprint`, `cert_expires_at`, `created_at`, `revoked_at`                 |
-| `hardware`        | `id`, `gateway_id`, `ieee_address`, `friendly_name`, `vendor`, `model`, `description`, `definition` (JSON, Z2M-Definition inkl. _exposes_), `interview_state`, `availability`, `last_state` (JSON), `first_seen_at`, `last_seen_at`, `removed_at`; eindeutig (`gateway_id`, `ieee_address`) |
-| `capabilities`    | `hardware_id`, `key` (Property-Pfad, z. B. `soil_moisture`), `kind` (`numeric`/`binary`/`enum`/`text`/`composite`), `unit`, `min`, `max`, `step`, `enum_values`, `readable`, `writable`, `is_setting`                                                                                       |
-| `devices`         | **logisches Gerät:** `id`, `household_id`, `room_id`, `name`, `icon`, `created_at`, `archived_at`                                                                                                                                                                                           |
-| `device_bindings` | `device_id`, `hardware_id`, `bound_at`, `unbound_at`; partielle Unique-Indizes: höchstens eine aktive Bindung pro Gerät und pro Hardware                                                                                                                                                    |
+| Tabelle           | Wesentliche Felder                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `gateways`        | `id` (= Zertifikats-CN), `household_id`, `name`, `kind` (`z2m`, siehe `GATEWAY_KINDS`), `topic_prefix` (`gw/<id>/<kind>`), `bridge_status`, `service_status` (je `online`/`offline`/`unknown`; bis 2026-11-18 `z2m_status`), `status_changed_at`, `last_message_at`, `cert_fingerprint`, `cert_expires_at`, `created_at`, `revoked_at`                                                                                                              |
+| `hardware`        | `id`, `gateway_id`, `external_id` (Z2M: IEEE-Adresse), `name` (Name im fremden System), `address` (Routing des Adapters, Z2M: `friendly_name`), `vendor`, `model`, `description`, `native` (JSON, Rohbeschreibung des Adapters, Z2M: Definition inkl. _exposes_), `setup_state` (`pairing`/`ready`/`failed`/`unknown`), `availability`, `last_state` (JSON), `first_seen_at`, `last_seen_at`, `removed_at`; eindeutig (`gateway_id`, `external_id`) |
+| `capabilities`    | `hardware_id`, `key` (Schlüssel aus dem Vokabular in `@smart/contracts` oder vom Adapter durchgereicht, z. B. `soil_moisture`), `native` (JSON, nur für den Adapter), `kind` (`numeric`/`binary`/`enum`/`text`/`composite`), `unit`, `min`, `max`, `step`, `enum_values`, `readable`, `writable`, `is_setting`                                                                                                                                      |
+| `devices`         | **logisches Gerät:** `id`, `household_id`, `room_id`, `name`, `icon`, `created_at`, `archived_at`                                                                                                                                                                                                                                                                                                                                                   |
+| `device_bindings` | `device_id`, `hardware_id`, `bound_at`, `unbound_at`; partielle Unique-Indizes: höchstens eine aktive Bindung pro Gerät und pro Hardware                                                                                                                                                                                                                                                                                                            |
 
-Neu entdeckte Hardware ist „nicht zugeordnet“ und kann einem bestehenden logischen Gerät zugewiesen werden (Sensor-Tausch: Verlauf läuft nahtlos weiter) oder ein neues logisches Gerät erzeugen. Nicht zugeordnete Hardware zeigt nur `last_state` als Vorschau und schreibt keine Historie. Aus Hardware ein Gerät zu machen darf nur ein `owner`; der Name des Geräts ist mit dem `friendly_name` aus Z2M vorbelegt.
+Neu entdeckte Hardware ist „nicht zugeordnet“ und kann einem bestehenden logischen Gerät zugewiesen werden (Sensor-Tausch: Verlauf läuft nahtlos weiter) oder ein neues logisches Gerät erzeugen. Nicht zugeordnete Hardware zeigt nur `last_state` als Vorschau und schreibt keine Historie. Aus Hardware ein Gerät zu machen darf nur ein `owner`; der Name des Geräts ist mit dem Namen aus dem fremden System (`hardware.name`, bei Z2M der `friendly_name`) vorbelegt.
 
 `is_setting` markiert Fähigkeiten, die der Nutzer einstellt statt misst: schreibbar (`access` enthält „set“) und keine reine Aktion, z. B. Kalibrierung, Messintervall oder Warnschwelle des Bodensensors. Lesbare Messwerte ohne Schreibrecht sind nie Einstellungen. Einstellungen werden weder angezeigt (Vorschau, Gerät, Übersicht) noch als Messwerte gespeichert; es zählen nur lesbare Fähigkeiten, die keine Einstellung sind (_readings only_).
 
@@ -403,6 +405,8 @@ Neu entdeckte Hardware ist „nicht zugeordnet“ und kann einem bestehenden log
 | `push_subscriptions`       | `user_id`, `endpoint`, `keys`, `user_agent`, `created_at`, `last_success_at`, `failure_count`                                                                |
 
 ### 8.5 Datenfluss: Messwerte (Ingest)
+
+> **Nachtrag Adapter-Schicht (2026-11-18):** Der Ablauf unten (Abo, Quittung, Reihenfolge, Sperre, Retained) gilt unverändert, liegt aber im neutralen `GatewayIngest` (`core/devices`). Welche Topics zählen und was sie bedeuten, entscheidet der Adapter der Gateway-Art; die Tabelle unten beschreibt den Zigbee2MQTT-Adapter. Werte kommen kanonisch beim Kern an (Vokabular in `@smart/contracts`, binär `true`/`false`, Helligkeit in %, Farbtemperatur in K); den Zeitpunkt (`last_seen`) liest der Adapter, die Plausibilität prüft der Kern. Lebenszeichen (`last_message_at`) meldet der Adapter je Nachricht. Details: Spec `2026-11-18-adapter-schicht-design.md`.
 
 Der MQTT-Konsument abonniert die Präfixe aller registrierten, nicht gesperrten Gateways (`gw/<id>/z2m/#`, aus `gateways.topic_prefix`); neu registrierte Gateways kommen ohne Neustart dazu, gesperrte hören sofort auf. Z2M benennt die Topics nach dem `friendly_name`, nicht nach der IEEE-Adresse; der Konsument hält je Gateway die Zuordnung `friendly_name` → Hardware (aus `bridge/devices`, `bridge/event` und der Datenbank). Eine Umbenennung in Z2M ändert die Zuordnung, die Hardware bleibt dieselbe. Der Konsument abonniert mit QoS 1 und quittiert eine Nachricht erst, nachdem sie verarbeitet ist: Die Datenbank bestimmt das Tempo, der Broker hält zurück (`max_inflight_messages`, `max_queued_messages 10000`), so dass das Backend bei einer Nachliefer-Spitze nach einem Gateway-Ausfall nichts mehr selbst verwirft; Grenzen bleiben die Broker-Warteschlange und die noch flüchtige Backend-Sitzung (`clean: true`, Entscheidung in 5b/6b). Die interne Warteschlange ist nur ein Sicherheitsnetz (64 MiB; darüber werden Nachrichten verworfen, höchstens einmal pro Minute protokolliert). Beim Herunterfahren werden bereits angenommene Nachrichten noch verarbeitet, bevor der Messwert-Puffer geleert wird.
 
@@ -437,6 +441,8 @@ Fehler einer Nachricht beenden nie den Konsumenten; Nutzdaten werden nie protoko
 **Grundsatz:** Messwerte werden gepuffert, Befehle nie. Verspätet ausgeführte Befehle sind gefährlich.
 
 **Kopplungsmodus:** `POST /api/v1/gateways/:id/permit-join` (nur `owner`) → `bridge/request/permit_join` für 120 s.
+
+**Nachtrag Adapter-Schicht (2026-11-18):** Befehle sind kanonisch (Schlüssel und Einheiten des Vokabulars). Topic und Nutzlast erzeugt der Adapter (`encodeCommand`; Z2M: `gw/<gw>/z2m/<friendly_name>/set` – Z2M benennt die Topics nach dem `friendly_name`, nicht nach der IEEE-Adresse), den Kopplungsmodus `encodePairing`. Die Bestätigung bleibt im Kern: Der nächste dekodierte Bericht trägt den Sollwert.
 
 ### 8.7 Live-Updates (SSE)
 
@@ -646,7 +652,7 @@ Reihenfolge ab Etappe 4 (Entscheidung 2026-10-13): 4a → 4c → 5 → 6 → 7 �
 | 8   | Pflanzenmodul             | eigenes Brainstorming und eigene Spec, sobald die Sensoren in Betrieb sind                                                                                   |
 | 9   | Self-Hosting-Paket        | Compose-Profile für die Szenarien, Installationsskript, Multi-Arch-Images, Releases, englische README; eigene Spec                                           |
 
-Etappe 6 ist geteilt: **6a** Geräte erkennen, Messwerte speichern und anzeigen; **6b** Designsprache, Hinweise (`core/attention`) und anpassbare Übersicht (`docs/superpowers/specs/2026-10-15-designkonzept-design.md`); **6c** Räume, Verläufe, SSE, Befehle und Kopplungsmodus in der neuen Sprache.
+Etappe 6 ist geteilt: **6a** Geräte erkennen, Messwerte speichern und anzeigen; **6b** Designsprache, Hinweise (`core/attention`) und anpassbare Übersicht (`docs/superpowers/specs/2026-10-15-designkonzept-design.md`); **6c** Räume, Verläufe, SSE, Befehle und Kopplungsmodus in der neuen Sprache. Vor den Befehlen (6c-3) kam die Adapter-Schicht (2026-11-18): Zigbee2MQTT ist seitdem der erste von mehreren Gateway-Adaptern (ADR-0021).
 
 ---
 
@@ -674,6 +680,7 @@ Etappe 6 ist geteilt: **6a** Geräte erkennen, Messwerte speichern und anzeigen;
 | 0018 | Self-Hosting-Leitplanken                                                                   |
 | 0019 | Lizenz AGPL-3.0-only                                                                       |
 | 0020 | Bridge-Puffer (72 h) und Topic-Konfiguration, Mosquitto 2.1.x (Ergebnis Spike 2b)          |
+| 0021 | Gateway-Adapter im Backend, eigenes Fähigkeiten-Vokabular, Z2M als erster Adapter          |
 
 ---
 
