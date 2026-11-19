@@ -53,6 +53,15 @@ updates:
       prefix: chore
       include: scope
 
+  - package-ecosystem: docker-compose
+    directory: /gateway
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: chore
+      include: scope
+
   - package-ecosystem: pip
     directory: /integrations/home-assistant
     schedule:
