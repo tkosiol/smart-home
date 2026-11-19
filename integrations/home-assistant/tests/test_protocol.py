@@ -374,3 +374,32 @@ def test_json_is_compact_and_not_ascii_escaped():
     payload = protocol.snapshot_payload([ent], states)
     assert "Flurtür".encode() in payload
     assert b": " not in payload and b", " not in payload
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
+def test_non_finite_floats_become_null(bad):
+    ent = entity("sensor.a", "d1")
+    attributes = {
+        "top": bad,
+        "nested": {"deep": [1.5, bad, {"x": bad}]},
+        "tuple": (bad, 2),
+        "fine": 0.25,
+    }
+    states = {"sensor.a": state("1", attributes, "2026-11-19T10:00:00+00:00")}
+    payload = protocol.snapshot_payload([ent], states)
+    assert b"NaN" not in payload and b"Infinity" not in payload
+    got = json.loads(payload)["entities"]["sensor.a"]["attributes"]
+    assert got == {
+        "top": None,
+        "nested": {"deep": [1.5, None, {"x": None}]},
+        "tuple": [None, 2],
+        "fine": 0.25,
+    }
+
+
+def test_non_finite_floats_in_capabilities_become_null():
+    ent = entity("sensor.a", "d1", capabilities={"max": float("inf")})
+    selection = protocol.select([device("d1")], [ent])
+    payload = protocol.devices_payload({"d1": device("d1")}, selection)
+    caps = json.loads(payload)["devices"][0]["entities"][0]["capabilities"]
+    assert caps == {"max": None}

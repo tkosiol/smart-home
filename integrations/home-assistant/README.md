@@ -7,6 +7,10 @@ Das Protokoll (v1: Topics, Nutzlasten, Auswahl der Entitäten, Größengrenzen) 
 ## Aufbau
 
 - `custom_components/smart_bridge/protocol.py`: reiner Protokollteil ohne Home-Assistant-Importe (Topics, Auswahl, Nutzlasten, Kürzung).
+- `custom_components/smart_bridge/collector.py`: liest Geräte- und Entitätsregistrierung sowie Zustände als Eingaben für `protocol.py`.
+- `custom_components/smart_bridge/connection.py`: paho-Verbindung zum Broker der Plattform (mTLS mit TLS 1.2, Will, Wiederverbindung 1–60 s, Veröffentlichungen mit QoS 1 und retained).
+- `custom_components/smart_bridge/bridge.py`: Ablauf nach Spec 4.4 (vollständiger Stand nach jedem Verbindungsaufbau, Registrierungsänderungen 2 s entprellt, je Gerät höchstens ein Schnappschuss pro Sekunde, geordneter Stopp).
+- `custom_components/smart_bridge/__init__.py`: YAML-Schema (Spec 4.1), startet die Bridge, sobald Home Assistant gestartet ist, und stoppt sie beim Herunterfahren.
 - `custom_components/smart_bridge/manifest.json`: Manifest der Integration.
 - `fixtures/`: Protokoll-Beispiele; der Vertrag zum Backend-Adapter (siehe `fixtures/README.md`). Integration und Backend testen gegen dieselben Dateien.
 - `tests/`: pytest-Tests; `test/run-tests.sh`: Testlauf in Docker.

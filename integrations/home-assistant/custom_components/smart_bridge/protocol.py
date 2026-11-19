@@ -5,6 +5,7 @@ from __future__ import annotations
 import datetime as dt
 import enum
 import json
+import math
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
@@ -88,8 +89,29 @@ def _default(value: Any) -> Any:
     return str(value)
 
 
+def _finite(value: Any) -> Any:
+    """Replace NaN and ±Infinity anywhere in value with None (JSON has no such numbers)."""
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, Mapping):
+        return {key: _finite(item) for key, item in value.items()}
+    if isinstance(value, list | tuple | set | frozenset):
+        return [_finite(item) for item in value]
+    if isinstance(value, enum.Enum):
+        return _finite(value.value)
+    return value
+
+
 def _dumps(value: Any) -> bytes:
-    text = json.dumps(value, separators=(",", ":"), ensure_ascii=False, default=_default)
+    def dump(obj: Any) -> str:
+        return json.dumps(
+            obj, separators=(",", ":"), ensure_ascii=False, allow_nan=False, default=_default
+        )
+
+    try:
+        text = dump(value)
+    except ValueError:  # a non-finite float somewhere: rare, so only then walk the value
+        text = dump(_finite(value))
     return text.encode("utf-8")
 
 
