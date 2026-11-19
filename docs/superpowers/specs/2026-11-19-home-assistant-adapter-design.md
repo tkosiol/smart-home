@@ -159,10 +159,10 @@ Aus jedem Schnappschuss mit mindestens einer Entität: alle Entitäten `unavaila
 
 ## 6. Kern, Contracts, Broker, Frontend
 
-- **Contracts:** `GATEWAY_KINDS = ['z2m', 'ha']`.
+- **Contracts:** `GATEWAY_KINDS = ['z2m', 'ha']`; dazu Migration `0012` für die Prüfregel der Spalte `gateways.kind`.
 - **Broker-ACL** (`infra/broker/acl`): `pattern write gw/%u/ha/#`. Leserechte bekommt die Art erst mit den Befehlen.
 - **Frontend:** Übersetzung `gateways.kind.ha` = „Home Assistant“; das Registrierungsformular bekommt eine Auswahl der Art (Standard Zigbee2MQTT), die `kind` mitsendet. Sonst keine Änderung: Status, „Neu erkannt“, Geräte und Werte sind schon neutral.
-- **Kern:** keine Änderung. Das ist der Prüfstein der Adapter-Schicht.
+- **Kern:** keine Änderung am Code, das ist der Prüfstein der Adapter-Schicht. Nur die Prüfregel `gateways_kind_check` der Datenbank folgt `GATEWAY_KINDS` und braucht deshalb eine Migration (`0012`, rückwärtsverträglich: sie erlaubt nur zusätzlich `ha`).
 
 ## 7. Pi: Gateway-Paket
 
