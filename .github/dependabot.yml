@@ -52,3 +52,12 @@ updates:
     commit-message:
       prefix: chore
       include: scope
+
+  - package-ecosystem: pip
+    directory: /integrations/home-assistant
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: chore
+      include: scope

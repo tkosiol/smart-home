@@ -36,6 +36,7 @@ Smart-Home-Plattform. Verbindliche Architektur: `docs/superpowers/specs/2026-10-
 | Gateway-Deploy-Skript testen                     | `bash gateway/test/deploy-tests.sh`                                             |
 | Pi deployen / umziehen (vom Mac, Heimnetz)       | `SMART_PI=<benutzer>@<host> pnpm gateway:deploy [--migrate \| --fresh]`         |
 | Pi-Backups testen (Docker)                       | `bash gateway/test/backup-tests.sh`                                             |
+| HA-Integration testen (Docker)                   | `bash integrations/home-assistant/test/run-tests.sh`                            |
 | Symbol-Schrift neu erzeugen                      | `pnpm icons:build`                                                              |
 | App-Icon (PNGs, Favicon) neu erzeugen            | `pnpm app-icon:build`                                                           |
 
