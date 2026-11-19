@@ -10,7 +10,7 @@ export type GatewayStatus = (typeof GATEWAY_STATUSES)[number];
 export const gatewayStatusSchema = z.enum(GATEWAY_STATUSES);
 
 /** The kinds of gateway adapter; a gateway registers with one and keeps it. */
-export const GATEWAY_KINDS = ['z2m'] as const;
+export const GATEWAY_KINDS = ['z2m', 'ha'] as const;
 export type GatewayKind = (typeof GATEWAY_KINDS)[number];
 export const gatewayKindSchema = z.enum(GATEWAY_KINDS);
 

@@ -221,6 +221,19 @@ describe('gateways', () => {
       expect(row).toBeUndefined();
     });
 
+    it('lets the database store the kind ha and still refuses an unknown kind', async () => {
+      // The API registers a kind only once an adapter for it exists; this is the schema's side.
+      const insertKind = (id: string, kind: string) => connection.sql`
+        insert into gateways (id, household_id, name, topic_prefix, cert_fingerprint, cert_expires_at, kind)
+        values (${id}, ${householdId}, 'HA', ${`gw/${id}/${kind}`}, ${`fp-${id}`},
+          now() + interval '300 days', ${kind})`;
+      await insertKind('gw-habase01', 'ha');
+      const [row] = await connection.sql<{ kind: string }[]>`
+        select kind from gateways where id = 'gw-habase01'`;
+      expect(row).toEqual({ kind: 'ha' });
+      await expect(insertKind('gw-habase02', 'hue')).rejects.toThrow();
+    });
+
     it('accepts CRLF line breaks and blank lines around the block', async () => {
       const issued = ca.issue();
       const pasted = `\n\n${issued.certificate.trim().replaceAll('\n', '\r\n')}\r\n\r\n`;
