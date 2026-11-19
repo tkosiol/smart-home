@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ScheduleModule } from '@nestjs/schedule';
+import { HaAdapter, HaAdapterModule } from './adapters/ha/index.js';
 import { Z2mAdapter, Z2mAdapterModule } from './adapters/z2m/index.js';
 import { AdaptersModule } from './core/adapters/index.js';
 import { AttentionModule } from './core/attention/index.js';
@@ -28,7 +29,7 @@ import { ObservabilityModule } from './platform/observability/index.js';
     HouseholdsModule,
     GatewaysModule,
     // Gateway kinds; each adapter is listed here once.
-    AdaptersModule.forRoot([Z2mAdapterModule], [Z2mAdapter]),
+    AdaptersModule.forRoot([Z2mAdapterModule, HaAdapterModule], [Z2mAdapter, HaAdapter]),
     DevicesModule,
     AttentionModule,
     LiveModule,

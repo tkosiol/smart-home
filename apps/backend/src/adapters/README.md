@@ -1,6 +1,6 @@
 # adapters
 
-One folder per gateway kind (`z2m`, later `ha`, …). An adapter translates between its system's
+One folder per gateway kind (`z2m`: Zigbee2MQTT, `ha`: Home Assistant, …). An adapter translates between its system's
 topics and payloads and the neutral contract in `core/adapters` (events in, commands out).
 
 - Stateless: what it needs per piece of hardware is stored by the core (`native`) and handed back.
