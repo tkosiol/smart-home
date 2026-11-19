@@ -46,11 +46,10 @@ for candidate in "${SMART_OPENSSL:-openssl}" /opt/homebrew/opt/openssl@3/bin/ope
 done
 [ -n "$OSSL" ] || { echo "ha integration tests need OpenSSL 3 or newer (set SMART_OPENSSL)" >&2; exit 1; }
 export SMART_OPENSSL="$OSSL"
-command -v python3 > /dev/null 2>&1 || { echo "ha integration tests need python3 on the host (JSON checks)" >&2; exit 1; }
 
 WORK=$(mktemp -d)
 remove_test_containers() {
-  docker rm -fv "$PREFIX-ha" "$PREFIX-broker" "$PREFIX-sub" > /dev/null 2>&1 || true
+  docker rm -fv "$PREFIX-ha" "$PREFIX-broker" > /dev/null 2>&1 || true
   docker network rm "$NET" > /dev/null 2>&1 || true
 }
 cleanup() {
@@ -98,6 +97,8 @@ broker_up || fail "the throwaway broker does not start"
 
 # Subscriber as smart-api on everything of the gateway; retained messages arrive first, later ones follow.
 docker exec -d "$PREFIX-broker" sh -c "mosquitto_sub -h localhost -u smart-api -P \"\$MQTT_PASSWORD\" -t 'gw/$GATEWAY_ID/#' -F '%t %p' > /tmp/messages.txt"
+# JSON checks run in the Python image (stdin is the payload), so the host needs no Python.
+pyjson() { docker run --rm -i "$PYTHON_IMAGE" python -I -c "$1"; }
 # Last payload seen on a topic (empty if none).
 last() {
   docker exec "$PREFIX-broker" sh -c 'grep -F -- "$0 " /tmp/messages.txt | tail -n 1' "$1" 2> /dev/null | cut -d' ' -f2- || true
@@ -123,12 +124,11 @@ wait_for_payload "gw/$GATEWAY_ID/ha/status" online "ha/status did not become onl
 echo "   online after $((SECONDS - started)) s"
 
 # The snapshot: devices with a light entity, and one device document. Payloads are only parsed, never printed.
-DEVICES_JSON=$(last "gw/$GATEWAY_ID/ha/devices")
 deadline=$((SECONDS + WAIT_SECONDS))
 device_id=""
 while [ "$SECONDS" -lt "$deadline" ]; do
   DEVICES_JSON=$(last "gw/$GATEWAY_ID/ha/devices")
-  device_id=$(printf '%s' "$DEVICES_JSON" | python3 -I -c '
+  device_id=$(printf '%s' "$DEVICES_JSON" | pyjson '
 import json, sys
 try:
     doc = json.load(sys.stdin)
@@ -146,7 +146,7 @@ for device in doc.get("devices", []):
 done
 [ -n "$device_id" ] || fail "ha/devices has no device with a light entity (waited ${WAIT_SECONDS}s)"
 echo "   ha/devices lists a device with a light entity"
-doc_ok=$(printf '%s' "$(last "gw/$GATEWAY_ID/ha/device/$device_id")" | python3 -I -c '
+doc_ok=$(printf '%s' "$(last "gw/$GATEWAY_ID/ha/device/$device_id")" | pyjson '
 import json, sys
 try:
     print("yes" if json.load(sys.stdin).get("v") == 1 else "no")
