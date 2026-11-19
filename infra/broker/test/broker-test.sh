@@ -101,13 +101,13 @@ cl() { docker exec "$PREFIX-client" "$@"; }
 # Plain password connection on the internal listener, as smart-api or any other user.
 api_pub() { cl mosquitto_pub -h broker -p 1883 -u smart-api -P "$API_PW" -q 1 -t "$1" -m "$2"; }
 user_pub() { cl mosquitto_pub -h broker -p 1883 -u "$1" -P "$2" -q 1 -t "$3" -m "$4"; }
-# mTLS connection as gateway $1 ("foreign" selects the certificate of the foreign CA).
-gw_args() { printf '%s\n' -h broker -p 8883 --cafile /c/ca.crt --cert "/c/$1.crt" --key "/c/$1.key"; }
+# mTLS connection as gateway $1 ("foreign" selects the certificate of the foreign CA): sets the array GW_ARGS.
+gw_args() { GW_ARGS=(-h broker -p 8883 --cafile /c/ca.crt --cert "/c/$1.crt" --key "/c/$1.key"); }
 gw_pub() {
   local id="$1"
   shift
-  # shellcheck disable=SC2046 # one argument per line
-  cl mosquitto_pub $(gw_args "$id") -q 1 -t "$1" -m "$2"
+  gw_args "$id"
+  cl mosquitto_pub "${GW_ARGS[@]}" -q 1 -t "$1" -m "$2"
 }
 tls_ready() { gw_pub "$GW_A" "gw/$GW_A/z2m/ready" 1 > /dev/null 2>&1; }
 
@@ -238,7 +238,8 @@ pub_ha() {
 listen_while "$WORK/ha.out" pub_ha
 check "a gateway publishes under gw/<own-id>/ha and smart-api receives it" 'grep -qx "gw/$GW_A/ha/x ha-own" "$WORK/ha.out"'
 check "gateway A cannot publish under gw/<id of B>/ha" '! grep -q ha-foreign "$WORK/ha.out"'
-cl mosquitto_sub $(gw_args "$GW_A") -t "gw/$GW_A/ha/command" -v -W "$LISTEN_WINDOW" > "$WORK/ha-command.out" 2>&1 &
+gw_args "$GW_A"
+cl mosquitto_sub "${GW_ARGS[@]}" -t "gw/$GW_A/ha/command" -v -W "$LISTEN_WINDOW" > "$WORK/ha-command.out" 2>&1 &
 HA_SUB_PID=$!
 sleep 1
 api_pub "gw/$GW_A/ha/command" ha-command > /dev/null 2>&1
@@ -252,8 +253,8 @@ probe_command() { api_pub "$1" probe-ready; }
 gw_listen() {
   local id="$1" out="$2" topic="$3" probe="$4"
   shift 4
-  # shellcheck disable=SC2046 # one argument per line
-  cl mosquitto_sub $(gw_args "$id") -t "$topic" -v -W "$LISTEN_WINDOW" "$@" > "$out" 2>&1 &
+  gw_args "$id"
+  cl mosquitto_sub "${GW_ARGS[@]}" -t "$topic" -v -W "$LISTEN_WINDOW" "$@" > "$out" 2>&1 &
   GW_LISTEN_PID=$!
   require_ready probe_until "$out" probe-ready probe_command "$probe"
 }
