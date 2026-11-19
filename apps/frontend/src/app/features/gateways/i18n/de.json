@@ -9,7 +9,8 @@
     "unknown": "Unbekannt"
   },
   "kind": {
-    "z2m": "Zigbee2MQTT"
+    "z2m": "Zigbee2MQTT",
+    "ha": "Home Assistant"
   },
   "entry": {
     "status": "Bridge: {{ bridge }} · {{ kind }}: {{ service }}",
@@ -34,6 +35,7 @@
   "register": {
     "title": "Gateway registrieren",
     "name": "Name",
+    "kind": "Art",
     "nameError": "Bitte gib einen Namen mit höchstens 60 Zeichen ein.",
     "certificate": "Zertifikat",
     "certificateHint": "Der Text des Zertifikats, auch die Zeilen mit BEGIN und END. Niemals den privaten Schlüssel einfügen.",

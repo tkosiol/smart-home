@@ -115,6 +115,11 @@ const nameField = (page: OpenedHouseholdPage) =>
 const certificateField = (page: OpenedHouseholdPage) =>
   page.element.querySelector<HTMLTextAreaElement>('ui-text-field[name="certificate"] textarea')!;
 
+const kindSegment = (page: OpenedHouseholdPage, label: string) =>
+  [...page.element.querySelectorAll<HTMLButtonElement>('ui-segmented-button button')].find(
+    (button) => button.textContent?.trim() === label,
+  )!;
+
 function fill(page: OpenedHouseholdPage, name: string, certificate: string) {
   for (const [field, value] of [
     [nameField(page), name],
@@ -320,11 +325,38 @@ describe('gateways page', () => {
       await press(page, 'Gateway registrieren');
       const posts = requests(page, 'POST');
       expect(posts).toEqual([
-        { method: 'POST', path: `${base}/gateways`, body: { name: 'Terrasse', certificate: PEM } },
+        {
+          method: 'POST',
+          path: `${base}/gateways`,
+          body: { name: 'Terrasse', certificate: PEM, kind: 'z2m' },
+        },
       ]);
       expect(entry(page, 'Terrasse')).toBeTruthy();
       expect(nameField(page).value).toBe('');
       expect(certificateField(page).value).toBe('');
+    });
+
+    it('offers the kinds with Zigbee2MQTT chosen first', async () => {
+      const page = await open({ admin: true });
+      const group = page.element.querySelector('ui-segmented-button [role="radiogroup"]')!;
+      expect(group.getAttribute('aria-label')).toBe('Art');
+      expect(kindSegment(page, 'Zigbee2MQTT').getAttribute('aria-checked')).toBe('true');
+      expect(kindSegment(page, 'Home Assistant').getAttribute('aria-checked')).toBe('false');
+    });
+
+    it('sends the chosen kind', async () => {
+      const page = await open({ admin: true });
+      fill(page, 'Terrasse', PEM);
+      kindSegment(page, 'Home Assistant').click();
+      page.harness.detectChanges();
+      await press(page, 'Gateway registrieren');
+      expect(requests(page, 'POST')).toEqual([
+        {
+          method: 'POST',
+          path: `${base}/gateways`,
+          body: { name: 'Terrasse', certificate: PEM, kind: 'ha' },
+        },
+      ]);
     });
 
     it('does not send an empty name or certificate', async () => {
@@ -568,11 +600,14 @@ describe('gateways page', () => {
     it('starts the form, an open question and the revoke hint over for another household', async () => {
       const page = await open({ admin: true });
       fill(page, 'Terrasse', PEM);
+      kindSegment(page, 'Home Assistant').click();
+      page.harness.detectChanges();
       await press(page, 'Sperren');
       page.auth.updateMe({ ...meWith([berlin, auckland], auckland.id), isPlatformAdmin: true });
       await flush(page);
       expect(nameField(page).value).toBe('');
       expect(certificateField(page).value).toBe('');
+      expect(kindSegment(page, 'Zigbee2MQTT').getAttribute('aria-checked')).toBe('true');
       expect(pageButton(page.element, 'Wirklich sperren?')).toBeUndefined();
     });
 

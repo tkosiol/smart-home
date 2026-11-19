@@ -28,8 +28,8 @@ export function statusKey(status: GatewayStatus): string {
 }
 
 /**
- * The translation key of the name of a gateway kind ("Zigbee2MQTT"). Built, so the key extraction
- * is told about it here: t(gateways.kind.z2m)
+ * The translation key of the name of a gateway kind ("Zigbee2MQTT", "Home Assistant"). Built, so the key extraction
+ * is told about it here: t(gateways.kind.z2m, gateways.kind.ha)
  */
 export function kindKey(kind: Gateway['kind']): string {
   return `gateways.kind.${kind}`;
