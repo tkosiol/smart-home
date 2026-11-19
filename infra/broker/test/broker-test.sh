@@ -230,6 +230,21 @@ listen_while "$WORK/prefixes.out" pub_prefixes
 check "a gateway publishes under its own prefix and smart-api receives it" 'grep -qx "gw/$GW_A/z2m/x own-prefix" "$WORK/prefixes.out" && grep -qx "gw/$GW_A/bridge/connection own-connection" "$WORK/prefixes.out"'
 check "gateway A cannot publish under the prefix of gateway B" '! grep -q "foreign" "$WORK/prefixes.out"'
 
+# Home Assistant adapter: a gateway publishes below its own gw/<id>/ha only and may not read its command topic yet.
+pub_ha() {
+  gw_pub "$GW_A" "gw/$GW_A/ha/x" ha-own > /dev/null 2>&1
+  gw_pub "$GW_A" "gw/$GW_B/ha/x" ha-foreign > /dev/null 2>&1
+}
+listen_while "$WORK/ha.out" pub_ha
+check "a gateway publishes under gw/<own-id>/ha and smart-api receives it" 'grep -qx "gw/$GW_A/ha/x ha-own" "$WORK/ha.out"'
+check "gateway A cannot publish under gw/<id of B>/ha" '! grep -q ha-foreign "$WORK/ha.out"'
+cl mosquitto_sub $(gw_args "$GW_A") -t "gw/$GW_A/ha/command" -v -W "$LISTEN_WINDOW" > "$WORK/ha-command.out" 2>&1 &
+HA_SUB_PID=$!
+sleep 1
+api_pub "gw/$GW_A/ha/command" ha-command > /dev/null 2>&1
+wait "$HA_SUB_PID" 2> /dev/null
+check "a gateway cannot read gw/<own-id>/ha/command (read access comes with 6c-3)" '! grep -q ha-command "$WORK/ha-command.out"'
+
 # Commands: only the own prefix is readable, and only while connected.
 # gw_listen ID OUT TOPIC PROBE_TOPIC [mosquitto_sub options]: subscribes as gateway ID in the background and returns
 # once smart-api's probe on PROBE_TOPIC has arrived; GW_LISTEN_PID is the subscriber (it ends after LISTEN_WINDOW).
