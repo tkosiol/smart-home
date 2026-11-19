@@ -9,9 +9,6 @@
 # container must also be the one this start created (started after the start of this script) or, if compose left
 # it alone, must not have restarted since; and two polls in a row must show the same container start and restart
 # count (a restart loop changes them).
-# Home Assistant: every compose call carries --profile ha exactly when secrets/ha/ha.env exists (the same switch as in
-# deploy.sh; only the existence is checked, never the content). start.sh does not wait for Home Assistant (deploy.sh
-# does that afterwards, as a warning only): a Home Assistant that crashes or does not answer never fails the start.
 set -u
 export LC_ALL=C
 
@@ -21,11 +18,8 @@ WAIT=${3:?wait seconds}
 POLL=${4:?poll seconds}
 cd "$DIR" || exit 1
 
-profile=()
-if [ -e secrets/ha/ha.env ]; then profile=(--profile ha); fi
-# ${profile[@]+...}: an empty array is "unbound" for set -u in bash before 4.4.
-compose() { timeout -k 10 "$CT" docker compose --env-file secrets/gateway.env ${profile[@]+"${profile[@]}"} "$@"; }
-probe_compose() { timeout -k 5 20 docker compose --env-file secrets/gateway.env ${profile[@]+"${profile[@]}"} "$@"; }
+compose() { timeout -k 10 "$CT" docker compose --env-file secrets/gateway.env "$@"; }
+probe_compose() { timeout -k 5 20 docker compose --env-file secrets/gateway.env "$@"; }
 
 # Marker (UTC, same format as Docker's StartedAt) and the restart count of a Z2M container that already exists.
 marker=$(date -u +%Y-%m-%dT%H:%M:%S)

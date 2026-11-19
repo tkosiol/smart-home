@@ -18,14 +18,18 @@
 #   Home Assistant integration (integrations/home-assistant/custom_components/smart_bridge, with --delete) to
 #   homeassistant/custom_components/smart_bridge -> render.sh -> pull -> data folder 700/600 -> start.sh on the Pi
 #   (Mosquitto is recreated: the rendered file and the entry point are single-file bind mounts; waits until
-#   Zigbee2MQTT is online, stable and Mosquitto healthy) -> backup timers -> (Home Assistant) -> status.
+#   Zigbee2MQTT is online, stable and Mosquitto healthy) -> backup timers -> Home Assistant step -> status.
 # Home Assistant (compose profile ha) is on exactly when secrets/ha/ha.env exists on the Pi (written by
 #   infra/deploy/provision-ha.sh; only its existence is checked, as root, never its content): then the preflight also
-#   wants secrets/ha/{ca.crt,gateway.crt,gateway.key} and curl, every compose call carries --profile ha (the pull
-#   COMPOSE_PROFILES=backup,ha), and after the start the Mac waits up to SMART_DEPLOY_HA_WAIT_SECONDS (600) for an
-#   answer on port 8123 of the Pi. A Home Assistant that does not answer is a warning (exit 0): Zigbee2MQTT runs, and
-#   nothing is rolled back. Without ha.env everything runs as before. homeassistant-data/ (root, 700) is created when
-#   missing and never copied over.
+#   wants secrets/ha/{ca.crt,gateway.crt,gateway.key} and curl. The core of the stack (pull, start.sh, migration, the
+#   bridge state) runs exactly as without Home Assistant, without the profile. Home Assistant has its own step after
+#   it (plain deploy and --migrate alike): pull homeassistant, up -d --force-recreate homeassistant (the single-file
+#   and folder bind mounts and the loaded Python modules only take a new configuration or integration on a new
+#   container), then the Mac waits up to SMART_DEPLOY_HA_WAIT_SECONDS (600) for an answer on port 8123 of the Pi.
+#   Every failure of that step is a warning (exit 0): Zigbee2MQTT runs, and nothing is rolled back (Spec 7). Without
+#   ha.env the step removes a leftover homeassistant container of the project (found by its labels, never with the
+#   profile: that would read the env file), so deleting secrets/ha/ha.env switches Home Assistant off.
+#   homeassistant-data/ (root, 700) is created when missing and never copied over.
 # With --migrate (the old stack must run), after the pull, the destructive part runs ON THE PI as gateway/migrate.sh,
 #   detached (systemd-run, else setsid/nohup) so it survives this ssh session and this terminal: backup tarball
 #   migration/<UTC time>.tar.gz (verified) -> stop the old stack -> save the restart policy of its containers to
@@ -209,12 +213,9 @@ chmod 700 "$d"
 if [ -f "$d/configuration.yaml" ]; then chmod 600 "$d/configuration.yaml"; fi
 EOF
 )
-# The pull takes the profiles from COMPOSE_PROFILES (a --profile option would replace that list, not add to it).
 S_PULL=$(cat << 'EOF'
 cd "$1" || exit 1
-profiles=backup
-if [ -e secrets/ha/ha.env ]; then profiles=backup,ha; fi
-COMPOSE_PROFILES=$profiles timeout -k 10 "$2" docker compose --env-file secrets/gateway.env pull
+COMPOSE_PROFILES=backup timeout -k 10 "$2" docker compose --env-file secrets/gateway.env pull
 EOF
 )
 # The Home Assistant folders: the parent of the integration (rsync creates only the last folder) and the data folder
@@ -298,9 +299,26 @@ EOF
 )
 S_BRIDGE=$(cat << 'EOF'
 cd "$1" || exit 1
-ha=""
-if [ -e secrets/ha/ha.env ]; then ha="--profile ha"; fi
-timeout -k 5 20 docker compose --env-file secrets/gateway.env $ha exec -T mosquitto mosquitto_sub -h 127.0.0.1 -u health -P health -t "$2" -C 1 -W 5
+timeout -k 5 20 docker compose --env-file secrets/gateway.env exec -T mosquitto mosquitto_sub -h 127.0.0.1 -u health -P health -t "$2" -C 1 -W 5
+EOF
+)
+# Home Assistant on its own, after the core of the stack is verified: exit 3 the pull failed, 4 the start failed.
+# Always a new container: rsync replaces configuration.yaml (new inode, the single-file mount would keep the old one)
+# and the integration, and Home Assistant has the old modules loaded.
+S_HA_START=$(cat << 'EOF'
+cd "$1" || exit 1
+timeout -k 10 "$2" docker compose --env-file secrets/gateway.env --profile ha pull homeassistant || exit 3
+timeout -k 10 "$3" docker compose --env-file secrets/gateway.env --profile ha up -d --force-recreate homeassistant || exit 4
+EOF
+)
+# Without secrets/ha/ha.env: removes a homeassistant container of the project (by its labels; compose with the
+# profile would need the env file) and prints what it removed. Exit 3 the listing failed, 4 a removal failed.
+S_HA_REMOVE=$(cat << 'EOF'
+ids=$(timeout -k 5 30 docker ps -aq --filter label=com.docker.compose.project=smart-gateway --filter label=com.docker.compose.service=homeassistant) || exit 3
+for c in $ids; do
+  timeout -k 10 120 docker rm -f "$c" > /dev/null || exit 4
+  echo "$c"
+done
 EOF
 )
 # Home Assistant answers on its port (host network) once it has started.
@@ -499,7 +517,7 @@ fi
 step "installing the backup timers (nightly backup 03:30, weekly restore test)"
 remote root "$S_TIMERS" "$dir" "$systemd_dir" || die "could not install the backup timers (the stack is running; check $dir/systemd and $systemd_dir on the Pi)"
 
-# --- 6. Home Assistant (profile ha): wait for its answer; a failure is only a warning (Spec 7: nothing rolls back) ---
+# --- 6. Home Assistant (profile ha): its own step after the core; a failure is only a warning (Spec 7) ---
 # Bounded: every probe is one ssh call (10 s to connect) with curl limited to 10 s.
 ha_answers() {
   local deadline=$((SECONDS + ha_wait))
@@ -510,13 +528,35 @@ ha_answers() {
     wait $! || true
   done
 }
+ha_logs_hint() { echo "warning: on the Pi, in $dir: sudo docker compose --env-file secrets/gateway.env --profile ha logs homeassistant"; }
 if [ "$ha_state" = ha ]; then
-  step "waiting for Home Assistant on port 8123 (up to ${ha_wait} s; the first start on a Pi takes long)"
-  if ha_answers; then
-    echo "Home Assistant is up"
+  step "starting Home Assistant (profile ha: pull, new container; a failure here is only a warning)"
+  ha_rc=0
+  remote root "$S_HA_START" "$dir" "$pull_timeout" "$compose_timeout" || ha_rc=$?
+  case "$ha_rc" in
+    0)
+      step "waiting for Home Assistant on port 8123 (up to ${ha_wait} s; the first start on a Pi takes long)"
+      if ha_answers; then
+        echo "Home Assistant is up"
+      else
+        echo "warning: Home Assistant did not answer in ${ha_wait} s – Zigbee2MQTT is running; check docker compose logs homeassistant"
+        ha_logs_hint
+      fi ;;
+    3)
+      echo "warning: Home Assistant could not be pulled (docker compose pull homeassistant failed or took more than ${pull_timeout} s) – Zigbee2MQTT is running; the old Home Assistant container, if any, was not touched"
+      echo "warning: run the deploy again later, or on the Pi, in $dir: sudo docker compose --env-file secrets/gateway.env --profile ha pull homeassistant" ;;
+    4)
+      echo "warning: Home Assistant could not be started (docker compose up homeassistant failed) – Zigbee2MQTT is running; check docker compose logs homeassistant"
+      ha_logs_hint ;;
+    *)
+      echo "warning: Home Assistant could not be started, or the ssh connection failed (exit $ha_rc) – Zigbee2MQTT is running; it is not known whether Home Assistant runs"
+      ha_logs_hint ;;
+  esac
+else
+  if removed=$(remote root "$S_HA_REMOVE" 2> /dev/null); then
+    if [ -n "$removed" ]; then echo "removed the Home Assistant container (secrets/ha/ha.env does not exist on the Pi, so Home Assistant is off)"; fi
   else
-    echo "warning: Home Assistant did not answer in ${ha_wait} s – Zigbee2MQTT is running; check docker compose logs homeassistant"
-    echo "warning: on the Pi, in $dir: sudo docker compose --env-file secrets/gateway.env --profile ha logs homeassistant"
+    echo "warning: could not remove a leftover Home Assistant container (secrets/ha/ha.env does not exist on the Pi); check: sudo docker ps -a --filter label=com.docker.compose.service=homeassistant"
   fi
 fi
 
