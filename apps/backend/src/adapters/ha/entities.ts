@@ -5,7 +5,8 @@ import type { HaDevice, HaEntity } from './protocol.js';
 /** How an entity's state is turned into the vocabulary's value (read back by `decode.ts`). */
 export type HaSource = 'onoff' | 'brightness' | 'kelvin' | 'numeric' | 'closed';
 
-const TEMPERATURE_UNITS = new Set(['°C', '°F', 'K']);
+/** The units a temperature may come in (`decode.ts` converts them to °C). */
+export const TEMPERATURE_UNITS: ReadonlySet<string> = new Set(['°C', '°F', 'K']);
 const DOOR_CLASSES = new Set(['door', 'window', 'opening', 'garage_door']);
 /** Sensors by `device_class`: the vocabulary key and the units the registry may report. */
 const SENSORS: Record<string, { key: CanonicalKey; units: ReadonlySet<string> }> = {

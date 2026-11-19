@@ -1,6 +1,7 @@
 import { vocabularyEntry } from '@smart/contracts';
 import type { Availability } from '@smart/contracts';
 import type { DecodedReport, StoredCapability } from '../../core/adapters/index.js';
+import { TEMPERATURE_UNITS } from './entities.js';
 import { isObject } from './json.js';
 import { entityStates, type HaEntityState } from './protocol.js';
 
@@ -57,11 +58,29 @@ function decodeValue(source: string, unit: unknown, entity: HaEntityState): unkn
       const { min, max } = vocabularyEntry('color_temp');
       return Math.min(max ?? Infinity, Math.max(min ?? -Infinity, Math.round(raw)));
     }
-    case 'numeric':
-      return decodeNumeric(entity.state, unit);
+    case 'numeric': {
+      const shown = readingUnit(unit, entity);
+      return shown === undefined ? undefined : decodeNumeric(entity.state, shown);
+    }
     default:
       return undefined;
   }
+}
+
+/**
+ * The unit the state is in. A user may pick another display unit in HA after the listing; only the
+ * state's `unit_of_measurement` says so, the registry keeps the old one. A unit that does not fit
+ * the capability (anything but °C/°F/K for a temperature, anything else than the listed unit
+ * otherwise) gives no reading rather than a wrong one. Without the attribute the listed unit applies.
+ */
+function readingUnit(listed: unknown, entity: HaEntityState): unknown {
+  const shown = entity.attributes?.unit_of_measurement;
+  if (typeof shown !== 'string') return listed;
+  const fits =
+    typeof listed === 'string' && TEMPERATURE_UNITS.has(listed)
+      ? TEMPERATURE_UNITS.has(shown)
+      : shown === listed;
+  return fits ? shown : undefined;
 }
 
 function decodeNumeric(state: string | undefined, unit: unknown): number | undefined {

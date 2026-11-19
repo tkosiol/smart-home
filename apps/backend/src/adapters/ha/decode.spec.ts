@@ -100,6 +100,32 @@ describe('decodeHaReport', () => {
     expect(t('21.5', '°C')).toBe(21.5);
   });
 
+  it('reads the unit the state is shown in, which a user may change in HA after the listing', () => {
+    const t = (state: string, attributes: Record<string, unknown> | undefined, unit = '°C') =>
+      decodeHaReport(
+        { v: 1, entities: { 'sensor.t': { state, attributes } } },
+        numeric('sensor.t', unit),
+      ).values.temperature;
+    // Listed in °C, shown in °F since: the state is °F.
+    expect(t('70.1', { unit_of_measurement: '°F' })).toBe(21.17);
+    expect(t('293.15', { unit_of_measurement: 'K' }, '°F')).toBe(20);
+    expect(t('21.5', { unit_of_measurement: '°C' }, '°F')).toBe(21.5);
+    // A unit that does not fit the capability is no reading rather than a wrong one.
+    expect(t('21.5', { unit_of_measurement: 'lx' })).toBeUndefined();
+    expect(t('21.5', { unit_of_measurement: '%' })).toBeUndefined();
+    const humidity = (attributes: Record<string, unknown>) =>
+      decodeHaReport(
+        { v: 1, entities: { 'sensor.h': { state: '55', attributes } } },
+        numeric('sensor.h', '%', 'humidity'),
+      ).values.humidity;
+    expect(humidity({ unit_of_measurement: '%' })).toBe(55);
+    expect(humidity({ unit_of_measurement: '°C' })).toBeUndefined();
+    // Without the attribute (or with one that is no text) the unit of the listing applies.
+    expect(t('70.1', undefined, '°F')).toBe(21.17);
+    expect(t('70.1', {}, '°F')).toBe(21.17);
+    expect(t('70.1', { unit_of_measurement: null }, '°F')).toBe(21.17);
+  });
+
   it('gives no value for a state that is no number', () => {
     const decode = (state: string) =>
       decodeHaReport({ v: 1, entities: { 'sensor.t': { state } } }, numeric('sensor.t', '°C'))
