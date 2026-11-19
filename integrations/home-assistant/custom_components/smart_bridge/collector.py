@@ -15,6 +15,10 @@ def collect(hass: HomeAssistant) -> tuple[dict[str, DeviceInfo], list[EntityInfo
     devices: dict[str, DeviceInfo] = {}
     # Iterating `devices` yields the entries; using it as a mapping is deprecated (HA 2026.10+).
     for entry in dr.async_get(hass).devices:
+        # A service (Sun, a weather service) is no device of the home; without it, select() drops
+        # its entities too.
+        if entry.entry_type is dr.DeviceEntryType.SERVICE:
+            continue
         area = areas.async_get_area(entry.area_id) if entry.area_id else None
         devices[entry.id] = DeviceInfo(
             id=entry.id,

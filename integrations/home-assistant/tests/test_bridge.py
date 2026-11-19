@@ -167,6 +167,36 @@ async def test_full_state_after_connect(hass, home, running, caplog):
     assert snapshot_states(snapshots[device_topic(home.door)]) == {"binary_sensor.flur_tuer": "off"}
 
 
+async def test_service_devices_are_left_out(hass, home, running):
+    """A service (HA's Sun, a weather service) is no device of the home: not listed, no snapshot."""
+    _, connection = running
+    sun = dr.async_get(hass).async_get_or_create(
+        config_entry_id=home.entry.entry_id,
+        identifiers={("test", "sun")},
+        name="Sun",
+        entry_type=dr.DeviceEntryType.SERVICE,
+    )
+    er.async_get(hass).async_get_or_create(
+        "sensor",
+        "test",
+        "sun_temperature",
+        suggested_object_id="sun_temperature",
+        config_entry=home.entry,
+        device_id=sun.id,
+        original_device_class="temperature",
+        unit_of_measurement="°C",
+    )
+    hass.states.async_set("sensor.sun_temperature", "21.5")
+    await hass.async_block_till_done()
+
+    published = await connect(hass, connection)
+
+    assert published[0][0] == DEVICES_TOPIC
+    devices = json.loads(published[0][1])
+    assert {d["name"] for d in devices["devices"]} == {"Stehlampe", "Flurtür"}
+    assert device_topic(sun.id) not in [topic for topic, _ in published]
+
+
 async def test_state_change_publishes_one_snapshot(hass, home, running):
     _, connection = running
     await connect(hass, connection)
