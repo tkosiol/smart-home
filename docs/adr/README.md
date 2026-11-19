@@ -25,3 +25,4 @@ Neue Entscheidung: `0000-template.md` kopieren, nächste Nummer vergeben, hier e
 | [0019](0019-license-agpl.md)                    | Lizenz AGPL-3.0-only                                   |
 | [0020](0020-bridge-buffer-and-topics.md)        | Bridge-Puffer und Topic-Konfiguration (Spike 2b)       |
 | [0021](0021-gateway-adapters-in-backend.md)     | Gateway-Adapter im Backend, eigenes Vokabular          |
+| [0022](0022-home-assistant-integration.md)      | Home Assistant als Gateway-Art mit eigener Integration |

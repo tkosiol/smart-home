@@ -23,3 +23,7 @@ Bisher kannte das Backend nur eine Art von Gateway: Pi mit Zigbee2MQTT. Topics, 
 - Wird später horizontal skaliert, verarbeitet je Gateway genau eine Instanz dessen Nachrichten; die Caches des Kerns lassen sich aus der Datenbank neu aufbauen.
 
 Details: `docs/superpowers/specs/2026-11-18-adapter-schicht-design.md`.
+
+## Nachtrag 2026-11-19: Prüfregel der Datenbank
+
+Mit Home Assistant (ADR-0022) kam die zweite Art. Die Spalte `gateways.kind` hat eine Prüfregel (`gateways_kind_check`), die `GATEWAY_KINDS` folgt: Eine neue Art braucht deshalb zusätzlich eine Migration, die die Regel neu anlegt (für `ha`: `0012_gateway_kind_ha.sql`, rückwärtsverträglich, sie erlaubt nur zusätzlich den neuen Wert). Am Code des Kerns ändert sich weiterhin nichts.

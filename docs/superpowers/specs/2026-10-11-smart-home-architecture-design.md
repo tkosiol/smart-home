@@ -162,6 +162,8 @@ Schleifen zwischen ein- und ausgehenden Topics verhindert `try_private true` an 
 
 **Nachtrag Adapter-Schicht (2026-11-18):** Das Präfix lautet allgemein `gw/<gatewayId>/<kind>`; `z2m` ist die erste Gateway-Art. Was unter dem Präfix ankommt, versteht nur der Adapter der Art (`apps/backend/src/adapters/<kind>/`, ADR-0021). Die ACL oben gilt für `z2m`; jede weitere Art bringt ihre Broker-Rechte mit (Spec `2026-11-18-adapter-schicht-design.md`).
 
+**Nachtrag Home Assistant (2026-11-19):** Es gibt zwei Gateway-Arten: `z2m` (Zigbee2MQTT hinter der Mosquitto-Bridge des Pi) und `ha` (Home Assistant). Ein HA-Gateway ist eine HA-Installation mit eigener Gateway-ID und eigenem Zertifikat. Seine Integration `smart_bridge` verbindet sich **direkt** per mTLS mit dem Broker (eigener MQTT-Client, Client-ID `<gatewayId>-ha`), ohne Bridge und ohne Puffer: Jede Nachricht ist retained und trägt den vollständigen Stand. Sie schreibt unter `gw/<gatewayId>/ha/…` (`status`, `devices`, `device/<id>`) und setzt `gw/<gatewayId>/bridge/connection` selbst (`1`, als Last Will `0`). ACL: zusätzlich `pattern write gw/%u/ha/#`; Leserechte folgen mit den Befehlen. Details: ADR-0022, Spec `2026-11-19-home-assistant-adapter-design.md`.
+
 ### 4.5 Pi-Konfiguration (Ordner `gateway/`)
 
 - Compose-Datei und Konfigurations-Vorlagen für Mosquitto und Zigbee2MQTT; Image-Versionen gepinnt.
@@ -176,6 +178,7 @@ Schleifen zwischen ein- und ausgehenden Topics verhindert `try_private true` an 
 - **Ablage und Deploy:** Der Stack liegt auf dem Pi unter `/srv/smart-gateway` (Geheimnisse in `secrets/`, root `700`/`600`, über `infra/deploy/provision-gateway.sh`). `pnpm gateway:deploy` vom Mac aus im Heimnetz (rsync, Render der Mosquitto-Konfiguration, `docker compose up -d` per SSH, Warten auf Z2M `online`); der einmalige Umzug vom alten Stack (`--migrate`) läuft auf dem Pi selbst mit eigenem Rückweg. Nicht über GitHub Actions, da der Pi von außen nicht erreichbar ist. Ablauf: `docs/runbooks/gateway.md`, Abschnitte 11 und 12.
 - **Backups:** nachts restic nach B2 (Z2M-Daten und `secrets/`), wöchentlicher Wiederherstellungstest, beide als systemd-Timer mit Ping an healthchecks.io.
 - **Zeit:** `systemd-timesyncd` aktiv. Der Pi hat keine RTC; siehe Abschnitt 9.
+- **Home Assistant (Nachtrag 2026-11-19):** optional als Dienst `homeassistant` im Compose-Profil `ha`, nur wenn `secrets/ha/ha.env` existiert (`infra/deploy/provision-ha.sh`). Es ist ein zweites Gateway (Art `ha`) auf demselben Pi und spricht den Broker direkt an (Abschnitt 4.4, Nachtrag); Mosquitto, Bridge und Zigbee2MQTT bleiben unverändert. Ein Fehler von HA beim Deploy ist nur eine Warnung. Betrieb: Runbook `docs/runbooks/gateway.md`, Abschnitt 13.
 
 ### 4.6 Koordinator-Wechsel
 
@@ -370,7 +373,7 @@ apps/backend/src/
 
 | Tabelle           | Wesentliche Felder                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `gateways`        | `id` (= Zertifikats-CN), `household_id`, `name`, `kind` (`z2m`, siehe `GATEWAY_KINDS`), `topic_prefix` (`gw/<id>/<kind>`), `bridge_status`, `service_status` (je `online`/`offline`/`unknown`; bis 2026-11-18 `z2m_status`), `status_changed_at`, `last_message_at`, `cert_fingerprint`, `cert_expires_at`, `created_at`, `revoked_at`                                                                                                              |
+| `gateways`        | `id` (= Zertifikats-CN), `household_id`, `name`, `kind` (`z2m`, `ha`, siehe `GATEWAY_KINDS`), `topic_prefix` (`gw/<id>/<kind>`), `bridge_status`, `service_status` (je `online`/`offline`/`unknown`; bis 2026-11-18 `z2m_status`), `status_changed_at`, `last_message_at`, `cert_fingerprint`, `cert_expires_at`, `created_at`, `revoked_at`                                                                                                        |
 | `hardware`        | `id`, `gateway_id`, `external_id` (Z2M: IEEE-Adresse), `name` (Name im fremden System), `address` (Routing des Adapters, Z2M: `friendly_name`), `vendor`, `model`, `description`, `native` (JSON, Rohbeschreibung des Adapters, Z2M: Definition inkl. _exposes_), `setup_state` (`pairing`/`ready`/`failed`/`unknown`), `availability`, `last_state` (JSON), `first_seen_at`, `last_seen_at`, `removed_at`; eindeutig (`gateway_id`, `external_id`) |
 | `capabilities`    | `hardware_id`, `key` (Schlüssel aus dem Vokabular in `@smart/contracts` oder vom Adapter durchgereicht, z. B. `soil_moisture`), `native` (JSON, nur für den Adapter), `kind` (`numeric`/`binary`/`enum`/`text`/`composite`), `unit`, `min`, `max`, `step`, `enum_values`, `readable`, `writable`, `is_setting`                                                                                                                                      |
 | `devices`         | **logisches Gerät:** `id`, `household_id`, `room_id`, `name`, `icon`, `created_at`, `archived_at`                                                                                                                                                                                                                                                                                                                                                   |
@@ -652,7 +655,7 @@ Reihenfolge ab Etappe 4 (Entscheidung 2026-10-13): 4a → 4c → 5 → 6 → 7 �
 | 8   | Pflanzenmodul             | eigenes Brainstorming und eigene Spec, sobald die Sensoren in Betrieb sind                                                                                   |
 | 9   | Self-Hosting-Paket        | Compose-Profile für die Szenarien, Installationsskript, Multi-Arch-Images, Releases, englische README; eigene Spec                                           |
 
-Etappe 6 ist geteilt: **6a** Geräte erkennen, Messwerte speichern und anzeigen; **6b** Designsprache, Hinweise (`core/attention`) und anpassbare Übersicht (`docs/superpowers/specs/2026-10-15-designkonzept-design.md`); **6c** Räume, Verläufe, SSE, Befehle und Kopplungsmodus in der neuen Sprache. Vor den Befehlen (6c-3) kam die Adapter-Schicht (2026-11-18): Zigbee2MQTT ist seitdem der erste von mehreren Gateway-Adaptern (ADR-0021).
+Etappe 6 ist geteilt: **6a** Geräte erkennen, Messwerte speichern und anzeigen; **6b** Designsprache, Hinweise (`core/attention`) und anpassbare Übersicht (`docs/superpowers/specs/2026-10-15-designkonzept-design.md`); **6c** Räume, Verläufe, SSE, Befehle und Kopplungsmodus in der neuen Sprache. Vor den Befehlen (6c-3) kam die Adapter-Schicht (2026-11-18): Zigbee2MQTT ist seitdem der erste von mehreren Gateway-Adaptern (ADR-0021); Home Assistant folgte als zweiter (2026-11-19, ADR-0022).
 
 ---
 
@@ -681,6 +684,7 @@ Etappe 6 ist geteilt: **6a** Geräte erkennen, Messwerte speichern und anzeigen;
 | 0019 | Lizenz AGPL-3.0-only                                                                       |
 | 0020 | Bridge-Puffer (72 h) und Topic-Konfiguration, Mosquitto 2.1.x (Ergebnis Spike 2b)          |
 | 0021 | Gateway-Adapter im Backend, eigenes Fähigkeiten-Vokabular, Z2M als erster Adapter          |
+| 0022 | Home Assistant als zweite Gateway-Art mit eigener Integration und direkter mTLS-Verbindung |
 
 ---
 

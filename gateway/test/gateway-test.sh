@@ -189,7 +189,7 @@ SMART_GATEWAY_DIR="$GW" bash "$RENDER" > /dev/null
 check "compose.yaml is valid and pins the images" 'compose config | grep -q "image: eclipse-mosquitto:2.1.2-alpine" && compose config | grep -q "image: koenkk/zigbee2mqtt:2.14.2"'
 check "compose.yaml publishes nothing but the Zigbee2MQTT frontend" '[ "$(docker compose -p "$PREFIX" --project-directory "$GW" --env-file "$GW/secrets/gateway.env" -f "$GW/compose.yaml" config --format json | grep -o "\"published\"" | wc -l | tr -d " ")" = 1 ]'
 
-# --- Home Assistant: only in the profile ha, which deploy.sh and start.sh switch on when secrets/ha/ha.env exists ---
+# --- Home Assistant: only in the profile ha, which deploy.sh uses in its own step when secrets/ha/ha.env exists ---
 # A Pi without HA has no secrets/ha: compose must work there without the profile (the env file of the service is
 # not read then).
 check "without secrets/ha/ha.env compose works and has no homeassistant service" \
