@@ -1,0 +1,11 @@
+{
+  "domain": "smart_bridge",
+  "name": "Smart Home Bridge",
+  "codeowners": [],
+  "dependencies": [],
+  "documentation": "https://github.com/tkosiol/smart-home/tree/main/integrations/home-assistant",
+  "integration_type": "hub",
+  "iot_class": "local_push",
+  "requirements": ["paho-mqtt==2.1.0"],
+  "version": "0.1.0"
+}
