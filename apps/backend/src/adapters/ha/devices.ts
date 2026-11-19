@@ -5,9 +5,9 @@ import { haDeviceSchema, haDevicesSchema, type HaDevice } from './protocol.js';
 
 const present = (text: string | null): string | undefined => (text ? text : undefined);
 
-/** The device's name, else its first named entity's, else its model, else its id. */
+/** The device's name, else its first entity's (by `entity_id`), else its model, else its id. */
 function nameOf(device: HaDevice): string {
-  const entityName = sortedEntities(device).find((entity) => entity.name)?.name;
+  const entityName = sortedEntities(device)[0]?.name;
   return present(device.name) ?? present(entityName ?? null) ?? present(device.model) ?? device.id;
 }
 

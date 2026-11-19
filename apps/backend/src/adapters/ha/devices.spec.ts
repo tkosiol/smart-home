@@ -67,6 +67,27 @@ describe('translateDevices', () => {
     expect(modelOnly).toMatchObject({ name: 'M1' });
   });
 
+  it('does not name a device after a later entity when the first one has no name', () => {
+    const [hardware] = hardwareOf(
+      translateDevices(
+        buffer({
+          v: 1,
+          devices: [
+            {
+              id: 'aa',
+              model: 'M1',
+              entities: [
+                { entity_id: 'sensor.a', domain: 'sensor', name: null },
+                { entity_id: 'sensor.b', domain: 'sensor', name: 'Battery' },
+              ],
+            },
+          ],
+        }),
+      ),
+    );
+    expect(hardware?.name).toBe('M1');
+  });
+
   it('reports nothing for another version or no list', () => {
     expect(translateDevices(buffer({ v: 2, devices: [] }))).toEqual([]);
     expect(translateDevices(buffer({ v: 1 }))).toEqual([]);
