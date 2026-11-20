@@ -46,6 +46,7 @@ const gateway = {
   statusChangedAt: '2026-10-14T08:00:00.000Z',
   lastMessageAt: null,
   certExpiresAt: '2027-10-14T08:00:00.000Z',
+  credentialGeneration: null,
   revokedAt: null,
   warnings: [],
 };

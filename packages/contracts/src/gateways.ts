@@ -38,6 +38,8 @@ export const gatewaySchema = z.object({
   lastMessageAt: z.nullable(z.string()),
   /** ISO 8601 UTC (`…Z`); `null` for a gateway without a certificate. */
   certExpiresAt: z.nullable(z.string()),
+  /** Increases with every pairing; `null` for certificate gateways. */
+  credentialGeneration: z.nullable(z.number()),
   /** ISO 8601 UTC (`…Z`). */
   revokedAt: z.nullable(z.string()),
   warnings: z.array(gatewayWarningSchema),

@@ -107,6 +107,19 @@ describe('GatewaysService', () => {
     ]);
   });
 
+  it('lists the credential generation of a paired gateway and null for a certificate one', async () => {
+    const paired = row({
+      id: 'gw-hacred01',
+      kind: 'ha',
+      auth: 'credentials',
+      credentialGeneration: 3,
+      certFingerprint: null,
+      certExpiresAt: null,
+    });
+    const listed = await service(undefined, [row(), paired]).list('household');
+    expect(listed.map((gateway) => gateway.credentialGeneration)).toEqual([null, 3]);
+  });
+
   describe('find', () => {
     const withLookup = (rows: GatewayRow[]): GatewaysService =>
       new GatewaysService(

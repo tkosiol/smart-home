@@ -49,6 +49,7 @@ describe('gatewaySchema', () => {
     lastMessageAt: null,
     auth: 'certificate' as const,
     certExpiresAt: '2027-10-14T08:00:00.000Z',
+    credentialGeneration: null,
     revokedAt: null,
     warnings: [],
   };
@@ -82,6 +83,14 @@ describe('gatewaySchema', () => {
   it('requires the certificate expiry to be present, but it may be null', () => {
     expect(gatewaySchema.safeParse({ ...gateway, certExpiresAt: undefined }).success).toBe(false);
     expect(gatewaySchema.safeParse({ ...gateway, certExpiresAt: null }).success).toBe(true);
+  });
+
+  it('requires the credential generation to be present, but it may be null', () => {
+    expect(gatewaySchema.safeParse({ ...gateway, credentialGeneration: undefined }).success).toBe(
+      false,
+    );
+    expect(gatewaySchema.safeParse({ ...gateway, credentialGeneration: 2 }).success).toBe(true);
+    expect(gatewaySchema.safeParse({ ...gateway, credentialGeneration: '2' }).success).toBe(false);
   });
 
   it('accepts credentials access without a certificate expiry and rejects an unknown access', () => {

@@ -193,6 +193,7 @@ describe('gateways', () => {
         statusChangedAt: null,
         lastMessageAt: null,
         certExpiresAt: new Date(x509.validTo).toISOString(),
+        credentialGeneration: null,
         revokedAt: null,
         warnings: [],
       });
@@ -528,6 +529,7 @@ describe('gateways', () => {
           kind: 'ha',
           auth: 'credentials',
           certExpiresAt: null,
+          credentialGeneration: 1,
           warnings: [],
         });
       } finally {

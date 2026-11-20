@@ -35,6 +35,7 @@ const gateway = (overrides: Partial<RegisteredGateway> = {}): RegisteredGateway 
   statusChangedAt: new Date(START.getTime() - 60 * MINUTE).toISOString(),
   lastMessageAt: START.toISOString(),
   certExpiresAt: '2027-10-15T12:00:00.000Z',
+  credentialGeneration: null,
   revokedAt: null,
   warnings: [],
   registeredAt: new Date(START.getTime() - 24 * 60 * MINUTE),

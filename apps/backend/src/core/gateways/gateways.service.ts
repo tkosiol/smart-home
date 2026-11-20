@@ -230,6 +230,7 @@ export class GatewaysService {
       statusChangedAt: iso(row.statusChangedAt),
       lastMessageAt: iso(row.lastMessageAt),
       certExpiresAt: iso(row.certExpiresAt),
+      credentialGeneration: row.credentialGeneration,
       revokedAt: iso(row.revokedAt),
       // A revoked gateway's certificate is no concern any more; the CRL still is. Credentials
       // have neither.
