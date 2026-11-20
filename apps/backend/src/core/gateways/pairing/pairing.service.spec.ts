@@ -1,5 +1,5 @@
 import { Logger } from '@nestjs/common';
-import { GATEWAY_ID_PATTERN, PAIRING_CODE_PATTERN } from '@smart/contracts';
+import { displayNameSchema, GATEWAY_ID_PATTERN, PAIRING_CODE_PATTERN } from '@smart/contracts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Env } from '../../../platform/config/index.js';
 import type { GatewayCredentials } from '../credentials/gateway-credentials.service.js';
@@ -312,6 +312,22 @@ describe('PairingService', () => {
     it('names the gateway Home Assistant without a name', async () => {
       await service().redeem({ code: await createCode() });
       expect(db.gateways.map((row) => row.name)).toEqual(['Home Assistant']);
+    });
+
+    it.each([
+      ['trimmed', '  Ferienhaus  ', 'Ferienhaus'],
+      ['without control characters', '\tHaus\nam See\u007f', 'Hausam See'],
+      ['cut to 60 characters', 'x'.repeat(80), 'x'.repeat(60)],
+      ['cut, without a blank at the end', `${'a'.repeat(59)} bcd`, 'a'.repeat(59)],
+      ['cut between characters, not within one', '😀'.repeat(40), '😀'.repeat(30)],
+      ['Home Assistant when blank', '   ', 'Home Assistant'],
+      ['Home Assistant when empty', '', 'Home Assistant'],
+      ['Home Assistant when only control characters', '\n\t\u0000', 'Home Assistant'],
+    ])('makes a valid display name of the location name: %s', async (_case, name, expected) => {
+      await service().redeem({ code: await createCode(), name });
+      const stored = db.gateways.map((row) => row.name);
+      expect(stored).toEqual([expected]);
+      expect(displayNameSchema.safeParse(stored[0]).success).toBe(true);
     });
 
     it('derives the MQTT address from the origin of the app', async () => {

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   HOUSEHOLD_ROLES,
   currentHouseholdUpdateSchema,
+  DISPLAY_NAME_MAX_LENGTH,
   displayNameSchema,
   hasRole,
   householdCreateSchema,
@@ -41,6 +42,7 @@ describe('displayNameSchema', () => {
   });
 
   it('accepts 1 and 60 characters', () => {
+    expect(DISPLAY_NAME_MAX_LENGTH).toBe(60);
     expect(displayNameSchema.safeParse('a').success).toBe(true);
     expect(displayNameSchema.safeParse('a'.repeat(60)).success).toBe(true);
   });

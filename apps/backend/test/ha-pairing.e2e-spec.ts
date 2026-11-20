@@ -280,6 +280,16 @@ describe('pairing Home Assistant with a code', () => {
     );
   });
 
+  it('pairs with a location name that is no valid display name, cut to fit', async () => {
+    const household = await createHousehold();
+    const code = await newCode(household);
+    const { gatewayId } = await redeemed({ code, name: `  ${'Sommerhaus am See '.repeat(6)}` });
+    const [row] = await connection.sql<{ name: string }[]>`
+      select name from gateways where id = ${gatewayId}`;
+    expect(row?.name).toBe('Sommerhaus am See '.repeat(6).slice(0, 60).trimEnd());
+    expect(row?.name.length).toBeLessThanOrEqual(60);
+  });
+
   it('redeems a code once when it arrives twice at the same time', async () => {
     const household = await createHousehold();
     const code = await newCode(household);

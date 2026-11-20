@@ -1,6 +1,5 @@
 import * as z from 'zod/mini';
 import { gatewayIdSchema } from './gateways.js';
-import { displayNameSchema } from './households.js';
 
 /** A pairing code as shown: two groups of four characters of the Crockford base32 alphabet. */
 export const PAIRING_CODE_PATTERN = /^[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$/;
@@ -21,10 +20,15 @@ export const gatewayPairingSchema = z.object({
 });
 export type GatewayPairing = z.infer<typeof gatewayPairingSchema>;
 
-/** What Home Assistant sends: the server normalizes the code, so any spelling is accepted. */
+/**
+ * What Home Assistant sends: the server normalizes the code, so any spelling is accepted. `name`
+ * is Home Assistant's location name as it is; the server makes a gateway name of it (trimmed,
+ * without control characters, cut to the display name length, else "Home Assistant"), so an odd
+ * name never fails the pairing. 200 characters at most keep the body bounded.
+ */
 export const gatewayPairingRedeemSchema = z.object({
   code: z.string().check(z.minLength(1), z.maxLength(32)),
-  name: z.optional(displayNameSchema),
+  name: z.optional(z.string().check(z.maxLength(200))),
   expectedGatewayId: z.optional(gatewayIdSchema),
 });
 export type GatewayPairingRedeem = z.infer<typeof gatewayPairingRedeemSchema>;

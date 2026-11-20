@@ -47,8 +47,21 @@ describe('gatewayPairingRedeemSchema', () => {
       name: '  Home Assistant  ',
       expectedGatewayId: 'gw-a1b2c3d4',
     });
-    expect(parsed.success && parsed.data.name).toBe('Home Assistant');
+    // The server makes a gateway name of it; the schema only bounds the body.
+    expect(parsed.success && parsed.data.name).toBe('  Home Assistant  ');
     expect(gatewayPairingRedeemSchema.safeParse({ code: 'k7qm 4xwp' }).success).toBe(true);
+  });
+
+  it('accepts any name of up to 200 characters, the server makes it fit', () => {
+    for (const name of ['', '   ', 'a'.repeat(200), 'Haus\nam See', 'x'.repeat(61)]) {
+      expect(gatewayPairingRedeemSchema.safeParse({ code: 'K7QM-4XWP', name }).success).toBe(true);
+    }
+    expect(
+      gatewayPairingRedeemSchema.safeParse({ code: 'K7QM-4XWP', name: 'a'.repeat(201) }).success,
+    ).toBe(false);
+    expect(gatewayPairingRedeemSchema.safeParse({ code: 'K7QM-4XWP', name: 42 }).success).toBe(
+      false,
+    );
   });
 
   it('rejects an empty code, one above 32 characters and a bad expected gateway', () => {

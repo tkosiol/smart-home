@@ -1,9 +1,11 @@
 import { HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
-import type {
-  GatewayPairing,
-  GatewayPairingCreate,
-  GatewayPairingRedeem,
-  GatewayPairingRedeemed,
+import {
+  DISPLAY_NAME_MAX_LENGTH,
+  displayNameSchema,
+  type GatewayPairing,
+  type GatewayPairingCreate,
+  type GatewayPairingRedeem,
+  type GatewayPairingRedeemed,
 } from '@smart/contracts';
 import { ENV, type Env } from '../../../platform/config/index.js';
 import { ApiError } from '../../../platform/http/index.js';
@@ -138,7 +140,7 @@ export class PairingService {
       const gatewayId = await this.insertGateway(
         tx,
         pairing.householdId,
-        input.name ?? DEFAULT_NAME,
+        gatewayNameOf(input.name),
         now,
       );
       redeemed = {
@@ -198,3 +200,27 @@ export class PairingService {
 }
 
 const topicPrefixOf = (gatewayId: string): string => `gw/${gatewayId}/ha`;
+
+const isControl = (char: string): boolean => {
+  const code = char.charCodeAt(0);
+  return code <= 0x1f || code === 0x7f;
+};
+
+/**
+ * Home Assistant's location name as a gateway name: without control characters, trimmed, cut to
+ * the display name length between characters (never within one), else "Home Assistant". An odd
+ * location name must not fail the pairing.
+ */
+function gatewayNameOf(locationName: string | undefined): string {
+  const visible = [...(locationName ?? '')]
+    .filter((char) => !isControl(char))
+    .join('')
+    .trim();
+  let name = '';
+  for (const char of visible) {
+    if (name.length + char.length > DISPLAY_NAME_MAX_LENGTH) break;
+    name += char;
+  }
+  name = name.trimEnd();
+  return displayNameSchema.safeParse(name).success ? name : DEFAULT_NAME;
+}
