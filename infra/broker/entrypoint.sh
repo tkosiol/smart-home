@@ -72,6 +72,13 @@ case "${MQTT_TLS:-off}" in
   *) fail "MQTT_TLS must be on or off" ;;
 esac
 
-secure "$RUN/mosquitto.conf" "$RUN/acl" "$PASSWD"
+# Empty start state of the dynamic security plugin (websocket listener); the backend recreates the users after
+# every start. The plugin rewrites this file on changes, so the broker user owns it.
+DYNSEC="$RUN/dynsec.json"
+cat > "$DYNSEC" << 'JSON'
+{"defaultACLAccess":{"publishClientSend":false,"publishClientReceive":false,"subscribe":false,"unsubscribe":true},"clients":[],"groups":[],"roles":[]}
+JSON
+
+secure "$RUN/mosquitto.conf" "$RUN/acl" "$PASSWD" "$DYNSEC"
 
 exec mosquitto -c "$RUN/mosquitto.conf"

@@ -21,7 +21,7 @@ export function startTestBroker(hostPort?: number): Promise<StartedTestContainer
     ])
     .withEntrypoint(['/bin/sh', '/smart/entrypoint.sh'])
     .withEnvironment({ MQTT_USER: TEST_MQTT_USER, MQTT_PASSWORD: TEST_MQTT_PASSWORD })
-    .withExposedPorts(hostPort === undefined ? 1883 : { container: 1883, host: hostPort })
+    .withExposedPorts(hostPort === undefined ? 1883 : { container: 1883, host: hostPort }, 8080)
     .withWaitStrategy(Wait.forLogMessage(/running/))
     .start();
 }

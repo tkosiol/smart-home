@@ -9,3 +9,5 @@ pattern read  gw/%u/z2m/bridge/request/#
 user smart-api
 topic readwrite gw/#
 topic read $SYS/broker/uptime
+# Steers the users of the websocket listener (Home Assistant gateways) through the dynamic security plugin.
+topic readwrite $CONTROL/dynamic-security/#
