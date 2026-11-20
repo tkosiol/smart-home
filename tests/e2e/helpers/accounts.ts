@@ -5,7 +5,9 @@ import path from 'node:path';
  * Every spec file that needs a signed-in user has its own, so specs running in parallel never
  * change each other's saved settings; the sign-in specs have two more, because the API allows only
  * three codes per address and quarter of an hour. Keep the list in sync with the script. All of
- * them are platform admins (the script creates them with the admin CLI).
+ * them are platform admins (the script creates them with the admin CLI). People who join by an
+ * invitation need no code and are not listed here: the member of `devices.spec.ts` and the owner
+ * of `ha-pairing.spec.ts`, who sets up a household of its own after joining "Haus smoke".
  */
 export const ACCOUNTS = {
   shell: { email: 'e2e-shell@example.org' },

@@ -31,6 +31,8 @@ MQTT_SIMULATOR_GATEWAY_ID=$SIM_ID
 SIMULATOR_INTERVAL_SECONDS=5
 MQTT_TLS=on
 APP_ORIGIN=http://127.0.0.1:18080
+# The keys of gateways paired from the app derive from it (tests/e2e/specs/ha-pairing.spec.ts pairs one).
+GATEWAY_CREDENTIAL_SECRET=stack-test-gateway-credential-secret
 ENV
 
 compose() {
@@ -148,6 +150,25 @@ if (names.length === 0 || names.some((name) => String(name).includes("server.key
   exit 1
 }
 
+# Gateways paired from the app (Home Assistant) reach the broker's websocket listener through the web nginx at
+# /mqtt: the upgrade must be answered by the broker (101), not by the app shell. The listener itself is never published.
+# The handshake's key is any 16 bytes in base64.
+ws_key=$(printf 'stack-test-nonce' | base64)
+upgrade=$(curl -s -i -N --max-time 3 -H 'Connection: Upgrade' -H 'Upgrade: websocket' \
+  -H 'Sec-WebSocket-Version: 13' -H "Sec-WebSocket-Key: $ws_key" -H 'Sec-WebSocket-Protocol: mqtt' \
+  http://127.0.0.1:18080/mqtt | head -n 1 | tr -d '\r')
+case "$upgrade" in
+  "HTTP/1.1 101 "*) ;;
+  *)
+    echo "FAIL: /mqtt answered '$upgrade' instead of upgrading to a websocket" >&2
+    exit 1
+    ;;
+esac
+if compose port broker 8080 > /dev/null 2>&1; then
+  echo "FAIL: the broker's websocket listener 8080 is published" >&2
+  exit 1
+fi
+
 # The bridged test gateway: the pi's Mosquitto connects to broker:8883 with its gateway certificate. Everything is
 # read as smart-api inside the broker container; -F "%r %p" prints the retain flag and the payload.
 broker_read() {
@@ -240,7 +261,8 @@ compose exec -T backup restic snapshots --tag config --json | grep -q '"paths":\
 }
 
 # The end-to-end tests register the pi's and the simulator's gateway in the app (two specs, one gateway each),
-# expect them to be online and read the simulator's devices, so they run before the two are stopped.
+# expect them to be online and read the simulator's devices, so they run before the two are stopped. A third spec
+# pairs a Home Assistant played by the test itself through /mqtt.
 E2E_BASE_URL=http://127.0.0.1:18080 E2E_MAILPIT_URL=http://127.0.0.1:18025 pnpm --filter @smart/e2e e2e
 
 # Stopping the pi cleanly makes the bridge publish the retained "0"; the simulator does the same for its own
