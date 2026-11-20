@@ -8,10 +8,17 @@ import { GatewayStatusConsumer } from './gateway-status.consumer.js';
 import { GatewaysController } from './gateways.controller.js';
 import { GatewaysRepository } from './gateways.repository.js';
 import { GatewaysService } from './gateways.service.js';
+import { GatewayPairingsRepository } from './pairing/gateway-pairings.repository.js';
+import { PairingCleanupJob } from './pairing/pairing-cleanup.job.js';
+import {
+  GatewayPairingRedeemController,
+  GatewayPairingsController,
+} from './pairing/pairing.controller.js';
+import { PairingService } from './pairing/pairing.service.js';
 
 @Module({
   imports: [IdentityModule],
-  controllers: [GatewaysController],
+  controllers: [GatewaysController, GatewayPairingsController, GatewayPairingRedeemController],
   providers: [
     GatewaysRepository,
     GatewaysService,
@@ -22,6 +29,9 @@ import { GatewaysService } from './gateways.service.js';
     GatewayStatusConsumer,
     GatewayExpiryJob,
     GatewayCredentials,
+    GatewayPairingsRepository,
+    PairingService,
+    PairingCleanupJob,
   ],
   exports: [GatewayEvents, GatewaysService],
 })

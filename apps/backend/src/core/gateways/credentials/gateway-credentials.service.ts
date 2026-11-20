@@ -37,7 +37,7 @@ const ROLE_ACLS = [
  * The failure text that may be logged: the command and the plugin's own words, else only the kind
  * of error (never a payload: commands carry passwords).
  */
-const reasonOf = (error: unknown): string =>
+export const reasonOf = (error: unknown): string =>
   error instanceof DynsecError
     ? `${error.command ?? 'command'}: ${error.message}`
     : describeError(error);

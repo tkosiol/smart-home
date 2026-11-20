@@ -7,6 +7,7 @@ import { describeError } from '../../platform/errors/index.js';
 import { ApiError } from '../../platform/http/index.js';
 import { AdapterRegistry } from '../adapters/index.js';
 import { CLOCK, type Clock } from '../identity/index.js';
+import { GatewayCredentials, reasonOf } from './credentials/gateway-credentials.service.js';
 import { readGatewayCertificate } from './gateway-certificate.js';
 import {
   GATEWAY_REGISTERED,
@@ -52,6 +53,7 @@ export class GatewaysService {
     @Inject(GATEWAY_STATUS_MEMORY) private readonly memory: GatewayStatusMemory,
     private readonly events: GatewayEvents,
     private readonly adapters: AdapterRegistry,
+    private readonly credentials: GatewayCredentials,
   ) {}
 
   async list(householdId: string): Promise<Gateway[]> {
@@ -175,8 +177,23 @@ export class GatewaysService {
     }
     const revoked = await this.gateways.revoke(householdId, id, this.clock());
     if (!revoked) throw new ApiError(HttpStatus.NOT_FOUND, 'household.notFound');
+    if (gateway.auth === 'credentials') await this.removeBrokerUser(id);
     const event: GatewayRevoked = { gatewayId: id };
     this.events.emit(GATEWAY_REVOKED, event);
+  }
+
+  /**
+   * Deletes the revoked gateway's broker user, which disconnects it at once. A failure is only
+   * logged: the next reconcile deletes the user of a revoked gateway anyway.
+   */
+  private async removeBrokerUser(id: string): Promise<void> {
+    try {
+      await this.credentials.exclusive(() => this.credentials.remove(id));
+    } catch (error) {
+      this.logger.warn(
+        `Revoked ${id}, but its broker user is still there (${reasonOf(error)}); the reconcile retries`,
+      );
+    }
   }
 
   /** The gateways that are registered and not revoked, with the topic prefix they publish under. */

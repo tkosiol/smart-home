@@ -1,19 +1,28 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { GatewayKind, GatewayStatus } from '@smart/contracts';
-import { and, asc, eq, isNull, ne, sql } from 'drizzle-orm';
+import { and, asc, count, eq, isNull, ne, sql } from 'drizzle-orm';
 import { DATABASE, type DatabaseConnection } from '../../platform/database/index.js';
 import type { GatewayStatusKind } from './gateway-status-memory.js';
 import { gateways, type GatewayRow, type NewGatewayRow } from './gateways.schema.js';
 
 export type StatusOutcome = 'changed' | 'unchanged' | 'ignored';
 
+/** The connection or a transaction on it (pairing writes its gateway inside one). */
+export type GatewaysExecutor = Pick<DatabaseConnection['db'], 'select' | 'insert' | 'update'>;
+
+/** Not revoked and with credentials access: the gateways that count against a household's limit. */
+const activeCredentials = and(eq(gateways.auth, 'credentials'), isNull(gateways.revokedAt));
+
 @Injectable()
 export class GatewaysRepository {
   constructor(@Inject(DATABASE) private readonly connection: DatabaseConnection) {}
 
   /** Stores the gateway; `undefined` when the ID is taken, whichever household holds it. */
-  async insert(values: NewGatewayRow): Promise<GatewayRow | undefined> {
-    const [row] = await this.connection.db
+  async insert(
+    values: NewGatewayRow,
+    executor: GatewaysExecutor = this.connection.db,
+  ): Promise<GatewayRow | undefined> {
+    const [row] = await executor
       .insert(gateways)
       .values(values)
       .onConflictDoNothing({ target: gateways.id })
@@ -60,10 +69,35 @@ export class GatewaysRepository {
     const rows = await this.connection.db
       .select({ id: gateways.id, generation: gateways.credentialGeneration })
       .from(gateways)
-      .where(and(eq(gateways.auth, 'credentials'), isNull(gateways.revokedAt)))
+      .where(activeCredentials)
       .orderBy(asc(gateways.id));
     // The table's check makes the generation present for `credentials`.
     return rows.flatMap(({ id, generation }) => (generation === null ? [] : [{ id, generation }]));
+  }
+
+  /** How many `credentials` gateways of the household are not revoked. */
+  async countActiveCredentials(
+    householdId: string,
+    executor: GatewaysExecutor = this.connection.db,
+  ): Promise<number> {
+    const [row] = await executor
+      .select({ count: count() })
+      .from(gateways)
+      .where(and(eq(gateways.householdId, householdId), activeCredentials));
+    return row?.count ?? 0;
+  }
+
+  /**
+   * Moves a `credentials` gateway that is not revoked to its next key generation; the new
+   * generation, or `undefined` if there is no such gateway.
+   */
+  async nextGeneration(executor: GatewaysExecutor, id: string): Promise<number | undefined> {
+    const [row] = await executor
+      .update(gateways)
+      .set({ credentialGeneration: sql`${gateways.credentialGeneration} + 1` })
+      .where(and(eq(gateways.id, id), activeCredentials))
+      .returning({ generation: gateways.credentialGeneration });
+    return row?.generation ?? undefined;
   }
 
   /**

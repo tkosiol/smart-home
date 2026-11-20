@@ -1,14 +1,41 @@
 import { type ExecutionContext, HttpStatus } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import { describe, expect, it } from 'vitest';
 import type { Env } from '../config/index.js';
 import { ApiError } from './api-error.js';
 import { OriginGuard } from './origin.guard.js';
+import { SkipOriginCheck } from './skip-origin-check.decorator.js';
 
-const guard = new OriginGuard({ APP_ORIGIN: 'https://smart.example.org' } as Env);
+const guard = new OriginGuard({ APP_ORIGIN: 'https://smart.example.org' } as Env, new Reflector());
 
-function context(method: string, origin?: string): ExecutionContext {
+class Routes {
+  checked(this: void): void {
+    return undefined;
+  }
+
+  @SkipOriginCheck()
+  unchecked(this: void): void {
+    return undefined;
+  }
+}
+
+@SkipOriginCheck()
+class UncheckedRoutes {
+  any(this: void): void {
+    return undefined;
+  }
+}
+
+function context(
+  method: string,
+  origin?: string,
+  handler: () => void = Routes.prototype.checked,
+  controller: object = Routes,
+): ExecutionContext {
   return {
     switchToHttp: () => ({ getRequest: () => ({ method, headers: { origin } }) }),
+    getHandler: () => handler,
+    getClass: () => controller,
   } as unknown as ExecutionContext;
 }
 
@@ -40,5 +67,27 @@ describe('OriginGuard', () => {
       expect((error as ApiError).getStatus()).toBe(HttpStatus.FORBIDDEN);
       expect((error as ApiError).code).toBe('auth.badOrigin');
     }
+  });
+
+  it.each(['POST', 'PUT', 'PATCH', 'DELETE'])(
+    'lets %s without an Origin through on a handler marked @SkipOriginCheck()',
+    (method) => {
+      expect(guard.canActivate(context(method, undefined, Routes.prototype.unchecked))).toBe(true);
+      expect(
+        guard.canActivate(context(method, 'https://evil.example.com', Routes.prototype.unchecked)),
+      ).toBe(true);
+    },
+  );
+
+  it('lets a request through on a controller marked @SkipOriginCheck()', () => {
+    expect(
+      guard.canActivate(context('POST', undefined, UncheckedRoutes.prototype.any, UncheckedRoutes)),
+    ).toBe(true);
+  });
+
+  it('still checks the other handlers of the same controller', () => {
+    expect(() => guard.canActivate(context('POST', undefined, Routes.prototype.checked))).toThrow(
+      ApiError,
+    );
   });
 });

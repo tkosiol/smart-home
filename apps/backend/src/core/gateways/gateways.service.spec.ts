@@ -13,6 +13,7 @@ import {
   GatewayEvents,
 } from './gateway-events.js';
 import { AdapterRegistry, type GatewayAdapter } from '../adapters/index.js';
+import type { GatewayCredentials } from './credentials/gateway-credentials.service.js';
 import { noStatusMemory, type RecalledStatus } from './gateway-status-memory.js';
 import type { GatewaysRepository } from './gateways.repository.js';
 import type { GatewayRow, NewGatewayRow } from './gateways.schema.js';
@@ -23,6 +24,10 @@ import { GatewaysService } from './gateways.service.js';
 const NOW = new Date();
 const fakeAdapter = (kind: string): GatewayAdapter => ({ kind }) as unknown as GatewayAdapter;
 const registry = new AdapterRegistry([fakeAdapter('z2m')]);
+const noCredentials = {
+  exclusive: <T>(fn: () => Promise<T>) => fn(),
+  remove: () => Promise.resolve(),
+} as unknown as GatewayCredentials;
 const row = (overrides: Partial<GatewayRow> = {}): GatewayRow => ({
   id: 'gw-a1b2c3d4',
   householdId: 'household',
@@ -54,6 +59,7 @@ describe('GatewaysService', () => {
       noStatusMemory,
       new GatewayEvents(),
       registry,
+      noCredentials,
     );
 
   beforeAll(() => {
@@ -112,6 +118,7 @@ describe('GatewaysService', () => {
         noStatusMemory,
         new GatewayEvents(),
         registry,
+        noCredentials,
       );
 
     it('returns the gateway with its household, a revoked one too', async () => {
@@ -154,6 +161,7 @@ describe('GatewaysService', () => {
           { recall },
           new GatewayEvents(),
           registry,
+          noCredentials,
         );
         const gateway = await subject.register('household', {
           name: 'Pi',
@@ -184,6 +192,7 @@ describe('GatewaysService', () => {
           { recall: () => ({ bridge: 'offline', at: NOW }) },
           new GatewayEvents(),
           registry,
+          noCredentials,
         );
         await subject.register('household', { name: 'Pi', certificate: issued.certificate });
         expect(applyStatus).not.toHaveBeenCalled();
@@ -209,6 +218,7 @@ describe('GatewaysService', () => {
           { recall: () => options.recalled },
           new GatewayEvents(),
           new AdapterRegistry(options.adapters ?? [fakeAdapter('z2m')]),
+          noCredentials,
         );
         const issued = ca.issue();
         const result = await subject
@@ -277,6 +287,7 @@ describe('GatewaysService', () => {
         noStatusMemory,
         events,
         registry,
+        noCredentials,
       );
       expect(await subject.listActive()).toEqual([
         {
@@ -307,6 +318,7 @@ describe('GatewaysService', () => {
         noStatusMemory,
         events,
         registry,
+        noCredentials,
       );
       expect(await subject.touch('gw-a1b2c3d4', NOW)).toBe(true);
       expect(await subject.touch('gw-gone0000', NOW)).toBe(false);
@@ -334,6 +346,7 @@ describe('GatewaysService', () => {
           noStatusMemory,
           events,
           registry,
+          noCredentials,
         );
         await subject.register('household', { name: 'Pi', certificate: issued.certificate });
         expect(seen).toEqual([
@@ -357,6 +370,7 @@ describe('GatewaysService', () => {
           noStatusMemory,
           events,
           registry,
+          noCredentials,
         );
         await expect(
           subject.register('household', { name: 'Pi', certificate: ca.issue().certificate }),
@@ -368,11 +382,28 @@ describe('GatewaysService', () => {
     });
 
     describe('revoke', () => {
-      const revokeFixture = (rows: GatewayRow[]) => {
+      const revokeFixture = (rows: GatewayRow[], removal: Error | undefined = undefined) => {
         const events = new GatewayEvents();
         const seen: unknown[] = [];
         events.on(GATEWAY_REVOKED, (event) => seen.push(event));
         const revoked: string[] = [];
+        /** Broker removals, each with whether it ran inside an exclusive section. */
+        const removed: { id: string; exclusive: boolean }[] = [];
+        let inExclusive = false;
+        const credentials = {
+          exclusive: async <T>(fn: () => Promise<T>): Promise<T> => {
+            inExclusive = true;
+            try {
+              return await fn();
+            } finally {
+              inExclusive = false;
+            }
+          },
+          remove: (id: string) => {
+            removed.push({ id, exclusive: inExclusive });
+            return removal ? Promise.reject(removal) : Promise.resolve();
+          },
+        } as unknown as GatewayCredentials;
         const subject = new GatewaysService(
           {
             findById: (id: string) => Promise.resolve(rows.find((entry) => entry.id === id)),
@@ -386,8 +417,9 @@ describe('GatewaysService', () => {
           noStatusMemory,
           events,
           registry,
+          credentials,
         );
-        return { subject, seen, revoked };
+        return { subject, seen, revoked, removed };
       };
       const credentials = row({
         id: 'gw-hacred01',
@@ -431,6 +463,25 @@ describe('GatewaysService', () => {
         expect(await code(subject.revoke('household', 'gw-hacred01', owner))).toBe('ok');
         expect(revoked).toEqual(['gw-hacred01']);
         expect(seen).toEqual([{ gatewayId: 'gw-hacred01' }]);
+      });
+
+      it('removes the broker user of a revoked credentials gateway, not of a certificate one', async () => {
+        const { subject, removed } = revokeFixture([certificate, credentials]);
+        await subject.revoke('household', 'gw-a1b2c3d4', { platformAdmin: true });
+        expect(removed).toEqual([]);
+        await subject.revoke('household', 'gw-hacred01', { platformAdmin: false });
+        expect(removed).toEqual([{ id: 'gw-hacred01', exclusive: true }]);
+      });
+
+      it('logs a failed removal at the broker instead of failing the revocation', async () => {
+        const { subject, seen, revoked } = revokeFixture([credentials], new Error('timeout'));
+        expect(
+          await code(subject.revoke('household', 'gw-hacred01', { platformAdmin: false })),
+        ).toBe('ok');
+        expect(revoked).toEqual(['gw-hacred01']);
+        expect(seen).toEqual([{ gatewayId: 'gw-hacred01' }]);
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(String(warn.mock.calls[0]?.[0])).toContain('gw-hacred01');
       });
     });
   });
