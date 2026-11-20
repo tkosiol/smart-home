@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { IdentityModule } from '../identity/index.js';
+import { GatewayCredentials } from './credentials/gateway-credentials.service.js';
 import { GatewayEvents } from './gateway-events.js';
 import { GatewayExpiryJob } from './gateway-expiry.job.js';
 import { GATEWAY_STATUS_MEMORY, StatusMemory } from './gateway-status-memory.js';
@@ -20,6 +21,7 @@ import { GatewaysService } from './gateways.service.js';
     { provide: GATEWAY_STATUS_MEMORY, useExisting: StatusMemory },
     GatewayStatusConsumer,
     GatewayExpiryJob,
+    GatewayCredentials,
   ],
   exports: [GatewayEvents, GatewaysService],
 })

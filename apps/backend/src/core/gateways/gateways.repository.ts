@@ -55,6 +55,17 @@ export class GatewaysRepository {
       .orderBy(asc(gateways.createdAt), asc(gateways.id));
   }
 
+  /** The gateways that should have a broker user: `credentials`, not revoked; by ID. */
+  async listActiveCredentials(): Promise<{ id: string; generation: number }[]> {
+    const rows = await this.connection.db
+      .select({ id: gateways.id, generation: gateways.credentialGeneration })
+      .from(gateways)
+      .where(and(eq(gateways.auth, 'credentials'), isNull(gateways.revokedAt)))
+      .orderBy(asc(gateways.id));
+    // The table's check makes the generation present for `credentials`.
+    return rows.flatMap(({ id, generation }) => (generation === null ? [] : [{ id, generation }]));
+  }
+
   /**
    * Stores a reported status of a gateway that is registered and not revoked. `status_changed_at`
    * moves only when the status differs; `ignored` means there is no such gateway to write to
