@@ -14,6 +14,11 @@ export const GATEWAY_KINDS = ['z2m', 'ha'] as const;
 export type GatewayKind = (typeof GATEWAY_KINDS)[number];
 export const gatewayKindSchema = z.enum(GATEWAY_KINDS);
 
+/** How a gateway proves itself to the broker: a signed certificate, or a user name and password. */
+export const GATEWAY_AUTHS = ['certificate', 'credentials'] as const;
+export type GatewayAuth = (typeof GATEWAY_AUTHS)[number];
+export const gatewayAuthSchema = z.enum(GATEWAY_AUTHS);
+
 export const GATEWAY_WARNINGS = ['certExpiring', 'certExpired', 'crlExpiring'] as const;
 export type GatewayWarning = (typeof GATEWAY_WARNINGS)[number];
 export const gatewayWarningSchema = z.enum(GATEWAY_WARNINGS);
@@ -22,6 +27,7 @@ export const gatewaySchema = z.object({
   id: gatewayIdSchema,
   name: z.string(),
   kind: gatewayKindSchema,
+  auth: gatewayAuthSchema,
   topicPrefix: z.string(),
   bridgeStatus: gatewayStatusSchema,
   /** The software behind the broker connection (Zigbee2MQTT, …). */
@@ -30,8 +36,8 @@ export const gatewaySchema = z.object({
   statusChangedAt: z.nullable(z.string()),
   /** ISO 8601 UTC (`…Z`). */
   lastMessageAt: z.nullable(z.string()),
-  /** ISO 8601 UTC (`…Z`). */
-  certExpiresAt: z.string(),
+  /** ISO 8601 UTC (`…Z`); `null` for a gateway without a certificate. */
+  certExpiresAt: z.nullable(z.string()),
   /** ISO 8601 UTC (`…Z`). */
   revokedAt: z.nullable(z.string()),
   warnings: z.array(gatewayWarningSchema),

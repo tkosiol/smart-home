@@ -39,6 +39,7 @@ const gateway = {
   id: 'gw-a1b2c3d4',
   name: 'Keller',
   kind: 'z2m' as const,
+  auth: 'certificate' as const,
   topicPrefix: 'zigbee2mqtt',
   bridgeStatus: 'online' as const,
   serviceStatus: 'unknown' as const,

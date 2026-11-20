@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  GATEWAY_AUTHS,
   GATEWAY_ID_PATTERN,
   GATEWAY_STATUSES,
   GATEWAY_WARNINGS,
@@ -46,6 +47,7 @@ describe('gatewaySchema', () => {
     serviceStatus: 'unknown' as const,
     statusChangedAt: '2026-10-14T08:00:00.000Z',
     lastMessageAt: null,
+    auth: 'certificate' as const,
     certExpiresAt: '2027-10-14T08:00:00.000Z',
     revokedAt: null,
     warnings: [],
@@ -77,8 +79,19 @@ describe('gatewaySchema', () => {
     expect(gatewaySchema.safeParse({ ...gateway, kind: 'ha' }).success).toBe(true);
   });
 
-  it('requires the certificate expiry', () => {
+  it('requires the certificate expiry to be present, but it may be null', () => {
     expect(gatewaySchema.safeParse({ ...gateway, certExpiresAt: undefined }).success).toBe(false);
+    expect(gatewaySchema.safeParse({ ...gateway, certExpiresAt: null }).success).toBe(true);
+  });
+
+  it('accepts credentials access without a certificate expiry and rejects an unknown access', () => {
+    expect(
+      gatewaySchema.safeParse({ ...gateway, kind: 'ha', auth: 'credentials', certExpiresAt: null })
+        .success,
+    ).toBe(true);
+    expect(gatewaySchema.safeParse({ ...gateway, auth: 'token' }).success).toBe(false);
+    expect(gatewaySchema.safeParse({ ...gateway, auth: undefined }).success).toBe(false);
+    expect(GATEWAY_AUTHS).toEqual(['certificate', 'credentials']);
   });
 });
 
@@ -117,10 +130,15 @@ describe('gatewayRegisterSchema', () => {
 });
 
 describe('gateway error codes', () => {
-  it.each(['gateway.invalidCertificate', 'gateway.exists', 'gateway.caMissing'])(
-    'lists %s',
-    (code) => {
-      expect(API_ERROR_CODES).toContain(code);
-    },
-  );
+  it.each([
+    'gateway.invalidCertificate',
+    'gateway.exists',
+    'gateway.caMissing',
+    'gateway.pairingInvalid',
+    'gateway.pairingOtherGateway',
+    'gateway.limitReached',
+    'gateway.pairingUnavailable',
+  ])('lists %s', (code) => {
+    expect(API_ERROR_CODES).toContain(code);
+  });
 });
