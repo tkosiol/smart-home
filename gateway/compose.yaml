@@ -79,10 +79,10 @@ services:
     networks: [gateway]
 
   # Home Assistant with the integration smart_bridge (integrations/home-assistant, copied by deploy.sh to
-  # homeassistant/custom_components/smart_bridge). Only in the profile ha: a Pi without secrets/ha/ha.env (written by
-  # infra/deploy/provision-ha.sh) runs as before; compose does not read the env file of a service outside the active
-  # profiles (measured with Compose 2.17 to 2.34). The bridge connects to the platform broker itself (mTLS with the
-  # certificate in secrets/ha), not through the local Mosquitto. homeassistant-data/ (users, set-up integrations) is
+  # homeassistant/custom_components/smart_bridge). Only in the profile ha, which deploy.sh uses when
+  # homeassistant.enabled exists (pnpm gateway:deploy --ha on). The integration is paired in the Home Assistant UI with a
+  # code from the app and needs no secrets or environment here; it connects to the platform broker itself (WebSocket),
+  # not through the local Mosquitto. homeassistant-data/ (users, set-up integrations) is
   # never touched by the deploy and goes into the nightly backup.
   homeassistant:
     image: ghcr.io/home-assistant/home-assistant:2026.11.0
@@ -97,17 +97,12 @@ services:
     # smart_bridge publishes ha/status offline (waits up to 5 s for the broker): on a Pi that takes longer than
     # Docker's 10 s default, which would kill it in the middle (every deploy recreates it, every reboot stops it).
     stop_grace_period: 120s
-    env_file:
-      - ./secrets/ha/ha.env
     environment:
-      BROKER_HOST: ${BROKER_HOST:?set BROKER_HOST in secrets/gateway.env}
-      BROKER_PORT: ${BROKER_PORT:?set BROKER_PORT in secrets/gateway.env}
       TZ: ${TZ:-Europe/Berlin}
     volumes:
       - ./homeassistant-data:/config
       - ./homeassistant/configuration.yaml:/config/configuration.yaml:ro
       - ./homeassistant/custom_components/smart_bridge:/config/custom_components/smart_bridge:ro
-      - ./secrets/ha:/smart/secrets:ro
     logging: *logging
 
   # Nightly backup to B2 (restic). Only in the profile "backup": a plain "up" never starts it; the systemd service runs

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for the deploy wrapper, deploy.sh, provision.sh, admin.sh, broker-certs.sh, provision-gateway.sh and provision-ha.sh using stubbed
+# Tests for the deploy wrapper, deploy.sh, provision.sh, admin.sh, broker-certs.sh and provision-gateway.sh using stubbed
 # docker, curl, ssh and sudo.
 # shellcheck disable=SC2016 # check() expressions are evaluated later on purpose
 set -u
@@ -510,93 +510,6 @@ check "provision-gateway leaves no staging directory behind after a rejected ans
 export STUB_FAIL_PASSWD=1
 check "provision-gateway leaves no staging directory behind after a failed transfer" '! gw_run_input && [ -z "$(ls -A "$TMPDIR")" ]'
 unset STUB_FAIL_PASSWD
-teardown
-
-# --- provision-ha.sh ---
-# Real certificates (OpenSSL >= 3) from a throwaway CA: the script checks the CN and that key and certificate belong
-# together. The Pi is the fake home of gw_setup; its gateway.env belongs to the Z2M gateway GW_ID.
-HA_ID=gw-hatest01
-OSSL=""
-for candidate in "${SMART_OPENSSL:-openssl}" /opt/homebrew/opt/openssl@3/bin/openssl /usr/local/opt/openssl@3/bin/openssl; do
-  if command -v "$candidate" > /dev/null 2>&1 && "$candidate" version | grep -Eq '^OpenSSL [3-9]'; then
-    OSSL=$(command -v "$candidate")
-    break
-  fi
-done
-[ -n "$OSSL" ] || { echo "deploy tests need OpenSSL 3 or newer (set SMART_OPENSSL)" >&2; exit 1; }
-# make_cert <dir> <cn> <name>: <dir>/gateways/<name>.crt and .key signed by <dir>/ca.crt (the CA is made on first use).
-make_cert() {
-  if [ ! -s "$1/ca.crt" ]; then
-    "$OSSL" req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -subj "/CN=Test CA" -days 2 -keyout "$1/ca.key" -out "$1/ca.crt" 2> /dev/null
-  fi
-  "$OSSL" req -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -subj "/CN=$2" -keyout "$1/gateways/$3.key" -out "$1/gateways/$3.csr" 2> /dev/null
-  "$OSSL" x509 -req -in "$1/gateways/$3.csr" -CA "$1/ca.crt" -CAkey "$1/ca.key" -CAcreateserial -days 2 -out "$1/gateways/$3.crt" 2> /dev/null
-  chmod 600 "$1/gateways/$3.key"
-}
-HA_FILES="ca.crt gateway.crt gateway.key ha.env"
-ha_setup() {
-  gw_setup
-  rm -f "$WORK/pki/gateways/"* "$WORK/pki/ca.crt"
-  make_cert "$WORK/pki" "$HA_ID" "$HA_ID"
-  # The Z2M gateway was provisioned first: only its gateway.env matters to the script.
-  mkdir -p "$GW_SECRETS"
-  printf 'GATEWAY_ID=%s\nBROKER_HOST=mqtt.example.org\n' "$GW_ID" > "$GW_SECRETS/gateway.env"
-  HA_SECRETS=$GW_SECRETS/ha
-}
-run_ha() { (bash "$DEPLOY_DIR/provision-ha.sh" "$@" > "$WORK/out" 2>&1 < /dev/null); echo $?; }
-ha_all_modes_600() { local f; for f in $HA_FILES; do [ "$(mode_of "$HA_SECRETS/$f")" = 600 ] || return 1; done; }
-
-ha_setup
-check "provision-ha rejects a malformed gateway ID and contacts nothing" '[ "$(run_ha gw-ABCDEFGH)" = 2 ] && [ "$(run_ha gw-1234567)" = 2 ] && [ "$(run_ha "../etc")" = 2 ] && [ "$(run_ha "$HA_ID; id")" = 2 ] && [ "$(run_ha)" = 2 ] && [ ! -s "$STUB_CALLS" ]'
-check "provision-ha rejects an unknown second argument" '[ "$(run_ha "$HA_ID" --forced)" = 2 ] && [ ! -s "$STUB_CALLS" ]'
-check "provision-ha requires SMART_PI" '[ "$(SMART_PI= run_ha "$HA_ID")" != 0 ] && [ ! -s "$STUB_CALLS" ]'
-for missing in "gateways/$HA_ID.crt" "gateways/$HA_ID.key" ca.crt; do
-  mv "$WORK/pki/$missing" "$WORK/missing.bak"
-  check "provision-ha aborts without $missing and contacts nothing" '[ "$(run_ha "$HA_ID")" = 1 ] && grep -q "issue-gateway $HA_ID" "$WORK/out" && [ ! -s "$STUB_CALLS" ]'
-  mv "$WORK/missing.bak" "$WORK/pki/$missing"
-done
-make_cert "$WORK/pki" gw-other001 "$HA_ID"
-check "provision-ha aborts when the certificate CN is not the gateway ID, without contact" '[ "$(run_ha "$HA_ID")" = 1 ] && grep -q "CN" "$WORK/out" && [ ! -s "$STUB_CALLS" ]'
-make_cert "$WORK/pki" "$HA_ID" "$HA_ID"
-make_cert "$WORK/pki" "$HA_ID" other-key
-cp "$WORK/pki/gateways/other-key.key" "$WORK/pki/gateways/$HA_ID.key"
-check "provision-ha aborts when the key does not belong to the certificate, without contact" '[ "$(run_ha "$HA_ID")" = 1 ] && grep -q "does not match" "$WORK/out" && [ ! -s "$STUB_CALLS" ]'
-teardown
-
-ha_setup
-rm "$GW_SECRETS/gateway.env"
-check "provision-ha aborts without the Z2M gateway.env and names the Z2M gateway, nothing written" '[ "$(run_ha "$HA_ID")" = 1 ] && grep -q "provision the Z2M gateway first" "$WORK/out" && [ ! -e "$HA_SECRETS" ] && ! grep -q "tar -xf" "$STUB_CALLS"'
-printf 'BROKER_HOST=x\n' > "$GW_SECRETS/gateway.env"
-check "provision-ha aborts when gateway.env has no GATEWAY_ID, nothing written" '[ "$(run_ha "$HA_ID")" = 1 ] && [ ! -e "$HA_SECRETS" ]'
-printf 'GATEWAY_ID=%s\n' "$HA_ID" > "$GW_SECRETS/gateway.env"
-check "provision-ha aborts when the HA ID equals the Z2M gateway ID, nothing written" '[ "$(run_ha "$HA_ID")" = 1 ] && grep -q "different" "$WORK/out" && [ ! -e "$HA_SECRETS" ] && ! grep -q "tar -xf" "$STUB_CALLS"'
-teardown
-
-ha_setup; export STUB_STDIN_COPY="$WORK/archive.tar"
-check "provision-ha succeeds on the happy path" '[ "$(run_ha "$HA_ID")" = 0 ]'
-check "provision-ha keeps secrets/ha private (700) with every file at 600 and exactly four files" '[ "$(mode_of "$HA_SECRETS")" = 700 ] && ha_all_modes_600 && [ "$(ls -A "$HA_SECRETS" | sort | tr "\n" " ")" = "ca.crt gateway.crt gateway.key ha.env " ]'
-check "provision-ha writes ha.env with the HA gateway ID only" '[ "$(cat "$HA_SECRETS/ha.env")" = "SMART_HA_GATEWAY_ID=$HA_ID" ]'
-check "provision-ha copies CA, certificate and key unchanged" 'cmp -s "$WORK/pki/ca.crt" "$HA_SECRETS/ca.crt" && cmp -s "$WORK/pki/gateways/$HA_ID.crt" "$HA_SECRETS/gateway.crt" && cmp -s "$WORK/pki/gateways/$HA_ID.key" "$HA_SECRETS/gateway.key"'
-check "provision-ha leaves the Z2M secrets alone and no .partial behind" '[ "$(cat "$GW_SECRETS/gateway.env" | head -n 1)" = "GATEWAY_ID=$GW_ID" ] && [ ! -e "$GW_SECRETS/ha.partial" ] && [ ! -e "$GW_SECRETS/ha.old" ]'
-check "provision-ha uses one writing ssh session as root with the tar stream on stdin and umask 077" '[ "$(grep -c "tar -xf - --no-same-owner" "$STUB_CALLS")" = 1 ] && [ "$(grep -c "^ssh pi@pi sudo -n sh -c .set -e" "$STUB_CALLS")" = 1 ] && grep -q "umask 077" "$STUB_CALLS" && grep -q "ha.partial" "$STUB_CALLS"'
-check "provision-ha archives four files at mode 600 and nothing else" '[ "$(tar -tvf "$STUB_STDIN_COPY" | wc -l | tr -d " ")" = 4 ] && [ "$(tar -tvf "$STUB_STDIN_COPY" | cut -c1-10 | sort -u)" = "-rw-------" ] && ! tar -tf "$STUB_STDIN_COPY" | grep -q "/"'
-check "provision-ha never puts key content on a command line or in the output" 'k=$(sed -n 2p "$WORK/pki/gateways/$HA_ID.key") && [ -n "$k" ] && ! grep -qF "$k" "$STUB_CALLS" "$WORK/out" && ! grep -q "PRIVATE KEY" "$STUB_CALLS" "$WORK/out"'
-check "provision-ha leaves no staging directory behind" '[ -z "$(ls -A "$TMPDIR")" ]'
-check "provision-ha points to the deploy" 'grep -q "pnpm gateway:deploy" "$WORK/out"'
-check "provision-ha refuses to replace secrets/ha without --force and writes nothing" ': > "$STUB_CALLS"; echo old > "$HA_SECRETS/ha.env" && [ "$(run_ha "$HA_ID")" = 1 ] && grep -q -- "--force" "$WORK/out" && [ "$(cat "$HA_SECRETS/ha.env")" = old ] && ! grep -q "tar -xf" "$STUB_CALLS"'
-check "provision-ha --force replaces the set atomically" '[ "$(run_ha "$HA_ID" --force)" = 0 ] && [ "$(cat "$HA_SECRETS/ha.env")" = "SMART_HA_GATEWAY_ID=$HA_ID" ] && [ "$(mode_of "$HA_SECRETS")" = 700 ] && ha_all_modes_600 && [ ! -e "$GW_SECRETS/ha.partial" ] && [ ! -e "$GW_SECRETS/ha.old" ]'
-unset STUB_STDIN_COPY
-teardown
-
-ha_setup
-check "provision-ha stops when sudo needs a password, nothing written" 'STUB_SUDO_PASSWORD=1 && export STUB_SUDO_PASSWORD && [ "$(run_ha "$HA_ID")" = 1 ] && grep -q "password" "$WORK/out" && [ ! -e "$HA_SECRETS" ]; unset STUB_SUDO_PASSWORD'
-check "provision-ha aborts when the Pi is unreachable" 'STUB_SSH_DOWN=1 && export STUB_SSH_DOWN && [ "$(run_ha "$HA_ID")" != 0 ] && [ ! -e "$HA_SECRETS" ]; unset STUB_SSH_DOWN'
-mkdir -p "$HA_SECRETS" && echo "SMART_HA_GATEWAY_ID=gw-old00001" > "$HA_SECRETS/ha.env"
-# A tar that fails when unpacking (the remote side only: -x) must leave the previous set in place.
-mkdir -p "$WORK/failbin"
-printf '#!/bin/sh\ncase "$1" in -xf) exit 1 ;; esac\nexec %s "$@"\n' "$(command -v tar)" > "$WORK/failbin/tar"
-chmod +x "$WORK/failbin/tar"
-check "provision-ha keeps the previous set when the unpacking fails" 'PATH="$WORK/failbin:$PATH"; [ "$(run_ha "$HA_ID" --force)" = 1 ] && grep -q "unchanged" "$WORK/out" && [ "$(cat "$HA_SECRETS/ha.env")" = "SMART_HA_GATEWAY_ID=gw-old00001" ] && [ ! -e "$GW_SECRETS/ha.partial" ] && [ ! -e "$GW_SECRETS/ha.old" ]'
 teardown
 
 echo "deploy tests: $passed passed, $failures failed"
