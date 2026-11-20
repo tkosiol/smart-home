@@ -272,6 +272,17 @@ describe('PairingService', () => {
         'ok',
       );
     });
+    it('answers 503 without the secret and hands out no code that could never be redeemed', async () => {
+      db.gateways.push(gatewayRow());
+      credentials.enabled = false;
+      expect(await codeError(service().create(HOUSEHOLD, USER, {}))).toBe(
+        '503 gateway.pairingUnavailable',
+      );
+      expect(await codeError(service().create(HOUSEHOLD, USER, { gatewayId: 'gw-hacred01' }))).toBe(
+        '503 gateway.pairingUnavailable',
+      );
+      expect(db.pairings).toEqual([]);
+    });
   });
 
   describe('redeem', () => {
@@ -371,6 +382,18 @@ describe('PairingService', () => {
         clientId: 'gw-hacred01-ha',
       });
       expect(db.gateways.map((row) => row.credentialGeneration)).toEqual([4]);
+      expect(credentials.steps).toEqual(['rekey gw-hacred01 4']);
+      expect(registered).toEqual([]);
+    });
+
+    it('pairs an existing gateway anew without an expected gateway, as a new entry in Home Assistant does', async () => {
+      db.gateways.push(gatewayRow({ credentialGeneration: 3 }));
+      const code = await createCode('gw-hacred01');
+      const redeemed = await service().redeem({ code, name: 'Zuhause' });
+
+      expect(redeemed.gatewayId).toBe('gw-hacred01');
+      expect(redeemed.password).toBe(credentials.password('gw-hacred01', 4));
+      expect(db.gateways).toEqual([gatewayRow({ credentialGeneration: 4 })]);
       expect(credentials.steps).toEqual(['rekey gw-hacred01 4']);
       expect(registered).toEqual([]);
     });

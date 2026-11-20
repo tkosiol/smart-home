@@ -212,6 +212,36 @@ describe('GatewayCredentials', () => {
     ]);
   });
 
+  it('creates a user that is missing when asked to rekey it (broker restarted, no reconcile yet)', async () => {
+    broker.answer = (command) =>
+      command.command === 'modifyClient' ? { error: 'Client not found' } : {};
+    await make().rekey('gw-00000001', 4);
+    expect(broker.sent()).toEqual([
+      { command: 'modifyClient', username: 'gw-00000001', textdescription: 'generation:4' },
+      {
+        command: 'createClient',
+        username: 'gw-00000001',
+        password: deriveGatewayPassword(SECRET, 'gw-00000001', 4),
+        clientid: 'gw-00000001-ha',
+        textdescription: 'generation:4',
+        roles: [{ rolename: 'smart-gateway-ha' }],
+      },
+    ]);
+  });
+
+  it('passes on other errors of rekey, and a failed create after a missing user', async () => {
+    broker.answer = () => ({ error: 'Something else' });
+    await expect(make().rekey('gw-00000001', 2)).rejects.toThrow('Something else');
+    expect(broker.names()).toEqual(['modifyClient']);
+    broker.commands.length = 0;
+    broker.answer = (command) =>
+      command.command === 'modifyClient'
+        ? { error: 'Client not found' }
+        : { error: 'Client already exists' };
+    await expect(make().rekey('gw-00000001', 2)).rejects.toThrow('Client already exists');
+    expect(broker.names()).toEqual(['modifyClient', 'createClient']);
+  });
+
   it('passes on other errors of create', async () => {
     broker.answer = () => ({ error: 'Role not found' });
     await expect(make().create('gw-00000001', 1)).rejects.toThrow('Role not found');

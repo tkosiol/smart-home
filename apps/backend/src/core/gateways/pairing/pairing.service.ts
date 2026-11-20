@@ -79,6 +79,8 @@ export class PairingService {
     } else if ((await this.gateways.countActiveCredentials(householdId)) >= MAX_PAIRED_GATEWAYS) {
       throw limitReached();
     }
+    // Without the secret no code could ever be redeemed: say so now, not in Home Assistant.
+    if (!this.credentials.enabled) throw unavailable();
     const code = newPairingCode();
     const now = this.clock();
     const expiresAt = new Date(now.getTime() + PAIRING_TTL_MS);

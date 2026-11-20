@@ -42,6 +42,10 @@ export const reasonOf = (error: unknown): string =>
     ? `${error.command ?? 'command'}: ${error.message}`
     : describeError(error);
 
+/** The plugin refused a command with exactly these words. */
+const isDynsecError = (error: unknown, message: string): boolean =>
+  error instanceof DynsecError && error.message === message;
+
 /**
  * The users of the dynamic security plugin, as `listClients` with `verbose: true` gives them
  * (measured with Mosquitto 2.1.2): `data.clients` is a list of objects with `username` and, when
@@ -121,16 +125,9 @@ export class GatewayCredentials implements OnModuleInit, OnModuleDestroy {
    */
   async create(gatewayId: string, generation: number): Promise<void> {
     try {
-      await this.dynsec.send({
-        command: 'createClient',
-        username: gatewayId,
-        password: this.password(gatewayId, generation),
-        clientid: gatewayClientId(gatewayId),
-        textdescription: generationTag(generation),
-        roles: [{ rolename: ROLE }],
-      });
+      await this.createClient(gatewayId, generation);
     } catch (error) {
-      if (!(error instanceof DynsecError && error.message === 'Client already exists')) throw error;
+      if (!isDynsecError(error, 'Client already exists')) throw error;
       await this.rekey(gatewayId, generation);
     }
   }
@@ -139,14 +136,21 @@ export class GatewayCredentials implements OnModuleInit, OnModuleDestroy {
    * Disconnects the gateway (both commands do). The generation goes first: should the password
    * step fail, the description differs from the database (whose transaction rolls back), and the
    * next reconcile sets the key that belongs to it. The other order could leave a new password
-   * under an old description, which no reconcile would notice.
+   * under an old description, which no reconcile would notice. A missing user (the broker
+   * restarted and no reconcile has run since) is created with the requested generation instead.
    */
   async rekey(gatewayId: string, generation: number): Promise<void> {
-    await this.dynsec.send({
-      command: 'modifyClient',
-      username: gatewayId,
-      textdescription: generationTag(generation),
-    });
+    try {
+      await this.dynsec.send({
+        command: 'modifyClient',
+        username: gatewayId,
+        textdescription: generationTag(generation),
+      });
+    } catch (error) {
+      if (!isDynsecError(error, 'Client not found')) throw error;
+      await this.createClient(gatewayId, generation);
+      return;
+    }
     await this.dynsec.send({
       command: 'setClientPassword',
       username: gatewayId,
@@ -158,8 +162,19 @@ export class GatewayCredentials implements OnModuleInit, OnModuleDestroy {
     try {
       await this.dynsec.send({ command: 'deleteClient', username: gatewayId });
     } catch (error) {
-      if (!(error instanceof DynsecError && error.message === 'Client not found')) throw error;
+      if (!isDynsecError(error, 'Client not found')) throw error;
     }
+  }
+
+  private async createClient(gatewayId: string, generation: number): Promise<void> {
+    await this.dynsec.send({
+      command: 'createClient',
+      username: gatewayId,
+      password: this.password(gatewayId, generation),
+      clientid: gatewayClientId(gatewayId),
+      textdescription: generationTag(generation),
+      roles: [{ rolename: ROLE }],
+    });
   }
 
   /**
@@ -231,7 +246,7 @@ export class GatewayCredentials implements OnModuleInit, OnModuleDestroy {
     try {
       await this.dynsec.send({ command: 'createRole', rolename: ROLE });
     } catch (error) {
-      if (!(error instanceof DynsecError && error.message === 'Role already exists')) throw error;
+      if (!isDynsecError(error, 'Role already exists')) throw error;
     }
     // Replaces the role's rules; with unchanged rules, nobody is disconnected.
     await this.dynsec.send({ command: 'modifyRole', rolename: ROLE, acls: ROLE_ACLS });

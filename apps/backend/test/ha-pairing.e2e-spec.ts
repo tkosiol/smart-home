@@ -325,6 +325,18 @@ describe('pairing Home Assistant with a code', () => {
     await connected(again);
   });
 
+  it('pairs a gateway anew from a new Home Assistant entry, which expects no gateway', async () => {
+    const household = await createHousehold();
+    const first = await redeemed({ code: await newCode(household) });
+    const id = first.gatewayId;
+
+    const again = await redeemed({ code: await newCode(household, id), name: 'Zuhause' });
+    expect(again.gatewayId).toBe(id);
+    expect(await gatewaysOf(household)).toEqual([{ id, generation: 2 }]);
+    await expectRefused(first);
+    await connected(again);
+  });
+
   it('keeps a code for a new gateway when Home Assistant expects another one', async () => {
     const household = await createHousehold();
     const { gatewayId } = await redeemed({ code: await newCode(household) });
@@ -373,7 +385,7 @@ describe('pairing Home Assistant with a code', () => {
     expect(await gatewaysOf(household)).toHaveLength(6);
   });
 
-  it('answers 503 without the secret and keeps the code valid', async () => {
+  it('answers 503 without the secret, when creating a code and when redeeming one, and keeps the code valid', async () => {
     const household = await createHousehold();
     const code = await newCode(household);
     // A second instance on the same database and broker, without the secret.
@@ -386,6 +398,14 @@ describe('pairing Home Assistant with a code', () => {
     configureApp(withoutSecret);
     await withoutSecret.init();
     try {
+      const created = await request(withoutSecret.getHttpServer())
+        .post(`${HOUSEHOLDS}/${household}/gateway-pairings`)
+        .set('Cookie', owner.cookie)
+        .set('Origin', origin)
+        .set('X-Forwarded-For', nextIp())
+        .send({})
+        .expect(503);
+      expect(errorCode(created)).toBe('gateway.pairingUnavailable');
       const response = await request(withoutSecret.getHttpServer())
         .post(REDEEM)
         .set('X-Forwarded-For', nextIp())
