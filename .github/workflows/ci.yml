@@ -111,7 +111,7 @@ jobs:
             run: >
               docker run --rm -v "$PWD:/mnt" -w /mnt koalaman/shellcheck:v0.11.0
               infra/deploy/smart-deploy infra/deploy/deploy.sh infra/deploy/provision.sh infra/deploy/admin.sh
-              infra/deploy/broker-certs.sh infra/deploy/provision-gateway.sh infra/pki/pki.sh infra/pki/test/run-tests.sh
+              infra/deploy/broker-certs.sh infra/deploy/provision-gateway.sh infra/deploy/provision-ha.sh infra/pki/pki.sh infra/pki/test/run-tests.sh
               infra/deploy/test/run-tests.sh infra/deploy/test/stubs/docker infra/deploy/test/stubs/curl infra/deploy/test/stubs/ssh infra/deploy/test/stubs/sudo
               infra/backup/backup.sh infra/backup/restore-test.sh infra/broker/entrypoint.sh
               infra/local/smoke-test.sh infra/compose/test/stack-test.sh infra/broker/test/broker-test.sh
@@ -120,7 +120,7 @@ jobs:
               gateway/migrate.sh gateway/start.sh gateway/test/stubs/timeout gateway/test/stubs/chown gateway/test/stubs/systemctl
               gateway/test/stubs/curl gateway/test/stubs/ssh gateway/test/stubs/systemd-run gateway/test/stubs/tar gateway/test/stubs/cp gateway/test/stubs/cut gateway/test/stubs/timedatectl
               gateway/backup/lib.sh gateway/backup/backup.sh gateway/backup/restore-test.sh gateway/backup/restic-job.sh
-              gateway/test/backup-tests.sh
+              gateway/test/backup-tests.sh integrations/home-assistant/test/run-tests.sh
           - suite: scripts
             run: bash infra/deploy/test/run-tests.sh && bash infra/pki/test/run-tests.sh
           - suite: broker
@@ -131,6 +131,8 @@ jobs:
             run: bash gateway/test/deploy-tests.sh
           - suite: gateway-backup
             run: bash gateway/test/backup-tests.sh
+          - suite: ha-integration
+            run: bash integrations/home-assistant/test/run-tests.sh
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Weekly restore test (systemd: smart-gateway-restore-test.timer): restores the latest snapshot of the Z2M data into a
-# temporary folder in the container and checks that configuration.yaml and database.db are there and not empty.
+# temporary folder in the container and checks that configuration.yaml and database.db are there and not empty (and,
+# where Home Assistant runs, its .storage/core.config_entries; see restic-job.sh).
 # Pings HC_RESTORE_URL (start, success, fail) when backup.env has one; without it only a failure is reported, on the
 # HC_BACKUP_URL (the check of the nightly backup then goes down, which is the alarm). Runs as root on the Pi.
 set -euo pipefail

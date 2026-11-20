@@ -1,0 +1,118 @@
+{
+  "v": 1,
+  "devices": [
+    {
+      "id": "0a1b2c3d4e5f60718293a4b5c6d7e8f9",
+      "name": "Stehlampe",
+      "manufacturer": "Yeelight",
+      "model": "color4",
+      "area": "Wohnzimmer",
+      "entities": [
+        {
+          "entity_id": "light.stehlampe",
+          "domain": "light",
+          "device_class": null,
+          "name": null,
+          "unit": null,
+          "capabilities": {
+            "supported_color_modes": ["color_temp", "hs"],
+            "min_color_temp_kelvin": 1700,
+            "max_color_temp_kelvin": 6500
+          },
+          "entity_category": null
+        }
+      ]
+    },
+    {
+      "id": "1b2c3d4e5f60718293a4b5c6d7e8f90a",
+      "name": "Monstera",
+      "manufacturer": "Xiaomi",
+      "model": "HHCCJCY01",
+      "area": null,
+      "entities": [
+        {
+          "entity_id": "sensor.monstera_battery",
+          "domain": "sensor",
+          "device_class": "battery",
+          "name": "Battery",
+          "unit": "%",
+          "capabilities": {
+            "state_class": "measurement"
+          },
+          "entity_category": "diagnostic"
+        },
+        {
+          "entity_id": "sensor.monstera_illuminance",
+          "domain": "sensor",
+          "device_class": "illuminance",
+          "name": "Illuminance",
+          "unit": "lx",
+          "capabilities": {
+            "state_class": "measurement"
+          },
+          "entity_category": null
+        },
+        {
+          "entity_id": "sensor.monstera_moisture",
+          "domain": "sensor",
+          "device_class": "moisture",
+          "name": "Moisture",
+          "unit": "%",
+          "capabilities": {
+            "state_class": "measurement"
+          },
+          "entity_category": null
+        },
+        {
+          "entity_id": "sensor.monstera_temperature",
+          "domain": "sensor",
+          "device_class": "temperature",
+          "name": "Temperature",
+          "unit": "°F",
+          "capabilities": {
+            "state_class": "measurement"
+          },
+          "entity_category": null
+        },
+        {
+          "entity_id": "sensor.monstera_temperature_2",
+          "domain": "sensor",
+          "device_class": "temperature",
+          "name": "Soil temperature",
+          "unit": "°C",
+          "capabilities": {
+            "state_class": "measurement"
+          },
+          "entity_category": null
+        }
+      ]
+    },
+    {
+      "id": "2c3d4e5f60718293a4b5c6d7e8f90a1b",
+      "name": null,
+      "manufacturer": null,
+      "model": "Door sensor",
+      "area": null,
+      "entities": [
+        {
+          "entity_id": "binary_sensor.flur_tuer",
+          "domain": "binary_sensor",
+          "device_class": "door",
+          "name": "Flurtür",
+          "unit": null,
+          "capabilities": null,
+          "entity_category": null
+        },
+        {
+          "entity_id": "switch.flur_steckdose",
+          "domain": "switch",
+          "device_class": "outlet",
+          "name": null,
+          "unit": null,
+          "capabilities": null,
+          "entity_category": null
+        }
+      ]
+    }
+  ]
+}

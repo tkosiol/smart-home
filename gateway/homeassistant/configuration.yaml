@@ -1,0 +1,23 @@
+# Home Assistant on the gateway (docs/superpowers/specs/2026-11-19-home-assistant-adapter-design.md, section 7).
+# Deliberately without default_config: only what the UI, discovery and the bridge need (the Pi has 1 GB).
+http:
+frontend:
+config:
+person:
+network:
+ssdp:
+zeroconf:
+dhcp:
+logger:
+  default: warning
+recorder:
+  # The platform keeps the history; one day here spares the SD card.
+  purge_keep_days: 1
+  commit_interval: 60
+smart_bridge:
+  gateway_id: !env_var SMART_HA_GATEWAY_ID
+  broker_host: !env_var BROKER_HOST
+  broker_port: !env_var BROKER_PORT
+  ca_file: /smart/secrets/ca.crt
+  cert_file: /smart/secrets/gateway.crt
+  key_file: /smart/secrets/gateway.key

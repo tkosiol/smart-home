@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Nightly Pi backup (systemd: smart-gateway-backup.timer, 03:30): restic backup of zigbee2mqtt-data/ (without log/)
-# and secrets/ to the B2 bucket, retention 7 daily / 4 weekly / 6 monthly, restic check, healthchecks.io pings
-# (start, success, fail on the HC_BACKUP_URL of secrets/backup.env). The restic work runs in the backup service of
-# compose.yaml (restic-job.sh); lib.sh explains the handling of backup.env. Runs as root on the Pi.
+# and secrets/ (and homeassistant-data/ where Home Assistant runs, see restic-job.sh) to the B2 bucket, retention
+# 7 daily / 4 weekly / 6 monthly, restic check, healthchecks.io pings (start, success, fail on the HC_BACKUP_URL of
+# secrets/backup.env). The restic work runs in the backup service of compose.yaml (restic-job.sh); lib.sh explains
+# the handling of backup.env. Runs as root on the Pi.
 set -euo pipefail
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 # shellcheck source=gateway/backup/lib.sh

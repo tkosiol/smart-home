@@ -73,8 +73,8 @@ describe('gatewaySchema', () => {
     expect(gatewaySchema.safeParse({ ...gateway, id: 'api' }).success).toBe(false);
   });
 
-  it('rejects a kind of gateway that has no adapter', () => {
-    expect(gatewaySchema.safeParse({ ...gateway, kind: 'ha' }).success).toBe(false);
+  it('accepts the kind ha', () => {
+    expect(gatewaySchema.safeParse({ ...gateway, kind: 'ha' }).success).toBe(true);
   });
 
   it('requires the certificate expiry', () => {
@@ -95,7 +95,8 @@ describe('gatewayRegisterSchema', () => {
     const base = { name: 'Keller', certificate: 'abc' };
     expect(gatewayRegisterSchema.safeParse(base).success).toBe(true);
     expect(gatewayRegisterSchema.safeParse({ ...base, kind: 'z2m' }).success).toBe(true);
-    expect(gatewayRegisterSchema.safeParse({ ...base, kind: 'ha' }).success).toBe(false);
+    expect(gatewayRegisterSchema.safeParse({ ...base, kind: 'ha' }).success).toBe(true);
+    expect(gatewayRegisterSchema.safeParse({ ...base, kind: 'hue' }).success).toBe(false);
   });
 
   it('rejects an empty certificate and one above 20 000 characters', () => {

@@ -2,7 +2,13 @@
 # Test double for curl (backup tests): the backup scripts hand the ping URL to curl on stdin ("-K -"), never in argv.
 # Records the arguments in $STUB_CALLS and the stdin (the config with the URL) in $STUB_PING_LOG, so a test can see
 # which ping went out while the URL stays out of the logs. STUB_CURL_FAIL=1 makes every call fail.
+# Deploy tests: the probe of Home Assistant on 127.0.0.1:8123 answers, or fails like a closed port with STUB_HA_DOWN=1.
 printf 'curl %s\n' "$*" >> "$STUB_CALLS"
+case "$*" in
+  *127.0.0.1:8123*)
+    [ "${STUB_HA_DOWN:-0}" = 1 ] && exit 7
+    exit 0 ;;
+esac
 if [ "${1:-}" != --version ]; then cat >> "${STUB_PING_LOG:?}"; fi
 [ "${STUB_CURL_FAIL:-0}" = 1 ] && exit 22
 exit 0

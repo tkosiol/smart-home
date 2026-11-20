@@ -1,0 +1,55 @@
+{
+  "v": 1,
+  "entities": {
+    "sensor.monstera_battery": {
+      "state": "87",
+      "attributes": {
+        "device_class": "battery",
+        "unit_of_measurement": "%",
+        "state_class": "measurement",
+        "friendly_name": "Monstera Battery"
+      },
+      "last_updated": "2026-11-19T16:30:00+00:00"
+    },
+    "sensor.monstera_illuminance": {
+      "state": "1200",
+      "attributes": {
+        "device_class": "illuminance",
+        "unit_of_measurement": "lx",
+        "state_class": "measurement",
+        "friendly_name": "Monstera Illuminance"
+      },
+      "last_updated": "2026-11-19T16:45:00+00:00"
+    },
+    "sensor.monstera_moisture": {
+      "state": "41.5",
+      "attributes": {
+        "device_class": "moisture",
+        "unit_of_measurement": "%",
+        "state_class": "measurement",
+        "friendly_name": "Monstera Moisture"
+      },
+      "last_updated": "2026-11-19T17:00:00+00:00"
+    },
+    "sensor.monstera_temperature": {
+      "state": "68.0",
+      "attributes": {
+        "device_class": "temperature",
+        "unit_of_measurement": "°F",
+        "state_class": "measurement",
+        "friendly_name": "Monstera Temperature"
+      },
+      "last_updated": "2026-11-19T16:50:00+00:00"
+    },
+    "sensor.monstera_temperature_2": {
+      "state": "19.25",
+      "attributes": {
+        "device_class": "temperature",
+        "unit_of_measurement": "°C",
+        "state_class": "measurement",
+        "friendly_name": "Monstera Soil temperature"
+      },
+      "last_updated": "2026-11-19T16:55:00+00:00"
+    }
+  }
+}

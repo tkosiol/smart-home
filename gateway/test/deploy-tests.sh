@@ -35,7 +35,7 @@ setup() {
   PI_DIR="$HOME_DIR/srv/smart-gateway"
   OLD="$HOME_DIR/opt/old-stack"
   mkdir -p "$PI_DIR/secrets" "$OLD/zigbee2mqtt-data" "$WORK/bin" "$WORK/state" "$WORK/systemd"
-  for tool in docker rsync timeout chown systemctl systemd-run tar cp ssh cut timedatectl; do ln -s "$GATEWAY_DIR/test/stubs/$tool" "$WORK/bin/$tool"; done
+  for tool in docker rsync timeout chown systemctl systemd-run tar cp ssh cut timedatectl curl; do ln -s "$GATEWAY_DIR/test/stubs/$tool" "$WORK/bin/$tool"; done
   ln -s "$GATEWAY_DIR/../infra/deploy/test/stubs/sudo" "$WORK/bin/sudo"
   printf 'GATEWAY_ID=gw-testpi01\nBROKER_HOST=mqtt.example.org\nBROKER_PORT=8883\nZ2M_SERIAL_DEVICE=/dev/null\n' > "$PI_DIR/secrets/gateway.env"
   printf 'ZIGBEE2MQTT_CONFIG_MQTT_USER=z2m\nZIGBEE2MQTT_CONFIG_MQTT_PASSWORD=%s\nZIGBEE2MQTT_CONFIG_FRONTEND_AUTH_TOKEN=%s\n' "$Z2M_PASSWORD_MARKER" "$Z2M_TOKEN_MARKER" > "$PI_DIR/secrets/z2m.env"
@@ -61,7 +61,8 @@ setup() {
     SMART_DEPLOY_MIGRATE_TIMEOUT SMART_DEPLOY_DETACH SMART_DEPLOY_STAMP SMART_DEPLOY_START_GRACE STUB_LIST_OLD STUB_FOREIGN_Z2M \
     STUB_PS_FAIL STUB_OLD_PS_FAIL STUB_CUT_FINISH STUB_SSH_BREAK_START STUB_SSH_BREAK_AFTER_START \
     STUB_OLD_PSA_FAIL STUB_INSPECT_FAIL STUB_INSPECT_EMPTY STUB_FAIL_UPDATE_NAME STUB_FAIL_RESTORE STUB_OLD_POLICY \
-    STUB_FOREIGN_WHEN_OLD_STOPPED STUB_LIST_FAIL STUB_CP_KILL STUB_TIMEOUT_START STUB_SSH_BREAK_PLAIN_START STUB_TIMEDATECTL
+    STUB_FOREIGN_WHEN_OLD_STOPPED STUB_LIST_FAIL STUB_CP_KILL STUB_TIMEOUT_START STUB_SSH_BREAK_PLAIN_START STUB_TIMEDATECTL \
+    STUB_HA_DOWN SMART_DEPLOY_HA_WAIT_SECONDS SMART_DEPLOY_HA_POLL_SECONDS STUB_FAIL_HA_UP STUB_FAIL_HA_PULL STUB_FAIL_HA_RM STUB_FAIL_HA_STOP
   export PATH="$WORK/bin:$PATH"
   export STUB_CALLS="$CALLS" STUB_STATE="$WORK/state" STUB_SSH_EXEC=1 STUB_REMOTE_HOME="$HOME_DIR"
   export STUB_REAL_SSH="$GATEWAY_DIR/../infra/deploy/test/stubs/ssh"
@@ -99,7 +100,7 @@ in_order() {
 }
 excludes_all() {
   local e
-  for e in secrets zigbee2mqtt-data run migration; do
+  for e in secrets zigbee2mqtt-data run migration homeassistant-data; do
     case "$1" in *"--exclude=/$e/"*) ;; *) return 1 ;; esac
   done
 }
@@ -149,7 +150,7 @@ setup
 check "deploy succeeds on the happy path" '[ "$(deploy --fresh)" = 0 ]'
 check "deploy copies the package (compose file, render script, entry point, template) to the Pi" '[ -s "$PI_DIR/compose.yaml" ] && [ -s "$PI_DIR/render.sh" ] && [ -s "$PI_DIR/mosquitto-entrypoint.sh" ] && [ -s "$PI_DIR/mosquitto.conf.template" ]'
 check "deploy keeps the render script executable and the files unwritable for others" '[ -x "$PI_DIR/render.sh" ] && grep "^rsync" "$CALLS" | grep -q -- "--chmod=go-w"'
-check "deploy excludes secrets, Z2M data, run and migration from the rsync" 'excludes_all "$(grep "^rsync" "$CALLS")"'
+check "deploy excludes secrets, Z2M data, run, migration and the Home Assistant data from the rsync" 'excludes_all "$(grep -m 1 "^rsync" "$CALLS")"'
 check "deploy leaves the secrets untouched" '[ "$(cat "$PI_DIR/secrets/sentinel")" = sentinel ] && [ "$(mode_of "$PI_DIR/secrets/passwd")" = 600 ]'
 check "deploy renders the Mosquitto configuration (mode 600)" 'grep -q "^connection gw-testpi01-bridge" "$PI_DIR/run/mosquitto.conf" && [ "$(mode_of "$PI_DIR/run/mosquitto.conf")" = 600 ]'
 check "deploy pulls, recreates Mosquitto after the render, starts the stack and checks Z2M, in that order" 'in_order "^rsync" "gateway.env pull" "up -d --force-recreate mosquitto" "gateway.env up -d$" "bridge/state"'
@@ -564,6 +565,114 @@ teardown
 setup; export STUB_Z2M_OFFLINE=1
 check "a Z2M that is simply not online keeps the plain message without the ssh remark" '[ "$(deploy --fresh)" = 1 ] && grep -q "did not report" "$OUT" && ! grep -q "ssh connection failed" "$OUT"'
 teardown
+
+# --- Home Assistant (profile ha): on exactly when secrets/ha/ha.env exists on the Pi ---
+HA_ID_MARKER=gw-hamarker
+# shellcheck disable=SC2034 # used by the check() expressions
+INTEGRATION_DIR="$GATEWAY_DIR/../integrations/home-assistant/custom_components/smart_bridge"
+# What infra/deploy/provision-ha.sh writes: secrets/ha (root 700) with ha.env and the HA gateway certificate (600).
+setup_ha() {
+  mkdir -p "$PI_DIR/secrets/ha"
+  echo "SMART_HA_GATEWAY_ID=$HA_ID_MARKER" > "$PI_DIR/secrets/ha/ha.env"
+  for f in ca.crt gateway.crt gateway.key; do echo "invented ha $f" > "$PI_DIR/secrets/ha/$f"; done
+  chmod 700 "$PI_DIR/secrets/ha"
+  chmod 600 "$PI_DIR"/secrets/ha/*
+}
+ha_rsync() { grep "^rsync" "$CALLS" | grep "homeassistant/custom_components/smart_bridge/$"; }
+# shellcheck disable=SC2034 # used by the check() expressions
+HA_PULL="^docker compose --env-file secrets/gateway.env --profile ha pull homeassistant$"
+# shellcheck disable=SC2034 # see above
+HA_UP="^docker compose --env-file secrets/gateway.env --profile ha up -d --force-recreate homeassistant$"
+# The core of the stack (pull, start.sh, bridge state) runs exactly as without Home Assistant: no profile.
+core_without_profile() {
+  grep -q "^docker compose --env-file secrets/gateway.env up -d --force-recreate mosquitto$" "$CALLS" \
+    && grep -q "^docker compose --env-file secrets/gateway.env up -d$" "$CALLS" \
+    && grep -q "^pull-profiles COMPOSE_PROFILES=backup$" "$CALLS" \
+    && ! grep "^docker compose --env-file secrets/gateway.env --profile ha" "$CALLS" | grep -v -e " pull homeassistant$" -e " up -d --force-recreate homeassistant$" -e " ps$" | grep -q .
+}
+ha_probes() { grep -c "^curl .*http://127.0.0.1:8123/manifest.json" "$CALLS"; }
+ha_removed() { grep -q "^docker rm -f smart-gateway-homeassistant-1$" "$CALLS"; }
+
+setup; setup_ha
+mkdir -p "$PI_DIR/homeassistant/custom_components/smart_bridge" "$PI_DIR/homeassistant-data/.storage"
+echo "stale" > "$PI_DIR/homeassistant/custom_components/smart_bridge/removed_module.py"
+echo '{"data":"ha-data-sentinel"}' > "$PI_DIR/homeassistant-data/.storage/core.config_entries"
+check "deploy with secrets/ha/ha.env succeeds" '[ "$(deploy --fresh)" = 0 ]'
+check "deploy copies the integration with a second rsync (--delete, same options) into homeassistant/custom_components/smart_bridge" \
+  'r=$(ha_rsync) && echo "$r" | grep -q -- "--delete" && echo "$r" | grep -q -- "--chmod=go-w,go+rX" && echo "$r" | grep -q -- "--timeout=60" && echo "$r" | grep -q "ConnectTimeout=10" && echo "$r" | grep -q -- "--rsync-path=sudo -n rsync" && echo "$r" | grep -q "integrations/home-assistant/custom_components/smart_bridge/ " && in_order "^rsync .*--exclude=/secrets/" "^rsync .*homeassistant/custom_components/smart_bridge/$"'
+check "the integration and the configuration land on the Pi, an old module of the integration is gone" \
+  '[ -s "$PI_DIR/homeassistant/configuration.yaml" ] && cmp -s "$PI_DIR/homeassistant/custom_components/smart_bridge/manifest.json" "$INTEGRATION_DIR/manifest.json" && [ -s "$PI_DIR/homeassistant/custom_components/smart_bridge/__init__.py" ] && [ ! -e "$PI_DIR/homeassistant/custom_components/smart_bridge/removed_module.py" ]'
+check "deploy leaves the Home Assistant data alone and keeps the folder root-only (700)" \
+  '[ "$(cat "$PI_DIR/homeassistant-data/.storage/core.config_entries")" = "{\"data\":\"ha-data-sentinel\"}" ] && [ "$(mode_of "$PI_DIR/homeassistant-data")" = 700 ]'
+check "with ha.env the core of the stack (pull, start.sh, bridge state) runs exactly as without it, without the profile" 'core_without_profile'
+check "then a separate step pulls and force-recreates homeassistant with --profile ha (a changed integration or configuration takes effect)" \
+  'in_order "bash ./start.sh" "$HA_PULL" "$HA_UP" "127.0.0.1:8123" && bounded "--profile ha pull homeassistant" && bounded "--profile ha up -d --force-recreate homeassistant"'
+check "deploy waits for Home Assistant on port 8123 after its start and reports it up" '[ "$(ha_probes)" -ge 1 ] && grep -q "Home Assistant is up" "$OUT"'
+check "with ha.env deploy does not remove the homeassistant container" '! ha_removed'
+check "deploy never prints or sends the Home Assistant secrets" '! grep -q -e "$HA_ID_MARKER" -e "invented ha" "$OUT" "$CALLS"'
+teardown
+
+setup
+check "without secrets/ha/ha.env: no --profile ha, no HA step, no probe on 8123, no word of Home Assistant" \
+  '[ "$(deploy --fresh)" = 0 ] && ! grep -q "^docker .*profile ha" "$CALLS" && ! grep -Eq "^docker .*(pull|up -d --force-recreate) homeassistant$" "$CALLS" && grep -q "^pull-profiles COMPOSE_PROFILES=backup$" "$CALLS" && [ "$(ha_probes)" = 0 ] && ! grep -qi "home assistant" "$OUT"'
+check "without secrets/ha/ha.env the integration is still copied (part of the package) and the data folder is root-only" \
+  '[ -s "$PI_DIR/homeassistant/custom_components/smart_bridge/manifest.json" ] && [ "$(mode_of "$PI_DIR/homeassistant-data")" = 700 ]'
+check "without a leftover container nothing is removed" '! grep -q "^docker rm" "$CALLS"'
+teardown
+
+# R6: removing secrets/ha/ha.env switches Home Assistant off. Its container goes by the labels of this project, with
+# no --profile (that would read the env file).
+setup; : > "$WORK/state/ha_running"
+check "without ha.env deploy removes a leftover homeassistant container of the project and says so" \
+  '[ "$(deploy --fresh)" = 0 ] && grep -q "^docker ps -aq --filter label=com.docker.compose.project=smart-gateway --filter label=com.docker.compose.service=homeassistant$" "$CALLS" && ha_removed && [ ! -e "$WORK/state/ha_running" ] && grep -q "removed the Home Assistant container" "$OUT" && ! grep -q "^docker .*profile ha" "$CALLS" && new_running'
+check "the removal is bounded by timeouts and comes after the start of the stack" 'bounded "ps -aq --filter label=com.docker.compose.project=smart-gateway" && bounded "rm -f smart-gateway-homeassistant-1" && in_order "bash ./start.sh" "^docker rm -f smart-gateway-homeassistant-1"'
+# A graceful stop first (SIGTERM, 120 s like stop_grace_period in compose.yaml): Home Assistant saves its registries
+# and smart_bridge publishes ha/status offline; rm -f alone would kill it and leave the retained online behind.
+ha_stop_timeout_covers_grace() { sed -n "$(($(line_of "^docker stop -t 120 smart-gateway-homeassistant-1$") - 1))p" "$CALLS" | awk '$1 == "timeout" && $2 == "-k" && $4 > 120 { ok = 1 } END { exit !ok }'; }
+check "the removal first stops the container gracefully (docker stop -t 120, bounded by a longer timeout), then removes it" \
+  'in_order "bash ./start.sh" "^docker stop -t 120 smart-gateway-homeassistant-1$" "^docker rm -f smart-gateway-homeassistant-1$" && bounded "stop -t 120 smart-gateway-homeassistant-1" && ha_stop_timeout_covers_grace'
+teardown
+setup; : > "$WORK/state/ha_running"; export STUB_FAIL_HA_STOP=1
+check "a graceful stop that fails still removes the container (rm -f), without a warning" \
+  '[ "$(deploy --fresh)" = 0 ] && ha_removed && [ ! -e "$WORK/state/ha_running" ] && grep -q "removed the Home Assistant container" "$OUT" && ! grep -qi "warning.*Home Assistant container" "$OUT" && new_running'
+teardown
+setup; : > "$WORK/state/ha_running"; export STUB_FAIL_HA_RM=1
+check "a leftover container that cannot be removed is a warning, not a failure" '[ "$(deploy --fresh)" = 0 ] && grep -qi "warning.*Home Assistant container" "$OUT" && new_running'
+teardown
+
+# Spec 7: a Home Assistant failure never fails the deploy and never rolls anything back.
+setup; setup_ha; export STUB_HA_DOWN=1 SMART_DEPLOY_HA_WAIT_SECONDS=2 SMART_DEPLOY_HA_POLL_SECONDS=1
+check "a Home Assistant that never answers is a warning: exit 0, Z2M running, timers installed, nothing rolled back" \
+  '[ "$(deploy --fresh)" = 0 ] && grep -q "Home Assistant did not answer in 2 s – Zigbee2MQTT is running; check docker compose logs homeassistant" "$OUT" && [ "$(ha_probes)" -ge 2 ] && new_running && [ -s "$WORK/systemd/smart-gateway-backup.timer" ] && ! grep -Eq "^docker .*(stop|down)" "$CALLS"'
+teardown
+for failure in STUB_FAIL_HA_UP STUB_FAIL_HA_PULL; do
+  setup; setup_ha; export "$failure=1"
+  check "a Home Assistant that cannot be pulled or started ($failure) is a warning: exit 0, Z2M verified, timers installed, no wait" \
+    '[ "$(deploy --fresh)" = 0 ] && grep -qi "warning: Home Assistant could not be" "$OUT" && grep -q "Zigbee2MQTT is running" "$OUT" && new_running && grep -q "bridge/state" "$CALLS" && [ -s "$WORK/systemd/smart-gateway-backup.timer" ] && [ "$(ha_probes)" = 0 ] && ! grep -Eq "^docker .*(stop|down)" "$CALLS"'
+  teardown
+done
+setup; setup_ha; export STUB_FAIL_HA_PULL=1
+check "a failed pull of Home Assistant names SMART_DEPLOY_PULL_TIMEOUT (the first pull on a Pi can take longer than 900 s)" \
+  '[ "$(deploy --fresh)" = 0 ] && grep -q "could not be pulled" "$OUT" && grep -q "SMART_DEPLOY_PULL_TIMEOUT" "$OUT"'
+teardown
+setup; setup_ha; export SMART_PI_OLD_STACK="$OLD" STUB_FAIL_HA_UP=1
+check "inside --migrate a Home Assistant that cannot start rolls nothing back: done, new stack running, old stopped" \
+  '[ "$(deploy --migrate)" = 0 ] && [ "$(cut -d" " -f1 "$PI_DIR/migration/status")" = done ] && new_running && ! old_running && grep -qi "warning: Home Assistant could not be" "$OUT"'
+teardown
+check "deploy waits up to 600 s for Home Assistant, polling every 10 s, by default" \
+  'grep -q "SMART_DEPLOY_HA_WAIT_SECONDS:-600}" "$DEPLOY" && grep -q "SMART_DEPLOY_HA_POLL_SECONDS:-10}" "$DEPLOY"'
+
+setup; setup_ha; export SMART_PI_OLD_STACK="$OLD"
+check "migrate with secrets/ha/ha.env starts Home Assistant after the migration and waits for it" \
+  '[ "$(deploy --migrate)" = 0 ] && in_order "^systemd-run" "$HA_UP" "127.0.0.1:8123" && [ "$(ha_probes)" -ge 1 ]'
+teardown
+
+for missing in ca.crt gateway.crt gateway.key; do
+  setup; setup_ha; rm "$PI_DIR/secrets/ha/$missing"
+  check "with ha.env but without secrets/ha/$missing deploy stops before any change and names provision-ha.sh" \
+    '[ "$(deploy --fresh)" = 1 ] && grep -q "secrets/ha/$missing" "$OUT" && grep -q "provision-ha.sh" "$OUT" && ! grep -q "^rsync" "$CALLS" && no_stack_calls && no_changes_on_pi'
+  teardown
+done
 
 
 echo "deploy tests: $passed passed, $failures failed"

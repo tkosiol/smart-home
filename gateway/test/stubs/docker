@@ -20,6 +20,9 @@
 #   "docker update" with any other policy than no fails
 #   STUB_FOREIGN_WHEN_OLD_STOPPED = <name>: a zigbee2mqtt container of another project shows in the listing as soon
 #   as the old stack is stopped (the old stack came back by itself); STUB_LIST_FAIL = 1: only that listing fails
+#   Home Assistant (profile ha): its container runs while $STUB_STATE/ha_running exists. STUB_FAIL_HA_PULL = 1 /
+#   STUB_FAIL_HA_UP = 1: its pull / its up fail; STUB_FAIL_HA_RM = 1: "docker rm -f" of its container fails;
+#   STUB_FAIL_HA_STOP = 1: "docker stop -t 120" of its container fails (and stops nothing)
 printf 'docker %s\n' "$*" >> "$STUB_CALLS"
 state=${STUB_STATE:?}
 case "$*" in
@@ -50,6 +53,10 @@ case "$*" in
     esac ;;
   "compose --env-file secrets/gateway.env "*)
     case "$*" in
+      *"--profile ha pull homeassistant") [ "${STUB_FAIL_HA_PULL:-0}" = 1 ] && exit 1 ;;
+      *"--profile ha up -d --force-recreate homeassistant")
+        [ "${STUB_FAIL_HA_UP:-0}" = 1 ] && exit 1
+        : > "$state/ha_running" ;;
       *" pull"*)
         printf 'pull-profiles COMPOSE_PROFILES=%s\n' "${COMPOSE_PROFILES:-}" >> "$STUB_CALLS"
         [ "${STUB_FAIL_PULL:-0}" = 1 ] && exit 1 ;;
@@ -95,6 +102,8 @@ case "$*" in
       *RestartCount*) echo 0 ;;
       *Health*) if [ "${STUB_MOSQ_UNHEALTHY:-0}" = 1 ]; then echo unhealthy; else echo healthy; fi ;;
     esac ;;
+  "ps -aq --filter label=com.docker.compose.project=smart-gateway --filter label=com.docker.compose.service=homeassistant")
+    if [ -e "$state/ha_running" ]; then echo smart-gateway-homeassistant-1; fi ;;
   "ps "*)
     # docker ps of the new project (by label), running or all (names)
     [ -n "${STUB_PS_FAIL:-}" ] && exit "$STUB_PS_FAIL"
@@ -122,6 +131,12 @@ case "$*" in
     [ "$policy" = no ] && [ "${STUB_FAIL_UPDATE_NAME:-}" = "$last" ] && exit 1
     [ "$policy" != no ] && [ "${STUB_FAIL_RESTORE:-0}" = 1 ] && exit 1
     echo "$policy" > "$state/policy_$last" ;;
+  "stop -t 120 smart-gateway-homeassistant-1")
+    [ "${STUB_FAIL_HA_STOP:-0}" = 1 ] && exit 1
+    : > "$state/ha_stopped" ;;
+  "rm -f smart-gateway-homeassistant-1")
+    [ "${STUB_FAIL_HA_RM:-0}" = 1 ] && exit 1
+    rm -f "$state/ha_running" ;;
   "stop "* | "rm "*)
     [ "${STUB_FAIL_DOCKER_STOP:-0}" = 1 ] && exit 1
     rm -f "$state/new_running" ;;

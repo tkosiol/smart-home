@@ -9,7 +9,8 @@
     "unknown": "Unknown"
   },
   "kind": {
-    "z2m": "Zigbee2MQTT"
+    "z2m": "Zigbee2MQTT",
+    "ha": "Home Assistant"
   },
   "entry": {
     "status": "Bridge: {{ bridge }} · {{ kind }}: {{ service }}",
@@ -34,6 +35,7 @@
   "register": {
     "title": "Register a gateway",
     "name": "Name",
+    "kind": "Kind",
     "nameError": "Please enter a name of at most 60 characters.",
     "certificate": "Certificate",
     "certificateHint": "The text of the certificate, including the BEGIN and END lines. Never paste the private key.",

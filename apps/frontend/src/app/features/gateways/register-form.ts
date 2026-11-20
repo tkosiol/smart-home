@@ -7,14 +7,17 @@ import {
   output,
   signal,
 } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
 import { TranslocoPipe, TranslocoService } from '@jsverse/transloco';
 import { marker } from '@jsverse/transloco-keys-manager/marker';
-import { gatewayRegisterSchema } from '@smart/contracts';
-import { UiButton, UiStack } from '@smart/ui';
-import { UiTextField } from '@smart/ui/forms';
+import { GATEWAY_KINDS, gatewayRegisterSchema, type GatewayKind } from '@smart/contracts';
+import { UiButton, UiStack, type UiOption } from '@smart/ui';
+import { UiSegmentedButton, UiTextField } from '@smart/ui/forms';
+import { filter, scan } from 'rxjs';
 import { ApiError } from '../../core/api';
 import { HouseholdContext, injectHouseholdErrorHandler } from '../../core/household';
 import { GatewaysApi } from './gateways.api';
+import { kindKey } from './gateway-status';
 
 /** In the root translation: the keys are looked up in code, where the scope's keys are not found. */
 const CERTIFICATE_ERROR_KEYS = {
@@ -25,6 +28,8 @@ const CERTIFICATE_ERROR_KEYS = {
 
 type ServerError = keyof typeof CERTIFICATE_ERROR_KEYS;
 type CertificateError = ServerError | 'empty' | 'privateKey';
+
+const DEFAULT_KIND: GatewayKind = 'z2m';
 
 /** A private key is never sent: the server would refuse it, but it would still cross the network. */
 const PRIVATE_KEY = /PRIVATE KEY/i;
@@ -39,7 +44,7 @@ function isCertificateError(code: string): code is ServerError {
  */
 @Component({
   selector: 'app-gateway-register-form',
-  imports: [TranslocoPipe, UiButton, UiStack, UiTextField],
+  imports: [TranslocoPipe, UiButton, UiSegmentedButton, UiStack, UiTextField],
   template: `
     <form (submit)="register($event)" novalidate>
       <ui-stack gap="lg">
@@ -50,6 +55,11 @@ function isCertificateError(code: string): code is ServerError {
           [label]="'gateways.register.name' | transloco"
           [error]="nameInvalid() ? ('gateways.register.nameError' | transloco) : null"
           [(value)]="name"
+        />
+        <ui-segmented-button
+          [label]="'gateways.register.kind' | transloco"
+          [options]="kindOptions()"
+          [(value)]="kind"
         />
         <ui-text-field
           name="certificate"
@@ -93,6 +103,27 @@ export class GatewayRegisterForm {
     source: this.currentId,
     computation: () => '',
   });
+  protected readonly kind = linkedSignal<string | undefined, GatewayKind | undefined>({
+    source: this.currentId,
+    computation: () => DEFAULT_KIND,
+  });
+  /** Counts the translations loaded so far: a label asked before its scope was in is asked again. */
+  private readonly loaded = toSignal(
+    this.transloco.events$.pipe(
+      filter((event) => event.type === 'translationLoadSuccess'),
+      scan((count) => count + 1, 0),
+    ),
+    { initialValue: 0 },
+  );
+  private readonly language = toSignal(this.transloco.langChanges$);
+  protected readonly kindOptions = computed<UiOption<GatewayKind>[]>(() => {
+    this.language();
+    this.loaded();
+    return GATEWAY_KINDS.map((value) => ({
+      value,
+      label: this.transloco.translate(kindKey(value)),
+    }));
+  });
   protected readonly certificate = linkedSignal<string | undefined, string>({
     source: this.currentId,
     computation: () => '',
@@ -123,6 +154,7 @@ export class GatewayRegisterForm {
     const parsed = gatewayRegisterSchema.safeParse({
       name: this.name(),
       certificate: this.certificate(),
+      kind: this.kind(),
     });
     const failed = new Set(parsed.success ? [] : parsed.error.issues.map((issue) => issue.path[0]));
     this.nameInvalid.set(failed.has('name'));
@@ -138,6 +170,7 @@ export class GatewayRegisterForm {
       if (this.currentId() !== id) return;
       this.name.set('');
       this.certificate.set('');
+      this.kind.set(DEFAULT_KIND);
       this.registered.emit();
     } catch (error) {
       if (error instanceof ApiError && isCertificateError(error.code)) {
