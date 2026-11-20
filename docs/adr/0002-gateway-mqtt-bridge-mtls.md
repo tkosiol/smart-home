@@ -16,3 +16,7 @@ Mosquitto-Bridge vom Pi zum VPS-Broker über TLS mit Client-Zertifikaten einer e
 Port 8883 ist öffentlich, aber ohne gültiges Zertifikat scheitert der Handshake; CA-Schlüssel muss offline gesichert werden; neue Gateways brauchen nur ein Zertifikat.
 
 Details: Spec, Abschnitt 4.
+
+## Nachtrag (2026-11-20)
+
+Diese Entscheidung gilt für **Zertifikats-Gateways** (`auth = certificate`, heute Zigbee2MQTT auf dem Pi). Home-Assistant-Gateways werden ohne Zertifikat mit einem Kopplungscode angebunden und verbinden sich per WebSocket mit Benutzer und Schlüssel; siehe ADR-0023. Die Offline-CA und der Port 8883 bleiben unverändert.

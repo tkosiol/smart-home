@@ -34,6 +34,7 @@ Smart-Home-Plattform. Verbindliche Architektur: `docs/superpowers/specs/2026-10-
 | Broker-Image testen (Docker, OpenSSL ≥ 3)        | `bash infra/broker/test/broker-test.sh`                                         |
 | Gateway-Paket testen (Docker, OpenSSL ≥ 3)       | `bash gateway/test/gateway-test.sh`                                             |
 | Gateway-Deploy-Skript testen                     | `bash gateway/test/deploy-tests.sh`                                             |
+| HACS-Spiegel-Skript testen                       | `bash integrations/home-assistant/release/test/sync-mirror-test.sh`             |
 | Pi deployen / umziehen (vom Mac, Heimnetz)       | `SMART_PI=<benutzer>@<host> pnpm gateway:deploy [--migrate \| --fresh]`         |
 | Pi-Backups testen (Docker)                       | `bash gateway/test/backup-tests.sh`                                             |
 | HA-Integration testen (Docker)                   | `bash integrations/home-assistant/test/run-tests.sh`                            |
@@ -44,7 +45,7 @@ Die Backend-Tests der Gateway-Registrierung erzeugen eine Wegwerf-PKI mit OpenSS
 
 `pnpm install` baut `@smart/contracts` und `@smart/theme` nur bei einer echten Installation (pnpm überspringt Lifecycle-Skripte, wenn `node_modules` aktuell ist). Nach Änderungen an den Contracts oder Theme-Paketen daher `pnpm packages:build` (baut `@smart/contracts` und `@smart/theme` in Abhängigkeitsreihenfolge).
 
-Lokale Ports (nur 127.0.0.1): DB 5433, MQTT 1884, Mailpit SMTP 1026 / UI 8026. `ng serve` (4200) leitet `/api` per `apps/frontend/proxy.conf.json` an das Backend auf 127.0.0.1:3000 weiter (ohne `changeOrigin`, damit die Origin-Prüfung mit `APP_ORIGIN=http://localhost:4200` besteht).
+Lokale Ports (nur 127.0.0.1): DB 5433, MQTT 1884, MQTT-WebSocket-Listener 8084 (Kopplung von Home Assistant, `ng serve` leitet `/mqtt` dorthin), Mailpit SMTP 1026 / UI 8026. `ng serve` (4200) leitet `/api` per `apps/frontend/proxy.conf.json` an das Backend auf 127.0.0.1:3000 weiter (ohne `changeOrigin`, damit die Origin-Prüfung mit `APP_ORIGIN=http://localhost:4200` besteht).
 
 Der lokale Stack startet auch den Gateway-Simulator (`apps/gateway-simulator`, Gateway-ID `gw-sim00001`: sechs Bodenfeuchte-Sensoren und eine Lampe, Meldungen unter `gw/gw-sim00001/z2m/…`). Standard-Intervall 300 s; für schnelles Feedback `LOCAL_SIMULATOR_INTERVAL_SECONDS=10 pnpm infra:up` (feste Werteverläufe mit `LOCAL_SIMULATOR_SEED=1`). `pnpm infra:up` baut das Simulator-Image mit. Nach dem Registrieren des Gateways (`docs/runbooks/gateway.md`) erscheinen die Geräte unter „Geräte → Neu erkannt“; erst nach „Hinzufügen“ werden Messwerte gespeichert, und die App zeigt nur Messwerte, keine Einstellungen der Sensoren.
 

@@ -1,5 +1,7 @@
 # Home-Assistant-Adapter – Design
 
+> Die Anbindung (YAML, mTLS, Zertifikat) ist überholt: siehe `docs/superpowers/specs/2026-11-20-ha-kopplung-design.md` und ADR-0023. Protokoll und Adapter gelten weiter.
+
 - Status: angenommen (Till: Ansatz A, autonome Umsetzung, 2026-11-19)
 - Baut auf: ADR-0021, `docs/superpowers/specs/2026-11-18-adapter-schicht-design.md`
 

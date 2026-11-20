@@ -24,3 +24,7 @@ Nach der Adapter-Schicht (ADR-0021) soll Home Assistant (HA) die zweite Gateway-
 - Ein Fehler von HA beim Deploy ist nur eine Warnung; Zigbee2MQTT bleibt davon unberührt.
 
 Details: `docs/superpowers/specs/2026-11-19-home-assistant-adapter-design.md`.
+
+## Nachtrag (2026-11-20)
+
+Die Entscheidung „Direktverbindung per mTLS“ und die Konfiguration per YAML entfallen: Die Integration (Version 0.2.0, Anzeigename „Smart Home“) wird nur noch über die Oberfläche eingerichtet, per Kopplungscode aus der App, und verbindet sich per WebSocket über 443 mit Benutzer und Schlüssel (ADR-0023). Zertifikat, `provision-ha.sh` und `secrets/ha/` gibt es nicht mehr; die Installation für fremde Installationen läuft über HACS. Alles ab dem Broker (Protokoll v1, Adapter `ha`, Topics, Schnappschüsse) bleibt, wie beschrieben. Details: `docs/superpowers/specs/2026-11-20-ha-kopplung-design.md`.
