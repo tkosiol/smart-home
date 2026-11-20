@@ -23,8 +23,6 @@ import { GatewaysApi } from './gateways.api';
 const ADDRESS_COPIED_KEY = marker('app.gateways.addressCopied');
 
 const POLL_MS = 5000;
-/** A code is valid for 15 minutes, so its creation time is its expiry minus this. */
-const PAIRING_TTL_MS = 15 * 60_000;
 const OPEN_IN_HOME_ASSISTANT =
   'https://my.home-assistant.io/redirect/config_flow_start/?domain=smart_bridge';
 const INSTRUCTIONS = 'https://github.com/tkosiol/smart-home-hacs';
@@ -35,13 +33,15 @@ interface ActiveCode {
   readonly expiresAt: number;
   /** The gateways that existed when the code was made: a gateway not among them is the new one. */
   readonly known: ReadonlySet<string>;
+  /** The key generation of the gateway being paired again, when the code was made. */
+  readonly generation: number | null;
 }
 
 /**
  * Pairs Home Assistant with a code: a new gateway, or with `gatewayId` a new key for that one
  * (the code is made as soon as the panel appears). While the code is valid it asks for the
- * gateway list every 5 s; a new gateway, or for a re-pairing one that has sent something since
- * the code was made, ends the wait with "Connected". Nothing is cached: the code only lives here.
+ * gateway list every 5 s; a new gateway, or for a re-pairing one whose key generation went up,
+ * ends the wait with "Connected". Nothing is cached: the code only lives here.
  */
 @Component({
   selector: 'app-gateway-pairing-panel',
@@ -177,6 +177,8 @@ export class GatewayPairingPanel {
         pairing,
         expiresAt: Date.parse(pairing.expiresAt),
         known: new Set(gateways.map((gateway) => gateway.id)),
+        generation:
+          gateways.find((gateway) => gateway.id === gatewayId)?.credentialGeneration ?? null,
       });
     } catch (error) {
       if (this.scope() === scope) this.failed.set(true);
@@ -214,10 +216,12 @@ export class GatewayPairingPanel {
     if (target === undefined) {
       return gateway.auth === 'credentials' && !code.known.has(gateway.id);
     }
+    // The old key keeps working until the code is used, so messages say nothing: the generation does.
     return (
       gateway.id === target &&
-      gateway.lastMessageAt !== null &&
-      Date.parse(gateway.lastMessageAt) > code.expiresAt - PAIRING_TTL_MS
+      code.generation !== null &&
+      gateway.credentialGeneration !== null &&
+      gateway.credentialGeneration > code.generation
     );
   }
 

@@ -33,11 +33,16 @@ const gateway = (id: string, name: string, overrides: Partial<Gateway> = {}): Ga
   statusChangedAt: '2026-10-14T08:00:00Z',
   lastMessageAt: '2026-10-14T11:55:00Z',
   certExpiresAt: null,
+  credentialGeneration: 1,
   revokedAt: null,
   warnings: [],
   ...overrides,
 });
-const flur = gateway('gw-aaaaaaaa', 'Flur', { kind: 'z2m', auth: 'certificate' });
+const flur = gateway('gw-aaaaaaaa', 'Flur', {
+  kind: 'z2m',
+  auth: 'certificate',
+  credentialGeneration: null,
+});
 const wohnung = gateway('gw-bbbbbbbb', 'Wohnung');
 const pairing: GatewayPairing = {
   code: 'AB3D-EF9H',
@@ -229,14 +234,16 @@ describe('home assistant pairing', () => {
       expect(text(page)).toContain('AB3D-EF9H');
     });
 
-    it('reports it as connected when the gateway has sent something since the code was made', async () => {
+    it('ignores messages on the old key and reports it as connected when the generation goes up', async () => {
       const page = await open();
       vi.useFakeTimers({ now: NOW });
       await press(page, 'Neu koppeln');
-      // A message from before the code does not count.
+      // The gateway is still online with its old key: that is not the pairing.
+      page.server.gateways = [flur, { ...wohnung, lastMessageAt: '2026-10-14T12:01:00Z' }];
       await wait(page, 5000);
       expect(text(page)).not.toContain('Verbunden');
-      page.server.gateways = [flur, { ...wohnung, lastMessageAt: '2026-10-14T12:01:00Z' }];
+      expect(text(page)).toContain('AB3D-EF9H');
+      page.server.gateways = [flur, { ...wohnung, credentialGeneration: 2 }];
       await wait(page, 5000);
       expect(text(page)).toContain('Verbunden: Wohnung');
       expect(text(page)).not.toContain('AB3D-EF9H');

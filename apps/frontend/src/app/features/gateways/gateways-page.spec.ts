@@ -32,6 +32,7 @@ const gateway = (id: string, name: string, overrides: Partial<Gateway> = {}): Ga
   statusChangedAt: '2026-10-14T08:00:00Z',
   lastMessageAt: '2026-10-14T11:55:00Z',
   certExpiresAt: '2027-04-01T10:00:00Z',
+  credentialGeneration: null,
   revokedAt: null,
   warnings: [],
   ...overrides,
@@ -264,6 +265,7 @@ describe('gateways page', () => {
         kind: 'ha',
         auth: 'credentials',
         certExpiresAt: null,
+        credentialGeneration: 1,
         ...overrides,
       });
 
