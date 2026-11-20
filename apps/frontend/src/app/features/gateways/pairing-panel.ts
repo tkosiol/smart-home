@@ -39,7 +39,9 @@ interface ActiveCode {
 
 /**
  * Pairs Home Assistant with a code: a new gateway, or with `gatewayId` a new key for that one
- * (the code is made as soon as the panel appears). While the code is valid it asks for the
+ * (the code is made as soon as the panel appears). Home Assistant allows one entry of the
+ * integration, so a re-pairing says to remove it and add it again (the code keeps the gateway),
+ * or to enter the code where Home Assistant asks to re-authenticate. While the code is valid it asks for the
  * gateway list every 5 s; a new gateway, or for a re-pairing one whose key generation went up,
  * ends the wait with "Connected". Nothing is cached: the code only lives here.
  */
@@ -78,14 +80,23 @@ interface ActiveCode {
             }
           </ui-stack>
         </ui-stack>
-        <ol>
-          <li>{{ 'gateways.pairing.step1' | transloco }}</li>
-          <li>{{ 'gateways.pairing.step2' | transloco }}</li>
-          <li>{{ 'gateways.pairing.step3' | transloco }}</li>
-        </ol>
+        @if (gatewayId() === undefined) {
+          <ol>
+            <li>{{ 'gateways.pairing.step1' | transloco }}</li>
+            <li>{{ 'gateways.pairing.step2' | transloco }}</li>
+            <li>{{ 'gateways.pairing.step3' | transloco }}</li>
+          </ol>
+        } @else {
+          <ol>
+            <li>{{ 'gateways.pairing.repair.step1' | transloco }}</li>
+            <li>{{ 'gateways.pairing.repair.step2' | transloco }}</li>
+          </ol>
+          <p>{{ 'gateways.pairing.repair.reauth' | transloco }}</p>
+        }
         <ui-stack direction="row" gap="md" wrap>
           <a [href]="openInHomeAssistant" target="_blank" rel="noopener noreferrer">{{
-            'gateways.pairing.open' | transloco
+            (gatewayId() === undefined ? 'gateways.pairing.open' : 'gateways.pairing.repair.open')
+              | transloco
           }}</a>
           <a [href]="instructions" target="_blank" rel="noopener noreferrer">{{
             'gateways.pairing.instructions' | transloco

@@ -33,7 +33,7 @@
   "revokedHint": "Das Gateway ist in der App gesperrt. Sperre jetzt auch sein Zertifikat mit „pki.sh revoke“ und verteile die Sperrliste mit „broker-certs.sh“; erst danach weist der Broker es ab.",
   "empty": {
     "title": "Noch keine Gateways",
-    "description": "Ein Gateway stellst du mit „pki.sh“ auf deinem Rechner aus (dort liegt die CA); ein Plattform-Admin registriert es hier mit seinem Zertifikat. Die Schritte stehen im Runbook „Gateway“."
+    "description": "Home Assistant verbindet ein Eigentümer des Haushalts selbst unter „Home Assistant koppeln“ mit einem Code. Zigbee2MQTT-Gateways registriert ein Plattform-Admin mit ihrem Zertifikat; die Schritte stehen im Runbook „Gateway“."
   },
   "register": {
     "title": "Gateway registrieren",
@@ -67,6 +67,12 @@
     "open": "In Home Assistant öffnen",
     "instructions": "Anleitung",
     "connected": "Verbunden: {{ name }}",
-    "expired": "Der Code ist abgelaufen."
+    "expired": "Der Code ist abgelaufen.",
+    "repair": {
+      "step1": "Öffne in Home Assistant Einstellungen → Geräte & Dienste → Smart Home und entferne den Eintrag. Geräte und Messwerte in dieser App bleiben erhalten.",
+      "step2": "Füge die Integration „Smart Home“ wieder hinzu und trage die Adresse der App und diesen Code ein.",
+      "reauth": "Bietet Home Assistant bei „Smart Home“ schon „Erneut authentifizieren“ an, trägst du den Code stattdessen dort ein.",
+      "open": "Integration in Home Assistant neu hinzufügen"
+    }
   }
 }

@@ -298,7 +298,7 @@
         "pairingInvalid": "The pairing code is invalid, expired or already used.",
         "pairingOtherGateway": "This code belongs to another gateway.",
         "limitReached": "This household already has the maximum number of Home Assistant pairings.",
-        "pairingUnavailable": "Pairing is not available on this instance."
+        "pairingUnavailable": "Pairing is not set up on this instance yet."
       },
       "device": {
         "hardwareBound": "This hardware is already assigned to a device."

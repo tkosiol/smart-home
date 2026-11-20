@@ -1,6 +1,6 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import type { Gateway, GatewayPairing, Me } from '@smart/contracts';
+import type { Gateway, GatewayPairing, Language, Me } from '@smart/contracts';
 import { UiClock } from '@smart/ui';
 import { WRITE_CLIPBOARD } from '../../core/clipboard';
 import { apiError, householdOf, json, meWith } from '../../testing/auth-testing';
@@ -58,10 +58,12 @@ interface Server {
 async function open({
   role = 'owner',
   clipboard = null,
+  language = 'de',
   ...overrides
 }: Partial<Server> & {
   role?: 'owner' | 'member';
   clipboard?: ((text: string) => Promise<void>) | null;
+  language?: Language;
 } = {}) {
   TestBed.overrideProvider(UiClock, { useValue: { now: signal(NOW) } });
   TestBed.overrideProvider(WRITE_CLIPBOARD, { useValue: clipboard });
@@ -70,6 +72,7 @@ async function open({
   const me: Me = meWith([household], household.id);
   const page = await openHouseholdPage(routes, '/mehr/gateways', {
     me,
+    language,
     respond: (call) => {
       const failed = state.fail?.(call);
       if (failed) return failed;
@@ -202,6 +205,28 @@ describe('home assistant pairing', () => {
       expect(text(page)).toContain('AB3D-EF9H');
     });
 
+    it('says how to add the integration, not how to remove it', async () => {
+      const page = await open();
+      await press(page, 'Code erzeugen');
+      const shown = text(page);
+      expect(shown).toContain('füge die Integration „Smart Home“ hinzu');
+      expect(shown).not.toContain('Erneut authentifizieren');
+      expect(shown).not.toContain('entferne');
+    });
+
+    it('says when pairing is not set up on this instance', async () => {
+      const page = await open({
+        fail: (call) =>
+          call.method === 'POST' ? apiError('gateway.pairingUnavailable', 503) : undefined,
+      });
+      await press(page, 'Code erzeugen');
+      expect(page.snackbar.show).toHaveBeenCalledWith(
+        'Die Kopplung ist auf dieser Instanz noch nicht eingerichtet.',
+        expect.anything(),
+      );
+      expect(text(page)).not.toContain('Gültig bis');
+    });
+
     it('shows the limit as a message and no code', async () => {
       const page = await open({
         fail: (call) =>
@@ -232,6 +257,34 @@ describe('home assistant pairing', () => {
         { method: 'POST', path: `${base}/gateway-pairings`, body: { gatewayId: 'gw-bbbbbbbb' } },
       ]);
       expect(text(page)).toContain('AB3D-EF9H');
+    });
+
+    it('says to remove the integration in Home Assistant and add it again, or to re-authenticate', async () => {
+      const page = await open();
+      await press(page, 'Neu koppeln');
+      const shown = text(page);
+      expect(shown).toContain('Geräte & Dienste');
+      expect(shown).toContain('entferne den Eintrag');
+      expect(shown).toContain('Geräte und Messwerte in dieser App bleiben erhalten');
+      expect(shown).toContain('Füge die Integration „Smart Home“ wieder hinzu');
+      expect(shown).toContain('„Erneut authentifizieren“');
+      // HACS has the integration already, and a second entry would only be refused.
+      expect(shown).not.toContain('HACS');
+      expect(link(page, 'In Home Assistant öffnen')).toBeUndefined();
+      expect(link(page, 'Integration in Home Assistant neu hinzufügen')!.getAttribute('href')).toBe(
+        'https://my.home-assistant.io/redirect/config_flow_start/?domain=smart_bridge',
+      );
+    });
+
+    it('says the same in English', async () => {
+      const page = await open({ language: 'en' });
+      await press(page, 'Pair again');
+      const shown = text(page);
+      expect(shown).toContain('remove the entry');
+      expect(shown).toContain('Devices and readings in this app are kept');
+      expect(shown).toContain('Add the “Smart Home” integration again');
+      expect(shown).toContain('re-authenticate');
+      expect(link(page, 'Add the integration in Home Assistant again')).toBeTruthy();
     });
 
     it('ignores messages on the old key and reports it as connected when the generation goes up', async () => {

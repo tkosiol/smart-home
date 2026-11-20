@@ -222,15 +222,16 @@ describe('gateways page', () => {
     });
 
     it.each([
-      ['de', 'auf deinem Rechner'],
-      ['en', 'on your own computer'],
+      ['de', '„Home Assistant koppeln“', 'Zigbee2MQTT-Gateways registriert ein Plattform-Admin'],
+      ['en', '“Pair Home Assistant”', 'A platform administrator registers Zigbee2MQTT gateways'],
     ] as const)(
-      'places the CA on the operator computer, not on the server (%s)',
-      async (language, computer) => {
+      'names pairing Home Assistant and leaves Zigbee2MQTT to the platform admin (%s)',
+      async (language, pairing, admin) => {
         const page = await open({ language, gateways: [] });
         const text = pageText(page.element);
-        expect(text).toContain(computer);
-        expect(text).not.toMatch(/auf dem Server|on the server/);
+        expect(text).toContain(pairing);
+        expect(text).toContain(admin);
+        expect(text).not.toContain('pki.sh');
       },
     );
 
@@ -296,6 +297,16 @@ describe('gateways page', () => {
       expect(requests(page, 'POST')).toEqual([
         { method: 'POST', path: `${base}/gateways/gw-hhhhhhhh/revoke`, body: undefined },
       ]);
+    });
+
+    it('does not point to pki.sh after revoking: the broker turns its key away at once', async () => {
+      const page = await open({ gateways: [paired()] });
+      await press(page, 'Sperren');
+      await press(page, 'Wirklich sperren?');
+      expect(entryText(page, 'Wohnung')).toContain('Gesperrt am 14.10.2026');
+      const text = pageText(page.element);
+      expect(text).not.toContain('pki.sh');
+      expect(text).not.toContain('broker-certs.sh');
     });
 
     it('hints at revoking after more than 7 days offline', async () => {

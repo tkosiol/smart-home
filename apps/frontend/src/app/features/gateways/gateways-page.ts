@@ -174,7 +174,7 @@ const UNUSED_AFTER_MS = 7 * DAY_MS;
                           <ui-button
                             variant="outlined"
                             [disabled]="busy()"
-                            (pressed)="press(gateway.id, () => revoke(gateway.id))"
+                            (pressed)="press(gateway.id, () => revoke(gateway))"
                             >{{
                               (confirming() === gateway.id
                                 ? 'gateways.entry.revokeConfirm'
@@ -256,7 +256,11 @@ export class GatewaysPage {
   );
 
   protected readonly busy = signal(false);
-  /** Shown after a revocation, until the household changes: the server's list is not the broker's. */
+  /**
+   * Shown after revoking a certificate gateway, until the household changes: the broker still
+   * accepts its certificate until it is on the revocation list. A paired gateway's broker user is
+   * gone at once, so there is nothing more to do.
+   */
   protected readonly revokedHint = linkedSignal<string | undefined, boolean>({
     source: this.currentId,
     computation: () => false,
@@ -327,10 +331,10 @@ export class GatewaysPage {
     return this.run(action);
   }
 
-  protected async revoke(gatewayId: string): Promise<void> {
+  protected async revoke(gateway: Gateway): Promise<void> {
     const id = this.householdId();
-    await this.api.revoke(id, gatewayId);
-    if (this.currentId() === id) this.revokedHint.set(true);
+    await this.api.revoke(id, gateway.id);
+    if (this.currentId() === id && gateway.auth === 'certificate') this.revokedHint.set(true);
     await this.gateways.load(this.currentId(), true);
   }
 

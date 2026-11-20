@@ -33,7 +33,7 @@
   "revokedHint": "The gateway is revoked in the app. Now revoke its certificate too with “pki.sh revoke” and distribute the revocation list with “broker-certs.sh”; only then will the broker turn it away.",
   "empty": {
     "title": "No gateways yet",
-    "description": "You issue a gateway with “pki.sh” on your own computer (where the CA is); a platform administrator registers it here with its certificate. The steps are in the “Gateway” runbook."
+    "description": "An owner of the household connects Home Assistant with a code under “Pair Home Assistant”. A platform administrator registers Zigbee2MQTT gateways with their certificate; the steps are in the “Gateway” runbook."
   },
   "register": {
     "title": "Register a gateway",
@@ -67,6 +67,12 @@
     "open": "Open in Home Assistant",
     "instructions": "Instructions",
     "connected": "Connected: {{ name }}",
-    "expired": "The code has expired."
+    "expired": "The code has expired.",
+    "repair": {
+      "step1": "In Home Assistant, open Settings → Devices & services → Smart Home and remove the entry. Devices and readings in this app are kept.",
+      "step2": "Add the “Smart Home” integration again and enter the address of the app and this code.",
+      "reauth": "If Home Assistant already offers to re-authenticate “Smart Home”, enter the code there instead.",
+      "open": "Add the integration in Home Assistant again"
+    }
   }
 }

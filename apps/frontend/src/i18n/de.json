@@ -298,7 +298,7 @@
         "pairingInvalid": "Der Kopplungscode ist ungültig, abgelaufen oder schon verwendet.",
         "pairingOtherGateway": "Dieser Code gehört zu einem anderen Gateway.",
         "limitReached": "Dieser Haushalt hat schon die höchste Zahl an Home-Assistant-Kopplungen.",
-        "pairingUnavailable": "Die Kopplung ist auf dieser Instanz nicht verfügbar."
+        "pairingUnavailable": "Die Kopplung ist auf dieser Instanz noch nicht eingerichtet."
       },
       "device": {
         "hardwareBound": "Diese Hardware ist bereits einem Gerät zugeordnet."
