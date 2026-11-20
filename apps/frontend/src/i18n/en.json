@@ -310,6 +310,9 @@
     },
     "members": {
       "linkCopied": "Link copied"
+    },
+    "gateways": {
+      "addressCopied": "Address copied"
     }
   }
 }

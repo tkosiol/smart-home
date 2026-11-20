@@ -1,8 +1,8 @@
 import { Injectable, inject } from '@angular/core';
-import type { Gateway, GatewayRegister } from '@smart/contracts';
+import type { Gateway, GatewayPairing, GatewayRegister } from '@smart/contracts';
 import { API_BASE, ApiClient } from '../../core/api';
 
-/** The gateway endpoints of one household (owner to list, platform admin to register and revoke). */
+/** The gateway endpoints of one household (owner to list, pair and revoke a paired one; platform admin to register and revoke a certificate one). */
 @Injectable({ providedIn: 'root' })
 export class GatewaysApi {
   private readonly api = inject(ApiClient);
@@ -17,6 +17,14 @@ export class GatewaysApi {
 
   register(householdId: string, body: GatewayRegister): Promise<Gateway> {
     return this.api.post<Gateway>(this.path(householdId), body);
+  }
+
+  /** A pairing code for Home Assistant: a new gateway, or with `gatewayId` a new key for that one. */
+  createPairing(householdId: string, gatewayId?: string): Promise<GatewayPairing> {
+    return this.api.post<GatewayPairing>(
+      `${API_BASE}/households/${householdId}/gateway-pairings`,
+      gatewayId ? { gatewayId } : {},
+    );
   }
 
   revoke(householdId: string, gatewayId: string): Promise<void> {

@@ -19,7 +19,10 @@
     "certExpires": "Zertifikat gültig bis {{ date }}",
     "revoked": "Gesperrt am {{ date }}",
     "revoke": "Sperren",
-    "revokeConfirm": "Wirklich sperren?"
+    "revokeConfirm": "Wirklich sperren?",
+    "paired": "Gekoppelt über Home Assistant",
+    "unused": "Dieses Gateway ist seit mehr als 7 Tagen offline. Wird es nicht mehr genutzt? Dann sperren.",
+    "repair": "Neu koppeln"
   },
   "warnings": {
     "certExpiring": "Das Zertifikat läuft in {{ days }} Tagen ab.",
@@ -35,7 +38,6 @@
   "register": {
     "title": "Gateway registrieren",
     "name": "Name",
-    "kind": "Art",
     "nameError": "Bitte gib einen Namen mit höchstens 60 Zeichen ein.",
     "certificate": "Zertifikat",
     "certificateHint": "Der Text des Zertifikats, auch die Zeilen mit BEGIN und END. Niemals den privaten Schlüssel einfügen.",
@@ -49,5 +51,22 @@
     "unknown": "Status unbekannt",
     "subtitle": "{{ state }} · {{ message }}",
     "empty": "Noch kein Gateway registriert."
+  },
+  "pairing": {
+    "title": "Home Assistant koppeln",
+    "intro": "Mit einem Code verbindest du eine Home-Assistant-Instanz mit diesem Haushalt. Der Code gilt 15 Minuten und nur einmal.",
+    "create": "Code erzeugen",
+    "createAgain": "Neuen Code erzeugen",
+    "waiting": "Warte auf Home Assistant. Gib den Code dort ein.",
+    "validUntil": "Gültig bis {{ time }}",
+    "address": "Adresse dieser App (zum Eintragen in Home Assistant):",
+    "copy": "Adresse kopieren",
+    "step1": "Installiere die Integration „Smart Home“ über HACS und starte Home Assistant neu.",
+    "step2": "Öffne Einstellungen, Geräte & Dienste und füge die Integration „Smart Home“ hinzu.",
+    "step3": "Trage die Adresse der App und den Kopplungscode ein.",
+    "open": "In Home Assistant öffnen",
+    "instructions": "Anleitung",
+    "connected": "Verbunden: {{ name }}",
+    "expired": "Der Code ist abgelaufen."
   }
 }
