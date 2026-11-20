@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import type { HouseholdRole, Invitation, Member } from '@smart/contracts';
 import { UiSelect } from '@smart/ui/forms';
+import { WRITE_CLIPBOARD } from '../../core/clipboard';
 import { HouseholdContext } from '../../core/household';
 import { TEST_ME, apiError, householdOf, json, meWith } from '../../testing/auth-testing';
 import {
@@ -14,7 +15,6 @@ import {
   type OpenedHouseholdPage,
   type RecordedCall,
 } from '../../testing/household-page-testing';
-import { WRITE_CLIPBOARD } from './invite-form';
 import { memberRoutes } from './households.routes';
 
 const berlin = householdOf('Berlin', { timezone: 'Europe/Berlin', role: 'owner' });

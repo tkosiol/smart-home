@@ -21,11 +21,14 @@ function hasControlCharacter(value: string): boolean {
   });
 }
 
+/** The longest display name (in UTF-16 code units, as `string.length` counts). */
+export const DISPLAY_NAME_MAX_LENGTH = 60;
+
 /** Name of a person or household: trimmed, 1–60 characters, no control characters. */
 export const displayNameSchema = z.string().check(
   z.trim(),
   z.minLength(1),
-  z.maxLength(60),
+  z.maxLength(DISPLAY_NAME_MAX_LENGTH),
   z.refine((value) => !hasControlCharacter(value), 'control characters are not allowed'),
 );
 

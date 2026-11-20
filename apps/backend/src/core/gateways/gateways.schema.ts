@@ -1,6 +1,11 @@
-import { GATEWAY_ID_PATTERN, GATEWAY_KINDS, GATEWAY_STATUSES } from '@smart/contracts';
+import {
+  GATEWAY_AUTHS,
+  GATEWAY_ID_PATTERN,
+  GATEWAY_KINDS,
+  GATEWAY_STATUSES,
+} from '@smart/contracts';
 import { sql } from 'drizzle-orm';
-import { check, index, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { check, index, integer, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { households } from '../households/index.js';
 
 const timestamptz = (name: string) => timestamp(name, { withTimezone: true, mode: 'date' });
@@ -26,9 +31,13 @@ export const gateways = pgTable(
     serviceStatus: text('service_status', { enum: GATEWAY_STATUSES }).notNull().default('unknown'),
     statusChangedAt: timestamptz('status_changed_at'),
     lastMessageAt: timestamptz('last_message_at'),
-    /** SHA-256 of the certificate; the certificate itself is not stored. */
-    certFingerprint: text('cert_fingerprint').notNull(),
-    certExpiresAt: timestamptz('cert_expires_at').notNull(),
+    /** How the gateway proves itself to the broker; `credentials` is the kind ha only. */
+    auth: text('auth', { enum: GATEWAY_AUTHS }).notNull().default('certificate'),
+    /** Which password of the gateway is current (`credentials` only); it is derived, not stored. */
+    credentialGeneration: integer('credential_generation'),
+    /** SHA-256 of the certificate (`certificate` only); the certificate itself is not stored. */
+    certFingerprint: text('cert_fingerprint'),
+    certExpiresAt: timestamptz('cert_expires_at'),
     createdAt: timestamptz('created_at').notNull().defaultNow(),
     revokedAt: timestamptz('revoked_at'),
   },
@@ -36,6 +45,10 @@ export const gateways = pgTable(
     index('gateways_household_id_idx').on(table.householdId),
     check('gateways_id_check', sql`${table.id} ~ ${sql.raw(`'${GATEWAY_ID_PATTERN.source}'`)}`),
     check('gateways_kind_check', sql`${table.kind} in (${inList(GATEWAY_KINDS)})`),
+    check(
+      'gateways_auth_check',
+      sql`(${table.auth} = 'certificate' and ${table.certFingerprint} is not null and ${table.certExpiresAt} is not null and ${table.credentialGeneration} is null) or (${table.auth} = 'credentials' and ${table.kind} = 'ha' and ${table.credentialGeneration} is not null and ${table.credentialGeneration} >= 1 and ${table.certFingerprint} is null and ${table.certExpiresAt} is null)`,
+    ),
     check(
       'gateways_bridge_status_check',
       sql`${table.bridgeStatus} in (${inList(GATEWAY_STATUSES)})`,

@@ -71,6 +71,11 @@ const ENDPOINTS: {
     body: { name: 'Hijacked', certificate: 'not a certificate' },
   },
   { route: 'POST /v1/households/:householdId/gateways/:gatewayId/revoke', crossIds: true },
+  {
+    route: 'POST /v1/households/:householdId/gateway-pairings',
+    bodyFrom: ({ gatewayId }) => ({ gatewayId }),
+    crossIds: true,
+  },
   { route: 'GET /v1/households/:householdId/hardware', query: '?state=unassigned' },
   {
     route: 'POST /v1/households/:householdId/devices',

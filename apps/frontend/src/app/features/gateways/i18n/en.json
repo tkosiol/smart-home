@@ -19,7 +19,10 @@
     "certExpires": "Certificate valid until {{ date }}",
     "revoked": "Revoked on {{ date }}",
     "revoke": "Revoke",
-    "revokeConfirm": "Really revoke?"
+    "revokeConfirm": "Really revoke?",
+    "paired": "Paired through Home Assistant",
+    "unused": "This gateway has been offline for more than 7 days. Is it no longer in use? Then revoke it.",
+    "repair": "Pair again"
   },
   "warnings": {
     "certExpiring": "The certificate expires in {{ days }} days.",
@@ -30,12 +33,11 @@
   "revokedHint": "The gateway is revoked in the app. Now revoke its certificate too with “pki.sh revoke” and distribute the revocation list with “broker-certs.sh”; only then will the broker turn it away.",
   "empty": {
     "title": "No gateways yet",
-    "description": "You issue a gateway with “pki.sh” on your own computer (where the CA is); a platform administrator registers it here with its certificate. The steps are in the “Gateway” runbook."
+    "description": "An owner of the household connects Home Assistant with a code under “Pair Home Assistant”. A platform administrator registers Zigbee2MQTT gateways with their certificate; the steps are in the “Gateway” runbook."
   },
   "register": {
     "title": "Register a gateway",
     "name": "Name",
-    "kind": "Kind",
     "nameError": "Please enter a name of at most 60 characters.",
     "certificate": "Certificate",
     "certificateHint": "The text of the certificate, including the BEGIN and END lines. Never paste the private key.",
@@ -49,5 +51,28 @@
     "unknown": "Status unknown",
     "subtitle": "{{ state }} · {{ message }}",
     "empty": "No gateway registered yet."
+  },
+  "pairing": {
+    "title": "Pair Home Assistant",
+    "intro": "A code connects a Home Assistant instance to this household. The code is valid for 15 minutes and works once.",
+    "create": "Create code",
+    "createAgain": "Create a new code",
+    "waiting": "Waiting for Home Assistant. Enter the code there.",
+    "validUntil": "Valid until {{ time }}",
+    "address": "Address of this app (to enter in Home Assistant):",
+    "copy": "Copy address",
+    "step1": "Install the “Smart Home” integration through HACS and restart Home Assistant.",
+    "step2": "Open Settings, Devices & services and add the “Smart Home” integration.",
+    "step3": "Enter the address of the app and the pairing code.",
+    "open": "Open in Home Assistant",
+    "instructions": "Instructions",
+    "connected": "Connected: {{ name }}",
+    "expired": "The code has expired.",
+    "repair": {
+      "step1": "In Home Assistant, open Settings → Devices & services → Smart Home and remove the entry. Devices and readings in this app are kept.",
+      "step2": "Add the “Smart Home” integration again and enter the address of the app and this code.",
+      "reauth": "If Home Assistant already offers to re-authenticate “Smart Home”, enter the code there instead.",
+      "open": "Add the integration in Home Assistant again"
+    }
   }
 }

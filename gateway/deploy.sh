@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
 # Installs or updates the gateway stack on the Raspberry Pi from the Mac, and (once, with --migrate) moves the Pi
 # over from the old Zigbee2MQTT setup, with an automatic way back. Run it yourself in the home network.
-# Usage: SMART_PI=<user@pi-host> gateway/deploy.sh [--migrate | --fresh]      (pnpm gateway:deploy [--migrate | --fresh])
+# Usage: SMART_PI=<user@pi-host> gateway/deploy.sh [--migrate | --fresh] [--ha on|off]
+#        (pnpm gateway:deploy [--migrate | --fresh] [--ha on|off]; any order, every option at most once)
 #   SMART_PI            ssh target of the Pi (required)
 #   SMART_PI_OLD_STACK  folder of the old stack on the Pi, with docker-compose.yml (services mosquitto and
 #                       zigbee2mqtt) and zigbee2mqtt-data (required with --migrate)
 #   --fresh             a NEW Pi with a fresh adapter: allows the first start without Zigbee2MQTT data. Without it a
 #                       plain deploy refuses to start when zigbee2mqtt-data is missing or empty (on an existing Pi
 #                       the first run must be --migrate, otherwise Z2M would start with an empty Zigbee network).
+#   --ha on|off         switches Home Assistant on or off: creates or removes <dir>/homeassistant.enabled on the Pi
+#                       (as root). Without --ha the state stays as it is.
 # The operator user on the Pi needs passwordless sudo (sudo -n: no terminal is allocated) and Docker; the secrets
 # come from infra/deploy/provision-gateway.sh and are never read, printed or transferred by this script.
 #
@@ -19,16 +22,18 @@
 #   homeassistant/custom_components/smart_bridge -> render.sh -> pull -> data folder 700/600 -> start.sh on the Pi
 #   (Mosquitto is recreated: the rendered file and the entry point are single-file bind mounts; waits until
 #   Zigbee2MQTT is online, stable and Mosquitto healthy) -> backup timers -> Home Assistant step -> status.
-# Home Assistant (compose profile ha) is on exactly when secrets/ha/ha.env exists on the Pi (written by
-#   infra/deploy/provision-ha.sh; only its existence is checked, as root, never its content): then the preflight also
-#   wants secrets/ha/{ca.crt,gateway.crt,gateway.key} and curl. The core of the stack (pull, start.sh, migration, the
-#   bridge state) runs exactly as without Home Assistant, without the profile. Home Assistant has its own step after
-#   it (plain deploy and --migrate alike): pull homeassistant, up -d --force-recreate homeassistant (the single-file
-#   and folder bind mounts and the loaded Python modules only take a new configuration or integration on a new
-#   container), then the Mac waits up to SMART_DEPLOY_HA_WAIT_SECONDS (600) for an answer on port 8123 of the Pi.
-#   Every failure of that step is a warning (exit 0): Zigbee2MQTT runs, and nothing is rolled back (Spec 7). Without
-#   ha.env the step removes a leftover homeassistant container of the project (found by its labels, never with the
-#   profile: that would read the env file), so deleting secrets/ha/ha.env switches Home Assistant off.
+# Home Assistant (compose profile ha) is on exactly when the file homeassistant.enabled exists in the gateway folder
+#   on the Pi (--ha on creates it, --ha off removes it, rsync --delete leaves it alone; it is created and removed
+#   as root, its content is empty and never read). It needs no secrets: the integration is paired in the Home
+#   Assistant UI with a code from the app. Home Assistant on also wants curl on the Pi (for the wait on port 8123).
+#   A leftover secrets/ha/ of the old provisioning only produces a warning (it no longer switches Home Assistant on). The core of the stack (pull, start.sh,
+#   migration, the bridge state) runs exactly as without Home Assistant, without the profile. Home Assistant has its
+#   own step after it (plain deploy and --migrate alike): pull homeassistant, up -d --force-recreate homeassistant
+#   (the single-file and folder bind mounts and the loaded Python modules only take a new configuration or
+#   integration on a new container), then the Mac waits up to SMART_DEPLOY_HA_WAIT_SECONDS (600) for an answer on
+#   port 8123 of the Pi. Every failure of that step is a warning (exit 0): Zigbee2MQTT runs, and nothing is rolled
+#   back (Spec 7). With Home Assistant off the step removes a leftover homeassistant container of the project (found
+#   by its labels, never with the profile), so --ha off switches Home Assistant off.
 #   homeassistant-data/ (root, 700) is created when missing and never copied over.
 # With --migrate (the old stack must run), after the pull, the destructive part runs ON THE PI as gateway/migrate.sh,
 #   detached (systemd-run, else setsid/nohup) so it survives this ssh session and this terminal: backup tarball
@@ -53,7 +58,7 @@
 set -euo pipefail
 
 usage() {
-  echo "usage: SMART_PI=<user@pi-host> [SMART_PI_OLD_STACK=<folder>] gateway/deploy.sh [--migrate | --fresh]" >&2
+  echo "usage: SMART_PI=<user@pi-host> [SMART_PI_OLD_STACK=<folder>] gateway/deploy.sh [--migrate | --fresh] [--ha on|off]" >&2
   exit 2
 }
 die() {
@@ -65,13 +70,25 @@ step() { echo "==> $*"; }
 # --- arguments and settings (nothing is contacted before they are valid) ---
 migrate=0
 fresh=0
-case "${1:-}" in
-  '') ;;
-  --migrate) migrate=1 ;;
-  --fresh) fresh=1 ;;
-  *) usage ;;
-esac
-[ "$#" -le 1 ] || usage
+ha_option=keep
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --migrate)
+      [ "$migrate" = 0 ] || usage
+      migrate=1 ;;
+    --fresh)
+      [ "$fresh" = 0 ] || usage
+      fresh=1 ;;
+    --ha)
+      [ "$ha_option" = keep ] || usage
+      [ "$#" -ge 2 ] || usage
+      case "$2" in on | off) ha_option=$2 ;; *) usage ;; esac
+      shift ;;
+    *) usage ;;
+  esac
+  shift
+done
+[ "$((migrate + fresh))" -le 1 ] || usage
 
 host="${SMART_PI:-}"
 [ -n "$host" ] || { echo "set SMART_PI=<user@pi-host> (see .local/pi.md)" >&2; usage; }
@@ -130,16 +147,19 @@ sudo -n test -d "$1" || { echo nodir; exit 0; }
 for f in gateway.env z2m.env backup.env passwd ca.crt gateway.crt gateway.key; do
   sudo -n test -s "$1/secrets/$f" || { echo "nosecret:$f"; exit 0; }
 done
-# Home Assistant (profile ha) only when secrets/ha/ha.env exists: then its certificate must be there, and curl for the
-# wait on port 8123.
+# Home Assistant (profile ha): on with --ha on, off with --ha off, else when homeassistant.enabled exists. Then curl
+# is needed for the wait on port 8123. A leftover secrets/ha only gets a warning later.
 ha=noha
-if sudo -n test -e "$1/secrets/ha/ha.env"; then
+if [ "$5" = on ]; then
   ha=ha
-  for f in ca.crt gateway.crt gateway.key; do
-    sudo -n test -s "$1/secrets/ha/$f" || { echo "nohasecret:$f"; exit 0; }
-  done
+elif [ "$5" = keep ] && sudo -n test -e "$1/homeassistant.enabled"; then
+  ha=ha
+fi
+if [ "$ha" = ha ]; then
   command -v curl > /dev/null 2>&1 || { echo "missing:curl"; exit 0; }
 fi
+oldha=noldha
+if sudo -n test -e "$1/secrets/ha"; then oldha=oldha; fi
 mst=""
 malive=""
 if sudo -n test -s "$1/migration/status"; then
@@ -179,7 +199,7 @@ if command -v timedatectl > /dev/null 2>&1; then
   ntp=$(timeout -k 2 10 timedatectl show -p NTPSynchronized --value 2> /dev/null) || ntp=""
   if [ "$ntp" = yes ]; then clock=synced; elif [ "$ntp" = no ]; then clock=notsynced; fi
 fi
-echo "ok:$cg:$clock:$ha"
+echo "ok:$cg:$clock:$ha:$oldha"
 EOF
 )
 S_OLD_CHECK=$(cat << 'EOF'
@@ -224,6 +244,17 @@ S_HA_DIRS=$(cat << 'EOF'
 set -e
 mkdir -p "$1/homeassistant/custom_components" "$1/homeassistant-data"
 chmod 700 "$1/homeassistant-data"
+EOF
+)
+# The Home Assistant switch (--ha on|off): the marker file in the gateway folder, created or removed as root.
+S_HA_MARK=$(cat << 'EOF'
+set -e
+if [ "$2" = on ]; then
+  : > "$1/homeassistant.enabled"
+  chmod 644 "$1/homeassistant.enabled"
+else
+  rm -f "$1/homeassistant.enabled"
+fi
 EOF
 )
 # start.sh (gateway folder on the Pi): up, then wait until Z2M is online and stable and Mosquitto healthy.
@@ -293,7 +324,7 @@ EOF
 S_STATUS=$(cat << 'EOF'
 cd "$1" || exit 1
 ha=""
-if [ -e secrets/ha/ha.env ]; then ha="--profile ha"; fi
+if [ -e homeassistant.enabled ]; then ha="--profile ha"; fi
 timeout -k 5 30 docker compose --env-file secrets/gateway.env $ha ps
 EOF
 )
@@ -311,7 +342,7 @@ timeout -k 10 "$2" docker compose --env-file secrets/gateway.env --profile ha pu
 timeout -k 10 "$3" docker compose --env-file secrets/gateway.env --profile ha up -d --force-recreate homeassistant || exit 4
 EOF
 )
-# Without secrets/ha/ha.env: removes a homeassistant container of the project (by its labels; compose with the
+# With Home Assistant off: removes a homeassistant container of the project (by its labels; compose with the
 # profile would need the env file) and prints what it removed. Exit 3 the listing failed, 4 a removal failed.
 # First a graceful stop (120 s, the stop_grace_period of compose.yaml): Home Assistant saves its registries and
 # smart_bridge publishes ha/status offline; rm -f alone would kill it and leave the retained online behind. A failed
@@ -405,7 +436,7 @@ step "checking the Pi ($host)"
 mode=plain
 if [ "$migrate" = 1 ]; then mode=migrate; fi
 if [ "$fresh" = 1 ]; then mode=fresh; fi
-state=$(remote user "$S_PREFLIGHT" "$dir" "$cgroup_controllers" "$proc_cgroups" "$mode") \
+state=$(remote user "$S_PREFLIGHT" "$dir" "$cgroup_controllers" "$proc_cgroups" "$mode" "$ha_option") \
   || die "the Pi ($host) is not reachable over ssh (10 s limit) - nothing was changed"
 case "$state" in
   ok:ok:*) ;;
@@ -415,7 +446,6 @@ case "$state" in
   ok:unknown:*) echo "note: could not tell whether the Pi kernel has a memory cgroup (mem_limit needs it)." ;;
   nosudo) die "sudo on the Pi asks for a password or is not allowed for this user - there is no terminal for a prompt. Allow passwordless sudo for the operator user (docs/runbooks/gateway.md). Nothing was changed" ;;
   missing:*) die "${state#missing:} is not installed on the Pi - nothing was changed" ;;
-  nohasecret:*) die "$dir/secrets/ha/${state#nohasecret:} is missing or empty on the Pi, but secrets/ha/ha.env exists (Home Assistant is switched on) - run infra/deploy/provision-ha.sh first. Nothing was changed" ;;
   nodir) die "$dir does not exist on the Pi - run infra/deploy/provision-gateway.sh first. Nothing was changed" ;;
   nosecret:*) die "$dir/secrets/${state#nosecret:} is missing or empty on the Pi - run infra/deploy/provision-gateway.sh first. Nothing was changed" ;;
   migrating) die "a migration is running on the Pi already - do not deploy now. Status: sudo cat $dir/migration/status, log: sudo tail -n 40 $dir/migration/migrate-*.log (docs/runbooks/gateway.md, section 11). Nothing was changed" ;;
@@ -427,7 +457,7 @@ case "$state" in
   nodata) die "$dir/zigbee2mqtt-data is missing or empty on the Pi. On an existing Pi the first run must be --migrate (it takes over the Zigbee network of the old setup; a plain deploy would start Zigbee2MQTT with an empty network and the paired devices would be lost). Only a NEW Pi with a fresh adapter uses --fresh. Nothing was changed" ;;
   *) die "unexpected answer from the Pi - nothing was changed" ;;
 esac
-IFS=: read -r _ _ clock ha_state <<< "$state"
+IFS=: read -r _ _ clock ha_state old_ha_secrets <<< "$state"
 case "$clock" in
   synced) ;;
   notsynced)
@@ -435,6 +465,12 @@ case "$clock" in
     echo "warning: check the time source of the Pi (timedatectl status); the deploy carries on." ;;
   *) echo "note: could not tell whether the clock of the Pi is synchronized (the TLS bridge needs a correct clock)." ;;
 esac
+if [ "$old_ha_secrets" = oldha ]; then
+  # A Pi that ran Home Assistant through secrets/ha/ha.env has no marker yet: this deploy removes the container.
+  ha_off_note=""
+  if [ "$ha_state" != ha ]; then ha_off_note=" Home Assistant stays off until you switch it on with --ha on (pnpm gateway:deploy --ha on); its data in homeassistant-data/ is kept."; fi
+  echo "warning: $dir/secrets/ha exists on the Pi, but secrets/ha is no longer used (Home Assistant is paired with a code in its UI now).$ha_off_note Delete it when you do not need the old certificate: sudo rm -r $dir/secrets/ha"
+fi
 
 if [ "$migrate" = 1 ]; then
   step "checking the old stack ($old)"
@@ -457,7 +493,7 @@ fi
 step "copying gateway/ and integrations/home-assistant/custom_components/smart_bridge to $dir"
 rsync -rlt --no-owner --no-group --chmod=go-w,go+rX --timeout=60 \
   --exclude=/secrets/ --exclude=/zigbee2mqtt-data/ --exclude=/run/ --exclude=/migration/ --exclude=/test/ \
-  --exclude=/homeassistant-data/ \
+  --exclude=/homeassistant-data/ --exclude=/homeassistant.enabled \
   --rsh="ssh ${ssh_opts[*]}" --rsync-path="sudo -n rsync" \
   "$source_dir/" "$host:$dir/" || die "rsync to the Pi failed - the running stack was not touched"
 remote root "$S_HA_DIRS" "$dir" || die "could not create the folders homeassistant/custom_components and homeassistant-data on the Pi - the running stack was not touched"
@@ -466,6 +502,10 @@ rsync -rlt --no-owner --no-group --chmod=go-w,go+rX --timeout=60 --delete --excl
   --rsh="ssh ${ssh_opts[*]}" --rsync-path="sudo -n rsync" \
   "$integration_dir/" "$host:$dir/homeassistant/custom_components/smart_bridge/" \
   || die "rsync of the Home Assistant integration to the Pi failed - the running stack was not touched"
+
+if [ "$ha_option" != keep ]; then
+  remote root "$S_HA_MARK" "$dir" "$ha_option" || die "could not switch Home Assistant $ha_option on the Pi (homeassistant.enabled) - the running stack was not touched"
+fi
 
 # --- 3. render, pull ---
 step "rendering the Mosquitto configuration"
@@ -558,9 +598,9 @@ if [ "$ha_state" = ha ]; then
   esac
 else
   if removed=$(remote root "$S_HA_REMOVE" 2> /dev/null); then
-    if [ -n "$removed" ]; then echo "removed the Home Assistant container (secrets/ha/ha.env does not exist on the Pi, so Home Assistant is off)"; fi
+    if [ -n "$removed" ]; then echo "removed the Home Assistant container (homeassistant.enabled does not exist on the Pi, so Home Assistant is off)"; fi
   else
-    echo "warning: could not remove a leftover Home Assistant container (secrets/ha/ha.env does not exist on the Pi); check: sudo docker ps -a --filter label=com.docker.compose.service=homeassistant"
+    echo "warning: could not remove a leftover Home Assistant container (Home Assistant is off); check: sudo docker ps -a --filter label=com.docker.compose.service=homeassistant"
   fi
 fi
 

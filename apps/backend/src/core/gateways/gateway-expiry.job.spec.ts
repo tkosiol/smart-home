@@ -51,6 +51,13 @@ describe('GatewayExpiryJob', () => {
     expect(lines[1]).toContain('expired');
   });
 
+  it('skips gateways without a certificate', async () => {
+    const credentials = { id: 'gw-00000009', certExpiresAt: null, revokedAt: null } as GatewayRow;
+    const report = await job([credentials, row('gw-00000002', inDays(29))], inDays(200)).run();
+    expect(report.certificates.map((entry) => entry.id)).toEqual(['gw-00000002']);
+    expect(warnings()).toHaveLength(1);
+  });
+
   it('reports a CRL that must be renewed within 30 days', async () => {
     const report = await job([], inDays(12)).run();
     expect(report.crlExpiring).toBe(true);

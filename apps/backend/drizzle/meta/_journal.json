@@ -92,6 +92,13 @@
       "when": 1795116911603,
       "tag": "0012_gateway_kind_ha",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1795160867373,
+      "tag": "0013_gateway_pairing",
+      "breakpoints": true
     }
   ]
 }

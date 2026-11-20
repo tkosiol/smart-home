@@ -7,6 +7,7 @@ import { describeError } from '../../platform/errors/index.js';
 import { ApiError } from '../../platform/http/index.js';
 import { AdapterRegistry } from '../adapters/index.js';
 import { CLOCK, type Clock } from '../identity/index.js';
+import { GatewayCredentials, reasonOf } from './credentials/gateway-credentials.service.js';
 import { readGatewayCertificate } from './gateway-certificate.js';
 import {
   GATEWAY_REGISTERED,
@@ -52,6 +53,7 @@ export class GatewaysService {
     @Inject(GATEWAY_STATUS_MEMORY) private readonly memory: GatewayStatusMemory,
     private readonly events: GatewayEvents,
     private readonly adapters: AdapterRegistry,
+    private readonly credentials: GatewayCredentials,
   ) {}
 
   async list(householdId: string): Promise<Gateway[]> {
@@ -71,7 +73,10 @@ export class GatewaysService {
   ): Promise<{ row: GatewayRow; gateway: Gateway }[]> {
     const rows = await this.gateways.listByHousehold(householdId);
     const now = this.clock();
-    const crlNextUpdate = rows.length > 0 ? await this.crlNextUpdate() : undefined;
+    // The CRL concerns certificates only: without a gateway that has one, there is nothing to warn about.
+    const crlNextUpdate = rows.some((row) => row.auth === 'certificate')
+      ? await this.crlNextUpdate()
+      : undefined;
     return rows.map((row) => ({ row, gateway: this.toGateway(row, crlNextUpdate, now) }));
   }
 
@@ -79,7 +84,7 @@ export class GatewaysService {
   async find(gatewayId: string): Promise<{ householdId: string; gateway: Gateway } | undefined> {
     const row = await this.gateways.findById(gatewayId);
     if (!row) return undefined;
-    const crlNextUpdate = await this.crlNextUpdate();
+    const crlNextUpdate = row.auth === 'certificate' ? await this.crlNextUpdate() : undefined;
     return {
       householdId: row.householdId,
       gateway: this.toGateway(row, crlNextUpdate, this.clock()),
@@ -89,8 +94,9 @@ export class GatewaysService {
   /** Registers the gateway whose public certificate was pasted; the CA decides whether it counts. */
   async register(householdId: string, input: GatewayRegister): Promise<Gateway> {
     const kind = input.kind ?? 'z2m';
-    // No adapter, nobody could follow the gateway: refused before anything is stored.
-    if (this.adapters.get(kind) === undefined) {
+    // No adapter, nobody could follow the gateway: refused before anything is stored. A gateway
+    // of the kind ha has no certificate: it pairs with a code instead.
+    if (kind !== 'z2m' || this.adapters.get(kind) === undefined) {
       throw new ApiError(HttpStatus.BAD_REQUEST, 'validation.failed');
     }
     const ca = await this.loadCa();
@@ -157,11 +163,37 @@ export class GatewaysService {
     return result;
   }
 
-  async revoke(householdId: string, id: string): Promise<void> {
+  /**
+   * Revokes a gateway of the household. Credentials access is the owner's to revoke (the caller has
+   * checked the role); a certificate also sits on the CRL, which only a platform admin can issue.
+   */
+  async revoke(householdId: string, id: string, actor: { platformAdmin: boolean }): Promise<void> {
+    const gateway = await this.gateways.findById(id);
+    if (gateway?.householdId !== householdId) {
+      throw new ApiError(HttpStatus.NOT_FOUND, 'household.notFound');
+    }
+    if (gateway.auth === 'certificate' && !actor.platformAdmin) {
+      throw new ApiError(HttpStatus.FORBIDDEN, 'auth.forbidden');
+    }
     const revoked = await this.gateways.revoke(householdId, id, this.clock());
     if (!revoked) throw new ApiError(HttpStatus.NOT_FOUND, 'household.notFound');
+    if (gateway.auth === 'credentials') await this.removeBrokerUser(id);
     const event: GatewayRevoked = { gatewayId: id };
     this.events.emit(GATEWAY_REVOKED, event);
+  }
+
+  /**
+   * Deletes the revoked gateway's broker user, which disconnects it at once. A failure is only
+   * logged: the next reconcile deletes the user of a revoked gateway anyway.
+   */
+  private async removeBrokerUser(id: string): Promise<void> {
+    try {
+      await this.credentials.exclusive(() => this.credentials.remove(id));
+    } catch (error) {
+      this.logger.warn(
+        `Revoked ${id}, but its broker user is still there (${reasonOf(error)}); the reconcile retries`,
+      );
+    }
   }
 
   /** The gateways that are registered and not revoked, with the topic prefix they publish under. */
@@ -191,17 +223,23 @@ export class GatewaysService {
       id: row.id,
       name: row.name,
       kind: row.kind,
+      auth: row.auth,
       topicPrefix: row.topicPrefix,
       bridgeStatus: row.bridgeStatus,
       serviceStatus: row.serviceStatus,
       statusChangedAt: iso(row.statusChangedAt),
       lastMessageAt: iso(row.lastMessageAt),
-      certExpiresAt: row.certExpiresAt.toISOString(),
+      certExpiresAt: iso(row.certExpiresAt),
+      credentialGeneration: row.credentialGeneration,
       revokedAt: iso(row.revokedAt),
-      // A revoked gateway's certificate is no concern any more; the CRL still is.
-      warnings: gatewayWarnings(row.certExpiresAt, crlNextUpdate, now).filter(
-        (warning) => row.revokedAt === null || warning === 'crlExpiring',
-      ),
+      // A revoked gateway's certificate is no concern any more; the CRL still is. Credentials
+      // have neither.
+      warnings:
+        row.auth === 'certificate' && row.certExpiresAt
+          ? gatewayWarnings(row.certExpiresAt, crlNextUpdate, now).filter(
+              (warning) => row.revokedAt === null || warning === 'crlExpiring',
+            )
+          : [],
     };
   }
 

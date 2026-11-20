@@ -189,40 +189,32 @@ SMART_GATEWAY_DIR="$GW" bash "$RENDER" > /dev/null
 check "compose.yaml is valid and pins the images" 'compose config | grep -q "image: eclipse-mosquitto:2.1.2-alpine" && compose config | grep -q "image: koenkk/zigbee2mqtt:2.14.2"'
 check "compose.yaml publishes nothing but the Zigbee2MQTT frontend" '[ "$(docker compose -p "$PREFIX" --project-directory "$GW" --env-file "$GW/secrets/gateway.env" -f "$GW/compose.yaml" config --format json | grep -o "\"published\"" | wc -l | tr -d " ")" = 1 ]'
 
-# --- Home Assistant: only in the profile ha, which deploy.sh uses in its own step when secrets/ha/ha.env exists ---
-# A Pi without HA has no secrets/ha: compose must work there without the profile (the env file of the service is
-# not read then).
-check "without secrets/ha/ha.env compose works and has no homeassistant service" \
+# --- Home Assistant: only in the profile ha, which deploy.sh uses in its own step when homeassistant.enabled exists ---
+# The integration is paired in the HA UI with a code: no env file, no secrets, no YAML block. A Pi without HA runs
+# without the profile and without anything of Home Assistant on disk besides the package.
+check "without the profile compose works and has no homeassistant service" \
   '[ ! -e "$GW/secrets/ha" ] && compose config > /dev/null 2>&1 && compose config --services | grep -qx mosquitto && ! compose config --services | grep -qx homeassistant'
 check "with --profile ha the service homeassistant is there" 'compose --profile ha config --services | grep -qx homeassistant'
-# What provision-ha.sh writes (invented values; the certificates only need to exist for the check of the configuration).
-mkdir -p "$GW/secrets/ha"
-echo "SMART_HA_GATEWAY_ID=gw-testha01" > "$GW/secrets/ha/ha.env"
-for f in ca.crt gateway.crt gateway.key; do echo "invented $f" > "$GW/secrets/ha/$f"; done
 ha_service() { compose --profile ha config homeassistant 2> /dev/null; }
 check "homeassistant: pinned image, host network, memory limit, restart policy, log rotation" \
   'c=$(ha_service) && echo "$c" | grep -q "image: $HA_IMAGE" && echo "$c" | grep -q "network_mode: host" && echo "$c" | grep -q "mem_limit: \"536870912\"" && echo "$c" | grep -q "restart: unless-stopped" && echo "$c" | grep -q "max-size: 10m"'
 # Docker's 10 s default would kill Home Assistant on every deploy and reboot before the recorder, the registries and
 # smart_bridge's offline status are written (compose normalises 120s to 2m0s).
 check "homeassistant: stop grace period of 120 s" 'ha_service | grep -q "stop_grace_period: 2m0s"'
-check "homeassistant: gateway ID from secrets/ha/ha.env, broker from gateway.env, no published port" \
-  'c=$(ha_service) && echo "$c" | grep -q "SMART_HA_GATEWAY_ID: gw-testha01" && echo "$c" | grep -q "BROKER_HOST: broker" && echo "$c" | grep -q "BROKER_PORT: \"8883\"" && ! echo "$c" | grep -q "published"'
-check "homeassistant: configuration, integration and secrets are mounted read-only, the data folder writable" \
-  'c=$(ha_service) && for t in /config/configuration.yaml /config/custom_components/smart_bridge /smart/secrets; do echo "$c" | grep -A2 "target: $t$" | grep -q "read_only: true" || exit 1; done && ! echo "$c" | grep -A2 "target: /config$" | grep -q "read_only"'
+check "homeassistant: no env file, no secret mount, no broker or gateway variables, no published port" \
+  'c=$(ha_service) && ! echo "$c" | grep -Eq "SMART_HA_GATEWAY_ID|BROKER_HOST|BROKER_PORT|published|/smart/secrets|secrets/ha" && ! sed -n "/^  homeassistant:/,/^  backup:/p" "$GW/compose.yaml" | grep -v "^ *#" | grep -Eq "env_file|secrets"'
+check "homeassistant: configuration and integration are mounted read-only, the data folder writable" \
+  'c=$(ha_service) && for t in /config/configuration.yaml /config/custom_components/smart_bridge; do echo "$c" | grep -A2 "target: $t$" | grep -q "read_only: true" || exit 1; done && ! echo "$c" | grep -A2 "target: /config$" | grep -q "read_only"'
+check "configuration.yaml has no smart_bridge block (the integration has no YAML setup; HA would log an ERROR)" \
+  '! grep -q "^smart_bridge" gateway/homeassistant/configuration.yaml'
 # Home Assistant's own check of the configuration, in the pinned image with the mounts of compose.yaml. check_config
-# exits 0 even for an invalid integration configuration, so the verdict is read from its output (--info all: only
-# then does it print "Successful config (all)" and the checked values; the values here are invented).
+# exits 0 even for an invalid configuration, so the verdict is read from its output (--info all).
 ha_check_config() {
   compose --profile ha run --rm --no-deps -T --entrypoint python3 homeassistant -m homeassistant --script check_config -c /config --info all 2>&1 | sed 's/\x1b\[[0-9;]*m//g'
 }
 ha_config_out=$(ha_check_config)
-check "configuration.yaml passes check_config of the pinned Home Assistant (smart_bridge included)" \
-  'echo "$ha_config_out" | grep -q "Successful config (all)" && ! echo "$ha_config_out" | grep -qE "Incorrect config|Failed config" && echo "$ha_config_out" | grep -q "^  smart_bridge:"'
-echo "SMART_HA_GATEWAY_ID=not-a-gateway-id" > "$GW/secrets/ha/ha.env"
-ha_config_out=$(ha_check_config)
-check "control: check_config rejects an invalid gateway ID (the check above can fail)" \
-  'echo "$ha_config_out" | grep -q "Incorrect config" && echo "$ha_config_out" | grep -q "smart_bridge->gateway_id"'
-rm -rf "$GW/secrets/ha"
+check "configuration.yaml passes check_config of the pinned Home Assistant with an empty configuration of the integration" \
+  'echo "$ha_config_out" | grep -q "Successful config (all)" && ! echo "$ha_config_out" | grep -qE "Incorrect config|Failed config" && ! echo "$ha_config_out" | grep -qi "smart_bridge"'
 
 # --- throwaway PKI and the "VPS" broker ---
 export SMART_PKI_PASSPHRASE_FILE="$WORK/passphrase"

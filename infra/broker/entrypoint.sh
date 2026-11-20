@@ -15,6 +15,10 @@ fail() {
 
 RUN=/mosquitto/run
 mkdir -p "$RUN"
+# The dynamic security plugin saves its state by writing dynsec.json.new next to the file and renaming it, so the
+# broker user needs the directory too (in the stack a tmpfs, locally and in the backend tests a plain directory).
+chown mosquitto:mosquitto "$RUN"
+chmod 0700 "$RUN"
 # Nothing sensitive lives on the data volume any more; remove the password file earlier versions left there.
 rm -f /mosquitto/data/passwd
 
@@ -72,6 +76,13 @@ case "${MQTT_TLS:-off}" in
   *) fail "MQTT_TLS must be on or off" ;;
 esac
 
-secure "$RUN/mosquitto.conf" "$RUN/acl" "$PASSWD"
+# Empty start state of the dynamic security plugin (websocket listener); the backend recreates the users after
+# every start. The plugin rewrites this file on changes, so the broker user owns it.
+DYNSEC="$RUN/dynsec.json"
+cat > "$DYNSEC" << 'JSON'
+{"defaultACLAccess":{"publishClientSend":false,"publishClientReceive":false,"subscribe":false,"unsubscribe":true},"clients":[],"groups":[],"roles":[]}
+JSON
+
+secure "$RUN/mosquitto.conf" "$RUN/acl" "$PASSWD" "$DYNSEC"
 
 exec mosquitto -c "$RUN/mosquitto.conf"

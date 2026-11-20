@@ -1,0 +1,43 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Mit Smart Home verbinden",
+        "description": "Erzeuge in der Smart-Home-App unter Gateways → Home Assistant koppeln einen Kopplungscode und trage hier die Adresse der App und den Code ein.",
+        "data": {
+          "url": "Adresse der App",
+          "code": "Kopplungscode"
+        },
+        "data_description": {
+          "url": "Die Adresse, die die App neben dem Code anzeigt, z. B. https://smart.example.org",
+          "code": "8 Zeichen, z. B. ABCD-EFGH; 15 Minuten gültig"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Neu koppeln",
+        "description": "Die Smart-Home-App nimmt den Schlüssel dieses Home Assistant nicht mehr an. Wähle in der App bei diesem Gateway „Neu koppeln“ und trage hier den neuen Code ein.",
+        "data": {
+          "code": "Kopplungscode"
+        },
+        "data_description": {
+          "code": "8 Zeichen, z. B. ABCD-EFGH; 15 Minuten gültig"
+        }
+      }
+    },
+    "error": {
+      "invalid_url": "Das ist keine gültige Adresse. Gib sie so ein: https://smart.example.org.",
+      "insecure_url": "Die Adresse muss mit https:// beginnen. http:// geht nur für localhost, private IP-Adressen und Namen ohne Punkt.",
+      "invalid_code": "Der Code ist unbekannt, abgelaufen oder schon benutzt. Erzeuge in der App einen neuen Code.",
+      "other_gateway": "Dieser Code gehört zu einem anderen Gateway. Erzeuge in der App bei diesem Gateway „Neu koppeln“, oder entferne die Integration und füge sie neu hinzu.",
+      "limit_reached": "Dieser Haushalt hat schon die höchste Zahl an Home-Assistant-Gateways. Sperre zuerst eines in der App.",
+      "unavailable": "Die App kann gerade nicht koppeln. Versuche es in einigen Minuten erneut.",
+      "too_many_attempts": "Zu viele Versuche, bitte in einigen Minuten erneut.",
+      "cannot_connect": "Die App ist nicht erreichbar. Prüfe die Adresse und das Netzwerk."
+    },
+    "abort": {
+      "already_configured": "Dieses Gateway ist schon eingerichtet.",
+      "single_instance_allowed": "Smart Home ist schon eingerichtet. Um neu zu koppeln, entferne die Integration unter Einstellungen → Geräte & Dienste und füge sie neu hinzu, oder trage den neuen Code dort ein, wo Home Assistant „Erneut authentifizieren“ anbietet.",
+      "reauth_successful": "Neu gekoppelt. Die Integration verbindet sich mit dem neuen Schlüssel."
+    }
+  }
+}

@@ -16,6 +16,9 @@ class FakeClient extends EventEmitter {
   readonly subscribe = vi.fn();
   readonly unsubscribe = vi.fn();
   readonly endAsync = vi.fn(() => Promise.resolve());
+  readonly publish = vi.fn((_topic: string, _payload: unknown, _options: unknown, cb: Callback) => {
+    cb();
+  });
   handleMessage: (packet: Packet, callback: Callback) => void = (_packet, callback) => {
     callback();
   };
@@ -611,6 +614,89 @@ describe('MqttConnection acknowledgements', () => {
       finish();
       await settle();
       expect(acked).toHaveBeenCalledTimes(1);
+    });
+  });
+});
+
+describe('MqttConnection publish and connect notifications', () => {
+  let client: FakeClient;
+  let errors: Error[];
+  let connection: InstanceType<typeof MqttConnection>;
+
+  beforeEach(() => {
+    client = new FakeClient();
+    mocks.client = client;
+    errors = [];
+    connection = new MqttConnection({ ...settings, onError: (error) => errors.push(error) });
+  });
+
+  describe('publish', () => {
+    it('passes topic, payload and options on, QoS 1 and no retain by default', async () => {
+      await connection.publish('$CONTROL/x', 'body');
+      await connection.publish('a/b', Buffer.from('raw'), { qos: 0, retain: true });
+      expect(client.publish.mock.calls[0]?.slice(0, 3)).toEqual([
+        '$CONTROL/x',
+        'body',
+        { qos: 1, retain: false },
+      ]);
+      expect(client.publish.mock.calls[1]?.slice(0, 3)).toEqual([
+        'a/b',
+        Buffer.from('raw'),
+        { qos: 0, retain: true },
+      ]);
+    });
+
+    it('rejects while disconnected, without sending', async () => {
+      client.connected = false;
+      await expect(connection.publish('a', 'b')).rejects.toThrow('mqtt.notConnected');
+      expect(client.publish).not.toHaveBeenCalled();
+    });
+
+    it('rejects when the client reports an error', async () => {
+      client.publish.mockImplementationOnce((_t, _p, _o, cb) => {
+        cb(new Error('boom'));
+      });
+      await expect(connection.publish('a', 'b')).rejects.toThrow('boom');
+    });
+  });
+
+  describe('onConnect', () => {
+    it('calls the listener on every connect, also when the session was kept', () => {
+      const listener = vi.fn();
+      connection.onConnect(listener);
+      client.emit('connect', { sessionPresent: false });
+      client.emit('connect', { sessionPresent: true });
+      expect(listener).toHaveBeenCalledTimes(2);
+    });
+
+    it('calls the listener after the resubscribe', () => {
+      connection.subscribe('a/#', () => undefined);
+      client.subscribe.mockClear();
+      let subscribedAtCall = -1;
+      connection.onConnect(() => {
+        subscribedAtCall = client.subscribe.mock.calls.length;
+      });
+      client.emit('connect', { sessionPresent: true });
+      expect(subscribedAtCall).toBe(1);
+    });
+
+    it('stops calling a listener that was removed', () => {
+      const listener = vi.fn();
+      const remove = connection.onConnect(listener);
+      remove();
+      client.emit('connect', { sessionPresent: true });
+      expect(listener).not.toHaveBeenCalled();
+    });
+
+    it('reports a throwing listener through onError and still calls the others', () => {
+      const other = vi.fn();
+      connection.onConnect(() => {
+        throw new Error('listener failed');
+      });
+      connection.onConnect(other);
+      client.emit('connect', { sessionPresent: false });
+      expect(errors.map((error) => error.message)).toEqual(['listener failed']);
+      expect(other).toHaveBeenCalledTimes(1);
     });
   });
 });

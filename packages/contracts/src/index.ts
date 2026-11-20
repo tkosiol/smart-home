@@ -6,6 +6,7 @@ export * from './runtime-config.js';
 export * from './api-error.js';
 export * from './auth.js';
 export * from './households.js';
+export * from './gateway-pairing.js';
 export * from './gateways.js';
 export * from './vocabulary.js';
 export * from './devices.js';

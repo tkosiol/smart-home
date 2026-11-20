@@ -294,7 +294,11 @@
       "gateway": {
         "invalidCertificate": "Das Zertifikat ist ungültig, abgelaufen oder nicht von dieser Instanz ausgestellt.",
         "exists": "Dieses Gateway ist schon registriert.",
-        "caMissing": "Auf dieser Instanz ist keine Zertifizierungsstelle eingerichtet."
+        "caMissing": "Auf dieser Instanz ist keine Zertifizierungsstelle eingerichtet.",
+        "pairingInvalid": "Der Kopplungscode ist ungültig, abgelaufen oder schon verwendet.",
+        "pairingOtherGateway": "Dieser Code gehört zu einem anderen Gateway.",
+        "limitReached": "Dieser Haushalt hat schon die höchste Zahl an Home-Assistant-Kopplungen.",
+        "pairingUnavailable": "Die Kopplung ist auf dieser Instanz noch nicht eingerichtet."
       },
       "device": {
         "hardwareBound": "Diese Hardware ist bereits einem Gerät zugeordnet."
@@ -306,6 +310,9 @@
     },
     "members": {
       "linkCopied": "Link kopiert"
+    },
+    "gateways": {
+      "addressCopied": "Adresse kopiert"
     }
   }
 }

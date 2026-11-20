@@ -35,6 +35,8 @@ export class GatewayExpiryJob {
     const now = this.clock();
     const certificates: ExpiryReport['certificates'] = [];
     for (const gateway of await this.repository.listActive()) {
+      // Gateways with credentials have no certificate to expire.
+      if (!gateway.certExpiresAt) continue;
       const warnings = gatewayWarnings(gateway.certExpiresAt, undefined, now);
       const expired = warnings.includes('certExpired');
       if (!expired && !warnings.includes('certExpiring')) continue;

@@ -10,7 +10,7 @@ import {
   untracked,
 } from '@angular/core';
 import { TranslocoPipe } from '@jsverse/transloco';
-import type { Gateway } from '@smart/contracts';
+import { hasRole, type Gateway } from '@smart/contracts';
 import {
   UiBanner,
   UiButton,
@@ -32,11 +32,14 @@ import { injectLive } from '../../core/live';
 import { RefreshGuard } from '../../core/refresh';
 import { GATEWAY_TONE, gatewayState, kindKey, statusKey } from './gateway-status';
 import { GatewaysApi } from './gateways.api';
+import { GatewayPairingPanel } from './pairing-panel';
 import { GatewayRegisterForm } from './register-form';
 
 /** How long a "really?" question stays open. */
 const CONFIRM_MS = 5000;
 const DAY_MS = 86_400_000;
+/** A paired gateway that has been offline this long is probably not in use any more. */
+const UNUSED_AFTER_MS = 7 * DAY_MS;
 
 /**
  * The gateways of the current household with status and warnings (owners); platform admins also
@@ -49,6 +52,7 @@ const DAY_MS = 86_400_000;
   selector: 'app-gateways-page',
   imports: [
     TranslocoPipe,
+    GatewayPairingPanel,
     GatewayRegisterForm,
     UiBanner,
     UiButton,
@@ -116,12 +120,19 @@ const DAY_MS = 86_400_000;
                         {{ 'gateways.entry.noMessage' | transloco }}
                       }
                     </p>
-                    <p>
-                      {{
-                        'gateways.entry.certExpires'
-                          | transloco: { date: gateway.certExpiresAt | uiDateTime: 'date' }
-                      }}
-                    </p>
+                    @if (gateway.auth === 'credentials') {
+                      <p>{{ 'gateways.entry.paired' | transloco }}</p>
+                      @if (unused(gateway)) {
+                        <p>{{ 'gateways.entry.unused' | transloco }}</p>
+                      }
+                    } @else if (gateway.certExpiresAt) {
+                      <p>
+                        {{
+                          'gateways.entry.certExpires'
+                            | transloco: { date: gateway.certExpiresAt | uiDateTime: 'date' }
+                        }}
+                      </p>
+                    }
                     @if (gateway.warnings.length > 0) {
                       <ui-stack direction="row" gap="sm" wrap>
                         @for (warning of gateway.warnings; track warning) {
@@ -147,20 +158,39 @@ const DAY_MS = 86_400_000;
                         }
                       </ui-stack>
                     }
-                    @if (isPlatformAdmin()) {
+                    @if (canRepair(gateway) || canRevoke(gateway)) {
                       <ui-stack direction="row" gap="sm" wrap>
-                        <ui-button
-                          variant="outlined"
-                          [disabled]="busy()"
-                          (pressed)="press(gateway.id, () => revoke(gateway.id))"
-                          >{{
-                            (confirming() === gateway.id
-                              ? 'gateways.entry.revokeConfirm'
-                              : 'gateways.entry.revoke'
-                            ) | transloco
-                          }}</ui-button
-                        >
+                        @if (canRepair(gateway)) {
+                          <ui-button
+                            variant="tonal"
+                            [disabled]="busy()"
+                            (pressed)="
+                              repairing.set(repairing() === gateway.id ? null : gateway.id)
+                            "
+                            >{{ 'gateways.entry.repair' | transloco }}</ui-button
+                          >
+                        }
+                        @if (canRevoke(gateway)) {
+                          <ui-button
+                            variant="outlined"
+                            [disabled]="busy()"
+                            (pressed)="press(gateway.id, () => revoke(gateway))"
+                            >{{
+                              (confirming() === gateway.id
+                                ? 'gateways.entry.revokeConfirm'
+                                : 'gateways.entry.revoke'
+                              ) | transloco
+                            }}</ui-button
+                          >
+                        }
                       </ui-stack>
+                    }
+                    @if (repairing() === gateway.id && canRepair(gateway)) {
+                      <app-gateway-pairing-panel
+                        [householdId]="householdId()"
+                        [gatewayId]="gateway.id"
+                        (paired)="paired()"
+                      />
                     }
                   }
                 </ui-stack>
@@ -177,6 +207,11 @@ const DAY_MS = 86_400_000;
             }
           </ui-stack>
         </ui-section>
+        @if (isOwner()) {
+          <ui-section [heading]="'gateways.pairing.title' | transloco">
+            <app-gateway-pairing-panel [householdId]="householdId()" (paired)="paired()" />
+          </ui-section>
+        }
         @if (isPlatformAdmin()) {
           <ui-section [heading]="'gateways.register.title' | transloco">
             <app-gateway-register-form (registered)="registered()" />
@@ -198,6 +233,11 @@ export class GatewaysPage {
   private readonly currentId = computed(() => this.household.current()?.id);
   protected readonly isPlatformAdmin = computed(() => this.auth.me()?.isPlatformAdmin === true);
 
+  protected readonly isOwner = computed(() => {
+    const role = this.household.current()?.role;
+    return role !== undefined && hasRole(role, 'owner');
+  });
+
   protected readonly statusKey = statusKey;
   protected readonly kindKey = kindKey;
   private readonly refresh = new RefreshGuard();
@@ -216,10 +256,19 @@ export class GatewaysPage {
   );
 
   protected readonly busy = signal(false);
-  /** Shown after a revocation, until the household changes: the server's list is not the broker's. */
+  /**
+   * Shown after revoking a certificate gateway, until the household changes: the broker still
+   * accepts its certificate until it is on the revocation list. A paired gateway's broker user is
+   * gone at once, so there is nothing more to do.
+   */
   protected readonly revokedHint = linkedSignal<string | undefined, boolean>({
     source: this.currentId,
     computation: () => false,
+  });
+  /** The id of the gateway shown with a code to pair it again. */
+  protected readonly repairing = linkedSignal<string | undefined, string | null>({
+    source: this.currentId,
+    computation: () => null,
   });
   /** The id of the gateway whose revoke button waits for its second press. */
   protected readonly confirming = linkedSignal<string | undefined, string | null>({
@@ -243,8 +292,29 @@ export class GatewaysPage {
     });
   }
 
+  /** Only a paired gateway has a key to replace. */
+  protected canRepair(gateway: Gateway): boolean {
+    return gateway.auth === 'credentials' && this.isOwner();
+  }
+
+  /** The owner revokes a paired gateway; one with a certificate is a platform admin's to revoke. */
+  protected canRevoke(gateway: Gateway): boolean {
+    return gateway.auth === 'credentials' ? this.isOwner() : this.isPlatformAdmin();
+  }
+
+  /** A paired gateway that has been offline for more than 7 days. */
+  protected unused(gateway: Gateway): boolean {
+    return (
+      gateway.auth === 'credentials' &&
+      gatewayState(gateway) === 'offline' &&
+      gateway.statusChangedAt !== null &&
+      this.clock.now() - Date.parse(gateway.statusChangedAt) > UNUSED_AFTER_MS
+    );
+  }
+
   /** Whole days until the certificate expires, at least 1 (a part of a day counts as a day). */
   protected daysLeft(gateway: Gateway): number {
+    if (!gateway.certExpiresAt) return 1;
     return Math.max(1, Math.ceil((Date.parse(gateway.certExpiresAt) - this.clock.now()) / DAY_MS));
   }
 
@@ -261,18 +331,22 @@ export class GatewaysPage {
     return this.run(action);
   }
 
-  protected async revoke(gatewayId: string): Promise<void> {
+  protected async revoke(gateway: Gateway): Promise<void> {
     const id = this.householdId();
-    await this.api.revoke(id, gatewayId);
-    if (this.currentId() === id) this.revokedHint.set(true);
+    await this.api.revoke(id, gateway.id);
+    if (this.currentId() === id && gateway.auth === 'certificate') this.revokedHint.set(true);
     await this.gateways.load(this.currentId(), true);
+  }
+
+  protected paired(): Promise<void> {
+    return this.gateways.load(this.currentId(), true);
   }
 
   protected registered(): Promise<void> {
     return this.gateways.load(this.currentId(), true);
   }
 
-  private householdId(): string {
+  protected householdId(): string {
     const id = this.currentId();
     if (!id) throw new Error('No current household');
     return id;

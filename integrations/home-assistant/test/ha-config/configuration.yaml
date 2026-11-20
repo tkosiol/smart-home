@@ -1,15 +1,13 @@
-# Test configuration for the Docker test (test/run-tests.sh, phase 2). The broker host and the certificate paths
-# match the throwaway setup of that script; nothing here is a real value.
+# Test configuration for the Docker test (test/run-tests.sh, phase 2). The integration is not set up here: it has no
+# YAML setup, the script writes its config entry into .storage (template next to this file).
 http:
   server_port: 8123
 
 # Demo entities with devices (lights among them), so there is something to publish.
 demo:
 
-smart_bridge:
-  gateway_id: gw-hatest01
-  broker_host: broker
-  broker_port: 8883
-  ca_file: /smart-secrets/ca.crt
-  cert_file: /smart-secrets/gateway.crt
-  key_file: /smart-secrets/gateway.key
+# Connection lines of the integration (never payloads) show reconnects in the test.
+logger:
+  default: warning
+  logs:
+    custom_components.smart_bridge.connection: info

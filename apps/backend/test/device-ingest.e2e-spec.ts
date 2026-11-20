@@ -306,7 +306,7 @@ describe('device ingest from the broker', () => {
       .register(householdId, { name: 'Soon revoked', certificate: issued.certificate });
     await publishFixture(issued.id);
     await eventually(async () => expect(await hardwareOf(issued.id)).toHaveLength(7));
-    await app.get(GatewaysService).revoke(householdId, issued.id);
+    await app.get(GatewaysService).revoke(householdId, issued.id, { platformAdmin: true });
     await publish(`${prefixOf(issued.id)}/Pflanze 1`, { soil_moisture: 99 });
     await publish(`${prefixOf(issued.id)}/Pflanze 1/availability`, { state: 'online' });
     await sentinel(retainedGateway, 'Pflanze 4');

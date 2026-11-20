@@ -14,6 +14,10 @@ export const RATE_LIMITS = {
   emailCodeVerifyPerIp: { limit: 20, ttl: 15 * MINUTE_MS },
   /** Preview, accept and accept-new of an invitation link; each route counts on its own. */
   invitationPerIp: { limit: 20, ttl: 15 * MINUTE_MS },
+  /** Pairing codes a household owner creates for Home Assistant. */
+  gatewayPairingCreatePerIp: { limit: 20, ttl: 15 * MINUTE_MS },
+  /** Redeeming a pairing code (Home Assistant, without a session). */
+  gatewayPairingRedeemPerIp: { limit: 10, ttl: 15 * MINUTE_MS },
 } as const;
 export type RateLimitName = keyof typeof RATE_LIMITS;
 

@@ -1,7 +1,6 @@
 import {
   ChangeDetectionStrategy,
   Component,
-  InjectionToken,
   computed,
   inject,
   input,
@@ -15,6 +14,7 @@ import { emailSchema, type HouseholdRole, type InvitationCreated } from '@smart/
 import { UiBanner, UiButton, UiSnackbar, UiStack } from '@smart/ui';
 import { UiTextField } from '@smart/ui/forms';
 import { ApiError, injectShowApiError } from '../../core/api';
+import { WRITE_CLIPBOARD } from '../../core/clipboard';
 import { HouseholdContext, injectHouseholdErrorHandler } from '../../core/household';
 import { MembersApi } from './members.api';
 import { RoleSelect } from './role-select';
@@ -22,18 +22,6 @@ import { RoleSelect } from './role-select';
 /** In the root translation: the keys are looked up in code, where the scope's keys are not found. */
 const LINK_COPIED_KEY = marker('app.members.linkCopied');
 const ALREADY_MEMBER_KEY = marker('app.errors.invitation.alreadyMember');
-
-/** Writes text to the clipboard; null where the browser has no clipboard API. Tests replace it. */
-export const WRITE_CLIPBOARD = new InjectionToken<((text: string) => Promise<void>) | null>(
-  'WRITE_CLIPBOARD',
-  {
-    providedIn: 'root',
-    factory: () => {
-      const clipboard = globalThis.navigator?.clipboard;
-      return clipboard?.writeText ? (text) => clipboard.writeText(text) : null;
-    },
-  },
-);
 
 type EmailError = 'format' | 'alreadyMember' | null;
 

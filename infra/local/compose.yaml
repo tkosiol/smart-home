@@ -31,6 +31,8 @@ services:
       MQTT_SIMULATOR_GATEWAY_ID: ${LOCAL_SIMULATOR_GATEWAY_ID:-gw-sim00001}
     ports:
       - '127.0.0.1:1884:1883'
+      # Websocket listener of the gateways paired from the app; the dev server proxies /mqtt to it.
+      - '127.0.0.1:8084:8080'
     volumes:
       - ../broker/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
       - ../broker/tls.conf:/mosquitto/config/tls.conf:ro

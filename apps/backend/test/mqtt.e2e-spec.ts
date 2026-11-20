@@ -1,6 +1,9 @@
+import { createServer } from 'node:net';
 import { connect as connectClient, type MqttClient } from 'mqtt';
+import type { StartedTestContainer } from 'testcontainers';
 import { inject, vi } from 'vitest';
 import { MqttConnection, MqttHealth } from '../src/platform/mqtt/index.js';
+import { startTestBroker, TEST_MQTT_PASSWORD, TEST_MQTT_USER } from './helpers/test-broker.js';
 
 const env = inject('testEnv');
 
@@ -195,6 +198,72 @@ describe('MqttConnection', () => {
       } finally {
         await reader.close();
         await source.endAsync(true);
+      }
+    });
+  });
+
+  describe('publish', () => {
+    it('delivers to another connection and accepts a $-prefixed topic', async () => {
+      const reader = connect(env.MQTT_PASSWORD);
+      const sender = connect(env.MQTT_PASSWORD);
+      try {
+        await reader.waitUntilConnected(5000);
+        await sender.waitUntilConnected(5000);
+        const base = `gw/test-${Math.random().toString(16).slice(2)}`;
+        const seen: string[] = [];
+        reader.subscribe(`${base}/#`, (_topic, payload) => {
+          seen.push(payload.toString());
+        });
+        await vi.waitFor(async () => {
+          await sender.publish(`${base}/a`, 'hello');
+          expect(seen).toContain('hello');
+        });
+        // QoS 0 so that a broker that refuses the topic cannot make the call hang.
+        await sender.publish('$CONTROL/dynamic-security/v1', '{"commands":[]}', { qos: 0 });
+      } finally {
+        await reader.close();
+        await sender.close();
+      }
+    });
+  });
+
+  describe('onConnect after a broker restart', () => {
+    const freePort = (): Promise<number> =>
+      new Promise((resolve, reject) => {
+        const server = createServer();
+        server.once('error', reject);
+        server.listen(0, '127.0.0.1', () => {
+          const address = server.address();
+          server.close(() => {
+            if (address && typeof address === 'object') resolve(address.port);
+            else reject(new Error('no port'));
+          });
+        });
+      });
+    let broker: StartedTestContainer | undefined;
+
+    afterAll(async () => {
+      await broker?.stop();
+    });
+
+    it('is called on the first connect and again once the broker is back', async () => {
+      const port = await freePort();
+      broker = await startTestBroker(port);
+      const connection = new MqttConnection({
+        url: `mqtt://127.0.0.1:${port}`,
+        username: TEST_MQTT_USER,
+        password: TEST_MQTT_PASSWORD,
+        clientId: `test-${Math.random().toString(16).slice(2)}`,
+      });
+      try {
+        const listener = vi.fn();
+        connection.onConnect(listener);
+        await vi.waitFor(() => expect(listener).toHaveBeenCalledTimes(1), { timeout: 10_000 });
+        await broker.restart();
+        await vi.waitFor(() => expect(listener).toHaveBeenCalledTimes(2), { timeout: 30_000 });
+        expect(connection.isConnected()).toBe(true);
+      } finally {
+        await connection.close();
       }
     });
   });

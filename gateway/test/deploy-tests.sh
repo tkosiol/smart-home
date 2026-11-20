@@ -124,6 +124,8 @@ export SMART_PI="-oProxyCommand=evil"
 check "deploy rejects an option-like SMART_PI" '[ "$(deploy)" = 2 ] && [ ! -s "$CALLS" ]'
 export SMART_PI=pi@pi
 check "deploy rejects unknown arguments" '[ "$(deploy --migrat)" = 2 ] && [ "$(deploy --migrate extra)" = 2 ] && [ ! -s "$CALLS" ]'
+check "deploy rejects a wrong, valueless or repeated --ha, and --migrate with --fresh, and contacts nothing" \
+  '[ "$(deploy --ha maybe)" = 2 ] && [ "$(deploy --ha)" = 2 ] && [ "$(deploy --ha on --ha off)" = 2 ] && [ "$(deploy --ha on --ha on)" = 2 ] && [ "$(deploy --fresh --fresh)" = 2 ] && [ "$(deploy --migrate --fresh)" = 2 ] && [ "$(deploy --ha --fresh)" = 2 ] && [ ! -s "$CALLS" ]'
 check "deploy --migrate requires SMART_PI_OLD_STACK and contacts nothing" '[ "$(deploy --migrate)" = 2 ] && grep -q SMART_PI_OLD_STACK "$OUT" && [ ! -s "$CALLS" ]'
 check "deploy rejects a SMART_PI_OLD_STACK that is not a plain absolute path" '[ "$(SMART_PI_OLD_STACK="old stack; id" deploy --migrate)" = 2 ] && [ "$(SMART_PI_OLD_STACK="relative/path" deploy --migrate)" = 2 ] && [ "$(SMART_PI_OLD_STACK="/opt/../etc" deploy --migrate)" = 2 ] && [ ! -s "$CALLS" ]'
 check "deploy rejects a SMART_GATEWAY_DIR that is not a plain absolute path" '[ "$(SMART_GATEWAY_DIR="/srv/x y" deploy)" = 2 ] && [ ! -s "$CALLS" ]'
@@ -566,18 +568,11 @@ setup; export STUB_Z2M_OFFLINE=1
 check "a Z2M that is simply not online keeps the plain message without the ssh remark" '[ "$(deploy --fresh)" = 1 ] && grep -q "did not report" "$OUT" && ! grep -q "ssh connection failed" "$OUT"'
 teardown
 
-# --- Home Assistant (profile ha): on exactly when secrets/ha/ha.env exists on the Pi ---
-HA_ID_MARKER=gw-hamarker
+# --- Home Assistant (profile ha): on exactly when homeassistant.enabled exists in the gateway folder on the Pi (--ha on|off) ---
 # shellcheck disable=SC2034 # used by the check() expressions
 INTEGRATION_DIR="$GATEWAY_DIR/../integrations/home-assistant/custom_components/smart_bridge"
-# What infra/deploy/provision-ha.sh writes: secrets/ha (root 700) with ha.env and the HA gateway certificate (600).
-setup_ha() {
-  mkdir -p "$PI_DIR/secrets/ha"
-  echo "SMART_HA_GATEWAY_ID=$HA_ID_MARKER" > "$PI_DIR/secrets/ha/ha.env"
-  for f in ca.crt gateway.crt gateway.key; do echo "invented ha $f" > "$PI_DIR/secrets/ha/$f"; done
-  chmod 700 "$PI_DIR/secrets/ha"
-  chmod 600 "$PI_DIR"/secrets/ha/*
-}
+# The switch: what "--ha on" leaves on the Pi.
+setup_ha() { : > "$PI_DIR/homeassistant.enabled"; }
 ha_rsync() { grep "^rsync" "$CALLS" | grep "homeassistant/custom_components/smart_bridge/$"; }
 # shellcheck disable=SC2034 # used by the check() expressions
 HA_PULL="^docker compose --env-file secrets/gateway.env --profile ha pull homeassistant$"
@@ -597,33 +592,32 @@ setup; setup_ha
 mkdir -p "$PI_DIR/homeassistant/custom_components/smart_bridge" "$PI_DIR/homeassistant-data/.storage"
 echo "stale" > "$PI_DIR/homeassistant/custom_components/smart_bridge/removed_module.py"
 echo '{"data":"ha-data-sentinel"}' > "$PI_DIR/homeassistant-data/.storage/core.config_entries"
-check "deploy with secrets/ha/ha.env succeeds" '[ "$(deploy --fresh)" = 0 ]'
+check "deploy with homeassistant.enabled succeeds" '[ "$(deploy --fresh)" = 0 ]'
 check "deploy copies the integration with a second rsync (--delete, same options) into homeassistant/custom_components/smart_bridge" \
   'r=$(ha_rsync) && echo "$r" | grep -q -- "--delete" && echo "$r" | grep -q -- "--chmod=go-w,go+rX" && echo "$r" | grep -q -- "--timeout=60" && echo "$r" | grep -q "ConnectTimeout=10" && echo "$r" | grep -q -- "--rsync-path=sudo -n rsync" && echo "$r" | grep -q "integrations/home-assistant/custom_components/smart_bridge/ " && in_order "^rsync .*--exclude=/secrets/" "^rsync .*homeassistant/custom_components/smart_bridge/$"'
 check "the integration and the configuration land on the Pi, an old module of the integration is gone" \
   '[ -s "$PI_DIR/homeassistant/configuration.yaml" ] && cmp -s "$PI_DIR/homeassistant/custom_components/smart_bridge/manifest.json" "$INTEGRATION_DIR/manifest.json" && [ -s "$PI_DIR/homeassistant/custom_components/smart_bridge/__init__.py" ] && [ ! -e "$PI_DIR/homeassistant/custom_components/smart_bridge/removed_module.py" ]'
 check "deploy leaves the Home Assistant data alone and keeps the folder root-only (700)" \
   '[ "$(cat "$PI_DIR/homeassistant-data/.storage/core.config_entries")" = "{\"data\":\"ha-data-sentinel\"}" ] && [ "$(mode_of "$PI_DIR/homeassistant-data")" = 700 ]'
-check "with ha.env the core of the stack (pull, start.sh, bridge state) runs exactly as without it, without the profile" 'core_without_profile'
+check "with the switch on the core of the stack (pull, start.sh, bridge state) runs exactly as without it, without the profile" 'core_without_profile'
 check "then a separate step pulls and force-recreates homeassistant with --profile ha (a changed integration or configuration takes effect)" \
   'in_order "bash ./start.sh" "$HA_PULL" "$HA_UP" "127.0.0.1:8123" && bounded "--profile ha pull homeassistant" && bounded "--profile ha up -d --force-recreate homeassistant"'
 check "deploy waits for Home Assistant on port 8123 after its start and reports it up" '[ "$(ha_probes)" -ge 1 ] && grep -q "Home Assistant is up" "$OUT"'
-check "with ha.env deploy does not remove the homeassistant container" '! ha_removed'
-check "deploy never prints or sends the Home Assistant secrets" '! grep -q -e "$HA_ID_MARKER" -e "invented ha" "$OUT" "$CALLS"'
+check "with the switch on deploy does not remove the homeassistant container" '! ha_removed'
 teardown
 
 setup
-check "without secrets/ha/ha.env: no --profile ha, no HA step, no probe on 8123, no word of Home Assistant" \
+check "without homeassistant.enabled: no --profile ha, no HA step, no probe on 8123, no word of Home Assistant" \
   '[ "$(deploy --fresh)" = 0 ] && ! grep -q "^docker .*profile ha" "$CALLS" && ! grep -Eq "^docker .*(pull|up -d --force-recreate) homeassistant$" "$CALLS" && grep -q "^pull-profiles COMPOSE_PROFILES=backup$" "$CALLS" && [ "$(ha_probes)" = 0 ] && ! grep -qi "home assistant" "$OUT"'
-check "without secrets/ha/ha.env the integration is still copied (part of the package) and the data folder is root-only" \
+check "without homeassistant.enabled the integration is still copied (part of the package) and the data folder is root-only" \
   '[ -s "$PI_DIR/homeassistant/custom_components/smart_bridge/manifest.json" ] && [ "$(mode_of "$PI_DIR/homeassistant-data")" = 700 ]'
 check "without a leftover container nothing is removed" '! grep -q "^docker rm" "$CALLS"'
 teardown
 
-# R6: removing secrets/ha/ha.env switches Home Assistant off. Its container goes by the labels of this project, with
+# R6: removing homeassistant.enabled (--ha off) switches Home Assistant off. Its container goes by the labels of this project, with
 # no --profile (that would read the env file).
 setup; : > "$WORK/state/ha_running"
-check "without ha.env deploy removes a leftover homeassistant container of the project and says so" \
+check "without the switch deploy removes a leftover homeassistant container of the project and says so" \
   '[ "$(deploy --fresh)" = 0 ] && grep -q "^docker ps -aq --filter label=com.docker.compose.project=smart-gateway --filter label=com.docker.compose.service=homeassistant$" "$CALLS" && ha_removed && [ ! -e "$WORK/state/ha_running" ] && grep -q "removed the Home Assistant container" "$OUT" && ! grep -q "^docker .*profile ha" "$CALLS" && new_running'
 check "the removal is bounded by timeouts and comes after the start of the stack" 'bounded "ps -aq --filter label=com.docker.compose.project=smart-gateway" && bounded "rm -f smart-gateway-homeassistant-1" && in_order "bash ./start.sh" "^docker rm -f smart-gateway-homeassistant-1"'
 # A graceful stop first (SIGTERM, 120 s like stop_grace_period in compose.yaml): Home Assistant saves its registries
@@ -663,17 +657,57 @@ check "deploy waits up to 600 s for Home Assistant, polling every 10 s, by defau
   'grep -q "SMART_DEPLOY_HA_WAIT_SECONDS:-600}" "$DEPLOY" && grep -q "SMART_DEPLOY_HA_POLL_SECONDS:-10}" "$DEPLOY"'
 
 setup; setup_ha; export SMART_PI_OLD_STACK="$OLD"
-check "migrate with secrets/ha/ha.env starts Home Assistant after the migration and waits for it" \
+check "migrate with the switch on starts Home Assistant after the migration and waits for it" \
   '[ "$(deploy --migrate)" = 0 ] && in_order "^systemd-run" "$HA_UP" "127.0.0.1:8123" && [ "$(ha_probes)" -ge 1 ]'
 teardown
 
-for missing in ca.crt gateway.crt gateway.key; do
-  setup; setup_ha; rm "$PI_DIR/secrets/ha/$missing"
-  check "with ha.env but without secrets/ha/$missing deploy stops before any change and names provision-ha.sh" \
-    '[ "$(deploy --fresh)" = 1 ] && grep -q "secrets/ha/$missing" "$OUT" && grep -q "provision-ha.sh" "$OUT" && ! grep -q "^rsync" "$CALLS" && no_stack_calls && no_changes_on_pi'
-  teardown
-done
-
+# --- the switch itself: --ha on|off, no option keeps the state ---
+marker() { [ -e "$PI_DIR/homeassistant.enabled" ]; }
+ha_step_ran() { grep -q "$HA_UP" "$CALLS" && [ "$(ha_probes)" -ge 1 ]; }
+setup
+check "--ha on creates the marker (644) and runs the HA step: pull, up, wait" \
+  '[ "$(deploy --fresh --ha on)" = 0 ] && marker && [ "$(mode_of "$PI_DIR/homeassistant.enabled")" = 644 ] && in_order "bash ./start.sh" "$HA_PULL" "$HA_UP" "127.0.0.1:8123"'
+check "rsync --delete excludes the marker" 'grep "^rsync" "$CALLS" | grep -q -- "--exclude=/homeassistant.enabled"'
+: > "$CALLS"
+check "a deploy without --ha keeps Home Assistant on: the HA step runs again" '[ "$(deploy --fresh)" = 0 ] && marker && ha_step_ran && ! ha_removed'
+: > "$CALLS"; : > "$WORK/state/ha_running"
+check "--ha off removes the marker and the container (stopped and removed by labels)" \
+  '[ "$(deploy --fresh --ha off)" = 0 ] && ! marker && ha_removed && ! grep -q "^docker .*profile ha" "$CALLS" && [ "$(ha_probes)" = 0 ]'
+: > "$CALLS"
+check "after --ha off a deploy without option keeps it off" '[ "$(deploy --fresh)" = 0 ] && ! marker && ! ha_step_ran'
+teardown
+setup; export SMART_PI_OLD_STACK="$OLD"
+check "--migrate --ha on starts Home Assistant after the migration" '[ "$(deploy --migrate --ha on)" = 0 ] && marker && in_order "^systemd-run" "$HA_UP" "127.0.0.1:8123"'
+teardown
+setup; export SMART_PI_OLD_STACK="$OLD"
+check "--ha on --migrate (other order) works the same" '[ "$(deploy --ha on --migrate)" = 0 ] && marker && in_order "^systemd-run" "$HA_UP" "127.0.0.1:8123"'
+teardown
+setup
+check "--ha on --fresh (other order) works" '[ "$(deploy --ha on --fresh)" = 0 ] && marker && ha_step_ran'
+teardown
+setup
+check "--ha off on a Pi without the marker is fine" '[ "$(deploy --fresh --ha off)" = 0 ] && ! marker'
+teardown
+setup; export STUB_FAIL_HA_UP=1
+check "--ha on with a failing HA start is only a warning, the marker stays" '[ "$(deploy --fresh --ha on)" = 0 ] && marker && grep -qi "warning: Home Assistant could not be" "$OUT"'
+teardown
+setup; mkdir -p "$PI_DIR/secrets/ha"; echo "SMART_HA_GATEWAY_ID=gw-oldmarker" > "$PI_DIR/secrets/ha/ha.env"
+check "a leftover secrets/ha only warns that it is no longer used; the deploy runs and never prints it" \
+  '[ "$(deploy --fresh)" = 0 ] && grep -q "secrets/ha is no longer used" "$OUT" && ! grep -q "gw-oldmarker" "$OUT" "$CALLS" && ! marker && ! ha_step_ran && new_running'
+teardown
+setup; mkdir -p "$PI_DIR/secrets/ha"; echo "SMART_HA_GATEWAY_ID=gw-oldmarker" > "$PI_DIR/secrets/ha/ha.env"
+check "the warning about a leftover secrets/ha says Home Assistant stays off until --ha on" \
+  '[ "$(deploy --fresh)" = 0 ] && grep "secrets/ha is no longer used" "$OUT" | grep -q "Home Assistant stays off until you switch it on with --ha on"'
+teardown
+setup; mkdir -p "$PI_DIR/secrets/ha"; echo "SMART_HA_GATEWAY_ID=gw-oldmarker" > "$PI_DIR/secrets/ha/ha.env"
+check "with --ha on the warning about a leftover secrets/ha does not say Home Assistant stays off" \
+  '[ "$(deploy --fresh --ha on)" = 0 ] && grep -q "secrets/ha is no longer used" "$OUT" && ! grep -q "stays off" "$OUT" && marker && ha_step_ran'
+teardown
+setup
+check "without a leftover secrets/ha there is no such warning" '[ "$(deploy --fresh)" = 0 ] && ! grep -q "no longer used" "$OUT"'
+teardown
+check "the HA service needs no env_file and mounts no secrets" \
+  '! sed -n "/^  homeassistant:/,/^  backup:/p" "$GATEWAY_DIR/compose.yaml" | grep -v "^ *#" | grep -Eq "env_file|ha\.env|secrets"'
 
 echo "deploy tests: $passed passed, $failures failed"
 [ "$failures" = 0 ]

@@ -48,6 +48,20 @@ describe('loadEnv', () => {
     expect(env.GATEWAY_CRL_NEXT_UPDATE_FILE).toBeUndefined();
   });
 
+  it('reads the optional gateway credential secret and requires at least 32 characters', () => {
+    expect(loadEnv(valid).GATEWAY_CREDENTIAL_SECRET).toBeUndefined();
+    expect(loadEnv({ ...valid, GATEWAY_CREDENTIAL_SECRET: '' }).GATEWAY_CREDENTIAL_SECRET).toBe(
+      undefined,
+    );
+    const secret = 's'.repeat(32);
+    expect(loadEnv({ ...valid, GATEWAY_CREDENTIAL_SECRET: secret }).GATEWAY_CREDENTIAL_SECRET).toBe(
+      secret,
+    );
+    expect(() => loadEnv({ ...valid, GATEWAY_CREDENTIAL_SECRET: 's'.repeat(31) })).toThrow(
+      /GATEWAY_CREDENTIAL_SECRET/,
+    );
+  });
+
   it('coerces PORT to a number', () => {
     expect(loadEnv({ ...valid, PORT: '8080' }).PORT).toBe(8080);
   });

@@ -211,7 +211,7 @@ export class AttentionService implements OnModuleInit, OnModuleDestroy {
           gateway.statusChangedAt === null ? null : new Date(gateway.statusChangedAt),
         lastMessageAt: gateway.lastMessageAt === null ? null : new Date(gateway.lastMessageAt),
         registeredAt: gateway.registeredAt,
-        certExpiresAt: new Date(gateway.certExpiresAt),
+        certExpiresAt: gateway.certExpiresAt === null ? null : new Date(gateway.certExpiresAt),
         warnings: gateway.warnings,
       })),
       // Devices of a revoked gateway cannot report any more; they are not worth a warning.

@@ -83,6 +83,7 @@ export class MqttConnection {
   private readonly levels = new Map<string, 0 | 1 | 2>();
   /** Timers of the copies that wait for their gating handlers, cleared on close. */
   private readonly ackTimers = new Set<NodeJS.Timeout>();
+  private readonly connectListeners = new Set<() => void>();
   private closed = false;
   private subscriptionsComplete: boolean;
   private held: { packet: IPublishPacket; callback: () => void }[] = [];
@@ -116,6 +117,13 @@ export class MqttConnection {
     // tolerate that, as they do after a broker restart.
     this.client.on('connect', (connack: { sessionPresent?: boolean }) => {
       if (connack.sessionPresent) this.resubscribe();
+      for (const listener of [...this.connectListeners]) {
+        try {
+          listener();
+        } catch (error) {
+          this.onError(error instanceof Error ? error : new Error('a connect listener failed'));
+        }
+      }
     });
     // What was held belongs to the connection that is gone: the broker delivers the unacknowledged
     // copies again on the next one, and a stale callback must not acknowledge on that.
@@ -329,6 +337,38 @@ export class MqttConnection {
     timer.unref();
     this.ackTimers.add(timer);
     void Promise.all(gating).then(finish);
+  }
+
+  /** Publishes; resolves once the broker acknowledged (QoS 1) or the packet left (QoS 0). Rejects while disconnected. */
+  publish(
+    topic: string,
+    payload: string | Buffer,
+    options: { qos?: 0 | 1; retain?: boolean } = {},
+  ): Promise<void> {
+    if (!this.client.connected) return Promise.reject(new Error('mqtt.notConnected'));
+    return new Promise((resolve, reject) => {
+      this.client.publish(
+        topic,
+        payload,
+        { qos: options.qos ?? 1, retain: options.retain ?? false },
+        (error) => {
+          if (error) reject(error);
+          else resolve();
+        },
+      );
+    });
+  }
+
+  /**
+   * Calls the listener after every (re)connect, also when the broker kept the session, and returns
+   * a function that removes it. A throwing listener is reported through `onError` and never
+   * breaks the connection.
+   */
+  onConnect(listener: () => void): () => void {
+    this.connectListeners.add(listener);
+    return () => {
+      this.connectListeners.delete(listener);
+    };
   }
 
   isConnected(): boolean {

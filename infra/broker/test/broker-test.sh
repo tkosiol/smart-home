@@ -24,7 +24,7 @@ export SMART_OPENSSL="$OSSL"
 
 WORK=$(mktemp -d)
 remove_test_containers() {
-  docker rm -fv "$PREFIX-off" "$PREFIX-on" "$PREFIX-client" "$PREFIX-abort" > /dev/null 2>&1
+  docker rm -fv "$PREFIX-off" "$PREFIX-on" "$PREFIX-plain" "$PREFIX-client" "$PREFIX-abort" > /dev/null 2>&1
   docker network rm "$NET" > /dev/null 2>&1
 }
 cleanup() {
@@ -182,7 +182,93 @@ check "TLS off: anonymous connections are refused" '! quiet cl mosquitto_pub -h 
 check "TLS off: a wrong password is refused" '! quiet cl mosquitto_pub -h broker -p 1883 -u smart-api -P wrong -t gw/x/z2m/x -m 1'
 check "TLS off: the production health check passes" 'wait_for sh -c "[ \"\$(docker inspect -f {{.State.Health.Status}} $PREFIX-off)\" = healthy ]"'
 check "TLS off: no generated file is world readable" '[ -z "$(docker exec "$PREFIX-off" find /mosquitto/run -type f -perm /077)" ]'
+
+# --- websocket listener 8080 with dynamic security (gateways paired from the app) ---
+HA_ID=gw-testhaha
+HA_PW=broker-test-ha-pw
+# dynsec JSON: sends one dynamic security command document as smart-api through 1883 and prints the response.
+dynsec() { cl mosquitto_rr -h broker -p 1883 -u smart-api -P "$API_PW" -t '$CONTROL/dynamic-security/v1' -e '$CONTROL/dynamic-security/v1/response' -W 5 -m "$1"; }
+dynsec_setup() {
+  dynsec '{"commands":[{"command":"createRole","rolename":"smart-gateway-ha","acls":[{"acltype":"publishClientSend","topic":"gw/%u/ha/#","allow":true},{"acltype":"publishClientSend","topic":"gw/%u/bridge/connection","allow":true}]},{"command":"createClient","username":"'"$HA_ID"'","password":"'"$HA_PW"'","clientid":"'"$HA_ID"'-ha","roles":[{"rolename":"smart-gateway-ha"}]}]}'
+}
+# ws_pub USER PASSWORD CLIENT_ID TOPIC MESSAGE: publishes over the websocket listener (the topic is the URL path).
+ws_pub() { cl mosquitto_pub -i "$3" -L "ws://$1:$2@broker:8080/$4" -m "$5" -q 1; }
+
+check "websocket: the broker listens on 8080" 'docker exec "$PREFIX-off" netstat -ln | grep -q ":8080 "'
+setup_out=$(dynsec_setup 2>&1)
+check "websocket: smart-api creates a role and a client through the control topic" '[ -n "$setup_out" ] && ! echo "$setup_out" | grep -q "\"error\"" && echo "$setup_out" | grep -q createClient'
+# dynsec_saved CONTAINER USER: the plugin wrote its state file after a change (no permission error in the log, the
+# user in the file, the file still private to the broker user).
+dynsec_saved() {
+  ! docker logs "$1" 2>&1 | grep -q "Permission denied" \
+    && docker exec "$1" grep -q "\"$2\"" /mosquitto/run/dynsec.json \
+    && [ "$(docker exec "$1" stat -c "%U %a" /mosquitto/run/dynsec.json)" = "mosquitto 600" ]
+}
+check "websocket: the plugin saves its state after a control change (tmpfs)" 'dynsec_saved "$PREFIX-off" "$HA_ID"'
+ws_pubs() {
+  ws_pub "$HA_ID" "$HA_PW" "$HA_ID-ha" "gw/$HA_ID/ha/x" ws-own > /dev/null 2>&1
+  ws_pub "$HA_ID" "$HA_PW" "$HA_ID-ha" "gw/$GW_B/ha/x" ws-foreign > /dev/null 2>&1
+  ws_pub "$HA_ID" "$HA_PW" "$HA_ID-ha" "gw/$HA_ID/bridge/connection" ws-connection > /dev/null 2>&1
+  ws_pub "$HA_ID" "$HA_PW" "$HA_ID-ha" "gw/$HA_ID/z2m/x" ws-z2m > /dev/null 2>&1
+}
+listen_while "$WORK/ws.out" ws_pubs
+check "websocket: a paired gateway publishes under its own prefix and smart-api receives it" 'grep -qx "gw/$HA_ID/ha/x ws-own" "$WORK/ws.out" && grep -qx "gw/$HA_ID/bridge/connection ws-connection" "$WORK/ws.out"'
+check "websocket: a paired gateway cannot publish under a foreign prefix or outside gw/<id>/ha" '! grep -q ws-foreign "$WORK/ws.out" && ! grep -q ws-z2m "$WORK/ws.out"'
+check "websocket: a wrong password is refused (exit code 5)" 'ws_pub "$HA_ID" wrong "$HA_ID-ha" "gw/$HA_ID/ha/x" 1 > /dev/null 2>&1; [ $? -eq 5 ]'
+check "websocket: another client ID is refused (exit code 5)" 'ws_pub "$HA_ID" "$HA_PW" smart-api-x "gw/$HA_ID/ha/x" 1 > /dev/null 2>&1; [ $? -eq 5 ]'
+check "websocket: an anonymous connection is refused (exit code 5)" 'cl mosquitto_pub -i anon -L "ws://broker:8080/gw/$HA_ID/ha/x" -m 1 -q 1 > /dev/null 2>&1; [ $? -eq 5 ]'
+# The public /mqtt path leads here: the backend's own account must not work on this listener.
+check "websocket: smart-api with its real password is refused (exit code 5)" 'ws_pub smart-api "$API_PW" smart-api-ws "gw/$HA_ID/ha/x" 1 > /dev/null 2>&1; [ $? -eq 5 ]'
+# Default deny for reading.
+cl mosquitto_sub -i "$HA_ID-ha" -L "ws://$HA_ID:$HA_PW@broker:8080/gw/$HA_ID/ha/x" -v -W 4 -C 1 > "$WORK/ws-sub.out" 2>&1 &
+ws_sub_pid=$!
+sleep 1
+api_pub "gw/$HA_ID/ha/x" ws-read-probe > /dev/null 2>&1
+wait "$ws_sub_pid" 2> /dev/null
+check "websocket: a paired gateway cannot subscribe to its own topics by default" '! grep -q ws-read-probe "$WORK/ws-sub.out"'
+# The static ACL file (pattern read gw/%u/z2m/+/set) belongs to listener 1883 only: a paired gateway gets no commands here.
+cl mosquitto_sub -i "$HA_ID-ha" -L "ws://$HA_ID:$HA_PW@broker:8080/gw/$HA_ID/z2m/dev/set" -v -W 4 -C 1 > "$WORK/ws-cmd.out" 2>&1 &
+ws_sub_pid=$!
+cl mosquitto_sub -h broker -p 1883 -u smart-api -P "$API_PW" -t "gw/$HA_ID/z2m/dev/set" -v -W 4 -C 1 > "$WORK/ws-cmd-api.out" 2>&1 &
+api_sub_pid=$!
+sleep 1
+api_pub "gw/$HA_ID/z2m/dev/set" ws-command > /dev/null 2>&1
+wait "$ws_sub_pid" "$api_sub_pid" 2> /dev/null
+check "websocket: a paired gateway does not receive z2m commands despite the static ACL pattern" '! grep -q ws-command "$WORK/ws-cmd.out"'
+check "websocket: positive control, smart-api receives the same command on 1883" 'grep -q ws-command "$WORK/ws-cmd-api.out"'
+# Positive control: a client with a subscribe right does receive (proves the probe above can arrive at all).
+dynsec '{"commands":[{"command":"createRole","rolename":"ws-reader","acls":[{"acltype":"subscribePattern","topic":"gw/%u/ha/#","allow":true},{"acltype":"publishClientReceive","topic":"gw/%u/ha/#","allow":true}]},{"command":"createClient","username":"gw-testrdrr","password":"'"$HA_PW"'","clientid":"gw-testrdrr-ha","roles":[{"rolename":"ws-reader"}]}]}' > /dev/null 2>&1
+cl mosquitto_sub -i gw-testrdrr-ha -L "ws://gw-testrdrr:$HA_PW@broker:8080/gw/gw-testrdrr/ha/x" -v -W 4 -C 1 > "$WORK/ws-sub-ok.out" 2>&1 &
+ws_sub_pid=$!
+sleep 1
+api_pub "gw/gw-testrdrr/ha/x" ws-read-ok > /dev/null 2>&1
+wait "$ws_sub_pid" 2> /dev/null
+check "websocket: positive control, a client with a subscribe right receives" 'grep -q ws-read-ok "$WORK/ws-sub-ok.out"'
+# A gateway cannot steer dynamic security over 8080: its user must still exist afterwards.
+ws_pub "$HA_ID" "$HA_PW" "$HA_ID-ha" '$CONTROL/dynamic-security/v1' "{\"commands\":[{\"command\":\"deleteClient\",\"username\":\"$HA_ID\"}]}" > /dev/null 2>&1
+list_out=$(dynsec '{"commands":[{"command":"listClients"}]}' 2>&1)
+check "websocket: a gateway cannot delete its user through the control topic" 'echo "$list_out" | grep -q "$HA_ID"'
+# Positive control: the identical payload from smart-api removes a throwaway user.
+dynsec '{"commands":[{"command":"createClient","username":"gw-testthrw","password":"x"}]}' > /dev/null 2>&1
+dynsec '{"commands":[{"command":"deleteClient","username":"gw-testthrw"}]}' > /dev/null 2>&1
+list_out2=$(dynsec '{"commands":[{"command":"listClients"}]}' 2>&1)
+check "websocket: positive control, smart-api deletes a user with the same command" 'echo "$list_out2" | grep -q listClients && ! echo "$list_out2" | grep -q gw-testthrw'
+# The state lives in the tmpfs: a restart of the container leaves no users behind.
+docker restart "$PREFIX-off" > /dev/null 2>&1
+check "websocket: the broker is ready again after a restart" 'wait_for api_ready'
+list_out=$(dynsec '{"commands":[{"command":"listClients"}]}' 2>&1)
+check "websocket: a restart empties the dynamic security users" '[ -n "$list_out" ] && echo "$list_out" | grep -q listClients && ! echo "$list_out" | grep -q "$HA_ID"'
+check "websocket: the dynamic security file is private to the broker user" '[ "$(docker exec "$PREFIX-off" stat -c "%U %a" /mosquitto/run/dynsec.json)" = "mosquitto 600" ]'
 docker rm -fv "$PREFIX-off" > /dev/null 2>&1
+
+# Without a tmpfs (local stack, backend test broker) /mosquitto/run is a plain directory created by the entrypoint as
+# root: the broker user must still be able to save the plugin's state there.
+must_start docker run -d --name "$PREFIX-plain" --network "$NET" --network-alias broker \
+  -e MQTT_USER=smart-api -e MQTT_PASSWORD="$API_PW" "$IMAGE"
+check "plain run directory: the broker starts" 'wait_for api_ready'
+dynsec_setup > /dev/null 2>&1
+check "plain run directory: the plugin saves its state after a control change" 'dynsec_saved "$PREFIX-plain" "$HA_ID"'
+docker rm -fv "$PREFIX-plain" > /dev/null 2>&1
 
 # --- MQTT_TLS=on with an incomplete certificate set aborts with a message ---
 for missing in ca.crt server.crt server.key crl.pem; do

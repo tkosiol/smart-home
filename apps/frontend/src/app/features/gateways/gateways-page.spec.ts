@@ -25,12 +25,14 @@ const gateway = (id: string, name: string, overrides: Partial<Gateway> = {}): Ga
   id,
   name,
   kind: 'z2m',
+  auth: 'certificate',
   topicPrefix: `smart/gateways/${id}/z2m`,
   bridgeStatus: 'online',
   serviceStatus: 'online',
   statusChangedAt: '2026-10-14T08:00:00Z',
   lastMessageAt: '2026-10-14T11:55:00Z',
   certExpiresAt: '2027-04-01T10:00:00Z',
+  credentialGeneration: null,
   revokedAt: null,
   warnings: [],
   ...overrides,
@@ -115,11 +117,6 @@ const nameField = (page: OpenedHouseholdPage) =>
 const certificateField = (page: OpenedHouseholdPage) =>
   page.element.querySelector<HTMLTextAreaElement>('ui-text-field[name="certificate"] textarea')!;
 
-const kindSegment = (page: OpenedHouseholdPage, label: string) =>
-  [...page.element.querySelectorAll<HTMLButtonElement>('ui-segmented-button button')].find(
-    (button) => button.textContent?.trim() === label,
-  )!;
-
 function fill(page: OpenedHouseholdPage, name: string, certificate: string) {
   for (const [field, value] of [
     [nameField(page), name],
@@ -159,6 +156,21 @@ describe('gateways page', () => {
       expect(text).toContain('Zertifikat gültig bis 01.04.2027');
       expect(entryText(page, 'Keller')).toContain('Bridge: Offline');
       expect(entryText(page, 'Keller')).toContain('Zigbee2MQTT: Unbekannt');
+    });
+
+    it('shows no certificate line for a gateway without a certificate', async () => {
+      const page = await open({
+        gateways: [
+          gateway('gw-hhhhhhhh', 'Home Assistant', {
+            kind: 'ha',
+            auth: 'credentials',
+            certExpiresAt: null,
+          }),
+        ],
+      });
+      const text = entryText(page, 'Home Assistant');
+      expect(text).toContain('Letzte Nachricht vor 5 Minuten');
+      expect(text).not.toContain('Zertifikat');
     });
 
     it('keeps the gateway names reachable by heading navigation', async () => {
@@ -210,15 +222,16 @@ describe('gateways page', () => {
     });
 
     it.each([
-      ['de', 'auf deinem Rechner'],
-      ['en', 'on your own computer'],
+      ['de', '„Home Assistant koppeln“', 'Zigbee2MQTT-Gateways registriert ein Plattform-Admin'],
+      ['en', '“Pair Home Assistant”', 'A platform administrator registers Zigbee2MQTT gateways'],
     ] as const)(
-      'places the CA on the operator computer, not on the server (%s)',
-      async (language, computer) => {
+      'names pairing Home Assistant and leaves Zigbee2MQTT to the platform admin (%s)',
+      async (language, pairing, admin) => {
         const page = await open({ language, gateways: [] });
         const text = pageText(page.element);
-        expect(text).toContain(computer);
-        expect(text).not.toMatch(/auf dem Server|on the server/);
+        expect(text).toContain(pairing);
+        expect(text).toContain(admin);
+        expect(text).not.toContain('pki.sh');
       },
     );
 
@@ -244,6 +257,76 @@ describe('gateways page', () => {
       release();
       await flush(page);
       expect(pageText(page.element)).toContain('Noch keine Gateways');
+    });
+  });
+
+  describe('paired through Home Assistant', () => {
+    const paired = (overrides: Partial<Gateway> = {}) =>
+      gateway('gw-hhhhhhhh', 'Wohnung', {
+        kind: 'ha',
+        auth: 'credentials',
+        certExpiresAt: null,
+        credentialGeneration: 1,
+        ...overrides,
+      });
+
+    it('says how it is paired instead of a certificate expiry, and lets the owner pair again and revoke', async () => {
+      const page = await open({ gateways: [paired(), flur] });
+      expect(entryText(page, 'Wohnung')).toContain('Gekoppelt über Home Assistant');
+      expect(entryText(page, 'Wohnung')).not.toContain('Zertifikat');
+      expect(entryButton(page, 'Wohnung', 'Neu koppeln')).toBeTruthy();
+      expect(entryButton(page, 'Wohnung', 'Sperren')).toBeTruthy();
+    });
+
+    it('leaves a certificate gateway as it was: revoking is for platform admins, no re-pairing', async () => {
+      const owner = await open({ gateways: [paired(), flur] });
+      expect(entryText(owner, 'Flur')).toContain('Zertifikat gültig bis 01.04.2027');
+      expect(entryText(owner, 'Flur')).not.toContain('Gekoppelt');
+      expect(entryButton(owner, 'Flur', 'Sperren')).toBeUndefined();
+      expect(entryButton(owner, 'Flur', 'Neu koppeln')).toBeUndefined();
+      TestBed.resetTestingModule();
+      const admin = await open({ admin: true, gateways: [paired(), flur] });
+      expect(entryButton(admin, 'Flur', 'Sperren')).toBeTruthy();
+      expect(entryButton(admin, 'Flur', 'Neu koppeln')).toBeUndefined();
+    });
+
+    it('revokes with a second press', async () => {
+      const page = await open({ gateways: [paired()] });
+      await press(page, 'Sperren');
+      await press(page, 'Wirklich sperren?');
+      expect(requests(page, 'POST')).toEqual([
+        { method: 'POST', path: `${base}/gateways/gw-hhhhhhhh/revoke`, body: undefined },
+      ]);
+    });
+
+    it('does not point to pki.sh after revoking: the broker turns its key away at once', async () => {
+      const page = await open({ gateways: [paired()] });
+      await press(page, 'Sperren');
+      await press(page, 'Wirklich sperren?');
+      expect(entryText(page, 'Wohnung')).toContain('Gesperrt am 14.10.2026');
+      const text = pageText(page.element);
+      expect(text).not.toContain('pki.sh');
+      expect(text).not.toContain('broker-certs.sh');
+    });
+
+    it('hints at revoking after more than 7 days offline', async () => {
+      const page = await open({
+        gateways: [
+          paired({ bridgeStatus: 'offline', statusChangedAt: '2026-10-06T11:00:00Z' }),
+          paired({
+            id: 'gw-iiiiiiii',
+            name: 'Ferienhaus',
+            bridgeStatus: 'offline',
+            statusChangedAt: '2026-10-08T12:00:00Z',
+          }),
+          paired({ id: 'gw-jjjjjjjj', name: 'Büro', statusChangedAt: '2026-10-01T12:00:00Z' }),
+          { ...flur, bridgeStatus: 'offline', statusChangedAt: '2026-10-01T12:00:00Z' },
+        ],
+      });
+      expect(entryText(page, 'Wohnung')).toContain('Wird es nicht mehr genutzt? Dann sperren.');
+      expect(entryText(page, 'Ferienhaus')).not.toContain('nicht mehr genutzt');
+      expect(entryText(page, 'Büro')).not.toContain('nicht mehr genutzt');
+      expect(entryText(page, 'Flur')).not.toContain('nicht mehr genutzt');
     });
   });
 
@@ -328,7 +411,7 @@ describe('gateways page', () => {
         {
           method: 'POST',
           path: `${base}/gateways`,
-          body: { name: 'Terrasse', certificate: PEM, kind: 'z2m' },
+          body: { name: 'Terrasse', certificate: PEM },
         },
       ]);
       expect(entry(page, 'Terrasse')).toBeTruthy();
@@ -336,27 +419,9 @@ describe('gateways page', () => {
       expect(certificateField(page).value).toBe('');
     });
 
-    it('offers the kinds with Zigbee2MQTT chosen first', async () => {
+    it('has no choice of the kind: certificates are for Zigbee2MQTT only', async () => {
       const page = await open({ admin: true });
-      const group = page.element.querySelector('ui-segmented-button [role="radiogroup"]')!;
-      expect(group.getAttribute('aria-label')).toBe('Art');
-      expect(kindSegment(page, 'Zigbee2MQTT').getAttribute('aria-checked')).toBe('true');
-      expect(kindSegment(page, 'Home Assistant').getAttribute('aria-checked')).toBe('false');
-    });
-
-    it('sends the chosen kind', async () => {
-      const page = await open({ admin: true });
-      fill(page, 'Terrasse', PEM);
-      kindSegment(page, 'Home Assistant').click();
-      page.harness.detectChanges();
-      await press(page, 'Gateway registrieren');
-      expect(requests(page, 'POST')).toEqual([
-        {
-          method: 'POST',
-          path: `${base}/gateways`,
-          body: { name: 'Terrasse', certificate: PEM, kind: 'ha' },
-        },
-      ]);
+      expect(page.element.querySelector('ui-segmented-button')).toBeNull();
     });
 
     it('does not send an empty name or certificate', async () => {
@@ -600,14 +665,11 @@ describe('gateways page', () => {
     it('starts the form, an open question and the revoke hint over for another household', async () => {
       const page = await open({ admin: true });
       fill(page, 'Terrasse', PEM);
-      kindSegment(page, 'Home Assistant').click();
-      page.harness.detectChanges();
       await press(page, 'Sperren');
       page.auth.updateMe({ ...meWith([berlin, auckland], auckland.id), isPlatformAdmin: true });
       await flush(page);
       expect(nameField(page).value).toBe('');
       expect(certificateField(page).value).toBe('');
-      expect(kindSegment(page, 'Zigbee2MQTT').getAttribute('aria-checked')).toBe('true');
       expect(pageButton(page.element, 'Wirklich sperren?')).toBeUndefined();
     });
 
