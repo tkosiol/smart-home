@@ -57,7 +57,33 @@ def on_auth_failed():
     return MagicMock()
 
 
-def make_conn(on_connected, on_auth_failed, mqtt_url="wss://smart.example.org/mqtt"):
+@pytest.fixture
+def on_auth_recovered():
+    return MagicMock()
+
+
+class Clock:
+    """Monotonic clock under test control."""
+
+    def __init__(self) -> None:
+        self.now = 1000.0
+
+    def __call__(self) -> float:
+        return self.now
+
+
+@pytest.fixture
+def clock() -> Clock:
+    return Clock()
+
+
+def make_conn(
+    on_connected,
+    on_auth_failed,
+    mqtt_url="wss://smart.example.org/mqtt",
+    on_auth_recovered=None,
+    **timing,
+):
     return PahoConnection(
         gateway_id=GW,
         mqtt_url=mqtt_url,
@@ -66,12 +92,14 @@ def make_conn(on_connected, on_auth_failed, mqtt_url="wss://smart.example.org/mq
         client_id=CLIENT_ID,
         on_connected=on_connected,
         on_auth_failed=on_auth_failed,
+        on_auth_recovered=on_auth_recovered or MagicMock(),
+        **timing,
     )
 
 
 @pytest.fixture
-def conn(client_class, on_connected, on_auth_failed) -> PahoConnection:
-    return make_conn(on_connected, on_auth_failed)
+def conn(client_class, on_connected, on_auth_failed, on_auth_recovered, clock) -> PahoConnection:
+    return make_conn(on_connected, on_auth_failed, on_auth_recovered=on_auth_recovered, clock=clock)
 
 
 def client_of(client_class) -> MagicMock:
@@ -151,58 +179,156 @@ def test_on_connect_publishes_online_and_calls_back(conn, client_class, on_conne
     on_connected.assert_called_once_with()
 
 
+def refuse(client, clock: Clock, at: float, reason=NOT_AUTHORIZED) -> None:
+    """A CONNACK refusal at `at` seconds after the clock's start."""
+    clock.now = 1000.0 + at
+    client.on_connect(client, None, MagicMock(), reason, None)
+
+
+def accept(client, clock: Clock, at: float) -> None:
+    clock.now = 1000.0 + at
+    client.on_connect(client, None, MagicMock(), SUCCESS, None)
+
+
+def delays(client) -> list[call]:
+    return client.reconnect_delay_set.call_args_list
+
+
 @pytest.mark.parametrize("reason", [NOT_AUTHORIZED, BAD_CREDENTIALS])
-def test_refused_key_reports_once_and_stops_reconnecting(
-    conn, client_class, on_connected, on_auth_failed, caplog, reason
+def test_refusals_shorter_than_the_grace_keep_retrying(
+    conn, client_class, clock, on_connected, on_auth_failed, reason
+):
+    # A restarted broker has no users until the backend reconciles: no reauth for that.
+    conn.start()
+    client = client_of(client_class)
+
+    for at in (0, 1, 3, 7, 60, 300, 899):
+        refuse(client, clock, at, reason)
+    accept(client, clock, 899.5)  # reconciled
+    for at in (1000, 1900 - 0.5):  # a new streak starts from zero
+        refuse(client, clock, at, reason)
+
+    on_auth_failed.assert_not_called()
+    client.disconnect.assert_not_called()
+    client.loop_stop.assert_not_called()
+    assert delays(client) == [call(min_delay=1, max_delay=60)]  # the normal backoff throughout
+
+
+@pytest.mark.parametrize("reason", [NOT_AUTHORIZED, BAD_CREDENTIALS])
+def test_refusals_beyond_the_grace_report_once_then_retry_slowly(
+    conn, client_class, clock, on_connected, on_auth_failed, reason
 ):
     conn.start()
     client = client_of(client_class)
 
-    with caplog.at_level(logging.WARNING):
-        client.on_connect(client, None, MagicMock(), reason, None)
-        client.on_connect(client, None, MagicMock(), reason, None)  # a late duplicate
-
-    assert not conn.connected
-    client.publish.assert_not_called()
-    on_connected.assert_not_called()
+    refuse(client, clock, 0, reason)
+    refuse(client, clock, 899, reason)
+    on_auth_failed.assert_not_called()
+    refuse(client, clock, 900, reason)
     on_auth_failed.assert_called_once_with()
-    client.disconnect.assert_called_once_with()
-    client.loop_stop.assert_called_once_with()
-    assert str(reason) in caplog.text
+    assert delays(client)[-1] == call(min_delay=600, max_delay=600)
+
+    for at in (1500, 2100, 2700):
+        refuse(client, clock, at, reason)
+
+    on_auth_failed.assert_called_once_with()
+    assert delays(client)[-1] == call(min_delay=600, max_delay=600)
+    client.disconnect.assert_not_called()  # paho keeps retrying, every 10 minutes
+    client.loop_stop.assert_not_called()
+    on_connected.assert_not_called()
+    assert not conn.connected
 
 
-def test_auth_callback_errors_do_not_reach_paho(conn, client_class, on_auth_failed):
+def test_success_after_reported_refusal_recovers(
+    conn, client_class, clock, on_connected, on_auth_failed, on_auth_recovered
+):
+    conn.start()
+    client = client_of(client_class)
+    refuse(client, clock, 0)
+    refuse(client, clock, 900)
+
+    accept(client, clock, 1500)  # e.g. the broker had lost its users for longer
+
+    on_auth_recovered.assert_called_once_with()
+    on_connected.assert_called_once_with()
+    assert conn.connected
+    assert delays(client)[-1] == call(min_delay=1, max_delay=60)
+
+    # A later streak may report again, once.
+    refuse(client, clock, 2000)
+    refuse(client, clock, 2900)
+    assert on_auth_failed.call_count == 2
+
+
+def test_success_without_reported_refusal_does_not_recover(
+    conn, client_class, clock, on_auth_recovered
+):
+    conn.start()
+    client = client_of(client_class)
+    refuse(client, clock, 0)
+
+    accept(client, clock, 5)
+
+    on_auth_recovered.assert_not_called()
+
+
+def test_auth_callback_errors_do_not_reach_paho(
+    conn, client_class, clock, on_auth_failed, on_auth_recovered
+):
     on_auth_failed.side_effect = RuntimeError("Event loop is closed")
+    on_auth_recovered.side_effect = RuntimeError("Event loop is closed")
     conn.start()
     client = client_of(client_class)
 
-    client.on_connect(client, None, MagicMock(), NOT_AUTHORIZED, None)  # must not raise
+    refuse(client, clock, 0)
+    refuse(client, clock, 900)  # must not raise
+    accept(client, clock, 1000)  # must not raise
 
-    client.disconnect.assert_called_once_with()
+    assert conn.connected
 
 
-def test_refusal_after_stop_reports_nothing(conn, client_class, on_auth_failed):
+def test_refusal_after_stop_reports_nothing(conn, client_class, clock, on_auth_failed):
     conn.start()
     client = client_of(client_class)
+    refuse(client, clock, 0)
     conn.stop([])
 
-    client.on_connect(client, None, MagicMock(), NOT_AUTHORIZED, None)
+    refuse(client, clock, 900)
 
     on_auth_failed.assert_not_called()
 
 
-def test_other_refusals_keep_retrying(conn, client_class, on_connected, on_auth_failed, caplog):
+def test_other_refusals_do_not_count(conn, client_class, clock, on_connected, on_auth_failed):
     conn.start()
     client = client_of(client_class)
 
-    with caplog.at_level(logging.WARNING):
-        client.on_connect(client, None, MagicMock(), SERVER_UNAVAILABLE, None)
+    refuse(client, clock, 0, SERVER_UNAVAILABLE)
+    refuse(client, clock, 900, SERVER_UNAVAILABLE)
 
     assert not conn.connected
     on_connected.assert_not_called()
     on_auth_failed.assert_not_called()
     client.disconnect.assert_not_called()
-    assert "Server unavailable" in caplog.text
+    assert delays(client) == [call(min_delay=1, max_delay=60)]
+
+
+def test_refusals_warn_once_per_reason(conn, client_class, clock, caplog):
+    conn.start()
+    client = client_of(client_class)
+
+    with caplog.at_level(logging.WARNING):
+        refuse(client, clock, 0)
+        refuse(client, clock, 60)
+        refuse(client, clock, 120, SERVER_UNAVAILABLE)
+        refuse(client, clock, 900)
+
+    messages = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(messages) == 4  # not authorized, server unavailable, not authorized, reauth
+    assert "Not authorized" in messages[0]
+    assert "Server unavailable" in messages[1]
+    assert "Not authorized" in messages[2]
+    assert "new code" in messages[3]
+    assert PASSWORD not in caplog.text
 
 
 def test_callback_errors_do_not_reach_paho(conn, client_class, on_connected, caplog):
@@ -471,24 +597,33 @@ def _wait_until(condition, seconds: float = 5) -> None:
 
 @pytest.mark.usefixtures("socket_enabled")
 @pytest.mark.parametrize("broker", [5], indirect=True)  # 5 = not authorised (MQTT 3.1.1)
-def test_real_client_stops_after_refused_key(broker, on_connected, on_auth_failed, caplog):
-    conn = make_conn(on_connected, on_auth_failed, mqtt_url=f"ws://127.0.0.1:{broker.port}/mqtt")
+def test_real_client_retries_a_refused_key_then_slows_down(
+    broker, on_connected, on_auth_failed, caplog
+):
+    conn = make_conn(
+        on_connected,
+        on_auth_failed,
+        mqtt_url=f"ws://127.0.0.1:{broker.port}/mqtt",
+        auth_grace_seconds=1.5,  # instead of 15 minutes
+    )
     with caplog.at_level(logging.DEBUG):
         conn.start()
-        _wait_until(lambda: on_auth_failed.called)
-        time.sleep(2.5)  # paho would have reconnected after 1 s
+        _wait_until(lambda: on_auth_failed.called, seconds=10)
+        reported_after = len(broker.connects)
+        time.sleep(2.5)  # the normal backoff would have tried again within 2.5 s
         started = time.monotonic()
         conn.stop([("gw/x/ha/status", b"offline")])
 
     on_auth_failed.assert_called_once_with()
     on_connected.assert_not_called()
-    assert broker.requests == ["GET /mqtt HTTP/1.1"]
-    assert len(broker.connects) == 1
+    assert reported_after >= 2  # kept retrying within the grace
+    assert len(broker.connects) == reported_after  # then only every 10 minutes
+    assert set(broker.requests) == {"GET /mqtt HTTP/1.1"}
     assert CLIENT_ID.encode() in broker.connects[0]
     assert GW.encode() in broker.connects[0]
     assert "Not authorized" in caplog.text
     assert PASSWORD not in caplog.text
-    assert time.monotonic() - started < 5
+    assert time.monotonic() - started < 5  # the slow wait does not block stopping
 
 
 @pytest.mark.usefixtures("socket_enabled")

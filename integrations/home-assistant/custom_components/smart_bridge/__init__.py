@@ -7,9 +7,9 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from homeassistant.config_entries import ConfigEntry
+from homeassistant.config_entries import SOURCE_REAUTH, ConfigEntry
 from homeassistant.const import EVENT_HOMEASSISTANT_STOP
-from homeassistant.core import Event, HomeAssistant
+from homeassistant.core import Event, HomeAssistant, callback
 from homeassistant.helpers.start import async_at_started
 
 from .bridge import Bridge
@@ -31,9 +31,17 @@ type SmartBridgeConfigEntry = ConfigEntry[Bridge]
 async def async_setup_entry(hass: HomeAssistant, entry: SmartBridgeConfigEntry) -> bool:
     data = entry.data
 
+    @callback
+    def _async_abort_reauth() -> None:
+        for flow in entry.async_get_active_flows(hass, {SOURCE_REAUTH}):
+            hass.config_entries.flow.async_abort(flow["flow_id"])
+
+    # Both run on paho's network thread and hop into the event loop.
     def on_auth_failed() -> None:
-        # paho's network thread: ask for a new code from within the event loop.
         hass.loop.call_soon_threadsafe(entry.async_start_reauth, hass)
+
+    def on_auth_recovered() -> None:
+        hass.loop.call_soon_threadsafe(_async_abort_reauth)
 
     def connection_factory(on_connected: Callable[[], None]) -> PahoConnection:
         return PahoConnection(
@@ -44,6 +52,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: SmartBridgeConfigEntry) 
             client_id=data[CONF_CLIENT_ID],
             on_connected=on_connected,
             on_auth_failed=on_auth_failed,
+            on_auth_recovered=on_auth_recovered,
         )
 
     bridge = Bridge(hass, data[CONF_GATEWAY_ID], connection_factory)

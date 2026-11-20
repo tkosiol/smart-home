@@ -1,10 +1,14 @@
 """MQTT connection to the platform broker (spec 7): WebSocket with user and key, will, reconnect,
 retained QoS 1.
 
-Runs paho's network thread (loop_start). Callbacks arrive on that thread; on_connected and
-on_auth_failed must hop into the event loop themselves. A refused key (CONNACK "not authorised" or
-"bad user name or password") calls on_auth_failed once and ends reconnecting: the entry then asks
-for a new code. start() and stop() block (system CAs, thread join): call them in the executor.
+Runs paho's network thread (loop_start). Callbacks arrive on that thread; on_connected,
+on_auth_failed and on_auth_recovered must hop into the event loop themselves.
+
+A refused key (CONNACK "not authorised" or "bad user name or password") is retried with the normal
+backoff: after a restart the broker knows no gateway until the backend has reconciled. Only when
+refusals last 15 minutes without a break does on_auth_failed run (once; the entry then asks for a
+new code), and paho goes on trying every 10 minutes. A later successful connect calls
+on_auth_recovered. start() and stop() block (system CAs, thread join): call them in the executor.
 """
 
 from __future__ import annotations
@@ -32,7 +36,12 @@ KEEPALIVE_SECONDS = 30
 RECONNECT_MIN_SECONDS = 1
 RECONNECT_MAX_SECONDS = 60
 STOP_TIMEOUT_SECONDS = 5.0
-# CONNACK reasons for a refused user, key or client ID binding: retrying cannot help.
+# Refusals must last this long before the key counts as invalid: longer than the backend's
+# reconcile interval (10 min), so a restarted broker does not trigger a reauth.
+AUTH_GRACE_SECONDS = 900.0
+# Reconnect delay once the key counts as invalid, so a revoked gateway does not hammer the broker.
+AUTH_RETRY_SECONDS = 600
+# CONNACK reasons for a refused user, key or client ID binding.
 AUTH_REFUSALS = (
     ReasonCode(PacketTypes.CONNACK, "Not authorized"),
     ReasonCode(PacketTypes.CONNACK, "Bad user name or password"),
@@ -73,6 +82,10 @@ class PahoConnection:
         client_id: str,
         on_connected: Callable[[], None],
         on_auth_failed: Callable[[], None],
+        on_auth_recovered: Callable[[], None],
+        clock: Callable[[], float] = time.monotonic,
+        auth_grace_seconds: float = AUTH_GRACE_SECONDS,
+        auth_retry_seconds: int = AUTH_RETRY_SECONDS,
     ) -> None:
         url = urlsplit(mqtt_url)
         self._tls = url.scheme == "wss"
@@ -84,7 +97,13 @@ class PahoConnection:
         self._client_id = client_id
         self._on_connected = on_connected
         self._on_auth_failed = on_auth_failed
-        self._auth_failed = False
+        self._on_auth_recovered = on_auth_recovered
+        self._clock = clock
+        self._auth_grace_seconds = auth_grace_seconds
+        self._auth_retry_seconds = auth_retry_seconds
+        # Paho's thread only: start of the current run of refused keys, and whether it was reported.
+        self._refused_since: float | None = None
+        self._auth_reported = False
         self._connection_topic = connection_topic(gateway_id)
         self._client: mqtt.Client | None = None
         self._connected = threading.Event()
@@ -166,7 +185,12 @@ class PahoConnection:
     ) -> None:
         if reason_code.is_failure:
             self._connected.clear()
-            _LOGGER.warning("Broker refused the connection: %s", reason_code)
+            reason = str(reason_code)
+            if reason != self._failure_reported:
+                self._failure_reported = reason
+                _LOGGER.warning("Broker refused the connection: %s", reason)
+            else:
+                _LOGGER.debug("Broker still refuses the connection: %s", reason)
             if reason_code in AUTH_REFUSALS:
                 self._handle_auth_refused(client)
             return
@@ -177,24 +201,43 @@ class PahoConnection:
             client.publish(self._connection_topic, b"1", qos=QOS, retain=True)
         self._failure_reported = None
         _LOGGER.info("Connected to the platform broker")
+        self._handle_auth_accepted(client)
         try:
             self._on_connected()
         except Exception:
             _LOGGER.exception("Handling the new connection failed")
 
     def _handle_auth_refused(self, client: mqtt.Client) -> None:
-        """Stop reconnecting (the key will not get valid again) and report it once."""
+        """Keep retrying; after the grace, report once and retry only every few minutes."""
+        now = self._clock()
+        if self._refused_since is None:
+            self._refused_since = now
+        if self._auth_reported or now - self._refused_since < self._auth_grace_seconds:
+            return
         with self._state:
-            if self._stopped or self._auth_failed:
+            if self._stopped:
                 return
-            self._auth_failed = True
-        client.disconnect()  # ends paho's reconnect loop
-        client.loop_stop()  # on paho's own thread: only marks it to end, no join
-        _LOGGER.warning("The platform refused the key; pair again with a new code")
+        self._auth_reported = True
+        delay = self._auth_retry_seconds
+        client.reconnect_delay_set(min_delay=delay, max_delay=delay)
+        _LOGGER.warning("The platform refuses the key; pair again with a new code")
         try:
             self._on_auth_failed()
         except Exception:
             _LOGGER.exception("Handling the refused key failed")
+
+    def _handle_auth_accepted(self, client: mqtt.Client) -> None:
+        """A successful connect ends a run of refusals; a reported one is taken back."""
+        self._refused_since = None
+        if not self._auth_reported:
+            return
+        self._auth_reported = False
+        client.reconnect_delay_set(min_delay=RECONNECT_MIN_SECONDS, max_delay=RECONNECT_MAX_SECONDS)
+        _LOGGER.info("The platform accepts the key again")
+        try:
+            self._on_auth_recovered()
+        except Exception:
+            _LOGGER.exception("Handling the accepted key failed")
 
     def _handle_connect_fail(self, _client: mqtt.Client, _userdata: Any) -> None:
         # paho calls this inside `except OSError` around reconnect(), so the error (TLS

@@ -67,13 +67,13 @@ def validate_app_url(url: str) -> str:
 
     https always; http only for a local host (5.5). ValueError("invalid_url" | "insecure_url").
     """
-    parts = urlsplit(url.strip())
-    scheme = parts.scheme.lower()
-    try:
+    try:  # urlsplit, hostname and port raise ValueError with their own messages
+        parts = urlsplit(url.strip())
         host = parts.hostname
         port = parts.port
     except ValueError as err:
         raise ValueError("invalid_url") from err
+    scheme = parts.scheme.lower()
     if scheme not in ("https", "http") or not host:
         raise ValueError("invalid_url")
     if scheme == "http" and not _is_local_host(host):
@@ -86,8 +86,8 @@ def validate_app_url(url: str) -> str:
 
 def _valid_mqtt_url(url: str) -> bool:
     """wss always; ws only to a local host, so the key never travels in clear text."""
-    parts = urlsplit(url)
     try:
+        parts = urlsplit(url)
         host = parts.hostname
         _ = parts.port  # raises ValueError for an invalid port
     except ValueError:

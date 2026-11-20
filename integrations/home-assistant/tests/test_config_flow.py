@@ -125,7 +125,11 @@ async def test_user_step_errors(
 
 @pytest.mark.parametrize(
     ("url", "error"),
-    [("http://smart.example.org", "insecure_url"), ("ftp://smart.example.org", "invalid_url")],
+    [
+        ("http://smart.example.org", "insecure_url"),
+        ("ftp://smart.example.org", "invalid_url"),
+        ("http://[::1", "invalid_url"),
+    ],
 )
 async def test_user_step_rejects_url_before_calling(
     hass: HomeAssistant, aioclient_mock: AiohttpClientMocker, url, error

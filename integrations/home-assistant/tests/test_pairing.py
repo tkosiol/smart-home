@@ -126,6 +126,7 @@ async def test_network_errors_cannot_connect(
         {**ANSWER, "gatewayId": "gw-abc/#"},
         {**ANSWER, "mqttUrl": "https://smart.example.org/mqtt"},
         {**ANSWER, "mqttUrl": "wss:///mqtt"},
+        {**ANSWER, "mqttUrl": "wss://[::1/mqtt"},
         # Credentials never travel in clear text to a public host.
         {**ANSWER, "mqttUrl": "ws://smart.example.org/mqtt"},
     ],
@@ -211,7 +212,17 @@ def test_validate_app_url_rejects_insecure(url):
 
 
 @pytest.mark.parametrize(
-    "url", ["ftp://x", "smart.example.org", "", "https://", "https://host:99999", "wss://x"]
+    "url",
+    [
+        "ftp://x",
+        "smart.example.org",
+        "",
+        "https://",
+        "https://host:99999",
+        "wss://x",
+        "http://[::1",  # urlsplit itself refuses it
+        "https://[smart.example.org]",
+    ],
 )
 def test_validate_app_url_rejects_invalid(url):
     with pytest.raises(ValueError, match="^invalid_url$"):

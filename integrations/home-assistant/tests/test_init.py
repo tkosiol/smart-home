@@ -39,6 +39,7 @@ class RecordingPaho(FakeConnection):
     def __init__(self, **kwargs) -> None:
         super().__init__(kwargs.pop("on_connected"))
         self.on_auth_failed = kwargs.pop("on_auth_failed")
+        self.on_auth_recovered = kwargs.pop("on_auth_recovered")
         self.kwargs = kwargs
         RecordingPaho.instances.append(self)
 
@@ -127,19 +128,48 @@ async def test_stop_event_stops_bridge(hass: HomeAssistant, entry, paho, caplog)
     assert [r.getMessage() for r in caplog.records if r.levelno >= logging.ERROR] == []
 
 
-async def test_refused_key_starts_reauth(hass: HomeAssistant, entry, paho):
-    await _setup(hass, entry)
-
-    # paho reports the refusal on its own network thread.
-    thread = threading.Thread(target=paho[0].on_auth_failed)
+async def _on_paho_thread(hass: HomeAssistant, callback) -> None:
+    """paho calls back on its own network thread."""
+    thread = threading.Thread(target=callback)
     thread.start()
     thread.join()
     await hass.async_block_till_done()
+
+
+async def test_refused_key_starts_reauth(hass: HomeAssistant, entry, paho):
+    await _setup(hass, entry)
+
+    await _on_paho_thread(hass, paho[0].on_auth_failed)
 
     flows = hass.config_entries.flow.async_progress_by_handler(DOMAIN)
     assert len(flows) == 1
     assert flows[0]["context"]["source"] == SOURCE_REAUTH
     assert flows[0]["context"]["entry_id"] == entry.entry_id
+
+
+async def test_accepted_key_ends_an_open_reauth(hass: HomeAssistant, entry, paho):
+    # The broker took the key again (it had only lost its users): no new code needed.
+    await _setup(hass, entry)
+    await _on_paho_thread(hass, paho[0].on_auth_failed)
+    assert len(hass.config_entries.flow.async_progress_by_handler(DOMAIN)) == 1
+
+    await _on_paho_thread(hass, paho[0].on_auth_recovered)
+
+    assert hass.config_entries.flow.async_progress_by_handler(DOMAIN) == []
+    assert entry.state is ConfigEntryState.LOADED
+
+
+async def test_recovery_leaves_other_flows_alone(hass: HomeAssistant, entry, paho):
+    await _setup(hass, entry)
+    other = MockConfigEntry(domain=DOMAIN, title="Other", unique_id="gw-zzzzzzzz", data=ENTRY_DATA)
+    other.add_to_hass(hass)
+    other.async_start_reauth(hass)
+    await hass.async_block_till_done()
+
+    await _on_paho_thread(hass, paho[0].on_auth_recovered)
+
+    flows = hass.config_entries.flow.async_progress_by_handler(DOMAIN)
+    assert [flow["context"]["entry_id"] for flow in flows] == [other.entry_id]
 
 
 async def test_yaml_configuration_is_ignored(hass: HomeAssistant, paho, caplog):
