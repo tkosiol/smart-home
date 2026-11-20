@@ -135,17 +135,22 @@ export class GatewayCredentials implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  /** Disconnects the gateway (both commands do). */
+  /**
+   * Disconnects the gateway (both commands do). The generation goes first: should the password
+   * step fail, the description differs from the database (whose transaction rolls back), and the
+   * next reconcile sets the key that belongs to it. The other order could leave a new password
+   * under an old description, which no reconcile would notice.
+   */
   async rekey(gatewayId: string, generation: number): Promise<void> {
-    await this.dynsec.send({
-      command: 'setClientPassword',
-      username: gatewayId,
-      password: this.password(gatewayId, generation),
-    });
     await this.dynsec.send({
       command: 'modifyClient',
       username: gatewayId,
       textdescription: generationTag(generation),
+    });
+    await this.dynsec.send({
+      command: 'setClientPassword',
+      username: gatewayId,
+      password: this.password(gatewayId, generation),
     });
   }
 

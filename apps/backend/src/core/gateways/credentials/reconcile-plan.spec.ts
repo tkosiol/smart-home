@@ -32,6 +32,16 @@ describe('planReconcile', () => {
     ]);
   });
 
+  it('rekeys a user whose description is ahead of the database (a rekey half done)', () => {
+    // A pairing's rekey set the description, then failed; its transaction rolled back to 2.
+    expect(
+      planReconcile(
+        [{ id: 'gw-00000001', generation: 2 }],
+        [{ username: 'gw-00000001', textdescription: 'generation:3' }],
+      ),
+    ).toEqual([{ kind: 'rekey', id: 'gw-00000001', generation: 2 }]);
+  });
+
   it('deletes a user without a wanted gateway', () => {
     expect(
       planReconcile([], [{ username: 'gw-00000009', textdescription: 'generation:1' }]),

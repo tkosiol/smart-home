@@ -152,16 +152,33 @@ describe('GatewayCredentials', () => {
     ]);
   });
 
-  it('rekeys a user: new password, then the new generation', async () => {
+  it('rekeys a user: the new generation first, then the new password', async () => {
     await make().rekey('gw-00000001', 3);
     expect(broker.sent()).toEqual([
+      { command: 'modifyClient', username: 'gw-00000001', textdescription: 'generation:3' },
       {
         command: 'setClientPassword',
         username: 'gw-00000001',
         password: deriveGatewayPassword(SECRET, 'gw-00000001', 3),
       },
-      { command: 'modifyClient', username: 'gw-00000001', textdescription: 'generation:3' },
     ]);
+  });
+
+  it('leaves a rekey that fails after its first command for the reconcile to find', async () => {
+    broker.answer = (command) =>
+      command.command === 'setClientPassword' ? { error: 'timeout of the broker' } : {};
+    await expect(make().rekey('gw-00000001', 3)).rejects.toThrow('timeout of the broker');
+    // The description already says generation 3: with the database still at 2, the next reconcile
+    // sees a difference and sets the key of generation 2 again.
+    expect(broker.sent().map(({ command }) => command)).toEqual([
+      'modifyClient',
+      'setClientPassword',
+    ]);
+    expect(broker.sent()[0]).toEqual({
+      command: 'modifyClient',
+      username: 'gw-00000001',
+      textdescription: 'generation:3',
+    });
   });
 
   it('removes a user and counts a missing one as removed', async () => {
@@ -186,12 +203,12 @@ describe('GatewayCredentials', () => {
         textdescription: 'generation:2',
         roles: [{ rolename: 'smart-gateway-ha' }],
       },
+      { command: 'modifyClient', username: 'gw-00000001', textdescription: 'generation:2' },
       {
         command: 'setClientPassword',
         username: 'gw-00000001',
         password: deriveGatewayPassword(SECRET, 'gw-00000001', 2),
       },
-      { command: 'modifyClient', username: 'gw-00000001', textdescription: 'generation:2' },
     ]);
   });
 
@@ -317,12 +334,12 @@ describe('GatewayCredentials', () => {
           ],
         },
         { command: 'listClients', verbose: true },
+        { command: 'modifyClient', username: 'gw-00000002', textdescription: 'generation:2' },
         {
           command: 'setClientPassword',
           username: 'gw-00000002',
           password: deriveGatewayPassword(SECRET, 'gw-00000002', 2),
         },
-        { command: 'modifyClient', username: 'gw-00000002', textdescription: 'generation:2' },
         {
           command: 'createClient',
           username: 'gw-00000003',
