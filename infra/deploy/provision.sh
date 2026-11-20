@@ -2,6 +2,7 @@
 # Creates a stack's .env on the VPS. Run it yourself in a terminal – secrets never pass through chat or CI.
 # Usage: SMART_VPS=<user@host> infra/deploy/provision.sh <staging|production> [--force]
 # --force rewrites the file but keeps the generated DB and broker passwords (the data volumes depend on them),
+# the generated gateway credential secret (the keys of paired gateways derive from it; a new one would lock them out),
 # the generated simulator password and gateway ID (staging),
 # the existing SMART_* runtime settings, MQTT_TLS (broker-certs.sh sets it to on) and, when a prompt is answered with
 # Enter, the stored mail settings and (production) backup settings. Without a stored value a prompt stays required.
@@ -118,6 +119,7 @@ lines=(
   "TRUSTED_PROXY_HOPS=${existing_hops:-2}"
   "DB_PASSWORD=$(keep_or_generate DB_PASSWORD)"
   "MQTT_API_PASSWORD=$(keep_or_generate MQTT_API_PASSWORD)"
+  "GATEWAY_CREDENTIAL_SECRET=$(keep_or_generate GATEWAY_CREDENTIAL_SECRET)"
   "MQTT_TLS=${existing_tls:-off}"
   "SMTP_URL=$smtp_url"
   "MAIL_FROM=$mail_from"

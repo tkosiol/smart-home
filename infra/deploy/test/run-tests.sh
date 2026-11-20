@@ -120,6 +120,7 @@ setup; export SMART_VPS=deploy@vps
 check "provision refuses to overwrite an existing .env" '[ "$(STUB_ENV_EXISTS=1 bash "$DEPLOY_DIR/provision.sh" staging < /dev/null > /dev/null 2>&1; echo $?)" = 1 ]'
 check "provision writes staging without backup settings" 'provision_staging && grep -qx "STACK_NAME=smart-staging" "$STUB_REMOTE_FILE" && ! grep -q "B2_" "$STUB_REMOTE_FILE"'
 check "provision generates long random passwords" 'grep -Eq "^DB_PASSWORD=[0-9a-f]{64}$" "$STUB_REMOTE_FILE" && grep -Eq "^MQTT_API_PASSWORD=[0-9a-f]{64}$" "$STUB_REMOTE_FILE"'
+check "provision generates the secret the keys of paired gateways derive from" 'grep -Eq "^GATEWAY_CREDENTIAL_SECRET=[0-9a-f]{64}$" "$STUB_REMOTE_FILE" && [ "$(grep -c "^GATEWAY_CREDENTIAL_SECRET=" "$STUB_REMOTE_FILE")" = 1 ]'
 check "provision writes the file with umask 077" 'grep -q "umask 077" "$STUB_CALLS"'
 check "provision writes production with backup settings" 'answers | bash "$DEPLOY_DIR/provision.sh" production > /dev/null 2>&1 && grep -qx "COMPOSE_PROFILES=backup" "$STUB_REMOTE_FILE" && grep -qx "B2_APP_KEY=$APP_KEY" "$STUB_REMOTE_FILE" && grep -qx "HC_RESTORE_URL=https://hc/restore" "$STUB_REMOTE_FILE"'
 check "provision never prints secrets" '! answers | bash "$DEPLOY_DIR/provision.sh" production 2>&1 | grep -qE "$APP_KEY|restic-pw|$RESEND_KEY"'
@@ -129,9 +130,11 @@ check "provision rejects an application key entered as keyID" '[ "$(swapped_answ
 check "provision never echoes a rejected keyID" '! swapped_answers | bash "$DEPLOY_DIR/provision.sh" production 2>&1 | grep -q "$APP_KEY"'; teardown
 setup; export SMART_VPS=deploy@vps STUB_SSH_DOWN=1
 check "provision aborts when the VPS is unreachable" '[ "$(staging_answers | bash "$DEPLOY_DIR/provision.sh" staging > /dev/null 2>&1; echo $?)" != 0 ] && [ ! -e "$STUB_REMOTE_FILE" ]'; teardown
-setup; STUB_EXISTING_ENV=$(printf "STACK_NAME=smart-staging\nDB_PASSWORD=keep-db\nMQTT_API_PASSWORD=keep-mqtt")
+setup; STUB_EXISTING_ENV=$(printf "STACK_NAME=smart-staging\nDB_PASSWORD=keep-db\nMQTT_API_PASSWORD=keep-mqtt\nGATEWAY_CREDENTIAL_SECRET=keep-gateway-credential-secret-0001")
 export SMART_VPS=deploy@vps STUB_ENV_EXISTS=1 STUB_EXISTING_ENV
-check "provision --force keeps the existing database and broker passwords" 'provision_staging --force && grep -qx "DB_PASSWORD=keep-db" "$STUB_REMOTE_FILE" && grep -qx "MQTT_API_PASSWORD=keep-mqtt" "$STUB_REMOTE_FILE"'; teardown
+check "provision --force keeps the existing database and broker passwords" 'provision_staging --force && grep -qx "DB_PASSWORD=keep-db" "$STUB_REMOTE_FILE" && grep -qx "MQTT_API_PASSWORD=keep-mqtt" "$STUB_REMOTE_FILE"'
+# A new secret would give every paired gateway a key that the broker no longer accepts.
+check "provision --force keeps the existing gateway credential secret" 'grep -qx "GATEWAY_CREDENTIAL_SECRET=keep-gateway-credential-secret-0001" "$STUB_REMOTE_FILE"'; teardown
 
 # The simulator (staging only): profile, password and gateway ID.
 setup; export SMART_VPS=deploy@vps
