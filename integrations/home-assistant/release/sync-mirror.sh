@@ -18,7 +18,7 @@ integration="$root/integrations/home-assistant"
 component="$integration/custom_components/smart_bridge"
 
 [ -f "$component/manifest.json" ] || { echo "manifest.json not found" >&2; exit 1; }
-version="$(sed -n 's/^[[:space:]]*"version":[[:space:]]*"\([^"]*\)".*/\1/p' "$component/manifest.json")"
+version="$(sed -n 's/^[[:space:]]*"version":[[:space:]]*"\([^"]*\)".*/\1/p' "$component/manifest.json" | head -n 1)"
 [ -n "$version" ] || { echo "no version in manifest.json" >&2; exit 1; }
 
 work="$(mktemp -d)"

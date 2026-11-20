@@ -62,4 +62,8 @@ sed -i.bak 's/1.2.3/1.3.0/' "$comp/manifest.json"
 rm "$comp/manifest.json.bak"
 [ "$(bash "$script" "$url" eeeeeee 2>/dev/null)" = "1.3.0" ] || fail "version did not follow manifest"
 
+# A second "version" line (e.g. nested) does not break the output; the first one wins.
+printf '{\n  "domain": "smart_bridge",\n  "version": "1.3.0",\n  "extra": {\n    "version": "9.9.9"\n  }\n}\n' >"$comp/manifest.json"
+[ "$(bash "$script" "$url" fffffff 2>/dev/null)" = "1.3.0" ] || fail "second version line changed the output"
+
 echo "sync-mirror tests passed"
