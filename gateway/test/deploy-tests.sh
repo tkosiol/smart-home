@@ -695,6 +695,14 @@ setup; mkdir -p "$PI_DIR/secrets/ha"; echo "SMART_HA_GATEWAY_ID=gw-oldmarker" > 
 check "a leftover secrets/ha only warns that it is no longer used; the deploy runs and never prints it" \
   '[ "$(deploy --fresh)" = 0 ] && grep -q "secrets/ha is no longer used" "$OUT" && ! grep -q "gw-oldmarker" "$OUT" "$CALLS" && ! marker && ! ha_step_ran && new_running'
 teardown
+setup; mkdir -p "$PI_DIR/secrets/ha"; echo "SMART_HA_GATEWAY_ID=gw-oldmarker" > "$PI_DIR/secrets/ha/ha.env"
+check "the warning about a leftover secrets/ha says Home Assistant stays off until --ha on" \
+  '[ "$(deploy --fresh)" = 0 ] && grep "secrets/ha is no longer used" "$OUT" | grep -q "Home Assistant stays off until you switch it on with --ha on"'
+teardown
+setup; mkdir -p "$PI_DIR/secrets/ha"; echo "SMART_HA_GATEWAY_ID=gw-oldmarker" > "$PI_DIR/secrets/ha/ha.env"
+check "with --ha on the warning about a leftover secrets/ha does not say Home Assistant stays off" \
+  '[ "$(deploy --fresh --ha on)" = 0 ] && grep -q "secrets/ha is no longer used" "$OUT" && ! grep -q "stays off" "$OUT" && marker && ha_step_ran'
+teardown
 setup
 check "without a leftover secrets/ha there is no such warning" '[ "$(deploy --fresh)" = 0 ] && ! grep -q "no longer used" "$OUT"'
 teardown

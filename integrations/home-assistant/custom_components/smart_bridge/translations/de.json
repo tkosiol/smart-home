@@ -35,7 +35,9 @@
       "cannot_connect": "Die App ist nicht erreichbar. Prüfe die Adresse und das Netzwerk."
     },
     "abort": {
-      "already_configured": "Dieses Gateway ist schon eingerichtet."
+      "already_configured": "Dieses Gateway ist schon eingerichtet.",
+      "single_instance_allowed": "Smart Home ist schon eingerichtet. Um neu zu koppeln, entferne die Integration unter Einstellungen → Geräte & Dienste und füge sie neu hinzu, oder trage den neuen Code dort ein, wo Home Assistant „Erneut authentifizieren“ anbietet.",
+      "reauth_successful": "Neu gekoppelt. Die Integration verbindet sich mit dem neuen Schlüssel."
     }
   }
 }

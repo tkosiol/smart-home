@@ -35,7 +35,9 @@
       "cannot_connect": "Cannot reach the app. Check the address and the network."
     },
     "abort": {
-      "already_configured": "This gateway is already set up."
+      "already_configured": "This gateway is already set up.",
+      "single_instance_allowed": "Smart Home is already set up. To pair again, remove the integration under Settings → Devices & services and add it again, or enter the new code where Home Assistant asks you to re-authenticate.",
+      "reauth_successful": "Paired again. The integration connects with the new key."
     }
   }
 }

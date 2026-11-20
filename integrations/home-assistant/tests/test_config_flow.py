@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Iterator
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
@@ -16,6 +17,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from pytest_homeassistant_custom_component.test_util.aiohttp import AiohttpClientMocker
 
 from custom_components.smart_bridge import DOMAIN
+from custom_components.smart_bridge.pairing import _CONFLICTS, _STATUS_ERRORS
 
 pytestmark = pytest.mark.usefixtures("enable_custom_integrations")
 
@@ -154,6 +156,29 @@ async def test_second_entry_is_refused(hass: HomeAssistant):
     assert result["reason"] == "single_instance_allowed"
 
 
+async def test_removed_entry_pairs_its_gateway_again_with_a_new_entry(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker, setup_entry
+):
+    """Re-pairing by removing the integration and adding it again (a code bound to the gateway)."""
+    old = MockConfigEntry(domain=DOMAIN, unique_id=GW, data=ENTRY_DATA)
+    old.add_to_hass(hass)
+    await hass.config_entries.async_remove(old.entry_id)
+    aioclient_mock.post(REDEEM_URL, json={**ANSWER, "password": "key-generation-2"})
+
+    result = await _start_user_flow(hass)
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"url": APP, "code": "WXYZ-2345"}
+    )
+    await hass.async_block_till_done()
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["result"].unique_id == GW
+    assert result["data"] == {**ENTRY_DATA, "password": "key-generation-2"}
+    # No expected gateway: the app takes the gateway the code is bound to.
+    _method, _url, body, _headers = aioclient_mock.mock_calls[0]
+    assert body == {"code": "WXYZ-2345", "name": "Ferienhaus"}
+
+
 @pytest.fixture
 async def loaded_entry(hass: HomeAssistant, setup_entry) -> MockConfigEntry:
     entry = MockConfigEntry(domain=DOMAIN, title="Ferienhaus", unique_id=GW, data=ENTRY_DATA)
@@ -251,6 +276,41 @@ ERRORS = {
 }
 
 
+# Ended by Home Assistant itself: a second entry (manifest single_config_entry), the same gateway
+# again (_abort_if_unique_id_configured) and a re-pairing (async_update_reload_and_abort). Their
+# texts come with the integration: Home Assistant does not fill them in for a custom one.
+ABORTS = {"single_instance_allowed", "already_configured", "reauth_successful"}
+
+
+def _reasons_in_code() -> tuple[set[str], set[str]]:
+    """The error and abort keys the flow and the pairing module can end with."""
+    flow = (COMPONENT / "config_flow.py").read_text(encoding="utf-8")
+    pairing = (COMPONENT / "pairing.py").read_text(encoding="utf-8")
+    errors = set(re.findall(r'errors\[[^\]]+\] = "([a-z_]+)"', flow))
+    errors |= set(re.findall(r'(?:PairingError|ValueError)\("([a-z_]+)"\)', pairing))
+    errors |= set(_CONFLICTS.values()) | set(_STATUS_ERRORS.values())
+    aborts = set(re.findall(r'async_abort\(reason="([a-z_]+)"', flow))
+    if "_abort_if_unique_id_configured" in flow:
+        aborts.add("already_configured")
+    if "async_update_reload_and_abort" in flow:
+        aborts.add("reauth_successful")
+    manifest = json.loads((COMPONENT / "manifest.json").read_text(encoding="utf-8"))
+    if manifest.get("single_config_entry"):
+        aborts.add("single_instance_allowed")
+    return errors, aborts
+
+
+def test_every_reason_of_the_flow_has_a_text():
+    strings = json.loads((COMPONENT / "strings.json").read_text(encoding="utf-8"))
+    errors, aborts = _reasons_in_code()
+
+    assert "other_gateway" in errors and "cannot_connect" in errors  # the scan finds them
+    assert errors == ERRORS
+    assert aborts == ABORTS
+    assert set(strings["config"]["error"]) == errors
+    assert set(strings["config"]["abort"]) == aborts
+
+
 def _keys(document: dict, prefix: str = "") -> set[str]:
     keys = set()
     for key, value in document.items():
@@ -280,3 +340,5 @@ async def test_home_assistant_loads_the_german_texts(hass: HomeAssistant):
     assert texts[f"component.{DOMAIN}.config.error.other_gateway"].startswith(
         "Dieser Code gehört zu einem anderen Gateway."
     )
+    for reason in ABORTS:
+        assert texts[f"component.{DOMAIN}.config.abort.{reason}"]

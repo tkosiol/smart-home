@@ -79,6 +79,10 @@ async def test_redeem_without_name_leaves_it_out(
     ("status", "body", "reason"),
     [
         (404, {"code": "gateway.pairingInvalid"}, "invalid_code"),
+        # A wrong address that answers 404 is no wrong code.
+        (404, {"code": "household.notFound"}, "cannot_connect"),
+        (404, {"message": "Not Found"}, "cannot_connect"),
+        (404, None, "cannot_connect"),
         (400, {"code": "validation.failed"}, "invalid_code"),
         (409, {"code": "gateway.pairingOtherGateway"}, "other_gateway"),
         (409, {"code": "gateway.limitReached", "params": {"max": 5}}, "limit_reached"),
@@ -98,6 +102,17 @@ async def test_error_answers(
         await _redeem(hass)
 
     assert err.value.reason == reason
+
+
+async def test_404_page_without_json_cannot_connect(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+):
+    aioclient_mock.post(REDEEM_URL, status=404, text="<html><body>Not Found</body></html>")
+
+    with pytest.raises(PairingError) as err:
+        await _redeem(hass)
+
+    assert err.value.reason == "cannot_connect"
 
 
 @pytest.mark.parametrize(

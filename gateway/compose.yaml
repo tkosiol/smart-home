@@ -7,7 +7,8 @@
 # ZIGBEE2MQTT_CONFIG_FRONTEND_AUTH_TOKEN. Also needed in secrets/: passwd, ca.crt, gateway.crt, gateway.key.
 # Run render.sh first: it writes run/mosquitto.conf. render.sh replaces the file (new inode) and the single-file bind
 # mount keeps the old one: recreate Mosquitto after every render (docker compose up -d --force-recreate mosquitto).
-# Home Assistant (profile ha) is started by deploy.sh in its own step after the core, when secrets/ha/ha.env exists.
+# Home Assistant (profile ha) is started by deploy.sh in its own step after the core, when the marker file
+# homeassistant.enabled exists in the gateway folder (deploy.sh --ha on|off creates or removes it).
 name: smart-gateway
 
 x-logging: &logging

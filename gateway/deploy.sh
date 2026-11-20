@@ -26,7 +26,7 @@
 #   on the Pi (--ha on creates it, --ha off removes it, rsync --delete leaves it alone; it is created and removed
 #   as root, its content is empty and never read). It needs no secrets: the integration is paired in the Home
 #   Assistant UI with a code from the app. Home Assistant on also wants curl on the Pi (for the wait on port 8123).
-#   A leftover secrets/ha/ of the old provisioning only produces a warning. The core of the stack (pull, start.sh,
+#   A leftover secrets/ha/ of the old provisioning only produces a warning (it no longer switches Home Assistant on). The core of the stack (pull, start.sh,
 #   migration, the bridge state) runs exactly as without Home Assistant, without the profile. Home Assistant has its
 #   own step after it (plain deploy and --migrate alike): pull homeassistant, up -d --force-recreate homeassistant
 #   (the single-file and folder bind mounts and the loaded Python modules only take a new configuration or
@@ -466,7 +466,10 @@ case "$clock" in
   *) echo "note: could not tell whether the clock of the Pi is synchronized (the TLS bridge needs a correct clock)." ;;
 esac
 if [ "$old_ha_secrets" = oldha ]; then
-  echo "warning: $dir/secrets/ha exists on the Pi, but secrets/ha is no longer used (Home Assistant is paired with a code in its UI now). Delete it when you do not need the old certificate: sudo rm -r $dir/secrets/ha"
+  # A Pi that ran Home Assistant through secrets/ha/ha.env has no marker yet: this deploy removes the container.
+  ha_off_note=""
+  if [ "$ha_state" != ha ]; then ha_off_note=" Home Assistant stays off until you switch it on with --ha on (pnpm gateway:deploy --ha on); its data in homeassistant-data/ is kept."; fi
+  echo "warning: $dir/secrets/ha exists on the Pi, but secrets/ha is no longer used (Home Assistant is paired with a code in its UI now).$ha_off_note Delete it when you do not need the old certificate: sudo rm -r $dir/secrets/ha"
 fi
 
 if [ "$migrate" = 1 ]; then

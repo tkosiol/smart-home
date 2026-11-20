@@ -26,13 +26,14 @@ _CONFLICTS = {
     "gateway.pairingOtherGateway": "other_gateway",
     "gateway.limitReached": "limit_reached",
 }
-# HTTP status -> flow error; 400 only happens for a malformed code
+# HTTP status -> flow error; 400 only happens for a malformed code. A 404 is a wrong code only
+# with the app's own error code: a wrong address may answer 404 too.
 _STATUS_ERRORS = {
     400: "invalid_code",
-    404: "invalid_code",
     429: "too_many_attempts",
     503: "unavailable",
 }
+_INVALID_CODE = "gateway.pairingInvalid"
 
 
 class PairingError(Exception):
@@ -149,8 +150,10 @@ async def redeem(
     if status == 200:
         return _credentials_of(document)
     reason = _STATUS_ERRORS.get(status, "cannot_connect")
+    error_code = document.get("code") if isinstance(document, dict) else None
     if status == 409:
-        error_code = document.get("code") if isinstance(document, dict) else None
         reason = _CONFLICTS.get(str(error_code), "cannot_connect")
+    elif status == 404 and error_code == _INVALID_CODE:
+        reason = "invalid_code"
     _LOGGER.debug("Pairing refused with HTTP %s (%s)", status, reason)
     raise PairingError(reason)
