@@ -25,6 +25,7 @@ const gateway = (id: string, name: string, overrides: Partial<Gateway> = {}): Ga
   id,
   name,
   kind: 'z2m',
+  auth: 'certificate',
   topicPrefix: `smart/gateways/${id}/z2m`,
   bridgeStatus: 'online',
   serviceStatus: 'online',
@@ -159,6 +160,21 @@ describe('gateways page', () => {
       expect(text).toContain('Zertifikat gültig bis 01.04.2027');
       expect(entryText(page, 'Keller')).toContain('Bridge: Offline');
       expect(entryText(page, 'Keller')).toContain('Zigbee2MQTT: Unbekannt');
+    });
+
+    it('shows no certificate line for a gateway without a certificate', async () => {
+      const page = await open({
+        gateways: [
+          gateway('gw-hhhhhhhh', 'Home Assistant', {
+            kind: 'ha',
+            auth: 'credentials',
+            certExpiresAt: null,
+          }),
+        ],
+      });
+      const text = entryText(page, 'Home Assistant');
+      expect(text).toContain('Letzte Nachricht vor 5 Minuten');
+      expect(text).not.toContain('Zertifikat');
     });
 
     it('keeps the gateway names reachable by heading navigation', async () => {

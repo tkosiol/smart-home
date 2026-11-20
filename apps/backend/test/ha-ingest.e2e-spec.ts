@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import { gatewaySchema, meSchema } from '@smart/contracts';
+import { meSchema } from '@smart/contracts';
 import { connect, type MqttClient } from 'mqtt';
 import postgres from 'postgres';
 import request from 'supertest';
@@ -12,6 +12,7 @@ import { inject, vi } from 'vitest';
 import { AppModule } from '../src/app.module.js';
 import { configureApp } from '../src/app.setup.js';
 import { DevicesRepository, GatewayIngest, HardwareRepository } from '../src/core/devices/index.js';
+import { GATEWAY_REGISTERED, GatewayEvents } from '../src/core/gateways/index.js';
 import { SESSION_COOKIE, SessionService, UsersRepository } from '../src/core/identity/index.js';
 import { MeasurementWriter } from '../src/core/telemetry/index.js';
 import { runMigrations } from '../src/platform/database/index.js';
@@ -158,16 +159,18 @@ describe('a Home Assistant gateway through the real ingest', () => {
     ca?.dispose();
   });
 
-  it('registers with the kind ha, which the API accepts now that an adapter follows it', async () => {
-    const issued = ca.issue();
-    gatewayId = issued.id;
-    const response = await request(app.getHttpServer())
-      .post(`/api/v1/households/${householdId}/gateways`)
-      .set('Cookie', cookie)
-      .set('Origin', origin)
-      .send({ name: 'Home Assistant', kind: 'ha', certificate: issued.certificate })
-      .expect(201);
-    expect(gatewaySchema.parse(response.body).kind).toBe('ha');
+  it('follows a gateway of the kind ha with credentials access once it is announced', async () => {
+    // Pairing (a later step) is what creates such a gateway; here the row is written directly.
+    gatewayId = 'gw-hatest01';
+    await sql`
+      insert into gateways (id, household_id, name, topic_prefix, kind, auth, credential_generation)
+      values (${gatewayId}, ${householdId}, 'Home Assistant', ${`gw/${gatewayId}/ha`}, 'ha',
+        'credentials', 1)`;
+    app.get(GatewayEvents).emit(GATEWAY_REGISTERED, {
+      gatewayId,
+      kind: 'ha',
+      topicPrefix: `gw/${gatewayId}/ha`,
+    });
     await app.get(GatewayIngest).idle();
 
     await eventually(async () => {

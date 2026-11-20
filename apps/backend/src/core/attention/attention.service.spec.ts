@@ -28,6 +28,7 @@ const gateway = (overrides: Partial<RegisteredGateway> = {}): RegisteredGateway 
   id: GATEWAY,
   name: 'Pi',
   kind: 'z2m',
+  auth: 'certificate',
   topicPrefix: `gw/${GATEWAY}/z2m`,
   bridgeStatus: 'online',
   serviceStatus: 'online',

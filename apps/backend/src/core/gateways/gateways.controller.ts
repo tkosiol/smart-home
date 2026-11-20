@@ -16,14 +16,17 @@ import {
   RequireRole,
   type HouseholdRequest,
 } from '../households/index.js';
-import { RequirePlatformAdmin } from '../identity/index.js';
+import { RequirePlatformAdmin, UsersRepository } from '../identity/index.js';
 import { GatewaysService } from './gateways.service.js';
 
-/** Owners see the gateways of their household; platform admins register and revoke them. */
+/** Owners see the gateways of their household and revoke those with credentials; platform admins register and revoke the others. */
 @Controller('v1/households/:householdId/gateways')
 @UseGuards(HouseholdGuard)
 export class GatewaysController {
-  constructor(private readonly gateways: GatewaysService) {}
+  constructor(
+    private readonly gateways: GatewaysService,
+    private readonly users: UsersRepository,
+  ) {}
 
   @Get()
   @RequireRole('owner')
@@ -43,9 +46,15 @@ export class GatewaysController {
 
   @Post(':gatewayId/revoke')
   @RequireRole('owner')
-  @RequirePlatformAdmin()
   @HttpCode(HttpStatus.NO_CONTENT)
-  revoke(@Req() request: HouseholdRequest, @Param('gatewayId') gatewayId: string): Promise<void> {
-    return this.gateways.revoke(membershipOf(request).householdId, gatewayId);
+  async revoke(
+    @Req() request: HouseholdRequest,
+    @Param('gatewayId') gatewayId: string,
+  ): Promise<void> {
+    // The service decides whether the gateway's access kind needs a platform admin.
+    const user = request.user ? await this.users.findById(request.user.id) : undefined;
+    await this.gateways.revoke(membershipOf(request).householdId, gatewayId, {
+      platformAdmin: user?.isPlatformAdmin ?? false,
+    });
   }
 }

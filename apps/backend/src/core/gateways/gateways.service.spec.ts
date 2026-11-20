@@ -28,6 +28,8 @@ const row = (overrides: Partial<GatewayRow> = {}): GatewayRow => ({
   householdId: 'household',
   name: 'Pi',
   kind: 'z2m',
+  auth: 'certificate',
+  credentialGeneration: null,
   topicPrefix: 'gw/gw-a1b2c3d4/z2m',
   bridgeStatus: 'unknown',
   serviceStatus: 'unknown',
@@ -365,25 +367,71 @@ describe('GatewaysService', () => {
       }
     });
 
-    it('announces a revoked gateway, but not a revocation that found nothing', async () => {
-      const events = new GatewayEvents();
-      const seen: unknown[] = [];
-      events.on(GATEWAY_REVOKED, (event) => seen.push(event));
-      const found = new Map([['gw-a1b2c3d4', true]]);
-      const subject = new GatewaysService(
-        {
-          revoke: (_h: string, id: string) => Promise.resolve(found.has(id)),
-        } as unknown as GatewaysRepository,
-        {} as Env,
-        () => NOW,
-        noStatusMemory,
-        events,
-        registry,
-      );
-      await expect(subject.revoke('household', 'gw-zzzzzzzz')).rejects.toThrow();
-      expect(seen).toEqual([]);
-      await subject.revoke('household', 'gw-a1b2c3d4');
-      expect(seen).toEqual([{ gatewayId: 'gw-a1b2c3d4' }]);
+    describe('revoke', () => {
+      const revokeFixture = (rows: GatewayRow[]) => {
+        const events = new GatewayEvents();
+        const seen: unknown[] = [];
+        events.on(GATEWAY_REVOKED, (event) => seen.push(event));
+        const revoked: string[] = [];
+        const subject = new GatewaysService(
+          {
+            findById: (id: string) => Promise.resolve(rows.find((entry) => entry.id === id)),
+            revoke: (_h: string, id: string) => {
+              revoked.push(id);
+              return Promise.resolve(true);
+            },
+          } as unknown as GatewaysRepository,
+          {} as Env,
+          () => NOW,
+          noStatusMemory,
+          events,
+          registry,
+        );
+        return { subject, seen, revoked };
+      };
+      const credentials = row({
+        id: 'gw-hacred01',
+        kind: 'ha',
+        auth: 'credentials',
+        credentialGeneration: 1,
+        certFingerprint: null,
+        certExpiresAt: null,
+      });
+      const certificate = row({ id: 'gw-a1b2c3d4' });
+      const code = (promise: Promise<void>) =>
+        promise.then(
+          () => 'ok',
+          (error: unknown) => (error as { code?: string }).code ?? String(error),
+        );
+
+      it('announces a revoked gateway, but not a revocation that found nothing', async () => {
+        const { subject, seen } = revokeFixture([certificate]);
+        const admin = { platformAdmin: true };
+        await expect(subject.revoke('household', 'gw-zzzzzzzz', admin)).rejects.toThrow();
+        expect(seen).toEqual([]);
+        await subject.revoke('household', 'gw-a1b2c3d4', admin);
+        expect(seen).toEqual([{ gatewayId: 'gw-a1b2c3d4' }]);
+      });
+
+      it('does not touch a gateway of another household', async () => {
+        const { subject, revoked } = revokeFixture([certificate]);
+        expect(await code(subject.revoke('other', 'gw-a1b2c3d4', { platformAdmin: true }))).toBe(
+          'household.notFound',
+        );
+        expect(revoked).toEqual([]);
+      });
+
+      it('needs a platform admin for a certificate, but not for credentials', async () => {
+        const { subject, seen, revoked } = revokeFixture([certificate, credentials]);
+        const owner = { platformAdmin: false };
+        expect(await code(subject.revoke('household', 'gw-a1b2c3d4', owner))).toBe(
+          'auth.forbidden',
+        );
+        expect(revoked).toEqual([]);
+        expect(await code(subject.revoke('household', 'gw-hacred01', owner))).toBe('ok');
+        expect(revoked).toEqual(['gw-hacred01']);
+        expect(seen).toEqual([{ gatewayId: 'gw-hacred01' }]);
+      });
     });
   });
 });

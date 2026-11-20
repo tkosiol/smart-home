@@ -53,6 +53,11 @@ export const envSchema = z
     GATEWAY_CA_FILE: optional(z.string().min(1)),
     /** A file with the ISO 8601 time the broker's CRL needs renewing (written by `pki.sh`). */
     GATEWAY_CRL_NEXT_UPDATE_FILE: optional(z.string().min(1)),
+    /**
+     * The key the gateway credentials (Home Assistant pairing) are derived from; unset = pairing is
+     * switched off. Anyone who knows it can derive every credential: never log it.
+     */
+    GATEWAY_CREDENTIAL_SECRET: optional(z.string().min(32)),
   })
   .refine((env) => env.SMTP_URL === undefined || env.MAIL_FROM !== undefined, {
     path: ['MAIL_FROM'],

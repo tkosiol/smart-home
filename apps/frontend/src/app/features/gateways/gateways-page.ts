@@ -116,12 +116,14 @@ const DAY_MS = 86_400_000;
                         {{ 'gateways.entry.noMessage' | transloco }}
                       }
                     </p>
-                    <p>
-                      {{
-                        'gateways.entry.certExpires'
-                          | transloco: { date: gateway.certExpiresAt | uiDateTime: 'date' }
-                      }}
-                    </p>
+                    @if (gateway.certExpiresAt) {
+                      <p>
+                        {{
+                          'gateways.entry.certExpires'
+                            | transloco: { date: gateway.certExpiresAt | uiDateTime: 'date' }
+                        }}
+                      </p>
+                    }
                     @if (gateway.warnings.length > 0) {
                       <ui-stack direction="row" gap="sm" wrap>
                         @for (warning of gateway.warnings; track warning) {
@@ -245,6 +247,7 @@ export class GatewaysPage {
 
   /** Whole days until the certificate expires, at least 1 (a part of a day counts as a day). */
   protected daysLeft(gateway: Gateway): number {
+    if (!gateway.certExpiresAt) return 1;
     return Math.max(1, Math.ceil((Date.parse(gateway.certExpiresAt) - this.clock.now()) / DAY_MS));
   }
 

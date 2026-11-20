@@ -80,6 +80,9 @@ describe('gateways', () => {
       .set('Cookie', user.cookie)
       .set('Origin', origin)
       .send({ name, certificate });
+  const insertCredentialsGateway = (household: string, id: string) => connection.sql`
+    insert into gateways (id, household_id, name, topic_prefix, kind, auth, credential_generation)
+    values (${id}, ${household}, 'Home Assistant', ${`gw/${id}/ha`}, 'ha', 'credentials', 1)`;
   const list = (user: TestUser, household: string) =>
     request(app.getHttpServer())
       .get(`${HOUSEHOLDS}/${household}/gateways`)
@@ -183,6 +186,7 @@ describe('gateways', () => {
         id: issued.id,
         name: 'Living room Pi',
         kind: 'z2m',
+        auth: 'certificate',
         topicPrefix: `gw/${issued.id}/z2m`,
         bridgeStatus: 'unknown',
         serviceStatus: 'unknown',
@@ -221,17 +225,53 @@ describe('gateways', () => {
       expect(row).toBeUndefined();
     });
 
-    it('lets the database store the kind ha and still refuses an unknown kind', async () => {
-      // The API registers a kind only once an adapter for it exists; this is the schema's side.
-      const insertKind = (id: string, kind: string) => connection.sql`
-        insert into gateways (id, household_id, name, topic_prefix, cert_fingerprint, cert_expires_at, kind)
-        values (${id}, ${householdId}, 'HA', ${`gw/${id}/${kind}`}, ${`fp-${id}`},
-          now() + interval '300 days', ${kind})`;
-      await insertKind('gw-habase01', 'ha');
-      const [row] = await connection.sql<{ kind: string }[]>`
-        select kind from gateways where id = 'gw-habase01'`;
-      expect(row).toEqual({ kind: 'ha' });
-      await expect(insertKind('gw-habase02', 'hue')).rejects.toThrow();
+    it('refuses the kind ha with a certificate and stores nothing', async () => {
+      const issued = ca.issue();
+      const refused = await request(app.getHttpServer())
+        .post(`${HOUSEHOLDS}/${householdId}/gateways`)
+        .set('Cookie', admin.cookie)
+        .set('Origin', origin)
+        .send({ name: 'HA', kind: 'ha', certificate: issued.certificate })
+        .expect(400);
+      expect(errorCode(refused)).toBe('validation.failed');
+      expect(await connection.sql`select id from gateways where id = ${issued.id}`).toHaveLength(0);
+    });
+
+    it('lets the database store credentials access only for the kind ha with a generation', async () => {
+      const insertRow = (id: string, columns: string) =>
+        connection.sql.unsafe(
+          `insert into gateways (id, household_id, name, topic_prefix, kind, auth, ` +
+            `credential_generation, cert_fingerprint, cert_expires_at) ` +
+            `values ('${id}', '${householdId}', 'HA', 'gw/${id}/ha', ${columns})`,
+        );
+      await insertRow('gw-habase01', `'ha', 'credentials', 1, null, null`);
+      const [row] = await connection.sql<{ auth: string; credential_generation: number }[]>`
+        select auth, credential_generation from gateways where id = 'gw-habase01'`;
+      expect(row).toEqual({ auth: 'credentials', credential_generation: 1 });
+      // credentials with the kind z2m, without a generation, with a certificate, or an unknown auth
+      await expect(
+        insertRow('gw-habase02', `'z2m', 'credentials', 1, null, null`),
+      ).rejects.toThrow();
+      await expect(
+        insertRow('gw-habase03', `'ha', 'credentials', null, null, null`),
+      ).rejects.toThrow();
+      await expect(
+        insertRow('gw-habase04', `'ha', 'credentials', 0, null, null`),
+      ).rejects.toThrow();
+      await expect(
+        insertRow('gw-habase05', `'ha', 'credentials', 1, 'fp', now() + interval '1 day'`),
+      ).rejects.toThrow();
+      await expect(insertRow('gw-habase06', `'ha', 'token', 1, null, null`)).rejects.toThrow();
+      // a certificate gateway needs fingerprint and expiry and has no generation
+      await expect(
+        insertRow('gw-habase07', `'z2m', 'certificate', null, null, null`),
+      ).rejects.toThrow();
+      await expect(
+        insertRow('gw-habase08', `'z2m', 'certificate', 1, 'fp', now() + interval '1 day'`),
+      ).rejects.toThrow();
+      await expect(
+        insertRow('gw-habase09', `'hue', 'certificate', null, 'fp', now() + interval '1 day'`),
+      ).rejects.toThrow();
     });
 
     it('accepts CRLF line breaks and blank lines around the block', async () => {
@@ -473,6 +513,28 @@ describe('gateways', () => {
       expect((response.body as Gateway[]).map((gateway) => gateway.warnings)).toEqual([[]]);
     });
 
+    it('lists a credentials gateway without certificate expiry or warnings', async () => {
+      const household = await createHousehold(admin);
+      await insertCredentialsGateway(household, 'gw-hacred01');
+      writeFileSync(
+        join(dir, 'crl-next-update'),
+        `${new Date(Date.now() + 10 * DAY_MS).toISOString()}\n`,
+      );
+      try {
+        const response = await list(admin, household).expect(200);
+        const [gateway] = (response.body as unknown[]).map((item) => gatewaySchema.parse(item));
+        expect(gateway).toMatchObject({
+          id: 'gw-hacred01',
+          kind: 'ha',
+          auth: 'credentials',
+          certExpiresAt: null,
+          warnings: [],
+        });
+      } finally {
+        rmSync(join(dir, 'crl-next-update'));
+      }
+    });
+
     it('warns about a CRL that is due within 30 days, and about nothing without the file', async () => {
       const household = await createHousehold(admin);
       const issued = ca.issue({ endsInDays: 100 });
@@ -534,6 +596,30 @@ describe('gateways', () => {
       const [row] = await connection.sql<{ revoked_at: string | null }[]>`
         select revoked_at from gateways where id = ${issued.id}`;
       expect(row?.revoked_at).toBeNull();
+    });
+
+    it('lets an owner revoke a credentials gateway, but not a certificate gateway', async () => {
+      const household = await createHousehold(admin);
+      await addMember(household, ownerWithoutAdmin, 'owner');
+      await addMember(household, member, 'member');
+      await insertCredentialsGateway(household, 'gw-hacred02');
+      const certified = ca.issue();
+      await register(admin, household, certified.certificate).expect(201);
+      const revokedAt = async (id: string): Promise<string | null | undefined> => {
+        const [row] = await connection.sql<{ revoked_at: string | null }[]>`
+          select revoked_at::text from gateways where id = ${id}`;
+        return row?.revoked_at;
+      };
+      expect(errorCode(await revoke(member, household, 'gw-hacred02').expect(403))).toBe(
+        'household.forbidden',
+      );
+      await revoke(ownerWithoutAdmin, household, 'gw-hacred02').expect(204);
+      expect(await revokedAt('gw-hacred02')).toEqual(expect.any(String));
+      expect(errorCode(await revoke(ownerWithoutAdmin, household, certified.id).expect(403))).toBe(
+        'auth.forbidden',
+      );
+      expect(await revokedAt(certified.id)).toBeNull();
+      await revoke(admin, household, certified.id).expect(204);
     });
 
     it('answers 404 for unknown ids and for a gateway of another household', async () => {

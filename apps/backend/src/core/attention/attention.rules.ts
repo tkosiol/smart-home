@@ -27,7 +27,8 @@ export interface GatewaySnapshot {
   lastMessageAt: Date | null;
   /** When the gateway was registered: where the wait for one never heard from starts. */
   registeredAt: Date;
-  certExpiresAt: Date;
+  /** `null` for a gateway with credentials: it has no certificate. */
+  certExpiresAt: Date | null;
   warnings: readonly GatewayWarning[];
 }
 
@@ -368,6 +369,7 @@ function evaluateBattery(
 
 function evaluateCertificates(snapshot: Snapshot, now: Date, add: Add): void {
   for (const gateway of snapshot.gateways) {
+    if (gateway.certExpiresAt === null) continue;
     const expired = gateway.warnings.includes('certExpired');
     if (!expired && !gateway.warnings.includes('certExpiring')) continue;
     add(

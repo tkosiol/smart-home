@@ -23,6 +23,7 @@ const gateway = (id: string, name: string, overrides: Partial<Gateway> = {}): Ga
   id,
   name,
   kind: 'z2m',
+  auth: 'certificate',
   topicPrefix: `smart/gateways/${id}/z2m`,
   bridgeStatus: 'online',
   serviceStatus: 'online',
