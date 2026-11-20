@@ -173,6 +173,107 @@ describe('GatewayCredentials', () => {
     await expect(credentials.remove('gw-00000001')).rejects.toThrow('Something else');
   });
 
+  it('rekeys a user that already exists when asked to create it', async () => {
+    broker.answer = (command) =>
+      command.command === 'createClient' ? { error: 'Client already exists' } : {};
+    await make().create('gw-00000001', 2);
+    expect(broker.sent()).toEqual([
+      {
+        command: 'createClient',
+        username: 'gw-00000001',
+        password: deriveGatewayPassword(SECRET, 'gw-00000001', 2),
+        clientid: 'gw-00000001-ha',
+        textdescription: 'generation:2',
+        roles: [{ rolename: 'smart-gateway-ha' }],
+      },
+      {
+        command: 'setClientPassword',
+        username: 'gw-00000001',
+        password: deriveGatewayPassword(SECRET, 'gw-00000001', 2),
+      },
+      { command: 'modifyClient', username: 'gw-00000001', textdescription: 'generation:2' },
+    ]);
+  });
+
+  it('passes on other errors of create', async () => {
+    broker.answer = () => ({ error: 'Role not found' });
+    await expect(make().create('gw-00000001', 1)).rejects.toThrow('Role not found');
+    expect(broker.names()).toEqual(['createClient']);
+  });
+
+  describe('exclusive', () => {
+    const runs = (): number =>
+      broker.names().filter((name) => name === 'setDefaultACLAccess').length;
+    /** A function whose end the test decides. */
+    const gate = <T>() => {
+      let open: (value: T) => void = () => undefined;
+      let fail: (error: Error) => void = () => undefined;
+      const fn = vi.fn(
+        () =>
+          new Promise<T>((resolve, reject) => {
+            open = resolve;
+            fail = reject;
+          }),
+      );
+      return { fn, open: (value: T) => open(value), fail: (error: Error) => fail(error) };
+    };
+
+    beforeEach(() => {
+      broker.answer = (command) =>
+        command.command === 'listClients' ? { data: { totalCount: 0, clients: [] } } : {};
+    });
+
+    it('holds a reconcile back until the function resolves, which then runs afterwards', async () => {
+      const credentials = make();
+      const step = gate<string>();
+      const section = credentials.exclusive(step.fn);
+      await settle();
+      expect(step.fn).toHaveBeenCalledTimes(1);
+      const run = credentials.reconcile();
+      await settle();
+      expect(runs()).toBe(0);
+      step.open('paired');
+      await expect(section).resolves.toBe('paired');
+      await run;
+      expect(runs()).toBe(1);
+    });
+
+    it('holds a reconcile back until the function rejects, which then runs afterwards', async () => {
+      const credentials = make();
+      const step = gate<void>();
+      const section = credentials.exclusive(step.fn);
+      const failed = expect(section).rejects.toThrow('commit failed');
+      await settle();
+      const run = credentials.reconcile();
+      await settle();
+      expect(runs()).toBe(0);
+      step.fail(new Error('commit failed'));
+      await failed;
+      await run;
+      expect(runs()).toBe(1);
+    });
+
+    it('waits for a reconcile in progress before it starts', async () => {
+      let release: () => void = () => undefined;
+      listActiveCredentials = () =>
+        new Promise((resolve) => {
+          release = () => resolve(wanted);
+        });
+      const credentials = make();
+      const run = credentials.reconcile();
+      await settle();
+      expect(runs()).toBe(1);
+      const fn = vi.fn(() => Promise.resolve('done'));
+      const section = credentials.exclusive(fn);
+      await settle();
+      expect(fn).not.toHaveBeenCalled();
+      release();
+      await run;
+      await expect(section).resolves.toBe('done');
+      expect(fn).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('reconcile', () => {
     const brokerUsers = (clients: { username: string; textdescription?: string }[]) => {
       broker.answer = (command) => {
@@ -256,14 +357,14 @@ describe('GatewayCredentials', () => {
       const answer = broker.answer;
       broker.answer = (command) =>
         command.command === 'createClient' && command.username === 'gw-00000001'
-          ? { error: 'Client already exists' }
+          ? { error: 'Internal error' }
           : answer(command);
       await expect(make().reconcile()).resolves.toBeUndefined();
       expect(broker.names().slice(4)).toEqual(['createClient', 'createClient', 'deleteClient']);
       const text = logged();
       expect(text).toContain('createClient');
       expect(text).toContain('gw-00000001');
-      expect(text).toContain('Client already exists');
+      expect(text).toContain('Internal error');
       expect(text).not.toContain(deriveGatewayPassword(SECRET, 'gw-00000001', 1));
       expect(text).not.toContain(SECRET);
     });

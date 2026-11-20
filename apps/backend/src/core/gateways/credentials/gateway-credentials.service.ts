@@ -74,8 +74,10 @@ export class GatewayCredentials implements OnModuleInit, OnModuleDestroy {
   private readonly secret: string | undefined;
   private readonly dynsec: DynsecClient;
   private readonly notices = new Throttle(HOUR_MS, 1);
-  private running: Promise<void> | undefined;
-  private queued: Promise<void> | undefined;
+  /** Reconcile runs and exclusive sections, one after the other. */
+  private tail: Promise<unknown> = Promise.resolve();
+  /** A reconcile run that is waiting for its turn (not started yet). */
+  private waitingRun: Promise<void> | undefined;
   private timer: NodeJS.Timeout | undefined;
   private removeConnectListener: (() => void) | undefined;
 
@@ -113,15 +115,24 @@ export class GatewayCredentials implements OnModuleInit, OnModuleDestroy {
     return deriveGatewayPassword(this.secret, gatewayId, generation);
   }
 
+  /**
+   * A user that exists already (only possible after a pairing whose commit failed) gets the
+   * requested generation's key instead.
+   */
   async create(gatewayId: string, generation: number): Promise<void> {
-    await this.dynsec.send({
-      command: 'createClient',
-      username: gatewayId,
-      password: this.password(gatewayId, generation),
-      clientid: gatewayClientId(gatewayId),
-      textdescription: generationTag(generation),
-      roles: [{ rolename: ROLE }],
-    });
+    try {
+      await this.dynsec.send({
+        command: 'createClient',
+        username: gatewayId,
+        password: this.password(gatewayId, generation),
+        clientid: gatewayClientId(gatewayId),
+        textdescription: generationTag(generation),
+        roles: [{ rolename: ROLE }],
+      });
+    } catch (error) {
+      if (!(error instanceof DynsecError && error.message === 'Client already exists')) throw error;
+      await this.rekey(gatewayId, generation);
+    }
   }
 
   /** Disconnects the gateway (both commands do). */
@@ -147,25 +158,36 @@ export class GatewayCredentials implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Spec 5.4 steps 1–3. Never runs twice at once: a call during a run gets one more run after it
-   * (which sees what changed meanwhile). Never rejects.
+   * Spec 5.4 steps 1–3. Never runs twice at once nor during an exclusive section: a call meanwhile
+   * gets one more run afterwards (shared by all such calls; it sees what changed meanwhile).
+   * Never rejects.
    */
   reconcile(): Promise<void> {
-    if (this.running === undefined) {
-      this.running = this.runOnce()
-        .catch((error: unknown) => {
-          this.logger.error(`Gateway credentials reconcile failed (${describeError(error)})`);
-        })
-        .finally(() => {
-          this.running = undefined;
-        });
-      return this.running;
-    }
-    this.queued ??= this.running.then(() => {
-      this.queued = undefined;
-      return this.reconcile();
+    this.waitingRun ??= this.serialize(async () => {
+      // Started: a call from now on needs a run of its own.
+      this.waitingRun = undefined;
+      try {
+        await this.runOnce();
+      } catch (error) {
+        this.logger.error(`Gateway credentials reconcile failed (${describeError(error)})`);
+      }
     });
-    return this.queued;
+    return this.waitingRun;
+  }
+
+  /**
+   * Runs `fn` while no reconcile is in progress and holds new runs back until it settles (a
+   * pairing's database transaction and broker step): a run that read the database before the
+   * commit would undo the step. Settles as `fn` does.
+   */
+  exclusive<T>(fn: () => Promise<T>): Promise<T> {
+    return this.serialize(fn);
+  }
+
+  private serialize<T>(fn: () => Promise<T>): Promise<T> {
+    const result = this.tail.then(fn);
+    this.tail = result.catch(() => undefined);
+    return result;
   }
 
   private async runOnce(): Promise<void> {
@@ -184,6 +206,7 @@ export class GatewayCredentials implements OnModuleInit, OnModuleDestroy {
       const actual = brokerClientsOf(
         await this.dynsec.send({ command: 'listClients', verbose: true }),
       );
+      // Single steps from elsewhere (create, rekey, remove) must run inside exclusive().
       steps = planReconcile(await this.repository.listActiveCredentials(), actual);
     } catch (error) {
       this.logger.warn(`Gateway credentials reconcile failed (${reasonOf(error)})`);
