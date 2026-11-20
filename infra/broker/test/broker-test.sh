@@ -208,7 +208,9 @@ check "websocket: a paired gateway publishes under its own prefix and smart-api 
 check "websocket: a paired gateway cannot publish under a foreign prefix or outside gw/<id>/ha" '! grep -q ws-foreign "$WORK/ws.out" && ! grep -q ws-z2m "$WORK/ws.out"'
 check "websocket: a wrong password is refused (exit code 5)" 'ws_pub "$HA_ID" wrong "$HA_ID-ha" "gw/$HA_ID/ha/x" 1 > /dev/null 2>&1; [ $? -eq 5 ]'
 check "websocket: another client ID is refused (exit code 5)" 'ws_pub "$HA_ID" "$HA_PW" smart-api-x "gw/$HA_ID/ha/x" 1 > /dev/null 2>&1; [ $? -eq 5 ]'
-check "websocket: an anonymous connection is refused" '! quiet cl mosquitto_pub -i anon -L "ws://broker:8080/gw/$HA_ID/ha/x" -m 1 -q 1'
+check "websocket: an anonymous connection is refused (exit code 5)" 'cl mosquitto_pub -i anon -L "ws://broker:8080/gw/$HA_ID/ha/x" -m 1 -q 1 > /dev/null 2>&1; [ $? -eq 5 ]'
+# The public /mqtt path leads here: the backend's own account must not work on this listener.
+check "websocket: smart-api with its real password is refused (exit code 5)" 'ws_pub smart-api "$API_PW" smart-api-ws "gw/$HA_ID/ha/x" 1 > /dev/null 2>&1; [ $? -eq 5 ]'
 # Default deny for reading.
 cl mosquitto_sub -i "$HA_ID-ha" -L "ws://$HA_ID:$HA_PW@broker:8080/gw/$HA_ID/ha/x" -v -W 4 -C 1 > "$WORK/ws-sub.out" 2>&1 &
 ws_sub_pid=$!
@@ -216,6 +218,16 @@ sleep 1
 api_pub "gw/$HA_ID/ha/x" ws-read-probe > /dev/null 2>&1
 wait "$ws_sub_pid" 2> /dev/null
 check "websocket: a paired gateway cannot subscribe to its own topics by default" '! grep -q ws-read-probe "$WORK/ws-sub.out"'
+# The static ACL file (pattern read gw/%u/z2m/+/set) belongs to listener 1883 only: a paired gateway gets no commands here.
+cl mosquitto_sub -i "$HA_ID-ha" -L "ws://$HA_ID:$HA_PW@broker:8080/gw/$HA_ID/z2m/dev/set" -v -W 4 -C 1 > "$WORK/ws-cmd.out" 2>&1 &
+ws_sub_pid=$!
+cl mosquitto_sub -h broker -p 1883 -u smart-api -P "$API_PW" -t "gw/$HA_ID/z2m/dev/set" -v -W 4 -C 1 > "$WORK/ws-cmd-api.out" 2>&1 &
+api_sub_pid=$!
+sleep 1
+api_pub "gw/$HA_ID/z2m/dev/set" ws-command > /dev/null 2>&1
+wait "$ws_sub_pid" "$api_sub_pid" 2> /dev/null
+check "websocket: a paired gateway does not receive z2m commands despite the static ACL pattern" '! grep -q ws-command "$WORK/ws-cmd.out"'
+check "websocket: positive control, smart-api receives the same command on 1883" 'grep -q ws-command "$WORK/ws-cmd-api.out"'
 # Positive control: a client with a subscribe right does receive (proves the probe above can arrive at all).
 dynsec '{"commands":[{"command":"createRole","rolename":"ws-reader","acls":[{"acltype":"subscribePattern","topic":"gw/%u/ha/#","allow":true},{"acltype":"publishClientReceive","topic":"gw/%u/ha/#","allow":true}]},{"command":"createClient","username":"gw-testrdrr","password":"'"$HA_PW"'","clientid":"gw-testrdrr-ha","roles":[{"rolename":"ws-reader"}]}]}' > /dev/null 2>&1
 cl mosquitto_sub -i gw-testrdrr-ha -L "ws://gw-testrdrr:$HA_PW@broker:8080/gw/gw-testrdrr/ha/x" -v -W 4 -C 1 > "$WORK/ws-sub-ok.out" 2>&1 &
@@ -228,6 +240,11 @@ check "websocket: positive control, a client with a subscribe right receives" 'g
 ws_pub "$HA_ID" "$HA_PW" "$HA_ID-ha" '$CONTROL/dynamic-security/v1' "{\"commands\":[{\"command\":\"deleteClient\",\"username\":\"$HA_ID\"}]}" > /dev/null 2>&1
 list_out=$(dynsec '{"commands":[{"command":"listClients"}]}' 2>&1)
 check "websocket: a gateway cannot delete its user through the control topic" 'echo "$list_out" | grep -q "$HA_ID"'
+# Positive control: the identical payload from smart-api removes a throwaway user.
+dynsec '{"commands":[{"command":"createClient","username":"gw-testthrw","password":"x"}]}' > /dev/null 2>&1
+dynsec '{"commands":[{"command":"deleteClient","username":"gw-testthrw"}]}' > /dev/null 2>&1
+list_out2=$(dynsec '{"commands":[{"command":"listClients"}]}' 2>&1)
+check "websocket: positive control, smart-api deletes a user with the same command" 'echo "$list_out2" | grep -q listClients && ! echo "$list_out2" | grep -q gw-testthrw'
 # The state lives in the tmpfs: a restart of the container leaves no users behind.
 docker restart "$PREFIX-off" > /dev/null 2>&1
 check "websocket: the broker is ready again after a restart" 'wait_for api_ready'
