@@ -51,7 +51,7 @@ Pi Z2M-Bridge ──mTLS :8883 (unverändert)──▶ Broker
 
 ### 4.2 Neu koppeln (bestehendes HA-Gateway)
 
-Für ein nicht gesperrtes `credentials`-Gateway: „Neu koppeln“ erzeugt einen Code, der an dieses Gateway gebunden ist. Einlösen erhöht die Generation (neuer Schlüssel, der alte gilt nicht mehr), setzt das Passwort am Broker und trennt bestehende Verbindungen mit dem alten Schlüssel. ID, Hardware, Geräte und Messwerte bleiben.
+Für ein nicht gesperrtes `credentials`-Gateway: „Neu koppeln“ erzeugt einen Code, der an dieses Gateway gebunden ist. Einlösen erhöht die Generation (neuer Schlüssel, der alte gilt nicht mehr), setzt das Passwort am Broker (das trennt bestehende Verbindungen mit dem alten Schlüssel). ID, Hardware, Geräte und Messwerte bleiben.
 
 In HA führt ein abgewiesener Schlüssel (CONNACK „nicht autorisiert“) zum Standard-Ablauf „Erneut authentifizieren“; dort gibt man den neuen Code ein. Die Integration schickt dabei `expectedGatewayId` mit. Gehört der Code zu einem anderen Ziel (anderes Gateway oder neues Gateway), antwortet das Backend 409 **ohne** den Code zu verbrauchen; HA sagt dann: „Dieser Code gehört zu einem anderen Gateway. Erzeuge in der App bei diesem Gateway ‚Neu koppeln‘, oder entferne die Integration und füge sie neu hinzu.“
 
@@ -116,11 +116,12 @@ Ein neuer Code macht offene (nicht eingelöste, nicht abgelaufene) Codes **desse
 
 Baustein `GatewayCredentials` in `core/gateways` über die Plattform-MQTT-Verbindung (die dafür `publish()` und einen Hinweis auf jeden Verbindungsaufbau bekommt). Befehle gehen als JSON an `$CONTROL/dynamic-security/v1`, Antworten kommen auf `$CONTROL/dynamic-security/v1/response` und werden über `correlationData` zugeordnet; Zeitlimit 5 s je Anfrage, eine Anfrage zur Zeit.
 
-- **Einzelschritte:** Anlegen (`createClient` mit `username`, `password`, `clientid = <id>-ha`, Rolle `smart-gateway-ha`), neuer Schlüssel (`setClientPassword`, danach `disableClient` + `enableClient`, damit Verbindungen mit dem alten Schlüssel getrennt werden), Löschen (`deleteClient`).
+- **Generation am Broker:** Jeder Benutzer trägt seine Generation als `textdescription` (`generation:<n>`). So erkennt der Abgleich einen veralteten Schlüssel, ohne das Passwort lesen zu können.
+- **Einzelschritte:** Anlegen (`createClient` mit `username`, `password`, `clientid = <id>-ha`, `textdescription`, Rolle `smart-gateway-ha`), neuer Schlüssel (`setClientPassword`, dann `modifyClient` mit der neuen `textdescription`), Löschen (`deleteClient`). Gemessen (Mosquitto 2.1.2): `setClientPassword` trennt bestehende Verbindungen des Benutzers **immer**, auch bei unverändertem Passwort („administrative action“); `deleteClient` trennt ebenfalls sofort.
 - **Abgleich** nach jedem Verbindungsaufbau des Backends und alle 10 Minuten:
   1. `setDefaultACLAccess`: `publishClientSend`, `publishClientReceive`, `subscribe` verboten; `unsubscribe` erlaubt.
-  2. Rolle `smart-gateway-ha` mit genau diesen Regeln (anlegen; existiert sie, ihre Regeln ersetzen): `publishClientSend` erlaubt für `gw/%u/ha/#` und `gw/%u/bridge/connection`.
-  3. `listClients`; für jedes nicht gesperrte `credentials`-Gateway: fehlt der Benutzer → anlegen, sonst `setClientPassword` (idempotent); jeder Benutzer ohne nicht gesperrtes Gateway → löschen.
+  2. Rolle `smart-gateway-ha` mit genau diesen Regeln: `createRole` (die Antwort „Role already exists“ gilt als Erfolg), dann `modifyRole` mit den Regeln (ersetzt sie): `publishClientSend` erlaubt für `gw/%u/ha/#` und `gw/%u/bridge/connection`.
+  3. `listClients` mit `verbose: true`; für jedes nicht gesperrte `credentials`-Gateway: fehlt der Benutzer → anlegen; weicht `textdescription` von der Generation in der Datenbank ab → neuer Schlüssel (trennt, nur in diesem Fall); sonst **nichts** (ein `setClientPassword` würde jede Verbindung trennen). Jeder Benutzer ohne nicht gesperrtes Gateway → löschen.
 - Die Planung (Soll gegen Ist → Befehle) ist eine reine Funktion und einzeln getestet.
 - Fehler (Zeitlimit, Fehlermeldung des Plugins) werden geloggt (ohne Passwörter); der nächste Lauf versucht es erneut.
 
@@ -183,7 +184,7 @@ Runbooks: `docs/runbooks/gateway.md` (Abschnitt 13 neu: Kopplung statt Provision
 ## 12. Tests
 
 - **Backend (Unit):** Code erzeugen, normalisieren, hashen; Schlüssel ableiten (feste Testvektoren); Kopplungs-Service (Ablauf, einmalig, Entwerten, Ziel-Prüfung, Grenze, Rollback bei Broker-Fehler); Abgleich-Planung (Soll/Ist → Befehle); Zuordnung von Antworten, Zeitlimit; Rechte beim Sperren.
-- **Backend (E2E, echter Broker):** Code erzeugen → einlösen → per WebSocket mit dem Schlüssel verbinden → Geräteliste veröffentlichen → Hardware erscheint; falscher Schlüssel und fremde Client-ID abgewiesen; fremdes Präfix verworfen; Sperren trennt und weist ab; Neu koppeln: alter Schlüssel abgewiesen, neuer geht; Broker-Neustart → Abgleich stellt Zugänge wieder her; Einlösen ohne `Origin`.
+- **Backend (E2E, echter Broker):** Code erzeugen → einlösen → per WebSocket mit dem Schlüssel verbinden → Geräteliste veröffentlichen → Hardware erscheint; falscher Schlüssel und fremde Client-ID abgewiesen; fremdes Präfix verworfen; Sperren trennt und weist ab; Neu koppeln: alter Schlüssel abgewiesen, neuer geht; Broker-Neustart → Abgleich stellt Zugänge wieder her; ein Abgleich ohne Änderung trennt keine bestehende Verbindung; Einlösen ohne `Origin`.
 - **Broker-Test:** WebSocket-Listener, Standard verboten, Rolle mit `%u`, Bindung der Client-ID, `smart-api` steuert über 1883, andere dürfen `$CONTROL` nicht.
 - **Integration (pytest):** Config Flow (Erfolg, ungültiger Code, Grenze, nicht erreichbar, Regel für `http`, nur ein Eintrag), Reauth (Erfolg, anderes Gateway), Setup/Unload, Verbindung über WebSocket (Optionen an paho), Auslösen von Reauth bei abgewiesener Anmeldung.
 - **Integration (Phase 2, echtes HA):** Config Entry vorab in `.storage` angelegt, echter Broker mit WebSocket-Listener und per `$CONTROL` angelegtem Benutzer: `online`, Geräteliste, Schnappschuss, nach Stopp `offline`/`0`.
