@@ -1,0 +1,62 @@
+name: Home Assistant integration release
+
+# Mirrors integrations/home-assistant into the public HACS repository (HACS needs custom_components/ at the root of
+# its own repository) and creates a release when manifest.json has a new version. Without the secret
+# HACS_MIRROR_TOKEN the mirror job ends green with a notice.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'integrations/home-assistant/**'
+      - '.github/workflows/ha-integration-release.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ha-integration-release
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: test
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: ha-integration
+        run: bash integrations/home-assistant/test/run-tests.sh
+
+  mirror:
+    name: mirror
+    needs: test
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Mirror and release
+        env:
+          HACS_MIRROR_TOKEN: ${{ secrets.HACS_MIRROR_TOKEN }}
+          SOURCE_SHA: ${{ github.sha }}
+          MIRROR_REPO: tkosiol/smart-home-hacs
+        run: |
+          set -euo pipefail
+          if [ -z "$HACS_MIRROR_TOKEN" ]; then
+            echo "::notice::Secret HACS_MIRROR_TOKEN is not set, skipping the HACS mirror."
+            exit 0
+          fi
+          echo "::add-mask::$HACS_MIRROR_TOKEN"
+          version="$(bash integrations/home-assistant/release/sync-mirror.sh \
+            "https://x-access-token:${HACS_MIRROR_TOKEN}@github.com/${MIRROR_REPO}.git" "$SOURCE_SHA")"
+          echo "Mirror is at version ${version}"
+          export GH_TOKEN="$HACS_MIRROR_TOKEN"
+          if gh release view "v${version}" --repo "$MIRROR_REPO" >/dev/null 2>&1; then
+            echo "Release v${version} already exists."
+          else
+            gh release create "v${version}" --repo "$MIRROR_REPO" --target main \
+              --title "v${version}" --notes "Smart Home integration ${version}, synced from tkosiol/smart-home@${SOURCE_SHA}."
+          fi
