@@ -86,7 +86,7 @@ services:
   # not through the local Mosquitto. homeassistant-data/ (users, set-up integrations) is
   # never touched by the deploy and goes into the nightly backup.
   homeassistant:
-    image: ghcr.io/home-assistant/home-assistant:2026.11.0
+    image: ghcr.io/home-assistant/home-assistant:2026.11.2
     profiles: [ha]
     restart: unless-stopped
     # Host network: Yeelight and other discovery need multicast. The UI (8123) is reachable in the home network,
