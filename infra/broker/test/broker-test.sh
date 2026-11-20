@@ -24,7 +24,7 @@ export SMART_OPENSSL="$OSSL"
 
 WORK=$(mktemp -d)
 remove_test_containers() {
-  docker rm -fv "$PREFIX-off" "$PREFIX-on" "$PREFIX-client" "$PREFIX-abort" > /dev/null 2>&1
+  docker rm -fv "$PREFIX-off" "$PREFIX-on" "$PREFIX-plain" "$PREFIX-client" "$PREFIX-abort" > /dev/null 2>&1
   docker network rm "$NET" > /dev/null 2>&1
 }
 cleanup() {
@@ -197,6 +197,14 @@ ws_pub() { cl mosquitto_pub -i "$3" -L "ws://$1:$2@broker:8080/$4" -m "$5" -q 1;
 check "websocket: the broker listens on 8080" 'docker exec "$PREFIX-off" netstat -ln | grep -q ":8080 "'
 setup_out=$(dynsec_setup 2>&1)
 check "websocket: smart-api creates a role and a client through the control topic" '[ -n "$setup_out" ] && ! echo "$setup_out" | grep -q "\"error\"" && echo "$setup_out" | grep -q createClient'
+# dynsec_saved CONTAINER USER: the plugin wrote its state file after a change (no permission error in the log, the
+# user in the file, the file still private to the broker user).
+dynsec_saved() {
+  ! docker logs "$1" 2>&1 | grep -q "Permission denied" \
+    && docker exec "$1" grep -q "\"$2\"" /mosquitto/run/dynsec.json \
+    && [ "$(docker exec "$1" stat -c "%U %a" /mosquitto/run/dynsec.json)" = "mosquitto 600" ]
+}
+check "websocket: the plugin saves its state after a control change (tmpfs)" 'dynsec_saved "$PREFIX-off" "$HA_ID"'
 ws_pubs() {
   ws_pub "$HA_ID" "$HA_PW" "$HA_ID-ha" "gw/$HA_ID/ha/x" ws-own > /dev/null 2>&1
   ws_pub "$HA_ID" "$HA_PW" "$HA_ID-ha" "gw/$GW_B/ha/x" ws-foreign > /dev/null 2>&1
@@ -252,6 +260,15 @@ list_out=$(dynsec '{"commands":[{"command":"listClients"}]}' 2>&1)
 check "websocket: a restart empties the dynamic security users" '[ -n "$list_out" ] && echo "$list_out" | grep -q listClients && ! echo "$list_out" | grep -q "$HA_ID"'
 check "websocket: the dynamic security file is private to the broker user" '[ "$(docker exec "$PREFIX-off" stat -c "%U %a" /mosquitto/run/dynsec.json)" = "mosquitto 600" ]'
 docker rm -fv "$PREFIX-off" > /dev/null 2>&1
+
+# Without a tmpfs (local stack, backend test broker) /mosquitto/run is a plain directory created by the entrypoint as
+# root: the broker user must still be able to save the plugin's state there.
+must_start docker run -d --name "$PREFIX-plain" --network "$NET" --network-alias broker \
+  -e MQTT_USER=smart-api -e MQTT_PASSWORD="$API_PW" "$IMAGE"
+check "plain run directory: the broker starts" 'wait_for api_ready'
+dynsec_setup > /dev/null 2>&1
+check "plain run directory: the plugin saves its state after a control change" 'dynsec_saved "$PREFIX-plain" "$HA_ID"'
+docker rm -fv "$PREFIX-plain" > /dev/null 2>&1
 
 # --- MQTT_TLS=on with an incomplete certificate set aborts with a message ---
 for missing in ca.crt server.crt server.key crl.pem; do

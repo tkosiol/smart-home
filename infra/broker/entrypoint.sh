@@ -15,6 +15,10 @@ fail() {
 
 RUN=/mosquitto/run
 mkdir -p "$RUN"
+# The dynamic security plugin saves its state by writing dynsec.json.new next to the file and renaming it, so the
+# broker user needs the directory too (in the stack a tmpfs, locally and in the backend tests a plain directory).
+chown mosquitto:mosquitto "$RUN"
+chmod 0700 "$RUN"
 # Nothing sensitive lives on the data volume any more; remove the password file earlier versions left there.
 rm -f /mosquitto/data/passwd
 
