@@ -1,0 +1,41 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to Smart Home",
+        "description": "Create a pairing code in the Smart Home app under Gateways → Pair Home Assistant, then enter the app address and the code here.",
+        "data": {
+          "url": "App address",
+          "code": "Pairing code"
+        },
+        "data_description": {
+          "url": "The address shown next to the code, e.g. https://smart.example.org",
+          "code": "8 characters, e.g. ABCD-EFGH; valid for 15 minutes"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Pair again",
+        "description": "The Smart Home app no longer accepts the key of this Home Assistant. In the app, choose Pair again for this gateway and enter the new code here.",
+        "data": {
+          "code": "Pairing code"
+        },
+        "data_description": {
+          "code": "8 characters, e.g. ABCD-EFGH; valid for 15 minutes"
+        }
+      }
+    },
+    "error": {
+      "invalid_url": "This is not a valid address. Enter it like https://smart.example.org.",
+      "insecure_url": "The address must start with https://. http:// is only allowed for localhost, private IP addresses and names without a dot.",
+      "invalid_code": "The code is unknown, expired or already used. Create a new code in the app.",
+      "other_gateway": "This code belongs to another gateway. In the app, choose Pair again for this gateway, or remove the integration and add it again.",
+      "limit_reached": "This household already has the maximum number of Home Assistant gateways. Revoke one in the app first.",
+      "unavailable": "The app cannot pair right now. Try again in a few minutes.",
+      "too_many_attempts": "Too many attempts. Try again in a few minutes.",
+      "cannot_connect": "Cannot reach the app. Check the address and the network."
+    },
+    "abort": {
+      "already_configured": "This gateway is already set up."
+    }
+  }
+}

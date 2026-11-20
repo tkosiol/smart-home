@@ -1,18 +1,19 @@
-"""PahoConnection tests with a patched paho client (spec 4.2). No broker, no network."""
+"""PahoConnection tests (spec 7): patched paho client, plus real paho against a fake broker."""
 
 from __future__ import annotations
 
-import datetime as dt
+import base64
+import contextlib
+import hashlib
 import logging
+import socket
 import ssl
+import threading
 import time
+from collections.abc import Iterator
 from unittest.mock import MagicMock, call, patch
 
 import pytest
-from cryptography import x509
-from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import ec
-from cryptography.x509.oid import NameOID
 from paho.mqtt import client as mqtt
 from paho.mqtt.enums import CallbackAPIVersion
 from paho.mqtt.packettypes import PacketTypes
@@ -22,9 +23,13 @@ from custom_components.smart_bridge import connection as connection_module
 from custom_components.smart_bridge.connection import PahoConnection
 
 GW = "gw-abcdefgh"
+CLIENT_ID = f"{GW}-ha"
+PASSWORD = "key-generation-1"
 CONNECTION_TOPIC = f"gw/{GW}/bridge/connection"
 SUCCESS = ReasonCode(PacketTypes.CONNACK, "Success")
 NOT_AUTHORIZED = ReasonCode(PacketTypes.CONNACK, "Not authorized")
+BAD_CREDENTIALS = ReasonCode(PacketTypes.CONNACK, "Bad user name or password")
+SERVER_UNAVAILABLE = ReasonCode(PacketTypes.CONNACK, "Server unavailable")
 
 
 @pytest.fixture
@@ -34,10 +39,11 @@ def client_class():
 
 
 @pytest.fixture
-def tls_context():
-    context = object()
-    with patch.object(connection_module, "_tls_context", return_value=context) as factory:
-        factory.context = context
+def create_context():
+    """Spy on the TLS context factory: the real one runs, the call is recorded."""
+    with patch.object(
+        connection_module.ssl, "create_default_context", wraps=ssl.create_default_context
+    ) as factory:
         yield factory
 
 
@@ -47,40 +53,91 @@ def on_connected():
 
 
 @pytest.fixture
-def conn(client_class, tls_context, on_connected) -> PahoConnection:
+def on_auth_failed():
+    return MagicMock()
+
+
+def make_conn(on_connected, on_auth_failed, mqtt_url="wss://smart.example.org/mqtt"):
     return PahoConnection(
         gateway_id=GW,
-        host="broker.example.org",
-        port=8883,
-        ca_file="/certs/ca.crt",
-        cert_file="/certs/gateway.crt",
-        key_file="/certs/gateway.key",
+        mqtt_url=mqtt_url,
+        username=GW,
+        password=PASSWORD,
+        client_id=CLIENT_ID,
         on_connected=on_connected,
+        on_auth_failed=on_auth_failed,
     )
+
+
+@pytest.fixture
+def conn(client_class, on_connected, on_auth_failed) -> PahoConnection:
+    return make_conn(on_connected, on_auth_failed)
 
 
 def client_of(client_class) -> MagicMock:
     return client_class.return_value
 
 
-def test_start_configures_client(conn, client_class, tls_context):
+def test_start_configures_websocket_client_with_tls(
+    client_class, create_context, on_connected, on_auth_failed
+):
+    conn = make_conn(on_connected, on_auth_failed)
     client_class.assert_not_called()  # nothing blocking before start()
 
     conn.start()
 
     client_class.assert_called_once_with(
         callback_api_version=CallbackAPIVersion.VERSION2,
-        client_id=f"{GW}-ha",
+        client_id=CLIENT_ID,
         protocol=mqtt.MQTTv311,
+        transport="websockets",
     )
     client = client_of(client_class)
-    tls_context.assert_called_once_with("/certs/ca.crt", "/certs/gateway.crt", "/certs/gateway.key")
-    client.tls_set_context.assert_called_once_with(tls_context.context)
+    client.ws_set_options.assert_called_once_with(path="/mqtt")
+    client.username_pw_set.assert_called_once_with(GW, PASSWORD)
+    create_context.assert_called_once_with()  # system CAs, no own CA file
+    (context,), _ = client.tls_set_context.call_args
+    assert isinstance(context, ssl.SSLContext)
+    assert context.verify_mode == ssl.CERT_REQUIRED
+    assert context.check_hostname
+    assert context.minimum_version == ssl.TLSVersion.TLSv1_2
     client.will_set.assert_called_once_with(CONNECTION_TOPIC, b"0", qos=1, retain=True)
     client.reconnect_delay_set.assert_called_once_with(min_delay=1, max_delay=60)
-    client.connect_async.assert_called_once_with("broker.example.org", 8883, keepalive=30)
+    client.connect_async.assert_called_once_with("smart.example.org", 443, keepalive=30)
     client.loop_start.assert_called_once_with()
     assert not conn.connected
+
+
+@pytest.mark.parametrize(
+    ("mqtt_url", "host", "port", "path"),
+    [
+        ("ws://localhost:4200/mqtt", "localhost", 4200, "/mqtt"),
+        ("ws://web/mqtt", "web", 80, "/mqtt"),
+        ("ws://[::1]:8080/broker/mqtt", "::1", 8080, "/broker/mqtt"),
+    ],
+)
+def test_plain_websocket_without_tls(
+    client_class, create_context, on_connected, on_auth_failed, mqtt_url, host, port, path
+):
+    conn = make_conn(on_connected, on_auth_failed, mqtt_url=mqtt_url)
+
+    conn.start()
+
+    client = client_of(client_class)
+    client.tls_set_context.assert_not_called()
+    create_context.assert_not_called()
+    client.ws_set_options.assert_called_once_with(path=path)
+    client.connect_async.assert_called_once_with(host, port, keepalive=30)
+
+
+def test_wss_with_explicit_port(client_class, on_connected, on_auth_failed):
+    conn = make_conn(on_connected, on_auth_failed, mqtt_url="wss://smart.example.org:8443/mqtt")
+
+    conn.start()
+
+    client_of(client_class).connect_async.assert_called_once_with(
+        "smart.example.org", 8443, keepalive=30
+    )
 
 
 def test_on_connect_publishes_online_and_calls_back(conn, client_class, on_connected):
@@ -94,17 +151,58 @@ def test_on_connect_publishes_online_and_calls_back(conn, client_class, on_conne
     on_connected.assert_called_once_with()
 
 
-def test_failed_connect_warns_with_reason(conn, client_class, on_connected, caplog):
+@pytest.mark.parametrize("reason", [NOT_AUTHORIZED, BAD_CREDENTIALS])
+def test_refused_key_reports_once_and_stops_reconnecting(
+    conn, client_class, on_connected, on_auth_failed, caplog, reason
+):
     conn.start()
     client = client_of(client_class)
 
     with caplog.at_level(logging.WARNING):
-        client.on_connect(client, None, MagicMock(), NOT_AUTHORIZED, None)
+        client.on_connect(client, None, MagicMock(), reason, None)
+        client.on_connect(client, None, MagicMock(), reason, None)  # a late duplicate
 
     assert not conn.connected
     client.publish.assert_not_called()
     on_connected.assert_not_called()
-    assert "Not authorized" in caplog.text
+    on_auth_failed.assert_called_once_with()
+    client.disconnect.assert_called_once_with()
+    client.loop_stop.assert_called_once_with()
+    assert str(reason) in caplog.text
+
+
+def test_auth_callback_errors_do_not_reach_paho(conn, client_class, on_auth_failed):
+    on_auth_failed.side_effect = RuntimeError("Event loop is closed")
+    conn.start()
+    client = client_of(client_class)
+
+    client.on_connect(client, None, MagicMock(), NOT_AUTHORIZED, None)  # must not raise
+
+    client.disconnect.assert_called_once_with()
+
+
+def test_refusal_after_stop_reports_nothing(conn, client_class, on_auth_failed):
+    conn.start()
+    client = client_of(client_class)
+    conn.stop([])
+
+    client.on_connect(client, None, MagicMock(), NOT_AUTHORIZED, None)
+
+    on_auth_failed.assert_not_called()
+
+
+def test_other_refusals_keep_retrying(conn, client_class, on_connected, on_auth_failed, caplog):
+    conn.start()
+    client = client_of(client_class)
+
+    with caplog.at_level(logging.WARNING):
+        client.on_connect(client, None, MagicMock(), SERVER_UNAVAILABLE, None)
+
+    assert not conn.connected
+    on_connected.assert_not_called()
+    on_auth_failed.assert_not_called()
+    client.disconnect.assert_not_called()
+    assert "Server unavailable" in caplog.text
 
 
 def test_callback_errors_do_not_reach_paho(conn, client_class, on_connected, caplog):
@@ -252,46 +350,6 @@ def test_stop_before_start_is_a_no_op(conn, client_class):
     client_class.assert_not_called()
 
 
-def _write_identity(tmp_path):
-    key = ec.generate_private_key(ec.SECP256R1())
-    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, GW)])
-    now = dt.datetime.now(dt.UTC)
-    cert = (
-        x509.CertificateBuilder()
-        .subject_name(name)
-        .issuer_name(name)
-        .public_key(key.public_key())
-        .serial_number(x509.random_serial_number())
-        .not_valid_before(now - dt.timedelta(minutes=1))
-        .not_valid_after(now + dt.timedelta(days=1))
-        .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
-        .sign(key, hashes.SHA256())
-    )
-    cert_file = tmp_path / "gateway.crt"
-    key_file = tmp_path / "gateway.key"
-    cert_file.write_bytes(cert.public_bytes(serialization.Encoding.PEM))
-    key_file.write_bytes(
-        key.private_bytes(
-            serialization.Encoding.PEM,
-            serialization.PrivateFormat.PKCS8,
-            serialization.NoEncryption(),
-        )
-    )
-    return str(cert_file), str(key_file)
-
-
-def test_tls_context_is_tls12_with_client_certificate(tmp_path):
-    cert_file, key_file = _write_identity(tmp_path)
-
-    context = connection_module._tls_context(cert_file, cert_file, key_file)
-
-    assert context.minimum_version == ssl.TLSVersion.TLSv1_2
-    assert context.maximum_version == ssl.TLSVersion.TLSv1_2
-    assert context.verify_mode == ssl.CERT_REQUIRED
-    assert context.check_hostname
-    assert len(context.get_ca_certs()) == 1
-
-
 def test_start_after_stop_does_nothing(conn, client_class):
     # HA may stop while start() still waits for the executor: no client may outlive the stop.
     conn.stop([("gw/x/ha/status", b"offline")])
@@ -317,24 +375,142 @@ def test_late_connect_after_stop_publishes_nothing(conn, client_class, on_connec
     assert not conn.connected
 
 
+# Real paho ---------------------------------------------------------------------------------
+
+WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+
+
+class FakeWebsocketBroker:
+    """Accepts MQTT over WebSocket and answers every CONNECT with a fixed CONNACK return code."""
+
+    def __init__(self, return_code: int) -> None:
+        self.return_code = return_code
+        self.requests: list[str] = []  # HTTP request lines of the WebSocket handshakes
+        self.connects: list[bytes] = []  # raw MQTT CONNECT packets
+        self._server = socket.create_server(("127.0.0.1", 0))
+        self._server.settimeout(0.1)
+        self.port = self._server.getsockname()[1]
+        self._closing = threading.Event()
+        self._thread = threading.Thread(target=self._serve, daemon=True)
+        self._thread.start()
+
+    def close(self) -> None:
+        self._closing.set()
+        self._thread.join(timeout=5)
+        self._server.close()
+
+    def _serve(self) -> None:
+        while not self._closing.is_set():
+            try:
+                sock, _ = self._server.accept()
+            except TimeoutError:
+                continue
+            with sock, contextlib.suppress(OSError):  # the client went away
+                sock.settimeout(5)
+                self._handle(sock)
+
+    def _handle(self, sock: socket.socket) -> None:
+        request = b""
+        while b"\r\n\r\n" not in request:
+            chunk = sock.recv(1024)
+            if not chunk:
+                return
+            request += chunk
+        head = request.decode("latin-1")
+        self.requests.append(head.split("\r\n", 1)[0])
+        key = next(
+            line.split(":", 1)[1].strip()
+            for line in head.split("\r\n")
+            if line.lower().startswith("sec-websocket-key:")
+        )
+        accept = base64.b64encode(hashlib.sha1((key + WS_GUID).encode()).digest()).decode()
+        sock.sendall(
+            (
+                "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\n"
+                f"Connection: Upgrade\r\nSec-WebSocket-Accept: {accept}\r\n\r\n"
+            ).encode()
+        )
+        self.connects.append(self._read_frame(sock))
+        sock.sendall(bytes([0x82, 4, 0x20, 0x02, 0x00, self.return_code]))  # binary: CONNACK
+        while not self._closing.is_set() and sock.recv(1024):  # until the client closes
+            pass
+
+    @staticmethod
+    def _read_frame(sock: socket.socket) -> bytes:
+        def read(n: int) -> bytes:
+            data = b""
+            while len(data) < n:
+                chunk = sock.recv(n - len(data))
+                if not chunk:
+                    raise ConnectionError("closed")
+                data += chunk
+            return data
+
+        _opcode, length = read(2)
+        length &= 0x7F
+        if length == 126:
+            length = int.from_bytes(read(2))
+        elif length == 127:
+            length = int.from_bytes(read(8))
+        mask = read(4)
+        return bytes(b ^ mask[i % 4] for i, b in enumerate(read(length)))
+
+
+@pytest.fixture
+def broker(request) -> Iterator[FakeWebsocketBroker]:
+    broker = FakeWebsocketBroker(request.param)
+    yield broker
+    broker.close()
+
+
+def _wait_until(condition, seconds: float = 5) -> None:
+    deadline = time.monotonic() + seconds
+    while not condition() and time.monotonic() < deadline:
+        time.sleep(0.05)
+
+
+@pytest.mark.usefixtures("socket_enabled")
+@pytest.mark.parametrize("broker", [5], indirect=True)  # 5 = not authorised (MQTT 3.1.1)
+def test_real_client_stops_after_refused_key(broker, on_connected, on_auth_failed, caplog):
+    conn = make_conn(on_connected, on_auth_failed, mqtt_url=f"ws://127.0.0.1:{broker.port}/mqtt")
+    with caplog.at_level(logging.DEBUG):
+        conn.start()
+        _wait_until(lambda: on_auth_failed.called)
+        time.sleep(2.5)  # paho would have reconnected after 1 s
+        started = time.monotonic()
+        conn.stop([("gw/x/ha/status", b"offline")])
+
+    on_auth_failed.assert_called_once_with()
+    on_connected.assert_not_called()
+    assert broker.requests == ["GET /mqtt HTTP/1.1"]
+    assert len(broker.connects) == 1
+    assert CLIENT_ID.encode() in broker.connects[0]
+    assert GW.encode() in broker.connects[0]
+    assert "Not authorized" in caplog.text
+    assert PASSWORD not in caplog.text
+    assert time.monotonic() - started < 5
+
+
+@pytest.mark.usefixtures("socket_enabled")
+@pytest.mark.parametrize("broker", [3], indirect=True)  # 3 = server unavailable
+def test_real_client_keeps_retrying_other_refusals(broker, on_connected, on_auth_failed):
+    conn = make_conn(on_connected, on_auth_failed, mqtt_url=f"ws://127.0.0.1:{broker.port}/mqtt")
+    conn.start()
+    _wait_until(lambda: len(broker.connects) >= 2)
+    conn.stop([])
+
+    assert len(broker.connects) >= 2
+    on_auth_failed.assert_not_called()
+    on_connected.assert_not_called()
+
+
 @pytest.mark.usefixtures("socket_enabled")  # paho needs a loopback socket pair
-def test_real_client_without_broker_starts_and_stops(tmp_path, on_connected, caplog):
+def test_real_client_without_broker_starts_and_stops(on_connected, on_auth_failed, caplog):
     """Real paho wiring (no patch): nothing listens on the port, so it retries until stopped."""
-    cert_file, key_file = _write_identity(tmp_path)
-    conn = PahoConnection(
-        gateway_id=GW,
-        host="127.0.0.1",
-        port=1,
-        ca_file=cert_file,
-        cert_file=cert_file,
-        key_file=key_file,
-        on_connected=on_connected,
-    )
+    conn = make_conn(on_connected, on_auth_failed, mqtt_url="ws://127.0.0.1:1/mqtt")
     with caplog.at_level(logging.WARNING):
         conn.start()
-        deadline = time.monotonic() + 5
-        while "Cannot reach" not in caplog.text and time.monotonic() < deadline:
-            time.sleep(0.05)
+        _wait_until(lambda: "Cannot reach" in caplog.text)
         conn.publish("gw/x/ha/devices", b"{}")  # dropped, must not raise
         started = time.monotonic()
         conn.stop([("gw/x/ha/status", b"offline")])
@@ -344,3 +520,4 @@ def test_real_client_without_broker_starts_and_stops(tmp_path, on_connected, cap
     assert time.monotonic() - started < 5
     assert not conn.connected
     on_connected.assert_not_called()
+    on_auth_failed.assert_not_called()
