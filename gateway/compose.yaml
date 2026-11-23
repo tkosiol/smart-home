@@ -112,7 +112,7 @@ services:
   # ping URL come from secrets/backup.env as environment (never argv); the ping itself is sent by the scripts on the
   # host (the restic image has no curl). The data are mounted read-only.
   backup:
-    image: restic/restic:0.19.1
+    image: restic/restic:0.20.0
     profiles: [backup]
     entrypoint: ['sh', '/smart/backup/restic-job.sh']
     mem_limit: 256m
