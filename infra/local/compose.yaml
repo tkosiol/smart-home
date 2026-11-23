@@ -20,7 +20,7 @@ services:
       retries: 20
 
   broker:
-    image: eclipse-mosquitto:2.1.2-alpine
+    image: eclipse-mosquitto:2.1.4-alpine
     entrypoint: ['/bin/sh', '/smart/entrypoint.sh']
     environment:
       # The ACL grants the backend's rights to this exact name; MQTT_TLS stays off locally (the default).
